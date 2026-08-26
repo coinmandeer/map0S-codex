@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Coordinates } from "./geo";
 import { offsetCoordinates } from "./geo";
+import { emit, on } from "../../lib/events";
 
 const MOVEMENT_SPEED_METERS_PER_SECOND = 42;
 const DEG_TO_RAD = Math.PI / 180;
@@ -127,21 +128,12 @@ export function useSimulationController(initialPosition: Coordinates, enabled: b
   }, [enabled, trackingMode]);
 
   useEffect(() => {
-    const onTracking = (e: Event) => {
-      const mode = (e as CustomEvent<{ mode: TrackingMode }>).detail.mode;
-      setTrackingMode(mode);
-    };
-    window.addEventListener("mapos:game-tracking-changed", onTracking);
-    return () => window.removeEventListener("mapos:game-tracking-changed", onTracking);
+    return on("game-tracking-changed", ({ mode }) => setTrackingMode(mode));
   }, []);
 
   useEffect(() => {
     if (!enabled) return;
-    window.dispatchEvent(
-      new CustomEvent("mapos:geolocation", {
-        detail: { lng: playerPosition.longitude, lat: playerPosition.latitude }
-      })
-    );
+    emit("geolocation", { lng: playerPosition.longitude, lat: playerPosition.latitude });
   }, [playerPosition, enabled]);
 
   return {

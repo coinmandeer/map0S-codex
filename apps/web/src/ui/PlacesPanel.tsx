@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { GeoFeature } from "@mapos/layer-sdk";
 import { distanceMeters } from "@mapos/layer-sdk";
 import { getMapStore } from "../store/mapStore";
+import { emit } from "../lib/events";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { PIN_STYLES, type PinStyle } from "./presets";
 import { preloadPlacePhotos, resolvePhotoUrl } from "./photoCache";
@@ -80,7 +81,7 @@ function PlacesTab() {
 
   const openPlace = (p: { feature: GeoFeature; layerId: string }) => {
     const [lng, lat] = p.feature.geometry.coordinates;
-    window.dispatchEvent(new CustomEvent("mapos:fly-to", { detail: { lng, lat, zoom: 16 } }));
+    emit("fly-to", { lng, lat, zoom: 16 });
     store.selectPin({ feature: p.feature, layerId: p.layerId });
     if (window.innerWidth < 900) store.setSidebarOpen(false);
   };
@@ -109,7 +110,7 @@ function PlacesTab() {
               className="btn btn-accent"
               onClick={() => {
                 store.setSearchHerePending(false);
-                window.dispatchEvent(new Event("mapos:search-here"));
+                emit("search-here");
               }}
             >
               Hledat v této oblasti

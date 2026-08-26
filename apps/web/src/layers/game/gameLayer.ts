@@ -1,6 +1,7 @@
 import type maplibregl from "maplibre-gl";
 import type { Bbox, FeatureCollection, FilterValues } from "@mapos/layer-sdk";
 import { getMapStore } from "../../store/mapStore";
+import { emit, on } from "../../lib/events";
 import {
   ThreeScene,
   type GameGhost,
@@ -54,8 +55,7 @@ export function createGameLayerHandle(map: maplibregl.Map, apiBase: string, laye
     scene.syncOrbs(orbs);
   }
 
-  function onGeolocation(e: Event) {
-    const detail = (e as CustomEvent<{ lng: number; lat: number }>).detail;
+  const offGeolocation = on("geolocation", (detail) => {
     if (!detail) return;
     scene?.setPlayerPosition(detail.lng, detail.lat);
     const grabbed = scene?.collectNearbyOrbs(8) ?? [];
@@ -64,19 +64,14 @@ export function createGameLayerHandle(map: maplibregl.Map, apiBase: string, laye
       persistCollectedOrbIds(collectedOrbs);
       const xp = addOrbXp(grabbed.length * 10);
       getMapStore().showToast(`Kulička +${grabbed.length * 10} XP (celkem ${xp})`);
-      window.dispatchEvent(
-        new CustomEvent("mapos:orbs-collected", { detail: { count: grabbed.length, xp } })
-      );
+      emit("orbs-collected", { count: grabbed.length, xp });
     }
     refreshOrbs(detail);
-  }
-  window.addEventListener("mapos:geolocation", onGeolocation);
+  });
 
-  function onAvatarChanged(e: Event) {
-    const detail = (e as CustomEvent<{ style: "cube" | "aavegotchi"; tokenId: string }>).detail;
+  const offAvatarChanged = on("avatar-changed", (detail) => {
     scene?.setAvatarStyle(detail.style, detail.tokenId);
-  }
-  window.addEventListener("mapos:avatar-changed", onAvatarChanged);
+  });
 
   async function catchGhost(id: string) {
     try {
@@ -91,7 +86,7 @@ export function createGameLayerHandle(map: maplibregl.Map, apiBase: string, laye
         return;
       }
       scene?.removeGhost(id);
-      window.dispatchEvent(new CustomEvent("mapos:ghost-caught", { detail: { id } }));
+      emit("ghost-caught", { id });
       getMapStore().showToast("Duch chycen!");
     } catch {
       /* retry on next click */
@@ -113,7 +108,7 @@ export function createGameLayerHandle(map: maplibregl.Map, apiBase: string, laye
       }
       const data = (await res.json()) as { rewardUsd?: number; loot?: string };
       scene?.removeEncounter(id);
-      window.dispatchEvent(new CustomEvent("mapos:encounter-resolved", { detail: { id } }));
+      emit("encounter-resolved", { id });
       getMapStore().showToast(`Odmena $${data.rewardUsd ?? 0} · ${data.loot ?? "loot"}`);
     } catch {
       /* retry */
@@ -187,8 +182,8 @@ export function createGameLayerHandle(map: maplibregl.Map, apiBase: string, laye
       scene?.setOpacity(opacity);
     },
     detach() {
-      window.removeEventListener("mapos:geolocation", onGeolocation);
-      window.removeEventListener("mapos:avatar-changed", onAvatarChanged);
+      offGeolocation();
+      offAvatarChanged();
       map.off("click", onClick);
       if (map.getLayer(customLayer.id)) map.removeLayer(customLayer.id);
     }

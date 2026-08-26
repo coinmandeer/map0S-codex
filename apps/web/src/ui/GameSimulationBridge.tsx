@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { useSimulationController } from "../layers/game/useSimulationController";
+import { emit, on } from "../lib/events";
 
 /** Bridges keyboard/GPS simulation to the game layer when in game mode. */
 export function GameSimulationBridge() {
@@ -24,12 +25,7 @@ export function GameSimulationBridge() {
   }, [trackingMode, simulation]);
 
   useEffect(() => {
-    const onCamera = (e: Event) => {
-      const bearing = (e as CustomEvent<{ bearing: number }>).detail.bearing;
-      simulation.setMovementBearing(bearing);
-    };
-    window.addEventListener("mapos:map-bearing", onCamera);
-    return () => window.removeEventListener("mapos:map-bearing", onCamera);
+    return on("map-bearing", ({ bearing }) => simulation.setMovementBearing(bearing));
   }, [simulation]);
 
   useEffect(() => {
@@ -51,7 +47,7 @@ export function GameSimulationBridge() {
         const lng = pos.coords.longitude;
         const lat = pos.coords.latitude;
         simulation.seedPosition({ latitude: lat, longitude: lng });
-        window.dispatchEvent(new CustomEvent("mapos:fly-to", { detail: { lng, lat, zoom: 16 } }));
+        emit("fly-to", { lng, lat, zoom: 16 });
       },
       fallback,
       { enableHighAccuracy: true, timeout: 6000, maximumAge: 15_000 }

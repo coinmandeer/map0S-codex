@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { countryBbox, getCountryNameCs } from "../lib/countries";
 import { getExploreHeroCopy } from "../lib/explore-hero-i18n";
 import { getMapStore } from "../store/mapStore";
+import { emit, on } from "../lib/events";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { API_BASE } from "../lib/api";
 import { PanelShell } from "./PanelShell";
@@ -56,7 +57,7 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 function fitRegion(bbox: [number, number, number, number]) {
-  window.dispatchEvent(new CustomEvent("mapos:fit-bounds", { detail: { bbox } }));
+  emit("fit-bounds", { bbox });
 }
 
 export function DiscoverPanel() {
@@ -108,11 +109,7 @@ export function DiscoverPanel() {
     if (mode !== "discover") return;
     if (!isCz) {
       setRegions([]);
-      window.dispatchEvent(
-        new CustomEvent("mapos:discover-geojson", {
-          detail: { geojson: { type: "FeatureCollection", features: [] } }
-        })
-      );
+      emit("discover-geojson", { geojson: { type: "FeatureCollection", features: [] } });
       return;
     }
     const parent = currentRegionId === "CZ" ? undefined : currentRegionId;
@@ -120,18 +117,12 @@ export function DiscoverPanel() {
     if (parent && crumbs.length === 2) qs.set("parent", parent);
     fetch(`${API_BASE}/discover/regions?${qs}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then(
-        (
-          data: { regions?: RegionCard[]; geojson?: { type: string; features: unknown[] } } | null
-        ) => {
-          setRegions(data?.regions ?? []);
-          window.dispatchEvent(
-            new CustomEvent("mapos:discover-geojson", {
-              detail: { geojson: data?.geojson ?? { type: "FeatureCollection", features: [] } }
-            })
-          );
-        }
-      )
+      .then((data: { regions?: RegionCard[]; geojson?: GeoJSON.FeatureCollection } | null) => {
+        setRegions(data?.regions ?? []);
+        emit("discover-geojson", {
+          geojson: data?.geojson ?? { type: "FeatureCollection", features: [] }
+        });
+      })
       .catch(() => setRegions([]));
   }, [mode, isCz, currentRegionId, crumbs.length]);
 
@@ -151,21 +142,18 @@ export function DiscoverPanel() {
   }, [countryCode]);
 
   useEffect(() => {
-    const onClick = (e: Event) => {
-      const props = (e as CustomEvent<{ id?: string; name?: string; level?: string }>).detail;
-      if (!props?.id) return;
-      const region = regions.find((r) => r.id === props.id);
-      if (!region) return;
-      openRegion(region);
-    };
-    window.addEventListener("mapos:discover-click", onClick);
-    return () => window.removeEventListener("mapos:discover-click", onClick);
+    return on("discover-click", (props) => {
+      const id = typeof props?.id === "string" ? props.id : null;
+      if (!id) return;
+      const region = regions.find((r) => r.id === id);
+      if (region) openRegion(region);
+    });
   }, [regions]);
 
   if (!open || mode !== "discover") return null;
 
   const flyTo = (lng: number, lat: number) => {
-    window.dispatchEvent(new CustomEvent("mapos:fly-to", { detail: { lng, lat, zoom: 14 } }));
+    emit("fly-to", { lng, lat, zoom: 14 });
     store.setView({ lng, lat, zoom: 14 });
     if (window.innerWidth < 900) store.setSidebarOpen(false);
   };

@@ -1,5 +1,6 @@
 import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
+import { emit } from "../lib/events";
 
 /** Floating CTA when the map moved away from the last OSM fetch — avoids hammering Overpass
  * on every pan while still letting the user pull dense foreign-city POIs on demand. */
@@ -16,7 +17,7 @@ export function SearchHereButton() {
       disabled={Boolean(loading["osm-poi"])}
       onClick={() => {
         store.setSearchHerePending(false);
-        window.dispatchEvent(new Event("mapos:search-here"));
+        emit("search-here");
       }}
     >
       {loading["osm-poi"] ? <span className="spinner" /> : null}

@@ -3,9 +3,10 @@ import maplibregl from "maplibre-gl";
 import { MAP_STYLE_RASTER_FALLBACK, MAP_STYLE_RASTER_FALLBACK_DARK } from "./mapStyle";
 import type { DataProvider } from "@mapos/layer-sdk";
 import { applyMapStyle, MapyLogoControl, styleForProvider } from "./styleManager";
-import { getMapStore, getMapBbox, type LayerMode, type ThemeMode } from "../store/mapStore";
+import { getMapStore, getMapBbox, type LayerMode } from "../store/mapStore";
 import { LayerEngine } from "../engine/LayerEngine";
 import { API_BASE } from "../lib/api";
+import { emit, on, onAny } from "../lib/events";
 
 export function MapCore() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -70,23 +71,26 @@ export function MapCore() {
       engineRef.current?.refresh(getMapBbox(map), false);
     });
 
-    const onFlyTo = (e: Event) => {
-      const detail = (e as CustomEvent<{ lng: number; lat: number; zoom?: number }>).detail;
-      map.flyTo({
-        center: [detail.lng, detail.lat],
-        zoom: detail.zoom ?? 14,
-        essential: true
-      });
-    };
-    window.addEventListener("mapos:fly-to", onFlyTo);
+    // Collected so teardown is one loop instead of a hand-maintained list of removeEventListener
+    // calls that has to stay in step with the registrations above it.
+    const offs: Array<() => void> = [];
+
+    offs.push(
+      on("fly-to", (detail) => {
+        map.flyTo({
+          center: [detail.lng, detail.lat],
+          zoom: detail.zoom ?? 14,
+          essential: true
+        });
+      })
+    );
 
     const onSearchHere = () => {
       if (map.isStyleLoaded()) engineRef.current?.refresh(getMapBbox(map), true);
     };
-    window.addEventListener("mapos:search-here", onSearchHere);
+    offs.push(on("search-here", onSearchHere));
 
-    const onModeChanged = (e: Event) => {
-      const detail = (e as CustomEvent<{ mode: LayerMode }>).detail;
+    const onModeChanged = (detail: { mode: LayerMode }) => {
       const cameraMode = store.gameCameraMode;
       if (detail.mode === "game") {
         map.easeTo({
@@ -98,38 +102,35 @@ export function MapCore() {
         map.easeTo({ pitch: 0, duration: 600 });
       }
     };
-    window.addEventListener("mapos:mode-changed", onModeChanged);
+    offs.push(on("mode-changed", onModeChanged));
 
-    const onGameCameraChanged = (e: Event) => {
-      if (store.mode !== "game") return;
-      const detail = (e as CustomEvent<{ mode: "follow" | "top" }>).detail;
-      map.easeTo({
-        pitch: detail.mode === "follow" ? 60 : 0,
-        zoom: detail.mode === "follow" ? 18.2 : Math.max(map.getZoom(), 14),
-        duration: 500
-      });
-    };
-    window.addEventListener("mapos:game-camera-changed", onGameCameraChanged);
+    offs.push(
+      on("game-camera-changed", (detail) => {
+        if (store.mode !== "game") return;
+        map.easeTo({
+          pitch: detail.mode === "follow" ? 60 : 0,
+          zoom: detail.mode === "follow" ? 18.2 : Math.max(map.getZoom(), 14),
+          duration: 500
+        });
+      })
+    );
 
-    const followPlayer = (e: Event) => {
-      if (store.mode !== "game" || store.gameCameraMode !== "follow") return;
-      const detail = (e as CustomEvent<{ lng: number; lat: number }>).detail;
-      map.easeTo({
-        center: [detail.lng, detail.lat],
-        duration: 200,
-        essential: true
-      });
-      window.dispatchEvent(
-        new CustomEvent("mapos:map-bearing", { detail: { bearing: map.getBearing() } })
-      );
-    };
-    window.addEventListener("mapos:geolocation", followPlayer);
+    offs.push(
+      on("geolocation", (detail) => {
+        if (store.mode !== "game" || store.gameCameraMode !== "follow") return;
+        map.easeTo({
+          center: [detail.lng, detail.lat],
+          duration: 200,
+          essential: true
+        });
+        emit("map-bearing", { bearing: map.getBearing() });
+      })
+    );
 
     const onCountryOrTag = () => {
       if (map.isStyleLoaded()) engineRef.current?.refresh(getMapBbox(map), true);
     };
-    window.addEventListener("mapos:country-changed", onCountryOrTag);
-    window.addEventListener("mapos:tag-changed", onCountryOrTag);
+    offs.push(onAny(["country-changed", "tag-changed"], onCountryOrTag));
 
     // The Mapy logo control is a licence condition, so its lifetime is bound to the provider
     // rather than to the style: it goes on when Mapy tiles appear and off when they don't.
@@ -141,54 +142,49 @@ export function MapCore() {
     };
     syncProviderChrome(store.dataProvider);
 
-    const onThemeChanged = (e: Event) => {
-      const detail = (e as CustomEvent<{ theme: ThemeMode }>).detail;
-      applyMapStyle(map, detail.theme, store.dataProvider);
-    };
-    window.addEventListener("mapos:theme-changed", onThemeChanged);
+    offs.push(
+      on("theme-changed", (detail) => {
+        applyMapStyle(map, detail.theme, store.dataProvider);
+      })
+    );
 
-    const onProviderChanged = (e: Event) => {
-      const detail = (e as CustomEvent<{ provider: DataProvider }>).detail;
-      syncProviderChrome(detail.provider);
-      applyMapStyle(map, store.theme, detail.provider);
-    };
-    window.addEventListener("mapos:provider-changed", onProviderChanged);
-    const onDiscoverGeo = (e: Event) => {
-      const geojson = (e as CustomEvent<{ geojson: GeoJSON.FeatureCollection }>).detail.geojson;
-      const src = map.getSource("discover-regions") as maplibregl.GeoJSONSource | undefined;
-      src?.setData(geojson ?? { type: "FeatureCollection", features: [] });
-    };
-    window.addEventListener("mapos:discover-geojson", onDiscoverGeo);
+    offs.push(
+      on("provider-changed", (detail) => {
+        syncProviderChrome(detail.provider);
+        applyMapStyle(map, store.theme, detail.provider);
+      })
+    );
 
-    const onFitBounds = (e: Event) => {
-      const bbox = (e as CustomEvent<{ bbox: [number, number, number, number] }>).detail.bbox;
-      if (!bbox) return;
-      map.fitBounds(
-        [
-          [bbox[0], bbox[1]],
-          [bbox[2], bbox[3]]
-        ],
-        { padding: 48, duration: 700, maxZoom: 11 }
-      );
-    };
-    window.addEventListener("mapos:fit-bounds", onFitBounds);
+    offs.push(
+      on("discover-geojson", (detail) => {
+        const src = map.getSource("discover-regions") as maplibregl.GeoJSONSource | undefined;
+        src?.setData(detail.geojson ?? { type: "FeatureCollection", features: [] });
+      })
+    );
+
+    offs.push(
+      on("fit-bounds", ({ bbox }) => {
+        if (!bbox) return;
+        map.fitBounds(
+          [
+            [bbox[0], bbox[1]],
+            [bbox[2], bbox[3]]
+          ],
+          { padding: 48, duration: 700, maxZoom: 11 }
+        );
+      })
+    );
 
     map.on("click", (e) => {
       if (store.editMode && store.editLayerId) {
-        window.dispatchEvent(
-          new CustomEvent("mapos:edit-tap", {
-            detail: { lng: e.lngLat.lng, lat: e.lngLat.lat }
-          })
-        );
+        emit("edit-tap", { lng: e.lngLat.lng, lat: e.lngLat.lat });
         return;
       }
 
       if (store.mode === "discover" && map.getLayer("discover-fill")) {
         const regionHits = map.queryRenderedFeatures(e.point, { layers: ["discover-fill"] });
         if (regionHits[0]?.properties) {
-          window.dispatchEvent(
-            new CustomEvent("mapos:discover-click", { detail: regionHits[0].properties })
-          );
+          emit("discover-click", regionHits[0].properties);
           return;
         }
       }
@@ -342,17 +338,7 @@ export function MapCore() {
     return () => {
       window.removeEventListener("resize", resize);
       window.removeEventListener("orientationchange", resize);
-      window.removeEventListener("mapos:fly-to", onFlyTo);
-      window.removeEventListener("mapos:search-here", onSearchHere);
-      window.removeEventListener("mapos:mode-changed", onModeChanged);
-      window.removeEventListener("mapos:game-camera-changed", onGameCameraChanged);
-      window.removeEventListener("mapos:geolocation", followPlayer);
-      window.removeEventListener("mapos:country-changed", onCountryOrTag);
-      window.removeEventListener("mapos:tag-changed", onCountryOrTag);
-      window.removeEventListener("mapos:theme-changed", onThemeChanged);
-      window.removeEventListener("mapos:provider-changed", onProviderChanged);
-      window.removeEventListener("mapos:discover-geojson", onDiscoverGeo);
-      window.removeEventListener("mapos:fit-bounds", onFitBounds);
+      for (const off of offs) off();
       if (geoWatchRef.current !== null) navigator.geolocation.clearWatch(geoWatchRef.current);
       geoWatchRef.current = null;
       engineRef.current?.destroy();
@@ -369,8 +355,7 @@ export function MapCore() {
       // Filter/layer changes should always refetch the current viewport.
       engineRef.current.refresh(getMapBbox(mapRef.current), true);
     };
-    window.addEventListener("mapos:layers-changed", handler);
-    return () => window.removeEventListener("mapos:layers-changed", handler);
+    return on("layers-changed", handler);
   }, [store.activeLayers]);
 
   useEffect(() => {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { GeoFeature } from "@mapos/layer-sdk";
 import { distanceMeters } from "@mapos/layer-sdk";
 import { getMapStore } from "../store/mapStore";
+import { emit } from "../lib/events";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { PIN_STYLES } from "./presets";
 import { preloadPlacePhotos, resolvePhotoUrl } from "./photoCache";
@@ -78,9 +79,7 @@ export function PinDetail() {
     const next = nearby[index + delta];
     if (!next) return;
     const [nLng, nLat] = next.feature.geometry.coordinates;
-    window.dispatchEvent(
-      new CustomEvent("mapos:fly-to", { detail: { lng: nLng, lat: nLat, zoom: 16 } })
-    );
+    emit("fly-to", { lng: nLng, lat: nLat, zoom: 16 });
     store.selectPin({ feature: next.feature, layerId: next.layerId });
   };
 

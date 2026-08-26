@@ -8,6 +8,7 @@ import type {
 } from "@mapos/layer-sdk";
 import { defaultPlaceSources } from "@mapos/layer-sdk";
 import { getCountryMapConfig } from "../lib/countries";
+import { emit } from "../lib/events";
 
 export interface UserSession {
   id: string;
@@ -333,13 +334,15 @@ export class MapStore {
     };
   }
 
-  private emit() {
+  /** Wakes up React subscribers. Distinct from the imported `emit`, which broadcasts an
+   *  application-wide signal to modules that don't subscribe to the store at all. */
+  private notify() {
     for (const l of this.listeners) l();
   }
 
   private patch(partial: Partial<MapState>) {
     Object.assign(this.state, partial);
-    this.emit();
+    this.notify();
   }
 
   get view() {
@@ -432,17 +435,17 @@ export class MapStore {
     if (this.state.dataProvider === provider) return;
     this.state.dataProvider = provider;
     window.localStorage.setItem(DATA_PROVIDER_KEY, provider);
-    this.emit();
-    window.dispatchEvent(new CustomEvent("mapos:provider-changed", { detail: { provider } }));
-    window.dispatchEvent(new Event("mapos:search-here"));
+    this.notify();
+    emit("provider-changed", { provider });
+    emit("search-here");
   }
 
   setPoiSource(source: PlaceSourceId, enabled: boolean) {
     this.state.poiSources = { ...this.state.poiSources, [source]: enabled };
     window.localStorage.setItem(POI_SOURCES_KEY, JSON.stringify(this.state.poiSources));
-    this.emit();
-    window.dispatchEvent(new Event("mapos:layers-changed"));
-    window.dispatchEvent(new Event("mapos:search-here"));
+    this.notify();
+    emit("layers-changed");
+    emit("search-here");
   }
 
   setSourceStatus(status: MapState["sourceStatus"]) {
@@ -487,22 +490,26 @@ export class MapStore {
   setView(partial: Partial<MapViewState>) {
     this.state.view = { ...this.state.view, ...partial };
     this.syncToUrl();
-    this.emit();
+    this.notify();
   }
 
   toggleLayer(layerId: string) {
     const current = this.state.activeLayers[layerId];
     if (current?.visible) {
-      delete this.state.activeLayers[layerId];
+      const { [layerId]: _removed, ...rest } = this.state.activeLayers;
+      this.state.activeLayers = rest;
     } else {
       const defaults =
         layerId === "osm-poi" ? { categories: loadSavedCategories() } : (current?.filters ?? {});
-      this.state.activeLayers[layerId] = { visible: true, opacity: 1, filters: defaults };
+      this.state.activeLayers = {
+        ...this.state.activeLayers,
+        [layerId]: { visible: true, opacity: 1, filters: defaults }
+      };
     }
     this.state.activePresetId = null;
     this.syncToUrl();
-    this.emit();
-    window.dispatchEvent(new Event("mapos:layers-changed"));
+    this.notify();
+    emit("layers-changed");
   }
 
   setSidebarOpen(open: boolean) {
@@ -515,12 +522,33 @@ export class MapStore {
 
   private ensureLayerActive(layerId: string, defaults: FilterValues) {
     if (!this.state.activeLayers[layerId]?.visible) {
-      this.state.activeLayers[layerId] = {
-        visible: true,
-        opacity: layerId === "weather" ? 0.6 : 1,
-        filters: defaults
+      this.state.activeLayers = {
+        ...this.state.activeLayers,
+        [layerId]: {
+          visible: true,
+          opacity: layerId === "weather" ? 0.6 : 1,
+          filters: defaults
+        }
       };
     }
+  }
+
+  /** Replaces one layer's entry and the containing map with fresh objects.
+   *
+   *  This is load-bearing rather than stylistic: `useMapStoreSnapshot` selects through
+   *  `useSyncExternalStore`, which compares snapshots with `Object.is`. Mutating an entry in
+   *  place leaves both the entry and `activeLayers` referentially identical, so React concludes
+   *  nothing changed and skips the render — the map updates, the controls driving it do not. */
+  private patchLayer(
+    layerId: string,
+    patch: Partial<{ visible: boolean; opacity: number; filters: FilterValues }>
+  ) {
+    const entry = this.state.activeLayers[layerId];
+    if (!entry) return;
+    this.state.activeLayers = {
+      ...this.state.activeLayers,
+      [layerId]: { ...entry, ...patch }
+    };
   }
 
   setMode(mode: LayerMode) {
@@ -528,9 +556,9 @@ export class MapStore {
     this.ensureLayerActive(PRIMARY_LAYER_BY_MODE[mode], defaultFiltersForMode(mode));
     if (mode === "discover") this.state.sidebarOpen = true;
     this.syncToUrl();
-    this.emit();
-    window.dispatchEvent(new CustomEvent("mapos:mode-changed", { detail: { mode } }));
-    window.dispatchEvent(new Event("mapos:layers-changed"));
+    this.notify();
+    emit("mode-changed", { mode });
+    emit("layers-changed");
   }
 
   setCountry(code: string) {
@@ -538,19 +566,13 @@ export class MapStore {
     if (this.state.countryCode === next) return;
     this.state.countryCode = next;
     window.localStorage.setItem(COUNTRY_STORAGE_KEY, next);
-    this.emit();
-    window.dispatchEvent(
-      new CustomEvent("mapos:country-changed", { detail: { countryCode: next } })
-    );
+    this.notify();
+    emit("country-changed", { countryCode: next });
     if (next !== "ALL") {
       const cfg = getCountryMapConfig(next);
-      window.dispatchEvent(
-        new CustomEvent("mapos:fly-to", {
-          detail: { lng: cfg.centerLng, lat: cfg.centerLat, zoom: 7 }
-        })
-      );
+      emit("fly-to", { lng: cfg.centerLng, lat: cfg.centerLat, zoom: 7 });
       this.setView({ lng: cfg.centerLng, lat: cfg.centerLat, zoom: 7 });
-      window.dispatchEvent(new Event("mapos:search-here"));
+      emit("search-here");
     }
   }
 
@@ -559,23 +581,23 @@ export class MapStore {
     this.state.activeTag = normalized;
     if (normalized) window.localStorage.setItem(TAG_STORAGE_KEY, normalized);
     else window.localStorage.removeItem(TAG_STORAGE_KEY);
-    this.emit();
-    window.dispatchEvent(new CustomEvent("mapos:tag-changed", { detail: { tag: normalized } }));
-    window.dispatchEvent(new Event("mapos:search-here"));
+    this.notify();
+    emit("tag-changed", { tag: normalized });
+    emit("search-here");
   }
 
   setGameTrackingMode(mode: GameTrackingMode) {
     this.state.gameTrackingMode = mode;
     window.localStorage.setItem(GAME_TRACKING_KEY, mode);
-    this.emit();
-    window.dispatchEvent(new CustomEvent("mapos:game-tracking-changed", { detail: { mode } }));
+    this.notify();
+    emit("game-tracking-changed", { mode });
   }
 
   setGameCameraMode(mode: GameCameraMode) {
     this.state.gameCameraMode = mode;
     window.localStorage.setItem(GAME_CAMERA_KEY, mode);
-    this.emit();
-    window.dispatchEvent(new CustomEvent("mapos:game-camera-changed", { detail: { mode } }));
+    this.notify();
+    emit("game-camera-changed", { mode });
   }
 
   setAvatarStyle(style: "cube" | "aavegotchi", tokenId?: string) {
@@ -585,20 +607,16 @@ export class MapStore {
       this.state.aavegotchiTokenId = tokenId;
       window.localStorage.setItem(GOTCHI_TOKEN_KEY, tokenId);
     }
-    this.emit();
-    window.dispatchEvent(
-      new CustomEvent("mapos:avatar-changed", {
-        detail: { style, tokenId: this.state.aavegotchiTokenId }
-      })
-    );
+    this.notify();
+    emit("avatar-changed", { style, tokenId: this.state.aavegotchiTokenId });
   }
 
   setTheme(theme: ThemeMode) {
     if (theme === this.state.theme) return;
     this.state.theme = theme;
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-    this.emit();
-    window.dispatchEvent(new CustomEvent("mapos:theme-changed", { detail: { theme } }));
+    this.notify();
+    emit("theme-changed", { theme });
   }
 
   toggleTheme() {
@@ -634,30 +652,28 @@ export class MapStore {
     this.state.activePresetId = preset.id;
     this.state.searchHerePending = false;
     this.syncToUrl();
-    this.emit();
-    window.dispatchEvent(new Event("mapos:layers-changed"));
-    window.dispatchEvent(new Event("mapos:search-here"));
+    this.notify();
+    emit("layers-changed");
+    emit("search-here");
   }
 
   setLayerOpacity(layerId: string, opacity: number) {
-    const entry = this.state.activeLayers[layerId];
-    if (entry) entry.opacity = opacity;
-    this.emit();
-    window.dispatchEvent(new Event("mapos:layers-changed"));
+    this.patchLayer(layerId, { opacity });
+    this.notify();
+    emit("layers-changed");
   }
 
   setLayerFilters(layerId: string, filters: FilterValues) {
-    const entry = this.state.activeLayers[layerId];
-    if (entry) entry.filters = filters;
+    this.patchLayer(layerId, { filters });
     if (layerId === "osm-poi" && Array.isArray(filters.categories)) {
       saveCategories(filters.categories as string[]);
       if (this.state.activePresetId) {
         savePresetCategories(this.state.activePresetId, filters.categories as string[]);
       }
     }
-    this.emit();
-    window.dispatchEvent(new Event("mapos:layers-changed"));
-    window.dispatchEvent(new Event("mapos:search-here"));
+    this.notify();
+    emit("layers-changed");
+    emit("search-here");
   }
 
   selectPin(pin: SelectedPin | null) {

@@ -3,6 +3,7 @@ import { MapCore } from "./map/MapCore";
 import { apiGetSafe, apiPost } from "./lib/api";
 import type { ServerCapabilities, UserSession } from "./store/mapStore";
 import { getMapStore } from "./store/mapStore";
+import { emit } from "./lib/events";
 import { useMapStoreSnapshot } from "./store/useMapStoreSnapshot";
 import { ModeBar } from "./ui/ModeBar";
 import { BottomNav } from "./ui/BottomNav";
@@ -68,22 +69,14 @@ export function App() {
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        window.dispatchEvent(
-          new CustomEvent("mapos:fly-to", {
-            detail: {
-              lng: pos.coords.longitude,
-              lat: pos.coords.latitude,
-              zoom: 14
-            }
-          })
-        );
+        emit("fly-to", { lng: pos.coords.longitude, lat: pos.coords.latitude, zoom: 14 });
         store.setView({
           lng: pos.coords.longitude,
           lat: pos.coords.latitude,
           zoom: 14
         });
         store.showToast("Jsi tady");
-        window.dispatchEvent(new Event("mapos:search-here"));
+        emit("search-here");
       },
       () => store.showToast("Nepodařilo se získat polohu")
     );

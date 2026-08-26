@@ -1,4 +1,5 @@
 import { API_BASE } from "../lib/api";
+import { emit } from "../lib/events";
 
 async function ensureDefaultLayer(): Promise<string | null> {
   const list = await fetch(`${API_BASE}/user-layers`, { credentials: "include" });
@@ -43,7 +44,7 @@ export async function saveUserPlace(input: {
     });
     if (res.status === 401) return "auth";
     if (!res.ok) return "error";
-    window.dispatchEvent(new Event("mapos:layers-changed"));
+    emit("layers-changed");
     return "ok";
   } catch {
     return "error";

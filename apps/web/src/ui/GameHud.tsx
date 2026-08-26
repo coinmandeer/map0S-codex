@@ -3,6 +3,7 @@ import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { loadCollectedOrbIds, loadOrbXp } from "../layers/game/orbsController";
 import { API_BASE, ApiError, apiGetSafe, apiPost } from "../lib/api";
+import { on } from "../lib/events";
 
 interface StakingOverview {
   stakedUsd: number;
@@ -34,21 +35,15 @@ export function GameHud() {
   const [staking, setStaking] = useState<StakingOverview | null>(null);
 
   useEffect(() => {
-    const onCaught = () => setCaught((c) => c + 1);
-    const onEncounter = () => setEncounters((c) => c + 1);
-    const onOrbs = (e: Event) => {
-      const detail = (e as CustomEvent<{ count: number; xp: number }>).detail;
-      setOrbs((n) => n + (detail?.count ?? 0));
-      if (typeof detail?.xp === "number") setXp(detail.xp);
-    };
-    window.addEventListener("mapos:ghost-caught", onCaught);
-    window.addEventListener("mapos:encounter-resolved", onEncounter);
-    window.addEventListener("mapos:orbs-collected", onOrbs);
-    return () => {
-      window.removeEventListener("mapos:ghost-caught", onCaught);
-      window.removeEventListener("mapos:encounter-resolved", onEncounter);
-      window.removeEventListener("mapos:orbs-collected", onOrbs);
-    };
+    const offs = [
+      on("ghost-caught", () => setCaught((c) => c + 1)),
+      on("encounter-resolved", () => setEncounters((c) => c + 1)),
+      on("orbs-collected", (detail) => {
+        setOrbs((n) => n + (detail?.count ?? 0));
+        if (typeof detail?.xp === "number") setXp(detail.xp);
+      })
+    ];
+    return () => offs.forEach((off) => off());
   }, []);
 
   useEffect(() => {

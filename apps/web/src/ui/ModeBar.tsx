@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getMapStore } from "../store/mapStore";
+import { emit } from "../lib/events";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { API_BASE } from "../lib/api";
 import { CountryPicker } from "./CountryPicker";
@@ -119,12 +120,12 @@ export function ModeBar({ onFlyToMe }: { onFlyToMe: () => void }) {
   const pickHit = (hit: GeoHit) => {
     const lng = Number(hit.lon);
     const lat = Number(hit.lat);
-    window.dispatchEvent(new CustomEvent("mapos:fly-to", { detail: { lng, lat, zoom: 14 } }));
+    emit("fly-to", { lng, lat, zoom: 14 });
     store.setView({ lng, lat, zoom: 14 });
     setQuery("");
     setHits([]);
     setTagHits([]);
-    window.dispatchEvent(new Event("mapos:search-here"));
+    emit("search-here");
   };
 
   const pickTag = (tag: string) => {

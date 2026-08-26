@@ -14,7 +14,7 @@
     "build": "npm run build -w @mapos/layer-sdk && npm run build -w @mapos/api && npm run build -w @mapos/web",
     "models": "node scripts/fetch-models.mjs",
     "postinstall": "node scripts/fetch-models.mjs",
-    "test": "npm run test -w @mapos/layer-sdk && npm run test -w @mapos/api",
+    "test": "npm run test -w @mapos/layer-sdk && npm run test -w @mapos/api && npm run test -w @mapos/web",
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "format": "prettier --write .",

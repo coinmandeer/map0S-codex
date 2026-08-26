@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getMapStore } from "../store/mapStore";
 import { API_BASE } from "../lib/api";
+import { emit, on } from "../lib/events";
 
 interface UserLayer {
   id: string;
@@ -28,13 +29,10 @@ export function EditLayerSheet() {
   }, []);
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ lng: number; lat: number }>).detail;
+    return on("edit-tap", (detail) => {
       setPendingCoords(detail);
       store.showToast("Klikni pro uložení pinu");
-    };
-    window.addEventListener("mapos:edit-tap", handler);
-    return () => window.removeEventListener("mapos:edit-tap", handler);
+    });
   }, [store]);
 
   const createLayer = async () => {
@@ -74,7 +72,7 @@ export function EditLayerSheet() {
     setNewPinTags("");
     setPendingCoords(null);
     store.showToast("Pin uložen");
-    window.dispatchEvent(new Event("mapos:layers-changed"));
+    emit("layers-changed");
   };
 
   return (
