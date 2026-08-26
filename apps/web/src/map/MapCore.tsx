@@ -7,12 +7,13 @@ import { getMapStore, getMapBbox, type LayerMode } from "../store/mapStore";
 import { LayerEngine } from "../engine/LayerEngine";
 import { API_BASE } from "../lib/api";
 import { emit, on, onAny } from "../lib/events";
+import { geolocation } from "../lib/geolocation";
 
 export function MapCore() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const engineRef = useRef<LayerEngine | null>(null);
-  const geoWatchRef = useRef<number | null>(null);
+  const geoWatchRef = useRef<(() => void) | null>(null);
   const store = getMapStore();
 
   useEffect(() => {
@@ -297,27 +298,22 @@ export function MapCore() {
       }
 
       // Device GPS only feeds the blue "you are here" dot. The game's player position is a
-      // separate channel (`mapos:geolocation`) owned by useSimulationController — broadcasting
-      // raw fixes from here as well would fight WASD movement in simulation mode.
-      if ("geolocation" in navigator && geoWatchRef.current === null) {
-        geoWatchRef.current = navigator.geolocation.watchPosition(
-          (pos) => {
-            const { longitude, latitude, accuracy } = pos.coords;
-            const src = map.getSource("my-location") as maplibregl.GeoJSONSource | undefined;
-            src?.setData({
-              type: "FeatureCollection",
-              features: [
-                {
-                  type: "Feature",
-                  geometry: { type: "Point", coordinates: [longitude, latitude] },
-                  properties: { accuracyRadius: Math.min(accuracy, 200) }
-                }
-              ]
-            });
-          },
-          () => {},
-          { enableHighAccuracy: true, maximumAge: 5000 }
-        );
+      // separate signal (`geolocation`) owned by useSimulationController — broadcasting raw
+      // fixes from here as well would fight WASD movement in simulation mode.
+      if (geoWatchRef.current === null) {
+        geoWatchRef.current = geolocation.watch((fix) => {
+          const src = map.getSource("my-location") as maplibregl.GeoJSONSource | undefined;
+          src?.setData({
+            type: "FeatureCollection",
+            features: [
+              {
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [fix.lng, fix.lat] },
+                properties: { accuracyRadius: Math.min(fix.accuracy, 200) }
+              }
+            ]
+          });
+        });
       }
     };
 
@@ -339,7 +335,7 @@ export function MapCore() {
       window.removeEventListener("resize", resize);
       window.removeEventListener("orientationchange", resize);
       for (const off of offs) off();
-      if (geoWatchRef.current !== null) navigator.geolocation.clearWatch(geoWatchRef.current);
+      geoWatchRef.current?.();
       geoWatchRef.current = null;
       engineRef.current?.destroy();
       engineRef.current = null;

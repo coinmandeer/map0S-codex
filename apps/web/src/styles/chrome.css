@@ -246,6 +246,20 @@
     display: grid;
     place-items: center;
     flex-shrink: 0;
+    transition:
+      background var(--dur-fast) ease,
+      color var(--dur-fast) ease;
+  }
+
+  .search-locate-btn[data-state="locating"] {
+    cursor: progress;
+  }
+
+  /* Muted rather than hidden: the button still explains itself on hover, and the permission
+     can be restored from browser settings without the control disappearing first. */
+  .search-locate-btn[data-state="denied"] {
+    background: var(--surface-sunken);
+    color: var(--text-faint);
   }
 
   .search-hits {

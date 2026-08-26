@@ -4,6 +4,7 @@ import { getMapStore } from "../store/mapStore";
 import { emit } from "../lib/events";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { API_BASE } from "../lib/api";
+import { geolocation, type Fix } from "../lib/geolocation";
 import { CountryPicker } from "./CountryPicker";
 import { LAYER_MODES } from "./modes";
 import { useIsMobile } from "./useIsMobile";
@@ -22,7 +23,7 @@ interface TagHit {
   count: number;
 }
 
-export function ModeBar({ onFlyToMe }: { onFlyToMe: () => void }) {
+export function ModeBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> }) {
   const store = getMapStore();
   const activeTag = useMapStoreSnapshot((s) => s.activeTag);
   const mode = useMapStoreSnapshot((s) => s.mode);
@@ -36,6 +37,22 @@ export function ModeBar({ onFlyToMe }: { onFlyToMe: () => void }) {
   const [tagHits, setTagHits] = useState<TagHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [permission, setPermission] = useState<PermissionState | "unknown">("unknown");
+
+  // Read up front so a blocked button can say so in its tooltip instead of only failing once
+  // the user has clicked and waited.
+  useEffect(() => {
+    let cancelled = false;
+    void geolocation.permission().then((state) => {
+      if (!cancelled) setPermission(state);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const locationState = locating ? "locating" : permission === "denied" ? "denied" : "idle";
 
   const shellRef = useRef<HTMLDivElement>(null);
   const layersRef = useRef<HTMLDivElement>(null);
@@ -135,18 +152,25 @@ export function ModeBar({ onFlyToMe }: { onFlyToMe: () => void }) {
     store.showToast(`Filtr #${tag}`);
   };
 
-  const flyToMe = () => {
-    onFlyToMe();
-    if (mode !== "discover" || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition((pos) => {
-      const { longitude, latitude } = pos.coords;
-      fetch(`${API_BASE}/geocode/reverse?lat=${latitude}&lng=${longitude}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data: { country?: string } | null) => {
-          if (data?.country) store.setCountry(data.country);
-        })
-        .catch(() => {});
-    });
+  const flyToMe = async () => {
+    if (locating) return;
+    setLocating(true);
+    try {
+      const fix = await onFlyToMe();
+      if (!fix || mode !== "discover") return;
+      // Reuses the fix rather than asking the device again, which is what made one click
+      // fire two competing geolocation requests.
+      const res = await fetch(`${API_BASE}/geocode/reverse?lat=${fix.lat}&lng=${fix.lng}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { country?: string } | null;
+      if (data?.country) store.setCountry(data.country);
+    } catch {
+      /* onFlyToMe already reported why; a failed country lookup changes nothing. */
+    } finally {
+      setLocating(false);
+      // The click may have been the prompt itself, so the answer is only known now.
+      setPermission(await geolocation.permission());
+    }
   };
 
   const hasSearchResults = hits.length > 0 || tagHits.length > 0;
@@ -202,11 +226,14 @@ export function ModeBar({ onFlyToMe }: { onFlyToMe: () => void }) {
             type="button"
             className="search-locate-btn"
             data-testid="location-btn"
-            title="Moje poloha"
+            data-state={locationState}
+            title={locationState === "denied" ? "Poloha je zakázaná v prohlížeči" : "Moje poloha"}
             aria-label="Moje poloha"
+            aria-busy={locating}
+            disabled={locating}
             onClick={flyToMe}
           >
-            <Icon name="crosshair" size={16} />
+            {locating ? <span className="spinner" /> : <Icon name="crosshair" size={16} />}
           </button>
           {hasSearchResults && (
             <div className="search-hits">

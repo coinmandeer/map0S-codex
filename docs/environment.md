@@ -8,12 +8,28 @@ Copy `.env.example` → `.env` for local dev, or `infra/.env.production.example`
 
 ## Core
 
-| Variable        | Required                  | Default              | Used by                         |
-| --------------- | ------------------------- | -------------------- | ------------------------------- |
-| `DATABASE_URL`  | yes (except `dev:memory`) | —                    | Drizzle / PostGIS connection    |
-| `PORT`          | no                        | `4033`               | Fastify listen port             |
-| `RADAR_DIR`     | no                        | `./.radar`           | RainViewer tile archive on disk |
-| `OVERPASS_URLS` | no                        | three public mirrors | OSM POI fetching                |
+| Variable        | Required                  | Default              | Used by                                             |
+| --------------- | ------------------------- | -------------------- | --------------------------------------------------- |
+| `DATABASE_URL`  | yes (except `dev:memory`) | —                    | Drizzle / PostGIS connection                        |
+| `PORT`          | no                        | `4033`               | Fastify listen port                                 |
+| `RADAR_DIR`     | no                        | `./.radar`           | RainViewer tile archive on disk                     |
+| `OVERPASS_URLS` | no                        | three public mirrors | OSM POI fetching                                    |
+| `MAPOS_CONTACT` | recommended               | —                    | `User-Agent` sent to Nominatim, Overpass, Wikimedia |
+
+`MAPOS_CONTACT` is worth setting on anything beyond a laptop. Nominatim and the Overpass mirrors
+require a `User-Agent` that identifies the deployment and offers a way to make contact; without
+one your traffic is indistinguishable from every other MapOS clone and gets rate-limited as a
+group.
+
+## Testing geolocation on a phone
+
+Geolocation only works in a secure context. Opening the dev server on a phone via
+`http://192.168.x.x:5173` leaves `navigator.geolocation` present but permanently failing — the
+app will tell you so, but the feature cannot work over plain HTTP on a LAN address. Use one of:
+
+- `localhost` on the device itself (works, since localhost counts as secure),
+- an HTTPS tunnel to the dev server (`cloudflared tunnel`, `ngrok http 5173`),
+- or Vite with a local certificate (`vite --host` plus `@vitejs/plugin-basic-ssl`).
 
 ## Map data providers
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Coordinates } from "./geo";
 import { offsetCoordinates } from "./geo";
 import { emit, on } from "../../lib/events";
+import { geolocation } from "../../lib/geolocation";
 
 const MOVEMENT_SPEED_METERS_PER_SECOND = 42;
 const DEG_TO_RAD = Math.PI / 180;
@@ -28,7 +29,7 @@ export function useSimulationController(initialPosition: Coordinates, enabled: b
   const movementRef = useRef<MovementState>(emptyMovementState());
   const movementBearingRef = useRef(0);
   const relativeMovementRef = useRef(true);
-  const geolocationWatchRef = useRef<number | null>(null);
+  const geolocationWatchRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -100,29 +101,21 @@ export function useSimulationController(initialPosition: Coordinates, enabled: b
 
   useEffect(() => {
     if (!enabled || trackingMode !== "gps") {
-      if (geolocationWatchRef.current !== null) {
-        navigator.geolocation.clearWatch(geolocationWatchRef.current);
-        geolocationWatchRef.current = null;
-      }
+      geolocationWatchRef.current?.();
+      geolocationWatchRef.current = null;
       return;
     }
-    if (!navigator.geolocation) {
+    // Falling back to keyboard movement is the only sane response to an unusable GPS: the
+    // game stays playable rather than freezing the player in place.
+    if (geolocation.unavailableReason()) {
       setTrackingMode("simulation");
       return;
     }
-    geolocationWatchRef.current = navigator.geolocation.watchPosition(
-      (position) => {
-        setPlayerPosition({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        });
-      },
-      () => setTrackingMode("simulation"),
-      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 10_000 }
-    );
+    geolocationWatchRef.current = geolocation.watch((fix) => {
+      setPlayerPosition({ latitude: fix.lat, longitude: fix.lng });
+    });
     return () => {
-      if (geolocationWatchRef.current !== null)
-        navigator.geolocation.clearWatch(geolocationWatchRef.current);
+      geolocationWatchRef.current?.();
       geolocationWatchRef.current = null;
     };
   }, [enabled, trackingMode]);

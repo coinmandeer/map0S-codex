@@ -4,6 +4,7 @@ import { apiGetSafe, apiPost } from "./lib/api";
 import type { ServerCapabilities, UserSession } from "./store/mapStore";
 import { getMapStore } from "./store/mapStore";
 import { emit } from "./lib/events";
+import { geolocation, messageFor, type Fix } from "./lib/geolocation";
 import { useMapStoreSnapshot } from "./store/useMapStoreSnapshot";
 import { ModeBar } from "./ui/ModeBar";
 import { BottomNav } from "./ui/BottomNav";
@@ -62,24 +63,27 @@ export function App() {
       });
   }, [store]);
 
-  const flyToMe = () => {
-    if (!("geolocation" in navigator)) {
-      store.showToast("Geolokace není dostupná");
-      return;
+  /** Returns the fix so the caller can reuse it — Objevuj needs the same coordinates to
+   *  reverse-geocode the country, and used to ask the device a second time to get them. */
+  const flyToMe = async (): Promise<Fix | null> => {
+    const goTo = (fix: Fix, zoom: number) => {
+      emit("fly-to", { lng: fix.lng, lat: fix.lat, zoom });
+      store.setView({ lng: fix.lng, lat: fix.lat, zoom });
+    };
+
+    try {
+      // Move on the last known position first so the click has an immediate effect, then
+      // settle onto the fresh one. Without the first step a cold start looks like nothing
+      // happened for several seconds.
+      const fix = await geolocation.locate((coarse) => goTo(coarse, 13));
+      goTo(fix, 14);
+      store.showToast("Jsi tady");
+      emit("search-here");
+      return fix;
+    } catch (error) {
+      store.showToast(messageFor(error));
+      return null;
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        emit("fly-to", { lng: pos.coords.longitude, lat: pos.coords.latitude, zoom: 14 });
-        store.setView({
-          lng: pos.coords.longitude,
-          lat: pos.coords.latitude,
-          zoom: 14
-        });
-        store.showToast("Jsi tady");
-        emit("search-here");
-      },
-      () => store.showToast("Nepodařilo se získat polohu")
-    );
   };
 
   return (

@@ -3,6 +3,7 @@ import type { GeoFeature } from "@mapos/layer-sdk";
 import { distanceMeters } from "@mapos/layer-sdk";
 import { getMapStore } from "../store/mapStore";
 import { emit } from "../lib/events";
+import { geolocation, messageFor, type Fix } from "../lib/geolocation";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { PIN_STYLES } from "./presets";
 import { preloadPlacePhotos, resolvePhotoUrl } from "./photoCache";
@@ -179,26 +180,27 @@ export function PinDetail() {
   const hero = photos[photoIndex] ?? photos[0] ?? null;
 
   const planRoute = async (profile: "foot" | "bike" | "car" = "car") => {
-    if (!("geolocation" in navigator)) {
-      store.showToast("Pro trasu potřebujeme vaši polohu");
+    let fix: Fix;
+    try {
+      fix = await geolocation.getPosition();
+    } catch (error) {
+      store.showToast(messageFor(error));
       return;
     }
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      const from = `${pos.coords.longitude},${pos.coords.latitude}`;
+    try {
+      const from = `${fix.lng},${fix.lat}`;
       const to = `${lng},${lat}`;
-      try {
-        const res = await fetch(`${API_BASE}/routing?from=${from}&to=${to}&profile=${profile}`);
-        const data = await res.json();
-        store.setRoutePreview({
-          coordinates: data.coordinates,
-          distanceM: data.distanceM,
-          durationS: data.durationS,
-          profile
-        });
-      } catch {
-        store.showToast("Trasu se nepodařilo načíst");
-      }
-    });
+      const res = await fetch(`${API_BASE}/routing?from=${from}&to=${to}&profile=${profile}`);
+      const data = await res.json();
+      store.setRoutePreview({
+        coordinates: data.coordinates,
+        distanceM: data.distanceM,
+        durationS: data.durationS,
+        profile
+      });
+    } catch {
+      store.showToast("Trasu se nepodařilo načíst");
+    }
   };
 
   const copyGps = async () => {
