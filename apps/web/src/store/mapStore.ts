@@ -2,13 +2,16 @@ import type {
   Bbox,
   FilterValues,
   GeoFeature,
+  LayerMode,
   MapViewState,
   PlaceSourceId,
-  PlacesSourceMeta
+  PlacesSourceMeta,
+  ServerCapabilities
 } from "@mapos/layer-sdk";
 import { defaultPlaceSources } from "@mapos/layer-sdk";
 import { getCountryMapConfig } from "../lib/countries";
 import { emit } from "../lib/events";
+import { primaryLayerForMode } from "../layers";
 
 export interface UserSession {
   id: string;
@@ -34,7 +37,6 @@ export interface RoutePreview {
 
 export type SheetType = "pin" | "auth" | "edit" | "route" | "settings" | null;
 
-export type LayerMode = "poi" | "weather" | "game" | "mine" | "discover";
 export type ThemeMode = "light" | "dark";
 
 /** Which upstream serves basemap tiles, geocoding and routing. POI sources are chosen
@@ -45,14 +47,7 @@ export type SourceState = "idle" | "loading" | "ready" | "error";
 
 /** Feature flags mirrored from `GET /config`: which optional upstreams the server has keys
  *  for. Used purely to disable UI that cannot work, never to carry a key to the client. */
-export interface ServerCapabilities {
-  mapy: boolean;
-  cml: boolean;
-  cmlProvider: string;
-  owm: boolean;
-  windy: boolean;
-  fsq: boolean;
-}
+export type { ServerCapabilities, LayerMode } from "@mapos/layer-sdk";
 export type GameTrackingMode = "simulation" | "gps";
 export type GameCameraMode = "follow" | "top";
 export type PinKind = "place" | "route" | "task";
@@ -88,14 +83,6 @@ export interface MapState {
   sourceStatus: Record<string, { state: SourceState; count?: number; message?: string }>;
   capabilities: ServerCapabilities | null;
 }
-
-const PRIMARY_LAYER_BY_MODE: Record<LayerMode, string> = {
-  poi: "osm-poi",
-  weather: "weather",
-  game: "game",
-  mine: "user-layers",
-  discover: "osm-poi"
-};
 
 const DEFAULT_FILTERS_BY_MODE: Record<LayerMode, FilterValues> = {
   poi: {},
@@ -315,7 +302,7 @@ export class MapStore {
     };
 
     // Activate the mode's primary layer on first load when URL didn't list any layers.
-    const primary = PRIMARY_LAYER_BY_MODE[mode];
+    const primary = primaryLayerForMode(mode);
     if (!this.state.activeLayers[primary]?.visible) {
       this.state.activeLayers[primary] = {
         visible: true,
@@ -553,7 +540,7 @@ export class MapStore {
 
   setMode(mode: LayerMode) {
     this.state.mode = mode;
-    this.ensureLayerActive(PRIMARY_LAYER_BY_MODE[mode], defaultFiltersForMode(mode));
+    this.ensureLayerActive(primaryLayerForMode(mode), defaultFiltersForMode(mode));
     if (mode === "discover") this.state.sidebarOpen = true;
     this.syncToUrl();
     this.notify();

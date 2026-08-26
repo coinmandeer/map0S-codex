@@ -1,17 +1,16 @@
 import type { OsmPoiCategoryId } from "@mapos/layer-sdk";
 import { OSM_POI_CATEGORIES } from "@mapos/layer-sdk";
-import { LAYER_CATALOG } from "../layers/catalog";
+import { extraLayerPlugins } from "../layers";
 import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { CATEGORY_GROUPS, MAP_PRESETS, PIN_STYLES } from "./presets";
-
-const MODE_LAYER_IDS = new Set(["osm-poi", "weather", "game", "user-layers"]);
 
 export function LayersMegaMenu({ onClose, mobile }: { onClose: () => void; mobile: boolean }) {
   const store = getMapStore();
   const active = useMapStoreSnapshot((s) => s.activeLayers);
   const presetId = useMapStoreSnapshot((s) => s.activePresetId);
   const session = useMapStoreSnapshot((s) => s.session);
+  const capabilities = useMapStoreSnapshot((s) => s.capabilities);
 
   const categories =
     (active["osm-poi"]?.filters?.categories as OsmPoiCategoryId[] | undefined) ??
@@ -27,7 +26,9 @@ export function LayersMegaMenu({ onClose, mobile }: { onClose: () => void; mobil
     store.setLayerFilters("osm-poi", { categories: next });
   };
 
-  const extraLayers = LAYER_CATALOG.filter((entry) => !MODE_LAYER_IDS.has(entry.manifest.id));
+  // Layers that don't belong to a bottom-nav section — the manifests decide, so registering a
+  // new standalone layer makes it appear here without touching this component.
+  const extraLayers = extraLayerPlugins(capabilities);
 
   return (
     <>

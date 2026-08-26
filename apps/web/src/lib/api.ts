@@ -1,4 +1,8 @@
-export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
+/** `import.meta.env` only exists under Vite; in the Node test runner it is undefined, and
+ *  reading a property off it threw before any test could run. */
+const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+
+export const API_BASE = viteEnv?.VITE_API_BASE_URL ?? "/api";
 
 export class ApiError extends Error {
   constructor(

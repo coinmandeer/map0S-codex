@@ -4,6 +4,7 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import type { ServerCapabilities as SdkCapabilities } from "@mapos/layer-sdk";
 
 // In production the process gets its env from Docker/systemd. Locally we read the repo-root
 // `.env` so `npm run dev` works without a wrapper — real env always wins over the file.
@@ -23,13 +24,9 @@ import { dirname, resolve } from "node:path";
 
 export type CmlProvider = "ollama" | "openai" | "none";
 
-export interface ServerCapabilities {
-  mapy: boolean;
-  cml: boolean;
+/** Narrows the SDK's `cmlProvider: string` to the providers this build actually implements. */
+export interface ServerCapabilities extends SdkCapabilities {
   cmlProvider: CmlProvider;
-  owm: boolean;
-  windy: boolean;
-  fsq: boolean;
 }
 
 function env(name: string): string | undefined {

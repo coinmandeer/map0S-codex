@@ -3,7 +3,20 @@ export type Bbox = [number, number, number, number];
 
 export type LayerKind = "pins" | "raster" | "custom-gl" | "vector";
 
-export type LayerCategory = "travel" | "weather" | "user" | "game" | "routing";
+export type LayerCategory =
+  | "travel"
+  | "weather"
+  | "user"
+  | "game"
+  | "routing"
+  | "outdoor"
+  | "transport"
+  | "environment"
+  | "community";
+
+/** The bottom-nav sections. A layer declares which ones it belongs to, so adding a layer to a
+ *  section is a property of the layer rather than a list the shell has to be taught about. */
+export type LayerMode = "poi" | "weather" | "game" | "mine" | "discover";
 
 export interface LayerManifest {
   id: string;
@@ -13,6 +26,22 @@ export interface LayerManifest {
   description: string;
   category: LayerCategory;
   experimental?: boolean;
+  /** Modes whose layer menu lists this layer. Absent means "extras" — reachable from the
+   *  mega-menu but not tied to a section. */
+  modes?: LayerMode[];
+  /** The one layer a mode turns on when you switch to it. At most one layer per mode. */
+  primaryForModes?: LayerMode[];
+  /** Server capability that must be present for this layer to be offered, e.g. a provider key
+   *  the backend holds. Layers without one are always available. */
+  requiresCapability?: string;
+}
+
+/** Who the data belongs to. Aggregated into the map's attribution control and the About sheet;
+ *  several of the sources MapOS uses (OSM/ODbL, Wikimedia) require the credit to be visible. */
+export interface LayerAttribution {
+  label: string;
+  url?: string;
+  license?: string;
 }
 
 export type FilterKind = "multi-select" | "toggle" | "range" | "text";
@@ -57,31 +86,107 @@ export interface FeatureCollection {
   features: GeoFeature[];
 }
 
-export interface LayerContext {
-  map: unknown;
+/** `TMap` is the renderer handle — MapLibre's `Map` in this app. It stays a type parameter so
+ *  the SDK (which the API imports too) never depends on maplibre-gl. */
+export interface LayerContext<TMap = unknown> {
+  map: TMap;
   apiBaseUrl: string;
+  layerId: string;
+  /** The manifest colour, so plugins don't have to look their own manifest up again. */
+  color: string;
 }
 
+/**
+ * One attached layer instance. `update` returns the features it fetched so the engine can cache
+ * them and feed the results list; layers that render straight from tiles return `null`.
+ */
 export interface LayerHandle {
-  update(bbox: Bbox, filters: FilterValues): Promise<void>;
+  update(
+    bbox: Bbox,
+    filters: FilterValues,
+    signal?: AbortSignal
+  ): Promise<FeatureCollection | null>;
+  /** Render an already-fetched collection (a cache hit) without going to the network. */
+  setData?(data: FeatureCollection): void;
   setVisible(visible: boolean): void;
   setOpacity(opacity: number): void;
   detach(): void;
 }
 
-export interface LayerModule {
-  id: string;
+/**
+ * What refetching costs when the viewport moves.
+ *
+ * `expensive` layers (an Overpass query over a whole country, say) are not refetched on every
+ * pan — the engine surfaces the "Search here" button and waits to be asked. `cheap` layers,
+ * mostly tiles and small bbox queries, just follow the map.
+ */
+export type ViewportCost = "cheap" | "expensive";
+
+/**
+ * App state a layer may need to fold into its request but cannot reach on its own. Deliberately
+ * small: every field here is one the engine used to special-case by layer id.
+ */
+export interface LayerRuntimeContext {
+  activeTag: string | null;
+  countryCode: string | null;
+  enabledPoiSources: string[];
+}
+
+/**
+ * The whole contract for adding a layer.
+ *
+ * The engine only knows this shape, so a new layer is a new object in the registry rather than
+ * another branch in the engine. Note there is nothing about UI here on purpose: the SDK is
+ * shared with the API, so panels and other React-facing extras hang off the web-side
+ * `MapLayerPlugin` that extends this.
+ */
+export interface LayerPlugin<TMap = unknown> {
   kind: LayerKind;
   manifest: LayerManifest;
   filters?: FilterFacet[];
   defaultFilters?: FilterValues;
-  attach(ctx: LayerContext): LayerHandle;
+  /** Default `expensive` for `pins`, `cheap` otherwise; see `viewportCostOf`. */
+  viewportCost?: ViewportCost;
+  /**
+   * Last chance to fold app state into the filters before they become the request and the cache
+   * key. Must be pure — the engine calls it on every refresh and hashes the result.
+   */
+  deriveFilters?(filters: FilterValues, ctx: LayerRuntimeContext): FilterValues;
+  create(ctx: LayerContext<TMap>): LayerHandle;
+  /** True when the layer fuses several upstream POI sources and its response carries per-source
+   *  `meta`, which drives the per-source loading indicators. */
+  reportsSourceStatus?: boolean;
+  attribution?: LayerAttribution[];
+}
+
+export function viewportCostOf(plugin: {
+  kind: LayerKind;
+  viewportCost?: ViewportCost;
+}): ViewportCost {
+  return plugin.viewportCost ?? (plugin.kind === "pins" ? "expensive" : "cheap");
 }
 
 export interface LayerCatalogEntry {
   manifest: LayerManifest;
   filters?: FilterFacet[];
   kind: LayerKind;
+}
+
+/**
+ * Which optional providers this deployment holds keys for, as served by `GET /config`.
+ *
+ * The browser only ever learns the booleans — keys stay on the API. The index signature is what
+ * lets a new keyed layer ship without editing this type, the store and the API in lockstep:
+ * a layer names its capability in `requiresCapability` and the API adds the flag.
+ */
+export interface ServerCapabilities {
+  mapy: boolean;
+  cml: boolean;
+  cmlProvider: string;
+  owm: boolean;
+  windy: boolean;
+  fsq: boolean;
+  [capability: string]: boolean | string;
 }
 
 export interface ActiveLayerState {

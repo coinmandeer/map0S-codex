@@ -4,88 +4,20 @@ import type {
   FeatureCollection,
   FilterValues,
   GeoFeature,
+  LayerHandle,
+  LayerRuntimeContext,
   PlacesResponse
 } from "@mapos/layer-sdk";
+import { viewportCostOf } from "@mapos/layer-sdk";
 import type { MapStore } from "../store/mapStore";
-import { createPinsLayerHandle } from "../layers/pinsLayer";
-import { createWeatherLayerHandle } from "../layers/weatherLayer";
-import { LAYER_CATALOG } from "../layers/catalog";
+import { createLayerHandle, getLayerPlugin, type MapLayerPlugin } from "../layers";
 
 type ActiveEntry = { visible: boolean; opacity: number; filters: FilterValues };
 
-export interface ManagedHandle {
-  update(
-    bbox: Bbox,
-    filters: FilterValues,
-    signal?: AbortSignal
-  ): Promise<FeatureCollection | null>;
-  setVisible(visible: boolean): void;
-  setOpacity(opacity: number): void;
-  setData?(data: FeatureCollection): void;
-  detach(): void;
-}
-
 interface ManagedLayer {
   layerId: string;
-  handle: ManagedHandle;
-}
-
-/** Stands in for the real game-layer handle until the three.js chunk has finished its dynamic
- * import. Queues visibility/opacity/update calls and replays them once the real handle exists,
- * so `LayerEngine` never needs to know the attach was async. This is what keeps three.js out of
- * the main bundle — it is only ever requested once a "custom-gl" layer is actually activated. */
-class LazyGameHandle implements ManagedHandle {
-  private real: ManagedHandle | null = null;
-  private pendingVisible: boolean | null = null;
-  private pendingOpacity: number | null = null;
-  private pendingUpdate: { bbox: Bbox; filters: FilterValues } | null = null;
-  private detached = false;
-
-  constructor(map: maplibregl.Map, apiBase: string, layerId: string) {
-    void import("../layers/game/gameLayer").then(({ createGameLayerHandle }) => {
-      if (this.detached) return;
-      this.real = createGameLayerHandle(map, apiBase, layerId);
-      if (this.pendingVisible !== null) this.real.setVisible(this.pendingVisible);
-      if (this.pendingOpacity !== null) this.real.setOpacity(this.pendingOpacity);
-      // Entering game mode fires exactly one refresh, and it almost always lands before the
-      // three.js chunk finishes downloading. Dropping it left the world empty until the user
-      // happened to pan — which is what made the mode look broken on first entry.
-      if (this.pendingUpdate) {
-        const { bbox, filters } = this.pendingUpdate;
-        this.pendingUpdate = null;
-        void this.real.update(bbox, filters);
-      }
-    });
-  }
-
-  async update(
-    bbox: Bbox,
-    filters: FilterValues,
-    signal?: AbortSignal
-  ): Promise<FeatureCollection | null> {
-    if (!this.real) {
-      // Only the newest viewport is worth replaying; older ones are already stale.
-      this.pendingUpdate = { bbox, filters };
-      return null;
-    }
-    return this.real.update(bbox, filters, signal);
-  }
-
-  setVisible(visible: boolean) {
-    this.pendingVisible = visible;
-    this.real?.setVisible(visible);
-  }
-
-  setOpacity(opacity: number) {
-    this.pendingOpacity = opacity;
-    this.real?.setOpacity(opacity);
-  }
-
-  detach() {
-    this.detached = true;
-    this.pendingUpdate = null;
-    this.real?.detach();
-  }
+  plugin: MapLayerPlugin;
+  handle: LayerHandle;
 }
 
 const CACHE_TTL_MS = 10 * 60_000;
@@ -142,10 +74,7 @@ export class LayerEngine {
 
   syncLayers(active: Record<string, ActiveEntry>) {
     for (const [layerId, state] of Object.entries(active)) {
-      if (!this.managed.has(layerId)) {
-        this.attachLayer(layerId);
-      }
-      const managed = this.managed.get(layerId);
+      const managed = this.ensureAttached(layerId);
       if (!managed) continue;
       managed.handle.setVisible(state.visible);
       managed.handle.setOpacity(state.opacity);
@@ -165,20 +94,32 @@ export class LayerEngine {
     }
   }
 
-  private attachLayer(layerId: string) {
-    const catalog = LAYER_CATALOG.find((l) => l.manifest.id === layerId);
-    if (!catalog) return;
-
-    let handle: ManagedHandle;
-    if (catalog.kind === "raster") {
-      handle = createWeatherLayerHandle(this.map, layerId);
-    } else if (catalog.kind === "custom-gl") {
-      handle = new LazyGameHandle(this.map, this.apiBase, layerId);
-    } else {
-      handle = createPinsLayerHandle(this.map, this.apiBase, layerId, catalog.manifest.color);
+  private attachLayer(layerId: string): ManagedLayer | undefined {
+    const plugin = getLayerPlugin(layerId);
+    if (!plugin) {
+      console.warn(`No layer plugin registered for "${layerId}" — ignoring.`);
+      return undefined;
     }
+    const managed: ManagedLayer = {
+      layerId,
+      plugin,
+      handle: createLayerHandle(plugin, this.map, this.apiBase)
+    };
+    this.managed.set(layerId, managed);
+    return managed;
+  }
 
-    this.managed.set(layerId, { layerId, handle });
+  private ensureAttached(layerId: string): ManagedLayer | undefined {
+    return this.managed.get(layerId) ?? this.attachLayer(layerId);
+  }
+
+  /** The slice of app state layers are allowed to fold into their requests. */
+  private runtimeContext(): LayerRuntimeContext {
+    return {
+      activeTag: this.store.activeTag,
+      countryCode: this.store.countryCode,
+      enabledPoiSources: this.store.enabledPoiSources
+    };
   }
 
   /** @param force when true (Search here / filter change), always fetch pin layers.
@@ -204,10 +145,6 @@ export class LayerEngine {
     return drift > 0.35 || sizeRatio > 1.6 || sizeRatio < 0.55;
   }
 
-  private isPinLayer(layerId: string) {
-    return layerId === "osm-poi" || layerId === "park4night" || layerId === "user-layers";
-  }
-
   private async doRefresh(bbox: Bbox, force: boolean) {
     const active = this.store.activeLayers;
     const confirmPins = !force && this.pinLayersNeedConfirm(bbox);
@@ -217,17 +154,13 @@ export class LayerEngine {
     for (const layerId of Object.keys(active)) {
       const state = active[layerId];
       if (!state?.visible) continue;
-      if (!force && confirmPins && this.isPinLayer(layerId)) continue;
-      if (!this.managed.has(layerId)) this.attachLayer(layerId);
-      const managed = this.managed.get(layerId);
-      if (managed)
-        void this.refreshOne(
-          layerId,
-          managed,
-          bbox,
-          state.filters,
-          force && this.isPinLayer(layerId)
-        );
+      const managed = this.ensureAttached(layerId);
+      if (!managed) continue;
+      const expensive = viewportCostOf(managed.plugin) === "expensive";
+      // An expensive layer waits to be asked ("Search here") rather than re-querying Overpass
+      // on every pan; a cheap one just follows the map.
+      if (!force && confirmPins && expensive) continue;
+      void this.refreshOne(layerId, managed, bbox, state.filters, force && expensive);
     }
   }
 
@@ -238,15 +171,7 @@ export class LayerEngine {
     filters: FilterValues,
     markPinFetch = false
   ) {
-    const mergedFilters: FilterValues = { ...filters };
-    if (layerId === "user-layers") {
-      if (this.store.activeTag) mergedFilters.tag = this.store.activeTag;
-      if (this.store.countryCode) mergedFilters.country = this.store.countryCode;
-    }
-    // Part of the cache key on purpose: toggling a POI source must invalidate, not reuse.
-    if (layerId === "osm-poi") {
-      mergedFilters.sources = this.store.enabledPoiSources;
-    }
+    const mergedFilters = managed.plugin.deriveFilters?.(filters, this.runtimeContext()) ?? filters;
     const cacheKey = this.cache.key(layerId, bbox, mergedFilters);
     const cached = this.cache.get(cacheKey);
     if (cached) {
@@ -260,7 +185,9 @@ export class LayerEngine {
     const controller = new AbortController();
     this.abortControllers.set(layerId, controller);
 
-    if (layerId === "osm-poi") this.store.markSourcesLoading(this.store.enabledPoiSources);
+    if (managed.plugin.reportsSourceStatus) {
+      this.store.markSourcesLoading(this.store.enabledPoiSources);
+    }
 
     try {
       const data = await managed.handle.update(bbox, mergedFilters, controller.signal);
@@ -269,7 +196,7 @@ export class LayerEngine {
         this.store.setVisibleFeatures(layerId, data.features);
         const meta = (data as FeatureCollection & { meta?: PlacesResponse["meta"] }).meta;
         if (meta) this.store.applySourceMeta(meta.sources);
-        if (markPinFetch || this.isPinLayer(layerId)) {
+        if (markPinFetch || viewportCostOf(managed.plugin) === "expensive") {
           this.lastPinFetchBbox = bbox;
           this.store.setSearchHerePending(false);
         }
