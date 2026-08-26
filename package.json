@@ -1,0 +1,37 @@
+{
+  "name": "questlayer-v3",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @mapos/api\" \"npm run dev -w @mapos/web\"",
+    "dev:web": "npm run dev -w @mapos/web",
+    "dev:api": "npm run dev -w @mapos/api",
+    "build": "npm run build -w @mapos/layer-sdk && npm run build -w @mapos/api && npm run build -w @mapos/web",
+    "models": "node scripts/fetch-models.mjs",
+    "postinstall": "node scripts/fetch-models.mjs",
+    "test": "npm run test -w @mapos/layer-sdk && npm run test -w @mapos/api",
+    "test:e2e": "playwright test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:up": "docker compose -f infra/docker-compose.yml up -d",
+    "db:down": "docker compose -f infra/docker-compose.yml down",
+    "db:seed": "npm run seed -w @mapos/api",
+    "typecheck": "npm run typecheck -w @mapos/layer-sdk && npm run typecheck -w @mapos/api && npm run typecheck -w @mapos/web"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.52.0",
+    "concurrently": "^9.1.2",
+    "eslint": "^10.9.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.9.6",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.68.0"
+  }
+}

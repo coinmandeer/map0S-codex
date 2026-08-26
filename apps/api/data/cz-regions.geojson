@@ -1,0 +1,1641 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-PHA",
+        "name": "Hlavní město Praha",
+        "level": "kraj",
+        "parent": "CZ"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.22, 49.94],
+            [14.71, 49.94],
+            [14.71, 50.18],
+            [14.22, 50.18],
+            [14.22, 49.94]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-STC", "name": "Středočeský kraj", "level": "kraj", "parent": "CZ" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.39, 49.44],
+            [15.78, 49.44],
+            [15.78, 50.62],
+            [13.39, 50.62],
+            [13.39, 49.44]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-JHC", "name": "Jihočeský kraj", "level": "kraj", "parent": "CZ" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.47, 48.55],
+            [15.61, 48.55],
+            [15.61, 49.62],
+            [13.47, 49.62],
+            [13.47, 48.55]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-PLK", "name": "Plzeňský kraj", "level": "kraj", "parent": "CZ" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [12.4, 49.02],
+            [13.89, 49.02],
+            [13.89, 50.13],
+            [12.4, 50.13],
+            [12.4, 49.02]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-KVK", "name": "Karlovarský kraj", "level": "kraj", "parent": "CZ" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [12.24, 49.89],
+            [13.32, 49.89],
+            [13.32, 50.51],
+            [12.24, 50.51],
+            [12.24, 49.89]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-ULK", "name": "Ústecký kraj", "level": "kraj", "parent": "CZ" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [12.87, 50.17],
+            [14.65, 50.17],
+            [14.65, 51.06],
+            [12.87, 51.06],
+            [12.87, 50.17]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-LBK", "name": "Liberecký kraj", "level": "kraj", "parent": "CZ" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.34, 50.42],
+            [15.63, 50.42],
+            [15.63, 51.05],
+            [14.34, 51.05],
+            [14.34, 50.42]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-HKK",
+        "name": "Královéhradecký kraj",
+        "level": "kraj",
+        "parent": "CZ"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.02, 50.04],
+            [16.61, 50.04],
+            [16.61, 50.77],
+            [15.02, 50.77],
+            [15.02, 50.04]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-PAK", "name": "Pardubický kraj", "level": "kraj", "parent": "CZ" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.4, 49.56],
+            [16.95, 49.56],
+            [16.95, 50.21],
+            [15.4, 50.21],
+            [15.4, 49.56]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-VYS", "name": "Kraj Vysočina", "level": "kraj", "parent": "CZ" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.92, 48.97],
+            [16.43, 48.97],
+            [16.43, 49.82],
+            [14.92, 49.82],
+            [14.92, 48.97]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-JHM",
+        "name": "Jihomoravský kraj",
+        "level": "kraj",
+        "parent": "CZ"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.53, 48.62],
+            [17.65, 48.62],
+            [17.65, 49.63],
+            [15.53, 49.63],
+            [15.53, 48.62]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-OLK", "name": "Olomoucký kraj", "level": "kraj", "parent": "CZ" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.7, 49.18],
+            [17.92, 49.18],
+            [17.92, 50.45],
+            [16.7, 50.45],
+            [16.7, 49.18]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-ZLK", "name": "Zlínský kraj", "level": "kraj", "parent": "CZ" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [17.12, 48.85],
+            [18.37, 48.85],
+            [18.37, 49.52],
+            [17.12, 49.52],
+            [17.12, 48.85]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-MSK",
+        "name": "Moravskoslezský kraj",
+        "level": "kraj",
+        "parent": "CZ"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [17.14, 49.39],
+            [18.86, 49.39],
+            [18.86, 50.45],
+            [17.14, 50.45],
+            [17.14, 49.39]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-PHA-00", "name": "Praha", "level": "okres", "parent": "CZ-PHA" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.17, 49.96],
+            [14.67, 49.96],
+            [14.67, 50.199999999999996],
+            [14.17, 50.199999999999996],
+            [14.17, 49.96]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-STC-BN", "name": "Benešov", "level": "okres", "parent": "CZ-STC" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.5, 49.6],
+            [15.059999999999999, 49.6],
+            [15.059999999999999, 49.96],
+            [14.5, 49.96],
+            [14.5, 49.6]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-STC-BE", "name": "Beroun", "level": "okres", "parent": "CZ-STC" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.83, 49.800000000000004],
+            [14.31, 49.800000000000004],
+            [14.31, 50.12],
+            [13.83, 50.12],
+            [13.83, 49.800000000000004]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-STC-KD", "name": "Kladno", "level": "okres", "parent": "CZ-STC" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.86, 50],
+            [14.34, 50],
+            [14.34, 50.28],
+            [13.86, 50.28],
+            [13.86, 50]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-STC-KO", "name": "Kolín", "level": "okres", "parent": "CZ-STC" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.959999999999999, 49.89],
+            [15.44, 49.89],
+            [15.44, 50.17],
+            [14.959999999999999, 50.17],
+            [14.959999999999999, 49.89]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-STC-KH",
+        "name": "Kutná Hora",
+        "level": "okres",
+        "parent": "CZ-STC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.01, 49.790000000000006],
+            [15.53, 49.790000000000006],
+            [15.53, 50.11],
+            [15.01, 50.11],
+            [15.01, 49.790000000000006]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-STC-ME", "name": "Mělník", "level": "okres", "parent": "CZ-STC" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.23, 50.21],
+            [14.71, 50.21],
+            [14.71, 50.49],
+            [14.23, 50.49],
+            [14.23, 50.21]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-STC-MB",
+        "name": "Mladá Boleslav",
+        "level": "okres",
+        "parent": "CZ-STC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.620000000000001, 50.25],
+            [15.18, 50.25],
+            [15.18, 50.56999999999999],
+            [14.620000000000001, 50.56999999999999],
+            [14.620000000000001, 50.25]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-STC-NB", "name": "Nymburk", "level": "okres", "parent": "CZ-STC" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.799999999999999, 50.05],
+            [15.28, 50.05],
+            [15.28, 50.33],
+            [14.799999999999999, 50.33],
+            [14.799999999999999, 50.05]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-STC-PY",
+        "name": "Praha-východ",
+        "level": "okres",
+        "parent": "CZ-STC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.42, 49.940000000000005],
+            [14.979999999999999, 49.940000000000005],
+            [14.979999999999999, 50.26],
+            [14.42, 50.26],
+            [14.42, 49.940000000000005]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-STC-PZ",
+        "name": "Praha-západ",
+        "level": "okres",
+        "parent": "CZ-STC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.01, 49.790000000000006],
+            [14.49, 49.790000000000006],
+            [14.49, 50.11],
+            [14.01, 50.11],
+            [14.01, 49.790000000000006]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-STC-PB", "name": "Příbram", "level": "okres", "parent": "CZ-STC" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.68, 49.51],
+            [14.32, 49.51],
+            [14.32, 49.87],
+            [13.68, 49.87],
+            [13.68, 49.51]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-STC-RA", "name": "Rakovník", "level": "okres", "parent": "CZ-STC" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.47, 49.940000000000005],
+            [13.99, 49.940000000000005],
+            [13.99, 50.26],
+            [13.47, 50.26],
+            [13.47, 49.940000000000005]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-JHC-CB",
+        "name": "České Budějovice",
+        "level": "okres",
+        "parent": "CZ-JHC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.190000000000001, 48.81],
+            [14.75, 48.81],
+            [14.75, 49.129999999999995],
+            [14.190000000000001, 49.129999999999995],
+            [14.190000000000001, 48.81]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-JHC-CK",
+        "name": "Český Krumlov",
+        "level": "okres",
+        "parent": "CZ-JHC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.040000000000001, 48.650000000000006],
+            [14.6, 48.650000000000006],
+            [14.6, 48.97],
+            [14.040000000000001, 48.97],
+            [14.040000000000001, 48.650000000000006]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-JHC-JH",
+        "name": "Jindřichův Hradec",
+        "level": "okres",
+        "parent": "CZ-JHC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.7, 48.96],
+            [15.3, 48.96],
+            [15.3, 49.32],
+            [14.7, 49.32],
+            [14.7, 48.96]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-JHC-PI", "name": "Písek", "level": "okres", "parent": "CZ-JHC" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.91, 49.150000000000006],
+            [14.39, 49.150000000000006],
+            [14.39, 49.47],
+            [13.91, 49.47],
+            [13.91, 49.150000000000006]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-JHC-PT",
+        "name": "Prachatice",
+        "level": "okres",
+        "parent": "CZ-JHC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.73, 48.85],
+            [14.25, 48.85],
+            [14.25, 49.169999999999995],
+            [13.73, 49.169999999999995],
+            [13.73, 48.85]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-JHC-ST",
+        "name": "Strakonice",
+        "level": "okres",
+        "parent": "CZ-JHC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.66, 49.1],
+            [14.14, 49.1],
+            [14.14, 49.419999999999995],
+            [13.66, 49.419999999999995],
+            [13.66, 49.1]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-JHC-TA", "name": "Tábor", "level": "okres", "parent": "CZ-JHC" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.4, 49.25],
+            [14.92, 49.25],
+            [14.92, 49.56999999999999],
+            [14.4, 49.56999999999999],
+            [14.4, 49.25]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-PLK-DO",
+        "name": "Domažlice",
+        "level": "okres",
+        "parent": "CZ-PLK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [12.67, 49.28],
+            [13.19, 49.28],
+            [13.19, 49.599999999999994],
+            [12.67, 49.599999999999994],
+            [12.67, 49.28]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-PLK-KT", "name": "Klatovy", "level": "okres", "parent": "CZ-PLK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [12.989999999999998, 49.22],
+            [13.59, 49.22],
+            [13.59, 49.58],
+            [12.989999999999998, 49.58],
+            [12.989999999999998, 49.22]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-PLK-PM",
+        "name": "Plzeň-město",
+        "level": "okres",
+        "parent": "CZ-PLK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.260000000000002, 49.67],
+            [13.5, 49.67],
+            [13.5, 49.83],
+            [13.260000000000002, 49.83],
+            [13.260000000000002, 49.67]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-PLK-PJ",
+        "name": "Plzeň-jih",
+        "level": "okres",
+        "parent": "CZ-PLK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.23, 49.41],
+            [13.71, 49.41],
+            [13.71, 49.69],
+            [13.23, 49.69],
+            [13.23, 49.41]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-PLK-PS",
+        "name": "Plzeň-sever",
+        "level": "okres",
+        "parent": "CZ-PLK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [12.99, 49.76],
+            [13.51, 49.76],
+            [13.51, 50.04],
+            [12.99, 50.04],
+            [12.99, 49.76]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-PLK-RO", "name": "Rokycany", "level": "okres", "parent": "CZ-PLK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.39, 49.6],
+            [13.79, 49.6],
+            [13.79, 49.88],
+            [13.39, 49.88],
+            [13.39, 49.6]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-PLK-TC", "name": "Tachov", "level": "okres", "parent": "CZ-PLK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [12.350000000000001, 49.64],
+            [12.91, 49.64],
+            [12.91, 49.959999999999994],
+            [12.350000000000001, 49.959999999999994],
+            [12.350000000000001, 49.64]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-KVK-CH", "name": "Cheb", "level": "okres", "parent": "CZ-KVK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [12.129999999999999, 49.92],
+            [12.61, 49.92],
+            [12.61, 50.239999999999995],
+            [12.129999999999999, 50.239999999999995],
+            [12.129999999999999, 49.92]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-KVK-KV",
+        "name": "Karlovy Vary",
+        "level": "okres",
+        "parent": "CZ-KVK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [12.61, 50.07],
+            [13.129999999999999, 50.07],
+            [13.129999999999999, 50.38999999999999],
+            [12.61, 50.38999999999999],
+            [12.61, 50.07]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-KVK-SO", "name": "Sokolov", "level": "okres", "parent": "CZ-KVK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [12.440000000000001, 50.04],
+            [12.84, 50.04],
+            [12.84, 50.32],
+            [12.440000000000001, 50.32],
+            [12.440000000000001, 50.04]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-ULK-DC", "name": "Děčín", "level": "okres", "parent": "CZ-ULK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.97, 50.64],
+            [14.450000000000001, 50.64],
+            [14.450000000000001, 50.92],
+            [13.97, 50.92],
+            [13.97, 50.64]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-ULK-CV", "name": "Chomutov", "level": "okres", "parent": "CZ-ULK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.18, 50.32],
+            [13.66, 50.32],
+            [13.66, 50.6],
+            [13.18, 50.6],
+            [13.18, 50.32]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-ULK-LT",
+        "name": "Litoměřice",
+        "level": "okres",
+        "parent": "CZ-ULK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.89, 50.39],
+            [14.370000000000001, 50.39],
+            [14.370000000000001, 50.67],
+            [13.89, 50.67],
+            [13.89, 50.39]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-ULK-LN", "name": "Louny", "level": "okres", "parent": "CZ-ULK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.540000000000001, 50.22],
+            [14.06, 50.22],
+            [14.06, 50.5],
+            [13.540000000000001, 50.5],
+            [13.540000000000001, 50.22]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-ULK-MO", "name": "Most", "level": "okres", "parent": "CZ-ULK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.46, 50.38],
+            [13.82, 50.38],
+            [13.82, 50.62],
+            [13.46, 50.62],
+            [13.46, 50.38]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-ULK-TP", "name": "Teplice", "level": "okres", "parent": "CZ-ULK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.65, 50.52],
+            [14.01, 50.52],
+            [14.01, 50.76],
+            [13.65, 50.76],
+            [13.65, 50.52]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-ULK-UL",
+        "name": "Ústí nad Labem",
+        "level": "okres",
+        "parent": "CZ-ULK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [13.879999999999999, 50.54],
+            [14.2, 50.54],
+            [14.2, 50.779999999999994],
+            [13.879999999999999, 50.779999999999994],
+            [13.879999999999999, 50.54]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-LBK-CL",
+        "name": "Česká Lípa",
+        "level": "okres",
+        "parent": "CZ-LBK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.28, 50.55],
+            [14.799999999999999, 50.55],
+            [14.799999999999999, 50.83],
+            [14.28, 50.83],
+            [14.28, 50.55]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-LBK-JN",
+        "name": "Jablonec nad Nisou",
+        "level": "okres",
+        "parent": "CZ-LBK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.01, 50.62],
+            [15.33, 50.62],
+            [15.33, 50.82],
+            [15.01, 50.82],
+            [15.01, 50.62]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-LBK-LI", "name": "Liberec", "level": "okres", "parent": "CZ-LBK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.860000000000001, 50.650000000000006],
+            [15.26, 50.650000000000006],
+            [15.26, 50.89],
+            [14.860000000000001, 50.89],
+            [14.860000000000001, 50.650000000000006]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-LBK-SM", "name": "Semily", "level": "okres", "parent": "CZ-LBK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.12, 50.46],
+            [15.56, 50.46],
+            [15.56, 50.74],
+            [15.12, 50.74],
+            [15.12, 50.46]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-HKK-HK",
+        "name": "Hradec Králové",
+        "level": "okres",
+        "parent": "CZ-HKK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.61, 50.07],
+            [16.05, 50.07],
+            [16.05, 50.35],
+            [15.61, 50.35],
+            [15.61, 50.07]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-HKK-JC", "name": "Jičín", "level": "okres", "parent": "CZ-HKK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.11, 50.3],
+            [15.59, 50.3],
+            [15.59, 50.58],
+            [15.11, 50.58],
+            [15.11, 50.3]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-HKK-NA", "name": "Náchod", "level": "okres", "parent": "CZ-HKK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.94, 50.28],
+            [16.38, 50.28],
+            [16.38, 50.56],
+            [15.94, 50.56],
+            [15.94, 50.28]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-HKK-RK",
+        "name": "Rychnov nad Kněžnou",
+        "level": "okres",
+        "parent": "CZ-HKK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.05, 50.03],
+            [16.49, 50.03],
+            [16.49, 50.31],
+            [16.05, 50.31],
+            [16.05, 50.03]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-HKK-TU", "name": "Trutnov", "level": "okres", "parent": "CZ-HKK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.65, 50.400000000000006],
+            [16.17, 50.400000000000006],
+            [16.17, 50.72],
+            [15.65, 50.72],
+            [15.65, 50.400000000000006]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-PAK-CR", "name": "Chrudim", "level": "okres", "parent": "CZ-PAK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.56, 49.81],
+            [16.04, 49.81],
+            [16.04, 50.09],
+            [15.56, 50.09],
+            [15.56, 49.81]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-PAK-PU",
+        "name": "Pardubice",
+        "level": "okres",
+        "parent": "CZ-PAK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.58, 49.92],
+            [15.979999999999999, 49.92],
+            [15.979999999999999, 50.16],
+            [15.58, 50.16],
+            [15.58, 49.92]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-PAK-SY", "name": "Svitavy", "level": "okres", "parent": "CZ-PAK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.209999999999997, 49.6],
+            [16.73, 49.6],
+            [16.73, 49.919999999999995],
+            [16.209999999999997, 49.919999999999995],
+            [16.209999999999997, 49.6]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-PAK-UO",
+        "name": "Ústí nad Orlicí",
+        "level": "okres",
+        "parent": "CZ-PAK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.13, 49.83],
+            [16.650000000000002, 49.83],
+            [16.650000000000002, 50.11],
+            [16.13, 50.11],
+            [16.13, 49.83]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-VYS-HB",
+        "name": "Havlíčkův Brod",
+        "level": "okres",
+        "parent": "CZ-VYS"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.34, 49.47],
+            [15.82, 49.47],
+            [15.82, 49.75],
+            [15.34, 49.75],
+            [15.34, 49.47]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-VYS-JI", "name": "Jihlava", "level": "okres", "parent": "CZ-VYS" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.35, 49.26],
+            [15.83, 49.26],
+            [15.83, 49.54],
+            [15.35, 49.54],
+            [15.35, 49.26]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-VYS-PE",
+        "name": "Pelhřimov",
+        "level": "okres",
+        "parent": "CZ-VYS"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [14.98, 49.27],
+            [15.46, 49.27],
+            [15.46, 49.589999999999996],
+            [14.98, 49.589999999999996],
+            [14.98, 49.27]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-VYS-TR", "name": "Třebíč", "level": "okres", "parent": "CZ-VYS" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.620000000000001, 49.050000000000004],
+            [16.14, 49.050000000000004],
+            [16.14, 49.37],
+            [15.620000000000001, 49.37],
+            [15.620000000000001, 49.050000000000004]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-VYS-ZR",
+        "name": "Žďár nad Sázavou",
+        "level": "okres",
+        "parent": "CZ-VYS"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.68, 49.400000000000006],
+            [16.2, 49.400000000000006],
+            [16.2, 49.72],
+            [15.68, 49.72],
+            [15.68, 49.400000000000006]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-JHM-BK", "name": "Blansko", "level": "okres", "parent": "CZ-JHM" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.42, 49.22],
+            [16.86, 49.22],
+            [16.86, 49.5],
+            [16.42, 49.5],
+            [16.42, 49.22]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-JHM-BM",
+        "name": "Brno-město",
+        "level": "okres",
+        "parent": "CZ-JHM"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.49, 49.120000000000005],
+            [16.73, 49.120000000000005],
+            [16.73, 49.28],
+            [16.49, 49.28],
+            [16.49, 49.120000000000005]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-JHM-BO",
+        "name": "Brno-venkov",
+        "level": "okres",
+        "parent": "CZ-JHM"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.22, 48.940000000000005],
+            [16.78, 48.940000000000005],
+            [16.78, 49.26],
+            [16.22, 49.26],
+            [16.22, 48.940000000000005]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-JHM-BV", "name": "Břeclav", "level": "okres", "parent": "CZ-JHM" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.64, 48.62],
+            [17.119999999999997, 48.62],
+            [17.119999999999997, 48.9],
+            [16.64, 48.9],
+            [16.64, 48.62]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-JHM-HO", "name": "Hodonín", "level": "okres", "parent": "CZ-JHM" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.89, 48.71],
+            [17.369999999999997, 48.71],
+            [17.369999999999997, 48.99],
+            [16.89, 48.99],
+            [16.89, 48.71]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-JHM-VY", "name": "Vyškov", "level": "okres", "parent": "CZ-JHM" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.77, 49.14],
+            [17.209999999999997, 49.14],
+            [17.209999999999997, 49.42],
+            [16.77, 49.42],
+            [16.77, 49.14]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-JHM-ZN", "name": "Znojmo", "level": "okres", "parent": "CZ-JHM" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [15.770000000000001, 48.7],
+            [16.330000000000002, 48.7],
+            [16.330000000000002, 49.019999999999996],
+            [15.770000000000001, 49.019999999999996],
+            [15.770000000000001, 48.7]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-OLK-JE", "name": "Jeseník", "level": "okres", "parent": "CZ-OLK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.939999999999998, 50.07],
+            [17.46, 50.07],
+            [17.46, 50.38999999999999],
+            [16.939999999999998, 50.38999999999999],
+            [16.939999999999998, 50.07]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-OLK-OC", "name": "Olomouc", "level": "okres", "parent": "CZ-OLK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [17.01, 49.43000000000001],
+            [17.49, 49.43000000000001],
+            [17.49, 49.75],
+            [17.01, 49.75],
+            [17.01, 49.43000000000001]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-OLK-PV",
+        "name": "Prostějov",
+        "level": "okres",
+        "parent": "CZ-OLK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.92, 49.33],
+            [17.32, 49.33],
+            [17.32, 49.61],
+            [16.92, 49.61],
+            [16.92, 49.33]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-OLK-PR", "name": "Přerov", "level": "okres", "parent": "CZ-OLK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [17.23, 49.32],
+            [17.669999999999998, 49.32],
+            [17.669999999999998, 49.6],
+            [17.23, 49.6],
+            [17.23, 49.32]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-OLK-SU", "name": "Šumperk", "level": "okres", "parent": "CZ-OLK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.709999999999997, 49.81],
+            [17.23, 49.81],
+            [17.23, 50.129999999999995],
+            [16.709999999999997, 50.129999999999995],
+            [16.709999999999997, 49.81]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-ZLK-KM", "name": "Kroměříž", "level": "okres", "parent": "CZ-ZLK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [17.17, 49.16],
+            [17.61, 49.16],
+            [17.61, 49.44],
+            [17.17, 49.44],
+            [17.17, 49.16]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-ZLK-UH",
+        "name": "Uherské Hradiště",
+        "level": "okres",
+        "parent": "CZ-ZLK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [17.220000000000002, 48.93],
+            [17.7, 48.93],
+            [17.7, 49.21],
+            [17.220000000000002, 49.21],
+            [17.220000000000002, 48.93]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-ZLK-VS", "name": "Vsetín", "level": "okres", "parent": "CZ-ZLK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [17.729999999999997, 49.18000000000001],
+            [18.25, 49.18000000000001],
+            [18.25, 49.5],
+            [17.729999999999997, 49.5],
+            [17.729999999999997, 49.18000000000001]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-ZLK-ZL", "name": "Zlín", "level": "okres", "parent": "CZ-ZLK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [17.450000000000003, 49.089999999999996],
+            [17.89, 49.089999999999996],
+            [17.89, 49.37],
+            [17.450000000000003, 49.37],
+            [17.450000000000003, 49.089999999999996]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-MSK-BR", "name": "Bruntál", "level": "okres", "parent": "CZ-MSK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [17.18, 49.81],
+            [17.740000000000002, 49.81],
+            [17.740000000000002, 50.17],
+            [17.18, 50.17],
+            [17.18, 49.81]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-MSK-FM",
+        "name": "Frýdek-Místek",
+        "level": "okres",
+        "parent": "CZ-MSK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [18.110000000000003, 49.52],
+            [18.59, 49.52],
+            [18.59, 49.839999999999996],
+            [18.110000000000003, 49.839999999999996],
+            [18.110000000000003, 49.52]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-MSK-KI", "name": "Karviná", "level": "okres", "parent": "CZ-MSK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [18.38, 49.730000000000004],
+            [18.7, 49.730000000000004],
+            [18.7, 49.97],
+            [18.38, 49.97],
+            [18.38, 49.730000000000004]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-MSK-NJ",
+        "name": "Nový Jičín",
+        "level": "okres",
+        "parent": "CZ-MSK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [17.790000000000003, 49.45],
+            [18.23, 49.45],
+            [18.23, 49.730000000000004],
+            [17.790000000000003, 49.730000000000004],
+            [17.790000000000003, 49.45]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "CZ-MSK-OP", "name": "Opava", "level": "okres", "parent": "CZ-MSK" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [17.66, 49.8],
+            [18.139999999999997, 49.8],
+            [18.139999999999997, 50.08],
+            [17.66, 50.08],
+            [17.66, 49.8]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ-MSK-OV",
+        "name": "Ostrava-město",
+        "level": "okres",
+        "parent": "CZ-MSK"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [18.12, 49.73],
+            [18.400000000000002, 49.73],
+            [18.400000000000002, 49.93],
+            [18.12, 49.93],
+            [18.12, 49.73]
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,174 @@
+/* MapOS design tokens v2 — Followable identity (warm paper light / near-black amber dark)
+   at a tighter, more modern density. Every value the rest of the CSS consumes lives here;
+   nothing below @layer tokens should hardcode a color, radius, duration or shadow. */
+@layer tokens {
+  :root {
+    /* ---- Type ---------------------------------------------------------- */
+    --font: "Archivo Variable", "Segoe UI", system-ui, sans-serif;
+    --font-display: "Archivo Variable", "Segoe UI", system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* Archivo's width axis is the Followable signature — display type is set slightly
+       expanded and tight-tracked, body stays at normal width for legibility. */
+    --display-stretch: 112%;
+    --display-tracking: -0.03em;
+
+    --text-3xl: 26px;
+    --text-2xl: 21px;
+    --text-xl: 17px;
+    --text-lg: 15px;
+    --text-md: 14px;
+    --text-sm: 13px;
+    --text-xs: 12px;
+    --text-2xs: 11px;
+    --text-3xs: 10px;
+
+    --weight-body: 450;
+    --weight-medium: 550;
+    --weight-strong: 650;
+    --weight-display: 750;
+
+    /* ---- Space --------------------------------------------------------- */
+    --space-1: 2px;
+    --space-2: 4px;
+    --space-3: 6px;
+    --space-4: 8px;
+    --space-5: 10px;
+    --space-6: 12px;
+    --space-7: 16px;
+    --space-8: 20px;
+    --space-9: 24px;
+
+    /* ---- Radii (v2: 16 -> 12 base, chrome reads tighter) ---------------- */
+    --radius-xs: 8px;
+    --radius-sm: 10px;
+    --radius: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-pill: 999px;
+
+    /* ---- Control sizing ------------------------------------------------ */
+    --control-h: 38px;
+    --control-h-sm: 32px;
+    /* Minimum comfortable touch target — never shrink interactive chrome below this. */
+    --tap-min: 44px;
+
+    /* ---- Layout -------------------------------------------------------- */
+    --sidebar-w: 300px;
+    --modebar-h: 108px;
+    --bottom-nav-h: 0px;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+
+    /* ---- Motion -------------------------------------------------------- */
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --dur-fast: 120ms;
+    --dur: 180ms;
+    --dur-slow: 260ms;
+
+    /* ---- Color: light (Followable warm paper) -------------------------- */
+    --bg: #f8f5ef;
+    --bg-gradient:
+      radial-gradient(circle at top left, rgba(219, 201, 166, 0.26), transparent 36%),
+      linear-gradient(180deg, #f6f1e8 0%, #f3efe8 45%, #f8f5ef 100%);
+    --surface: rgba(255, 255, 255, 0.78);
+    --surface-solid: #ffffff;
+    --surface-elevated: #f5f1ea;
+    --surface-sunken: rgba(120, 113, 108, 0.09);
+    --text: #171717;
+    --text-muted: #6b6b67;
+    --text-faint: #9a9793;
+    --accent: #b7791f;
+    --accent-soft: rgba(183, 121, 31, 0.16);
+    --accent-hover: #a5670f;
+    --accent-contrast: #ffffff;
+    --border: rgba(23, 23, 23, 0.12);
+    --border-strong: rgba(23, 23, 23, 0.2);
+    --scrim: rgba(28, 25, 23, 0.35);
+
+    --danger: #c2410c;
+    --success: #15803d;
+    --warning: #b45309;
+
+    --shadow-sm: 0 2px 10px rgba(23, 23, 23, 0.08);
+    --shadow: 0 10px 30px rgba(23, 23, 23, 0.12);
+    --shadow-md: 0 10px 30px rgba(23, 23, 23, 0.12);
+    --shadow-lg: 0 24px 60px rgba(23, 23, 23, 0.18);
+
+    --blur: blur(14px);
+
+    /* ---- Layer accents: one vivid hue per data domain ------------------ */
+    --layer-poi: #b7791f;
+    --layer-nature: #2f855a;
+    --layer-gastro: #c05621;
+    --layer-stay: #2b6cb0;
+    --layer-culture: #6b46c1;
+    --layer-services: #4a5568;
+    --layer-game: #d53f8c;
+    --layer-weather: #0987a0;
+    --layer-user: #0f766e;
+
+    font-family: var(--font);
+    font-size: 15px;
+    font-weight: var(--weight-body);
+    line-height: 1.4;
+    font-synthesis-weight: none;
+  }
+
+  .theme-dark {
+    --bg: #0d0d0d;
+    --bg-gradient:
+      radial-gradient(circle at top left, rgba(79, 63, 35, 0.35), transparent 42%),
+      linear-gradient(180deg, #0b0b0b 0%, #0f0f0f 55%, #141414 100%);
+    --surface: rgba(21, 21, 21, 0.72);
+    --surface-solid: #151515;
+    --surface-elevated: #1c1c1c;
+    --surface-sunken: rgba(255, 255, 255, 0.06);
+    --text: #f5f5f4;
+    --text-muted: #a8a29e;
+    --text-faint: #78716c;
+    --accent: #c9903a;
+    --accent-soft: rgba(201, 144, 58, 0.2);
+    --accent-hover: #dba34c;
+    --accent-contrast: #16130d;
+    --border: rgba(255, 255, 255, 0.12);
+    --border-strong: rgba(255, 255, 255, 0.22);
+    --scrim: rgba(0, 0, 0, 0.55);
+
+    --danger: #f97316;
+    --success: #4ade80;
+    --warning: #fbbf24;
+
+    --shadow-sm: 0 2px 16px rgba(0, 0, 0, 0.45);
+    --shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 14px 34px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 28px 70px rgba(0, 0, 0, 0.62);
+
+    --layer-poi: #d9a441;
+    --layer-nature: #4ade80;
+    --layer-gastro: #fb923c;
+    --layer-stay: #60a5fa;
+    --layer-culture: #a78bfa;
+    --layer-services: #94a3b8;
+    --layer-game: #f472b6;
+    --layer-weather: #22d3ee;
+    --layer-user: #2dd4bf;
+  }
+
+  @media (max-width: 899px) {
+    :root {
+      --modebar-h: 104px;
+      --bottom-nav-h: 60px;
+      --sidebar-w: 100%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --dur-fast: 1ms;
+      --dur: 1ms;
+      --dur-slow: 1ms;
+    }
+  }
+}

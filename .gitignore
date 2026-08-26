@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+infra/.env.production
+!infra/.env.production.example
+*.log
+.DS_Store
+apps/web/dist/
+test-results/
+playwright-report/
+.playwright-cli/
+# Playwright writes visual-regression output here; the committed baselines live in
+# e2e/screenshots/baseline/ instead.
+e2e/screenshots/
+# Fetched by scripts/fetch-models.mjs (npm run models), kept out of git as binary assets.
+apps/web/public/models/
+# Personal deployment log — contains host paths and release notes specific to one operator.
+progress.md

@@ -1,0 +1,11 @@
+/* Cascade layer order is declared once here, up front, so a rule's file decides its
+   precedence rather than its position in a 1500-line blob. Later layers win regardless of
+   specificity: tokens < base < primitives < chrome < panels < game < utilities. */
+@layer tokens, base, primitives, chrome, panels, game, utilities;
+
+@import "./tokens.css";
+@import "./base.css";
+@import "./primitives.css";
+@import "./chrome.css";
+@import "./panels.css";
+@import "./game.css";

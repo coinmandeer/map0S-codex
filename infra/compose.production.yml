@@ -1,0 +1,90 @@
+name: mapos-v3
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mapos
+      POSTGRES_USER: mapos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - mapos-v3-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mapos -d mapos"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4033
+      DATABASE_URL: postgres://mapos:${POSTGRES_PASSWORD}@postgres:5432/mapos
+      OWM_API_KEY: ${OWM_API_KEY:?Set OWM_API_KEY}
+      FSQ_API_KEY: ${FSQ_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      MAPY_API_KEY: ${MAPY_API_KEY:-}
+      WINDY_API_KEY: ${WINDY_API_KEY:-}
+      CML_PROVIDER: ${CML_PROVIDER:-ollama}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com/v1}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-deepseek-v3.1:671b}
+      RADAR_DIR: /data/radar
+    volumes:
+      # 15-min RainViewer archive persists across redeploys — without this every rebuild would
+      # re-download a fresh 24h of tiles from RainViewer, which is exactly the kind of avoidable
+      # upstream/mobile-data cost this project is trying to minimize.
+      - mapos-v3-radar:/data/radar
+    ports:
+      - "127.0.0.1:4033:4033"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4033/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: web
+      args:
+        VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - default
+    volumes:
+      # GLB models for the game layer are copied directly onto the host (never through this
+      # repo's build context / git history — they're ~30 binary assets, tens of MB) and served
+      # read-only at /models/*.glb. Override MODELS_HOST_DIR per deployment.
+      - ${MODELS_HOST_DIR:-./models}:/usr/share/nginx/html/models:ro
+    ports:
+      - "127.0.0.1:4032:4032"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4032"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  mapos-v3-postgres:
+  mapos-v3-radar:
