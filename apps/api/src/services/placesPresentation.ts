@@ -4,11 +4,11 @@
  *  without every pin layer, popup and list having to learn about provenance chains. */
 
 import type { FeatureCollection, PlaceSourceId, PlacesResponse } from "@mapos/layer-sdk";
-import { OSM_POI_CATEGORIES, PLACE_SOURCE_BY_ID } from "@mapos/layer-sdk";
+import { OSM_POI_CATEGORIES, PLACE_SOURCE_BY_ID, encodeSourceRefs } from "@mapos/layer-sdk";
 
 /** GeoJSON properties must stay flat and JSON-scalar for MapLibre's feature-state and
- *  data-driven styling to work, so provenance is flattened to a comma-separated source list
- *  plus the primary source. */
+ *  data-driven styling to work, so provenance is flattened into `sourceRefs` — which keeps each
+ *  source's native id, not just its name, so a clicked pin can still be looked up upstream. */
 export function placesToFeatureCollection(response: PlacesResponse): FeatureCollection & {
   meta: PlacesResponse["meta"];
 } {
@@ -24,8 +24,10 @@ export function placesToFeatureCollection(response: PlacesResponse): FeatureColl
         category: place.category,
         layerId: "osm-poi",
         sources: place.sources.map((s) => s.source).join(","),
+        sourceRefs: encodeSourceRefs(place.sources),
         primarySource: place.sources[0]?.source ?? "osm",
         ...(place.wikidata ? { wikidata: place.wikidata } : {}),
+        ...(place.fsqId ? { fsqId: place.fsqId } : {}),
         ...(place.address ? { address: place.address } : {}),
         ...(place.photo ? { photo: place.photo } : {}),
         ...(place.rating !== undefined ? { rating: place.rating } : {}),

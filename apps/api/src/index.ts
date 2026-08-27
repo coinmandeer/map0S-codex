@@ -54,6 +54,7 @@ import {
 } from "./services/weatherService.js";
 import { resolvePhoto } from "./services/photoService.js";
 import { enrichPlace } from "./services/placeEnrichmentService.js";
+import { getPlaceDetail } from "./services/placeDetailService.js";
 import { listDiscoverRegions } from "./services/regionService.js";
 import { getRegionSummary } from "./services/regionSummaryService.js";
 import { reverseGeocodeCountry } from "./services/discoverService.js";
@@ -523,6 +524,32 @@ export async function buildApp() {
       category: request.query.category,
       osmId: request.query.osmId
     });
+  });
+
+  // One place, resolved from its source refs. The hints come from the clicked pin so a place
+  // no resolver owns still opens; `/places` ids are viewport-scoped, not database keys.
+  app.get<{
+    Params: { id: string };
+    Querystring: {
+      sourceRefs?: string;
+      lng?: string;
+      lat?: string;
+      name?: string;
+      category?: string;
+    };
+  }>("/places/:id", async (request, reply) => {
+    const lng = Number(request.query.lng);
+    const lat = Number(request.query.lat);
+    const place = await getPlaceDetail({
+      id: decodeURIComponent(request.params.id),
+      sourceRefs: request.query.sourceRefs,
+      lng: Number.isFinite(lng) ? lng : undefined,
+      lat: Number.isFinite(lat) ? lat : undefined,
+      name: request.query.name,
+      category: request.query.category
+    });
+    if (!place) return reply.code(404).send({ message: "Place not found" });
+    return place;
   });
 
   // Raw fused places, provenance intact — for anything that wants more than map pins

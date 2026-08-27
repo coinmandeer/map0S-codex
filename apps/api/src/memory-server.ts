@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import { nanoid } from "nanoid";
+import { parseSourceRefs } from "@mapos/layer-sdk";
 import { fetchRoute } from "./services/routingService.js";
 import {
   memoryDb,
@@ -335,6 +336,38 @@ export async function buildMemoryApp() {
     photos: [],
     tips: []
   }));
+
+  // Echoes back the pin's own hints — enough for the info engine's panels to render offline.
+  app.get<{
+    Params: { id: string };
+    Querystring: {
+      sourceRefs?: string;
+      lng?: string;
+      lat?: string;
+      name?: string;
+      category?: string;
+    };
+  }>("/places/:id", async (request, reply) => {
+    const lng = Number(request.query.lng);
+    const lat = Number(request.query.lat);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+      return reply.code(404).send({ message: "Place not found" });
+    }
+    const id = decodeURIComponent(request.params.id);
+    return {
+      id,
+      name: request.query.name ?? "Místo",
+      lng,
+      lat,
+      category: request.query.category ?? "poi",
+      sources: parseSourceRefs(request.query.sourceRefs ?? id).map((r) => ({
+        source: r.source,
+        sourceRef: r.ref,
+        confidence: 0.5,
+        refreshedAt: new Date().toISOString()
+      }))
+    };
+  });
 
   app.get("/discover/regions", async () => ({
     regions: [

@@ -149,6 +149,57 @@ async function ensureCellFetched(cell: Cell, categories: OsmPoiCategoryId[]) {
   await db.insert(osmCells).values(cellRows);
 }
 
+export interface OsmElement {
+  id: number;
+  type: string;
+  lat: number;
+  lng: number;
+  tags: Record<string, string>;
+}
+
+/** Looks up a single OSM element by id, across all three element types.
+ *
+ *  The cached POI rows only keep the numeric id, not whether it was a node, way or relation,
+ *  so the union asks for all three and takes whichever exists. */
+export async function fetchOsmElement(osmId: string): Promise<OsmElement | null> {
+  const id = osmId.replace(/^\D+/, "");
+  if (!/^\d+$/.test(id)) return null;
+  const query = `[out:json][timeout:20];(node(${id});way(${id});relation(${id}););out center tags 1;`;
+
+  for (const url of OVERPASS_URLS) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": config.userAgent
+        },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(20_000)
+      });
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        elements?: Array<{
+          id: number;
+          type: string;
+          lat?: number;
+          lon?: number;
+          center?: { lat: number; lon: number };
+          tags?: Record<string, string>;
+        }>;
+      };
+      const el = data.elements?.[0];
+      const lat = el?.lat ?? el?.center?.lat;
+      const lng = el?.lon ?? el?.center?.lon;
+      if (!el || lat == null || lng == null) return null;
+      return { id: el.id, type: el.type, lat, lng, tags: el.tags ?? {} };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 export async function getOsmPoiFeatures(
   bbox: Bbox,
   categoriesRaw: string | undefined

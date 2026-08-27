@@ -151,6 +151,9 @@ export interface Place {
   category: string;
   /** Wikidata QID when known — the strongest cross-source join key we have. */
   wikidata?: string;
+  /** Foursquare venue id, once enrichment has matched one. Kept on the place rather than only
+   *  inside the enrichment payload so info panels can address Foursquare directly. */
+  fsqId?: string;
   address?: string;
   photo?: string;
   rating?: number;
@@ -161,6 +164,35 @@ export interface Place {
   elevationM?: number;
   tags?: string[];
   sources: PlaceProvenance[];
+}
+
+/** Provenance flattened into a single GeoJSON-safe string, e.g. `osm:node/240|wikidata:Q42`.
+ *
+ *  MapLibre only carries JSON scalars through feature properties, but an info panel asking
+ *  Wikidata or Foursquare about a place needs that source's own id — not just the fact that the
+ *  source contributed. Encoding the pairs keeps those ids reachable from a clicked pin. */
+export function encodeSourceRefs(sources: PlaceProvenance[]): string {
+  return sources
+    .filter((s) => s.sourceRef)
+    .map((s) => `${s.source}:${s.sourceRef}`)
+    .join("|");
+}
+
+export function parseSourceRefs(raw: unknown): Array<{ source: PlaceSourceId; ref: string }> {
+  if (typeof raw !== "string" || !raw) return [];
+  const out: Array<{ source: PlaceSourceId; ref: string }> = [];
+  for (const entry of raw.split("|")) {
+    const at = entry.indexOf(":");
+    if (at <= 0) continue;
+    const source = entry.slice(0, at);
+    const ref = entry.slice(at + 1);
+    if (ref && source in PLACE_SOURCE_BY_ID) out.push({ source: source as PlaceSourceId, ref });
+  }
+  return out;
+}
+
+export function sourceRef(raw: unknown, source: PlaceSourceId): string | null {
+  return parseSourceRefs(raw).find((r) => r.source === source)?.ref ?? null;
 }
 
 export interface PlacesQuery {
