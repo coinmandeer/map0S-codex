@@ -1,11 +1,17 @@
 import type { FeatureProvider } from "../featureProviders.js";
 import { UpstreamError } from "../../utils/upstream.js";
 import { communitySources } from "./community.js";
+import { keyedSources } from "./keyed.js";
 import { mobilitySources } from "./mobility.js";
 import { natureSources } from "./nature.js";
 import { featureCollection, type DataSource } from "./types.js";
 
-const SOURCES: DataSource[] = [...natureSources, ...communitySources, ...mobilitySources];
+const SOURCES: DataSource[] = [
+  ...natureSources,
+  ...communitySources,
+  ...mobilitySources,
+  ...keyedSources
+];
 
 /**
  * Wraps each bbox-in/points-out source as a feature provider.

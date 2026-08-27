@@ -20,6 +20,9 @@ function dataPlugin(args: {
   defaultFilters?: Record<string, unknown>;
   attribution: LayerAttribution[];
   experimental?: boolean;
+  /** Server capability gating the layer. Without it the layer isn't offered at all, which is
+   *  kinder than showing a toggle that can only ever produce an error. */
+  requiresCapability?: string;
 }) {
   registerLayer({
     kind: "pins",
@@ -30,7 +33,8 @@ function dataPlugin(args: {
       color: args.spec.color,
       description: args.description,
       category: args.category,
-      experimental: args.experimental
+      experimental: args.experimental,
+      requiresCapability: args.requiresCapability
     },
     filters: args.filters,
     defaultFilters: args.defaultFilters,
@@ -159,6 +163,78 @@ dataPlugin({
     { id: "unisex", label: "Genderově neutrální", kind: "toggle" }
   ],
   attribution: [{ label: "Refuge Restrooms", url: "https://www.refugerestrooms.org/" }]
+});
+
+// --- Layers that need a free API key. Hidden unless the server reports the capability. ---
+
+dataPlugin({
+  id: "charging-stations",
+  name: "Nabíjecí stanice",
+  icon: "🔌",
+  description: "Nabíječky pro elektromobily s výkonem a typem konektoru (OpenChargeMap)",
+  category: "transport",
+  requiresCapability: "ocm",
+  spec: {
+    color: "#14b8a6",
+    sizeBy: { property: "powerKw", min: 3, max: 350, minRadius: 4, maxRadius: 14 },
+    labelFromZoom: 14
+  },
+  attribution: [
+    { label: "Open Charge Map", url: "https://openchargemap.org/", license: "ODbL-1.0" }
+  ]
+});
+
+dataPlugin({
+  id: "mapillary",
+  name: "Snímky ulic",
+  icon: "🛣️",
+  description: "Fotografie z úrovně ulice nasnímané komunitou (Mapillary)",
+  category: "community",
+  requiresCapability: "mapillary",
+  spec: { color: "#22d3ee" },
+  attribution: [{ label: "Mapillary", url: "https://www.mapillary.com/", license: "CC-BY-SA-4.0" }]
+});
+
+dataPlugin({
+  id: "active-fires",
+  name: "Aktivní požáry",
+  icon: "🔥",
+  description: "Detekce požárů ze satelitů VIIRS v posledních dnech (NASA FIRMS)",
+  category: "environment",
+  requiresCapability: "firms",
+  spec: {
+    color: "#f97316",
+    sizeBy: { property: "brightness", min: 290, max: 400, minRadius: 4, maxRadius: 16 }
+  },
+  filters: [{ id: "days", label: "Posledních dní", kind: "range", min: 1, max: 7, default: 1 }],
+  defaultFilters: { days: 1 },
+  attribution: [
+    { label: "NASA FIRMS", url: "https://firms.modaps.eosdis.nasa.gov/", license: "public domain" }
+  ]
+});
+
+dataPlugin({
+  id: "openaq",
+  name: "Měřicí stanice ovzduší",
+  icon: "🏭",
+  description: "Referenční stanice kvality ovzduší z celého světa (OpenAQ)",
+  category: "environment",
+  requiresCapability: "openaq",
+  spec: { color: "#8b5cf6", labelFromZoom: 12 },
+  attribution: [{ label: "OpenAQ", url: "https://openaq.org/", license: "CC-BY-4.0" }]
+});
+
+dataPlugin({
+  id: "ebird",
+  name: "Pozorování ptáků",
+  icon: "🦅",
+  description: "Nedávná pozorování ptáků z databáze eBird",
+  category: "environment",
+  requiresCapability: "ebird",
+  spec: { color: "#ca8a04", labelFromZoom: 13 },
+  filters: [{ id: "days", label: "Posledních dní", kind: "range", min: 1, max: 30, default: 7 }],
+  defaultFilters: { days: 7 },
+  attribution: [{ label: "eBird / Cornell Lab", url: "https://ebird.org/" }]
 });
 
 dataPlugin({

@@ -70,6 +70,20 @@ export const config = {
     if (requested === "none") return "none";
     return this.ollamaKey ? "ollama" : "none";
   },
+  /**
+   * Keys for layers that need free registration. Every one of these is optional: without it the
+   * layer is hidden rather than shown broken. `docs/data-sources.md` lists where to sign up.
+   */
+  get layerKeys(): Record<string, string | undefined> {
+    return {
+      ocm: env("OPENCHARGEMAP_API_KEY"),
+      mapillary: env("MAPILLARY_ACCESS_TOKEN"),
+      firms: env("NASA_FIRMS_MAP_KEY"),
+      openaq: env("OPENAQ_API_KEY"),
+      ebird: env("EBIRD_API_TOKEN"),
+      ticketmaster: env("TICKETMASTER_API_KEY")
+    };
+  },
   get contact() {
     return env("MAPOS_CONTACT");
   },
@@ -90,6 +104,11 @@ export function capabilities(): ServerCapabilities {
     cmlProvider,
     owm: Boolean(config.owmKey),
     windy: Boolean(config.windyKey),
-    fsq: Boolean(config.fsqKey)
+    fsq: Boolean(config.fsqKey),
+    // Derived, so adding a keyed layer means adding its key to `layerKeys` and nothing else —
+    // the flag the browser needs follows automatically.
+    ...Object.fromEntries(
+      Object.entries(config.layerKeys).map(([name, value]) => [name, Boolean(value)])
+    )
   };
 }
