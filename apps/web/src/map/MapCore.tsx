@@ -164,6 +164,15 @@ export function MapCore() {
         customAttribution: custom
       });
       map.addControl(attributionControl, "bottom-left");
+      // A compact control opens itself on creation and only folds away on the first map
+      // interaction. The control is recreated whenever the credits change, so without this every
+      // layer toggle would pop the credit panel open across the bottom of a phone screen.
+      requestAnimationFrame(() => {
+        map
+          .getContainer()
+          .querySelector(".maplibregl-ctrl-attrib")
+          ?.classList.remove("maplibregl-compact-show");
+      });
     };
     syncAttribution();
     offs.push(store.subscribe(syncAttribution));

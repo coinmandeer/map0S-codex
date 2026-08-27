@@ -31,6 +31,21 @@ test.describe("my location button", () => {
     await page.goto("/");
     await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
 
+    // Denial is stubbed rather than left to the browser: headless Chromium with no permission
+    // granted sometimes drops the request instead of rejecting it, which turns this into a test
+    // of the timeout path under load. The mapping from code 1 to the message is the point here.
+    await page.evaluate(() => {
+      navigator.geolocation.getCurrentPosition = (_success, failure) => {
+        failure?.({
+          code: 1,
+          message: "denied",
+          PERMISSION_DENIED: 1,
+          POSITION_UNAVAILABLE: 2,
+          TIMEOUT: 3
+        } as GeolocationPositionError);
+      };
+    });
+
     await page.getByTestId("location-btn").click();
 
     // The message has to name the fix (browser settings) rather than say "failed", because
