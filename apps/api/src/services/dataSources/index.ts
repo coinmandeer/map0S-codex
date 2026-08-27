@@ -1,6 +1,7 @@
 import type { FeatureProvider } from "../featureProviders.js";
 import { UpstreamError } from "../../utils/upstream.js";
 import { communitySources } from "./community.js";
+import { eventSources } from "./events.js";
 import { keyedSources } from "./keyed.js";
 import { mobilitySources } from "./mobility.js";
 import { natureSources } from "./nature.js";
@@ -10,7 +11,8 @@ const SOURCES: DataSource[] = [
   ...natureSources,
   ...communitySources,
   ...mobilitySources,
-  ...keyedSources
+  ...keyedSources,
+  ...eventSources
 ];
 
 /**

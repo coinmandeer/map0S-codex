@@ -25,6 +25,9 @@ const SettingsSheet = lazy(() =>
 const WeatherTimeline = lazy(() =>
   import("./ui/WeatherTimeline").then((m) => ({ default: m.WeatherTimeline }))
 );
+const EventsTimeline = lazy(() =>
+  import("./ui/EventsTimeline").then((m) => ({ default: m.EventsTimeline }))
+);
 const GameHud = lazy(() => import("./ui/GameHud").then((m) => ({ default: m.GameHud })));
 const DiscoverPanel = lazy(() =>
   import("./ui/DiscoverPanel").then((m) => ({ default: m.DiscoverPanel }))
@@ -115,6 +118,12 @@ export function App() {
           <WeatherTimeline />
         </Suspense>
       )}
+
+      {/* Events are a layer rather than a mode, so their timeline follows the layer being on,
+          not the mode being selected — you can watch what's on while browsing anything. */}
+      <Suspense fallback={null}>
+        <EventsTimeline />
+      </Suspense>
 
       {mode === "game" && (
         <Suspense fallback={null}>

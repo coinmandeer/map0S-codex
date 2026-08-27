@@ -238,6 +238,20 @@ dataPlugin({
 });
 
 dataPlugin({
+  id: "events",
+  name: "Události",
+  icon: "🎫",
+  description: "Koncerty, divadlo a sport ve zvoleném období (Ticketmaster)",
+  category: "community",
+  requiresCapability: "ticketmaster",
+  spec: { color: "#e11d48", labelFromZoom: 12 },
+  // The from/to filters are written by the timeline above the map rather than by a menu, so
+  // they are declared without facets: the layer reads them, nothing else offers to set them.
+  defaultFilters: { from: null, to: null },
+  attribution: [{ label: "Ticketmaster Discovery", url: "https://developer.ticketmaster.com/" }]
+});
+
+dataPlugin({
   id: "shared-mobility",
   name: "Sdílená kola a koloběžky",
   icon: "🛴",

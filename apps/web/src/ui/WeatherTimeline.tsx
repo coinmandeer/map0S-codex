@@ -3,6 +3,7 @@ import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { API_BASE } from "../lib/api";
 import { paletteFor, rampCssGradient } from "../layers/weather/palettes";
+import { MapTimeline } from "./MapTimeline";
 import type { WeatherVariableId } from "../layers/weather/grid";
 
 interface WeatherVariableOption {
@@ -98,7 +99,7 @@ export function WeatherTimeline() {
   };
 
   return (
-    <div className="weather-timeline" data-testid="weather-timeline">
+    <MapTimeline testId="weather-timeline">
       {frames.length > 1 ? (
         <div className="timeline-controls">
           <button
@@ -152,7 +153,7 @@ export function WeatherTimeline() {
       </div>
 
       {selected ? <WeatherLegend variable={selected} /> : null}
-    </div>
+    </MapTimeline>
   );
 }
 
