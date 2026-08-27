@@ -28,15 +28,19 @@ Optional configuration lives in `.env` (copy from `.env.example`); every entry i
 - `apps/api` — Fastify and PostGIS
 - `packages/layer-sdk` — the shared contracts: layer plugins, place sources, info panels
 
-The engine is built around three registries, and nearly every feature is a new entry in one of
-them rather than a change to the core. [CONTRIBUTING.md](CONTRIBUTING.md) walks through all three
-with minimal examples:
+The engine is built around registries, and nearly every feature is a new entry in one of them
+rather than a change to the core. [CONTRIBUTING.md](CONTRIBUTING.md) walks through them with
+minimal examples:
 
 1. **Layer plugins** — anything drawn on the map.
 2. **Place sources** — anything that answers "what is near this bounding box".
-3. **Info panels** — anything shown in the place detail dialog.
+3. **Info panels** — anything shown in the place detail dialog, including embedded iframes.
+4. **Quest sources** — real places the game can anchor a quest to.
+5. **Guide sources** — editorial content for a region in Objevuj.
 
 ## Layers
+
+The core four, always present:
 
 | ID            | Kind      | Description                              |
 | ------------- | --------- | ---------------------------------------- |
@@ -44,6 +48,12 @@ with minimal examples:
 | `user-layers` | pins      | Your own layers, with an edit mode       |
 | `weather`     | raster    | Rain radar, temperature, wind and more   |
 | `game`        | custom-gl | 3D quest zones and encounters (Three.js) |
+
+On top of those, six keyless tile overlays (CyclOSM, Waymarked Trails, OpenRailwayMap,
+OpenSeaMap, OpenTopoMap, OpenSnowMap) and a set of data layers — earthquakes, species
+observations, air quality, Commons photos, accessible toilets, shared mobility, and, with a free
+key, EV chargers, street imagery, active fires, air-quality stations, bird sightings and events.
+See [docs/data-sources.md](docs/data-sources.md) for what each needs.
 
 ## Tests
 
@@ -69,5 +79,5 @@ docker compose -f infra/compose.production.yml up -d --build
 Map data and imagery belong to their respective providers and carry their own terms — most
 notably OpenStreetMap under ODbL and Wikipedia/Wikivoyage under CC BY-SA. Attribution is a licence
 condition, not a courtesy: every layer and source declares its own, and the engine aggregates them
-into the map's attribution control. [docs/sources.md](docs/sources.md) lists what is integrated and
-under which terms.
+into the map's attribution control. [docs/data-sources.md](docs/data-sources.md) lists what is
+integrated, under which terms, and what was deliberately left out.

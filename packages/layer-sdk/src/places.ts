@@ -33,6 +33,10 @@ export interface PlaceSourceDefinition {
   /** Requires a server-side API key to work at all. */
   needsKey: boolean;
   attribution: string;
+  /** Where the credit links to, and under what terms the data may be shown. Both feed the
+   *  attribution registry; a source without them is credited by name only. */
+  url?: string;
+  license?: string;
   hint: string;
   /** Shown next to the data, not in settings: a warning the reader needs in order to judge what
    *  they are looking at (unverified scrape, crowdsourced, delayed). */
@@ -48,6 +52,8 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: true,
     needsKey: false,
     attribution: "© OpenStreetMap přispěvatelé",
+    url: "https://www.openstreetmap.org/copyright",
+    license: "ODbL-1.0",
     hint: "Hlavní zdroj. Umí i bezejmenné amenity (parkoviště, WC, voda)."
   },
   {
@@ -58,6 +64,8 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: true,
     needsKey: true,
     attribution: "© Seznam.cz a.s.",
+    url: "https://api.mapy.com/",
+    license: "Mapy.com API ToS",
     hint: "Pojmenovaná místa přes lokalizovaná klíčová slova. Skvělé na hrady, rozhledny, vyhlídky."
   },
   {
@@ -68,6 +76,8 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: true,
     needsKey: false,
     attribution: "Wikidata (CC0)",
+    url: "https://www.wikidata.org/",
+    license: "CC0-1.0",
     hint: "Významná místa napříč Evropou, plus QID jako klíč pro spojování zdrojů."
   },
   {
@@ -78,6 +88,8 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: false,
     needsKey: false,
     attribution: "Wikipedia (CC BY-SA)",
+    url: "https://www.wikipedia.org/",
+    license: "CC-BY-SA-4.0",
     hint: "Články s geolokací — kontext a popisky, ne samostatná POI vrstva."
   },
   {
@@ -88,6 +100,8 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: false,
     needsKey: false,
     attribution: "Overture Maps Foundation (CDLA-Permissive 2.0)",
+    url: "https://overturemaps.org/",
+    license: "CDLA-Permissive-2.0",
     hint: "Evropská POI základna importovaná lokálně. Bez rate limitů, ale vyžaduje import."
   },
   {
@@ -98,6 +112,8 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: false,
     needsKey: false,
     attribution: "Park4Night",
+    url: "https://park4night.com/",
+    license: "neoficiální",
     hint: "Vanlife spoty a přespání.",
     caveat: "Neoficiální zdroj dat (park4night.com), údaje nejsou ověřené."
   },
@@ -109,6 +125,8 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: true,
     needsKey: true,
     attribution: "Foursquare",
+    url: "https://foursquare.com/",
+    license: "Foursquare API ToS",
     hint: "Doplňuje hodnocení, fotky a tipy k už nalezenému místu."
   },
   {

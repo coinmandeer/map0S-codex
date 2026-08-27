@@ -5,6 +5,7 @@ import type { DataProvider } from "@mapos/layer-sdk";
 import { applyMapStyle, MapyLogoControl, styleForProvider } from "./styleManager";
 import { getMapStore, getMapBbox, type LayerMode } from "../store/mapStore";
 import { LayerEngine } from "../engine/LayerEngine";
+import { activeAttribution } from "../layers/attribution";
 import { API_BASE } from "../lib/api";
 import { emit, on, onAny } from "../lib/events";
 import { geolocation } from "../lib/geolocation";
@@ -43,7 +44,6 @@ export function MapCore() {
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
 
     let fallbackApplied = false;
     map.on("error", (event) => {
@@ -142,6 +142,31 @@ export function MapCore() {
       if (!shouldShow && map.hasControl(mapyLogo)) map.removeControl(mapyLogo);
     };
     syncProviderChrome(store.dataProvider);
+
+    // Credits follow what is switched on: most of these licences ask to be named while the data
+    // is on screen, not in general. The list is read from the plugins, so a layer added by a fork
+    // is credited without this file knowing about it. MapLibre reads `customAttribution` once at
+    // construction, hence the swap instead of a mutation.
+    let attributionControl: maplibregl.AttributionControl | null = null;
+    let creditedSources = "";
+    const syncAttribution = () => {
+      const custom = activeAttribution(store.activeLayers, store.poiSources).map((credit) =>
+        credit.url
+          ? `<a href="${credit.url}" target="_blank" rel="noreferrer">${credit.label}</a>`
+          : credit.label
+      );
+      const key = custom.join("|");
+      if (attributionControl && key === creditedSources) return;
+      creditedSources = key;
+      if (attributionControl) map.removeControl(attributionControl);
+      attributionControl = new maplibregl.AttributionControl({
+        compact: true,
+        customAttribution: custom
+      });
+      map.addControl(attributionControl, "bottom-left");
+    };
+    syncAttribution();
+    offs.push(store.subscribe(syncAttribution));
 
     offs.push(
       on("theme-changed", (detail) => {

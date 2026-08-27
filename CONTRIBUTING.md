@@ -116,6 +116,46 @@ in doubt, the server probe at `GET /info/embeddable?url=` gives you the verdict.
 honest fallback for the rest, and every new iframe host must also be added to the CSP `frame-src`
 allowlist or the browser will block it.
 
+## Extension point 4: adding a quest source
+
+The game does not invent locations any more: a quest is anchored to a real place supplied by a
+`QuestSourceAdapter` (`apps/api/src/game/anchors.ts`). An adapter answers two questions — what is
+in this viewport, and where exactly is this one anchor:
+
+```ts
+registerQuestSource({
+  id: "opencaching",
+  label: "Opencaching",
+  attribution: "Opencaching, CC-BY-SA",
+  unavailableReason: () => (config.okapiInstances.length ? null : "Chybí OKAPI klíč"),
+  anchors: (bbox, limit) => nearbyCaches(bbox, limit),
+  resolve: (ref) => oneCache(ref)
+});
+```
+
+Quest ids are derived from `sourceId` plus the anchor's own ref, so no database row is written
+until someone completes one. `resolve` matters more than it looks: a claim is verified against
+the coordinates the adapter returns, never against the ones the client sent, so a source that
+cannot resolve a single anchor cannot be used for claimable quests.
+
+## Extension point 5: adding a guide source
+
+Objevuj asks for editorial content by _area_ rather than by bounding box, because "what to do in
+Brno" is an article about a place, not a query over points. A `GuideSourceAdapter`
+(`packages/layer-sdk/src/guide.ts`) turns an area into sections:
+
+```ts
+registerGuideSource({
+  id: "wikivoyage",
+  label: "Wikivoyage",
+  attribution: "Wikivoyage, CC BY-SA 4.0",
+  fetchGuide: async (area, lang) => ({ sections: await sectionsFor(area, lang) })
+});
+```
+
+Sources are tried in order until one returns something, so a new adapter is a fallback rather
+than a replacement, and a fork can put a local tourist board ahead of Wikivoyage.
+
 ## Code conventions
 
 - TypeScript everywhere, no `any` in new code.
@@ -131,5 +171,10 @@ allowlist or the browser will block it.
 Adding a source means taking on its licence. Before opening a pull request, check that the terms
 allow use in an Apache-2.0 project that anyone may fork and self-host. Sources requiring mandatory
 branding, signed agreements, or per-deployment approval are a poor fit — the fork inherits the
-code but not your contract. `docs/sources.md` lists what is currently integrated, under which
-licence, and what attribution each one requires.
+code but not your contract. [docs/data-sources.md](docs/data-sources.md) lists what is currently
+integrated, under which licence, what attribution each one requires, and which well-known sources
+were rejected and why.
+
+Attribution is wired, not written: put `label`, `url` and `license` in the plugin's or adapter's
+`attribution` field and both the map's attribution control and Settings → O aplikaci pick it up.
+A source credited only in a comment is a licensing bug.

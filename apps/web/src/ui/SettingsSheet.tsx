@@ -4,7 +4,9 @@ import {
   type DataProvider,
   type PlaceSourceId
 } from "@mapos/layer-sdk";
+import { useMemo } from "react";
 import { getMapStore } from "../store/mapStore";
+import { allAttribution } from "../layers/attribution";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { Sheet, SheetSection, SettingRow, Toggle } from "./primitives";
 
@@ -47,6 +49,8 @@ export function SettingsSheet() {
   const tracking = useMapStoreSnapshot((s) => s.gameTrackingMode);
   const camera = useMapStoreSnapshot((s) => s.gameCameraMode);
   const avatar = useMapStoreSnapshot((s) => s.avatarStyle);
+  // Read once per open: the registry is filled at import time and does not change while running.
+  const sources = useMemo(() => allAttribution(), []);
 
   const providerAvailable = (id: DataProvider) => id === "osm" || capabilities?.mapy !== false;
 
@@ -185,10 +189,25 @@ export function SettingsSheet() {
       </SheetSection>
 
       <SheetSection title="O aplikaci">
-        <p className="meta">
-          MapOS v3 — mapový operační systém. Data: © OpenStreetMap přispěvatelé, © Seznam.cz a.s.,
-          Wikidata (CC0), Overture Maps (CDLA-Permissive 2.0), OpenWeatherMap, RainViewer.
-        </p>
+        <p className="meta">MapOS v3 — mapový operační systém.</p>
+        <details className="attribution-list" data-testid="attribution-list">
+          <summary>Zdroje dat a licence ({sources.length})</summary>
+          <ul>
+            {sources.map((source) => (
+              <li key={`${source.usedBy}:${source.label}`}>
+                <span className="attribution-used-by">{source.usedBy}</span>
+                {source.url ? (
+                  <a href={source.url} target="_blank" rel="noreferrer">
+                    {source.label}
+                  </a>
+                ) : (
+                  <span>{source.label}</span>
+                )}
+                {source.license && <span className="attribution-license">{source.license}</span>}
+              </li>
+            ))}
+          </ul>
+        </details>
         {capabilities && (
           <p className="meta">
             AI/CML:{" "}
