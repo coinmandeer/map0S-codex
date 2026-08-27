@@ -2,6 +2,7 @@
  *  a database, so the detail stays fully functional against the in-memory API. */
 
 import type { FastifyInstance } from "fastify";
+import { checkEmbeddable } from "../services/embedService.js";
 import {
   getFoursquareDetail,
   getPointForecast,
@@ -51,6 +52,16 @@ export function registerInfoRoutes(app: FastifyInstance) {
       }
     }
   );
+
+  app.get<{ Querystring: { url?: string } }>("/info/embeddable", async (request, reply) => {
+    const url = request.query.url?.trim();
+    if (!url) return reply.code(400).send({ message: "url required" });
+    const probe = await checkEmbeddable(url);
+    // An unknown verdict is not cached for long: it usually means the probe timed out, and the
+    // site may well be reachable next time.
+    const maxAge = probe.verdict === "unknown" ? 300 : 86_400;
+    return reply.header("cache-control", `public, max-age=${maxAge}`).send(probe);
+  });
 
   app.get<{ Querystring: { fsqId?: string } }>("/info/foursquare", async (request, reply) => {
     const fsqId = request.query.fsqId?.trim();

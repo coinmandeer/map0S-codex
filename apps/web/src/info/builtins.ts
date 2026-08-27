@@ -9,6 +9,7 @@ import { WikipediaPanel } from "./panels/WikipediaPanel";
 import { WikidataPanel } from "./panels/WikidataPanel";
 import { WeatherPanel } from "./panels/WeatherPanel";
 import { FoursquarePanel } from "./panels/FoursquarePanel";
+import { ExternalLinksPanel, MapillaryPanel, OsmPanel, WindyPanel } from "./panels/embedPanels";
 
 registerInfoPanel({
   id: "prehled",
@@ -57,6 +58,39 @@ registerInfoPanel({
 });
 
 registerInfoPanel({
+  id: "mapy-okoli",
+  label: "Okolí",
+  icon: "🗺️",
+  kind: "iframe",
+  order: 35,
+  appliesTo: () => true,
+  attribution: "© OpenStreetMap přispěvatelé (ODbL)",
+  render: OsmPanel
+});
+
+registerInfoPanel({
+  id: "mapillary",
+  label: "Ulice",
+  icon: "📷",
+  kind: "iframe",
+  order: 36,
+  appliesTo: () => true,
+  attribution: "Mapillary (CC BY-SA)",
+  render: MapillaryPanel
+});
+
+registerInfoPanel({
+  id: "windy",
+  label: "Windy",
+  icon: "🌀",
+  kind: "iframe",
+  order: 37,
+  appliesTo: () => true,
+  attribution: "Windy.com",
+  render: WindyPanel
+});
+
+registerInfoPanel({
   id: "foursquare",
   label: "Recenze",
   icon: "⭐",
@@ -65,4 +99,15 @@ registerInfoPanel({
   appliesTo: ({ place, refs }) => Boolean(place.fsqId ?? refs.fsq),
   attribution: "Foursquare",
   render: FoursquarePanel
+});
+
+registerInfoPanel({
+  id: "odkazy",
+  label: "Odkazy",
+  icon: "↗",
+  kind: "link",
+  order: 90,
+  appliesTo: () => true,
+  attribution: "Externí služby",
+  render: ExternalLinksPanel
 });

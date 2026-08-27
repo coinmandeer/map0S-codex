@@ -38,22 +38,5 @@ RUN npm run build -w @mapos/web
 
 FROM nginx:alpine AS web
 COPY --from=web-build /app/apps/web/dist /usr/share/nginx/html
-RUN printf '%s\n' \
-  'server {' \
-  '  listen 4032;' \
-  '  root /usr/share/nginx/html;' \
-  '  location /api/ { proxy_pass http://api:4033/; }' \
-  '  location = /index.html {' \
-  '    add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0";' \
-  '    add_header Pragma "no-cache";' \
-  '  }' \
-  '  location /assets/ {' \
-  '    add_header Cache-Control "public, max-age=31536000, immutable";' \
-  '    try_files $uri =404;' \
-  '  }' \
-  '  location / {' \
-  '    add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0";' \
-  '    try_files $uri $uri/ /index.html;' \
-  '  }' \
-  '}' > /etc/nginx/conf.d/default.conf
+COPY infra/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 4032

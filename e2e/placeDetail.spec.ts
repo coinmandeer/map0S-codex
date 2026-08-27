@@ -91,6 +91,44 @@ test.describe("place detail", () => {
     await expect(page.getByTestId("info-panel-body")).toContainText("žádný článek");
   });
 
+  test("a service that refuses framing offers its link instead of a blank frame", async ({
+    page
+  }) => {
+    await page.route("**/info/embeddable**", (route) =>
+      route.fulfill({
+        json: { url: "https://example.org", verdict: "blocked", reason: "x-frame-options: deny" }
+      })
+    );
+    await openDetail(page);
+
+    await page.getByTestId("info-tab-mapy-okoli").click();
+    await expect(page.getByTestId("panel-osm")).toContainText("nedovoluje vložení");
+    await expect(page.locator("iframe.info-frame")).toHaveCount(0);
+    await expect(page.getByTestId("panel-osm").getByRole("link")).toBeVisible();
+  });
+
+  test("an embeddable service is framed", async ({ page }) => {
+    await page.route("**/info/embeddable**", (route) =>
+      route.fulfill({
+        json: {
+          url: new URL(route.request().url()).searchParams.get("url"),
+          verdict: "allowed",
+          reason: "no framing restriction"
+        }
+      })
+    );
+    // The frame's own content is somebody else's server; stub it so the test stays offline.
+    await page.route("https://www.openstreetmap.org/**", (route) =>
+      route.fulfill({ contentType: "text/html", body: "<p>mapa</p>" })
+    );
+    await openDetail(page);
+
+    await page.getByTestId("info-tab-mapy-okoli").click();
+    const frame = page.locator("iframe.info-frame");
+    await expect(frame).toHaveAttribute("sandbox", "allow-scripts allow-same-origin allow-popups");
+    await expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+  });
+
   test("a place with no extra sources still opens with the basics", async ({ page }) => {
     await page.route("**/layers/osm-poi/features**", (route) => {
       const [west, south, east, north] = new URL(route.request().url()).searchParams
