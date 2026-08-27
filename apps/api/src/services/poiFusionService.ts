@@ -35,17 +35,29 @@ import { config } from "../config.js";
  *  neighbouring shops on a high street. */
 const MERGE_RADIUS_M = 75;
 
-/** How much each source's claim is trusted when two disagree on a field. */
-const SOURCE_CONFIDENCE: Record<PlaceSourceId, number> = {
-  user: 0.95,
-  mapy: 0.8,
-  osm: 0.75,
-  wikidata: 0.7,
-  overture: 0.6,
-  park4night: 0.6,
-  wikipedia: 0.4,
-  fsq: 0.5
-};
+export interface FusionQuery {
+  bbox: Bbox;
+  categories: OsmPoiCategoryId[];
+  sources: PlaceSourceId[];
+  userId?: string;
+}
+
+/**
+ * One upstream MapOS can ask for places.
+ *
+ * Adding a source means adding an adapter to `PLACE_SOURCE_ADAPTERS`, not another `if` in
+ * `getFusedPlaces` — the fetch, its trust level and the reason it might be unavailable all live
+ * together instead of being spread across three lists that have to agree.
+ */
+export interface PlaceSourceAdapter {
+  id: PlaceSourceId;
+  /** How much this source's claim is trusted when two sources disagree on a field. */
+  confidence: number;
+  /** Why this source can't run here (missing key, needs a local import), or null when it can.
+   *  A skipped source is reported to the client rather than silently missing. */
+  unavailableReason?(): string | null;
+  fetch(query: FusionQuery): Promise<Place[]>;
+}
 
 function normalizeName(name: string): string {
   return name
@@ -71,7 +83,7 @@ function provenance(source: PlaceSourceId, sourceRef: string) {
   return {
     source,
     sourceRef,
-    confidence: SOURCE_CONFIDENCE[source],
+    confidence: adapterFor(source)?.confidence ?? 0.5,
     refreshedAt: new Date().toISOString()
   };
 }
@@ -304,34 +316,76 @@ async function fetchWikidata(bbox: Bbox): Promise<Place[]> {
     .filter((p): p is Place => p !== null);
 }
 
-export interface FusionQuery {
-  bbox: Bbox;
-  categories: OsmPoiCategoryId[];
-  sources: PlaceSourceId[];
-  userId?: string;
+/** The registry. Order here is irrelevant — sources are fetched in parallel and the merge step
+ *  sorts by confidence — but keeping it roughly most- to least-trusted reads better. */
+export const PLACE_SOURCE_ADAPTERS: PlaceSourceAdapter[] = [
+  {
+    id: "user",
+    confidence: 0.95,
+    fetch: ({ bbox, userId }) => fetchUser(bbox, userId)
+  },
+  {
+    id: "mapy",
+    confidence: 0.8,
+    unavailableReason: () => (config.mapyKey ? null : "chybí MAPY_API_KEY"),
+    fetch: ({ bbox, categories }) => fetchMapy(bbox, categories)
+  },
+  {
+    id: "osm",
+    confidence: 0.75,
+    fetch: ({ bbox, categories }) => fetchOsm(bbox, categories)
+  },
+  {
+    id: "wikidata",
+    confidence: 0.7,
+    fetch: ({ bbox }) => fetchWikidata(bbox)
+  },
+  {
+    id: "park4night",
+    confidence: 0.6,
+    fetch: ({ bbox }) => fetchPark4night(bbox)
+  },
+  {
+    id: "overture",
+    confidence: 0.6,
+    unavailableReason: () => "vyžaduje lokální import",
+    fetch: async () => []
+  },
+  {
+    id: "fsq",
+    confidence: 0.5,
+    // Foursquare's bulk search is not part of the free tier; it enriches a single place on
+    // demand instead (see placeEnrichmentService).
+    unavailableReason: () => "jen doplňuje detail místa",
+    fetch: async () => []
+  },
+  {
+    id: "wikipedia",
+    confidence: 0.4,
+    fetch: ({ bbox }) => fetchWikipedia(bbox)
+  }
+];
+
+const ADAPTERS_BY_ID = new Map(PLACE_SOURCE_ADAPTERS.map((a) => [a.id, a]));
+
+export function adapterFor(id: PlaceSourceId): PlaceSourceAdapter | undefined {
+  return ADAPTERS_BY_ID.get(id);
 }
 
 export async function getFusedPlaces(query: FusionQuery): Promise<PlacesResponse> {
-  const { bbox, categories, sources, userId } = query;
-  const wanted = new Set(sources);
+  const wanted = new Set(query.sources);
   const metas: PlacesSourceMeta[] = [];
   const jobs: Promise<{ places: Place[]; meta: PlacesSourceMeta }>[] = [];
 
-  const skip = (source: PlaceSourceId, message: string) => {
-    metas.push({ source, state: "skipped", count: 0, message });
-  };
-
-  if (wanted.has("osm")) jobs.push(timed("osm", () => fetchOsm(bbox, categories)));
-  if (wanted.has("mapy")) {
-    if (config.mapyKey) jobs.push(timed("mapy", () => fetchMapy(bbox, categories)));
-    else skip("mapy", "chybí MAPY_API_KEY");
+  for (const adapter of PLACE_SOURCE_ADAPTERS) {
+    if (!wanted.has(adapter.id)) continue;
+    const reason = adapter.unavailableReason?.();
+    if (reason) {
+      metas.push({ source: adapter.id, state: "skipped", count: 0, message: reason });
+      continue;
+    }
+    jobs.push(timed(adapter.id, () => adapter.fetch(query)));
   }
-  if (wanted.has("wikidata")) jobs.push(timed("wikidata", () => fetchWikidata(bbox)));
-  if (wanted.has("wikipedia")) jobs.push(timed("wikipedia", () => fetchWikipedia(bbox)));
-  if (wanted.has("park4night")) jobs.push(timed("park4night", () => fetchPark4night(bbox)));
-  if (wanted.has("user")) jobs.push(timed("user", () => fetchUser(bbox, userId)));
-  if (wanted.has("fsq")) skip("fsq", "jen doplňuje detail místa");
-  if (wanted.has("overture")) skip("overture", "vyžaduje lokální import");
 
   const settled = await Promise.all(jobs);
   for (const result of settled) metas.push(result.meta);

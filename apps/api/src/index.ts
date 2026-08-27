@@ -14,17 +14,14 @@ import {
   createGuestUser,
   upgradeGuest
 } from "./services/authService.js";
-import { getOsmPoiFeatures, getUserLayerFeatures, parseBbox } from "./services/layerService.js";
+import { parseBbox } from "./services/layerService.js";
 import { fetchRoute, type RouteProfile } from "./services/routingService.js";
 import { mapyGeocode } from "./services/mapyService.js";
 import { registerMapyRoutes } from "./routes/mapyRoutes.js";
 import { registerWeatherGridRoutes } from "./routes/weatherGridRoutes.js";
+import { featureProvider, layerListing } from "./services/featureProviders.js";
 import { getFusedPlaces } from "./services/poiFusionService.js";
-import {
-  parsePlaceSources,
-  parsePoiCategories,
-  placesToFeatureCollection
-} from "./services/placesPresentation.js";
+import { parsePlaceSources, parsePoiCategories } from "./services/placesPresentation.js";
 import {
   listUserLayers,
   createUserLayer,
@@ -55,7 +52,6 @@ import {
   radarTilePath,
   fetchOwmTile
 } from "./services/weatherService.js";
-import { getPark4nightFeatures } from "./services/park4nightService.js";
 import { resolvePhoto } from "./services/photoService.js";
 import { enrichPlace } from "./services/placeEnrichmentService.js";
 import { listDiscoverRegions } from "./services/regionService.js";
@@ -83,15 +79,7 @@ export async function buildApp() {
   registerMapyRoutes(app);
   registerWeatherGridRoutes(app);
 
-  app.get("/layers", async () => ({
-    layers: [
-      { id: "osm-poi", name: "OSM POI", kind: "pins" },
-      { id: "user-layers", name: "Moje vrstvy", kind: "pins" },
-      { id: "weather", name: "Počasí", kind: "raster" },
-      { id: "game", name: "QuestLayer", kind: "custom-gl" },
-      { id: "park4night", name: "Park4Night", kind: "pins" }
-    ]
-  }));
+  app.get("/layers", async () => ({ layers: layerListing() }));
 
   app.get<{
     Params: { layerId: string };
@@ -104,36 +92,16 @@ export async function buildApp() {
     };
   }>("/layers/:layerId/features", async (request, reply) => {
     try {
-      const bbox = parseBbox(request.query.bbox);
-      const { layerId } = request.params;
-
-      if (layerId === "osm-poi") {
-        const sources = parsePlaceSources(request.query.sources);
-        // A plain OSM request skips fusion entirely — no reason to pay for merging when
-        // there is only one source to merge.
-        if (sources.length === 1 && sources[0] === "osm") {
-          return getOsmPoiFeatures(bbox, request.query.categories);
-        }
-        const user = await getSessionUser(getSessionId(request));
-        const fused = await getFusedPlaces({
-          bbox,
-          categories: parsePoiCategories(request.query.categories),
-          sources,
-          userId: user?.id
-        });
-        return placesToFeatureCollection(fused);
+      const provider = featureProvider(request.params.layerId);
+      if (!provider?.features) {
+        return reply.code(404).send({ message: "Layer not found" });
       }
-
-      if (layerId === "user-layers") {
-        const user = await getSessionUser(getSessionId(request));
-        return getUserLayerFeatures(bbox, user?.id, request.query.tag, request.query.country);
-      }
-
-      if (layerId === "park4night") {
-        return getPark4nightFeatures(bbox);
-      }
-
-      return reply.code(404).send({ message: "Layer not found" });
+      const user = await getSessionUser(getSessionId(request));
+      return await provider.features({
+        bbox: parseBbox(request.query.bbox),
+        query: request.query,
+        userId: user?.id
+      });
     } catch (err) {
       return reply.code(400).send({ message: err instanceof Error ? err.message : "Error" });
     }

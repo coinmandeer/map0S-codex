@@ -11,6 +11,7 @@ import {
   type MemoryUser
 } from "./db/memory.js";
 import { capabilities } from "./config.js";
+import { layerListing } from "./services/featureProviders.js";
 import { registerMapyRoutes } from "./routes/mapyRoutes.js";
 import { registerWeatherGridRoutes } from "./routes/weatherGridRoutes.js";
 import {
@@ -50,15 +51,10 @@ export async function buildMemoryApp() {
   registerMapyRoutes(app);
   registerWeatherGridRoutes(app);
 
-  app.get("/layers", async () => ({
-    layers: [
-      { id: "osm-poi", name: "OSM POI", kind: "pins" },
-      { id: "user-layers", name: "Moje vrstvy", kind: "pins" },
-      { id: "weather", name: "Počasí", kind: "raster" },
-      { id: "game", name: "QuestLayer", kind: "custom-gl" },
-      { id: "park4night", name: "Park4Night", kind: "pins" }
-    ]
-  }));
+  // Shared with the real server so a new provider can't show up in one and not the other. The
+  // feature route below still answers from memory — the point of this server is not touching
+  // the network or a database.
+  app.get("/layers", async () => ({ layers: layerListing() }));
 
   app.get<{ Params: { layerId: string }; Querystring: { bbox?: string; categories?: string } }>(
     "/layers/:layerId/features",
