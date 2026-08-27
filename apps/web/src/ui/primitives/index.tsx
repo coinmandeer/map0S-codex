@@ -100,6 +100,47 @@ export function Toggle({
   );
 }
 
+export interface TabItem {
+  id: string;
+  label: string;
+  /** Emoji or short glyph. Panels come from many sources, so their icons aren't a closed set
+   *  the way `IconName` is. */
+  icon?: string;
+}
+
+/** Horizontal, scrollable tab strip. Shared by the place detail and Discover so the two don't
+ *  drift into two different-looking tab bars. */
+export function TabBar({
+  tabs,
+  active,
+  onChange,
+  testId
+}: {
+  tabs: TabItem[];
+  active: string;
+  onChange: (id: string) => void;
+  testId?: string;
+}) {
+  return (
+    <div className="tab-bar" role="tablist" data-testid={testId}>
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          className={`tab${tab.id === active ? " active" : ""}`}
+          aria-selected={tab.id === active}
+          onClick={() => onChange(tab.id)}
+          data-testid={testId ? `${testId}-${tab.id}` : undefined}
+        >
+          {tab.icon && <span aria-hidden>{tab.icon}</span>}
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function StatChip({
   label,
   value,

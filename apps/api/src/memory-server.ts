@@ -15,6 +15,7 @@ import { capabilities } from "./config.js";
 import { layerListing } from "./services/featureProviders.js";
 import { registerMapyRoutes } from "./routes/mapyRoutes.js";
 import { registerWeatherGridRoutes } from "./routes/weatherGridRoutes.js";
+import { registerInfoRoutes } from "./routes/infoRoutes.js";
 import {
   encounterById,
   encountersForBbox,
@@ -51,6 +52,7 @@ export async function buildMemoryApp() {
 
   registerMapyRoutes(app);
   registerWeatherGridRoutes(app);
+  registerInfoRoutes(app);
 
   // Shared with the real server so a new provider can't show up in one and not the other. The
   // feature route below still answers from memory — the point of this server is not touching

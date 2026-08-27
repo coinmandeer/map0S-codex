@@ -34,6 +34,9 @@ export interface PlaceSourceDefinition {
   needsKey: boolean;
   attribution: string;
   hint: string;
+  /** Shown next to the data, not in settings: a warning the reader needs in order to judge what
+   *  they are looking at (unverified scrape, crowdsourced, delayed). */
+  caveat?: string;
 }
 
 export const PLACE_SOURCES: PlaceSourceDefinition[] = [
@@ -95,7 +98,8 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: false,
     needsKey: false,
     attribution: "Park4Night",
-    hint: "Vanlife spoty a přespání."
+    hint: "Vanlife spoty a přespání.",
+    caveat: "Neoficiální zdroj dat (park4night.com), údaje nejsou ověřené."
   },
   {
     id: "fsq",
@@ -115,7 +119,8 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: true,
     needsKey: false,
     attribution: "MapOS uživatelé",
-    hint: "Veřejné piny z uživatelských vrstev."
+    hint: "Veřejné piny z uživatelských vrstev.",
+    caveat: "Přidali uživatelé MapOS, bez redakční kontroly."
   }
 ];
 
@@ -155,6 +160,7 @@ export interface Place {
    *  inside the enrichment payload so info panels can address Foursquare directly. */
   fsqId?: string;
   address?: string;
+  description?: string;
   photo?: string;
   rating?: number;
   ratingCount?: number;

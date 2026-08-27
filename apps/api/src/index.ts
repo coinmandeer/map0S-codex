@@ -19,6 +19,7 @@ import { fetchRoute, type RouteProfile } from "./services/routingService.js";
 import { mapyGeocode } from "./services/mapyService.js";
 import { registerMapyRoutes } from "./routes/mapyRoutes.js";
 import { registerWeatherGridRoutes } from "./routes/weatherGridRoutes.js";
+import { registerInfoRoutes } from "./routes/infoRoutes.js";
 import { featureProvider, layerListing } from "./services/featureProviders.js";
 import { getFusedPlaces } from "./services/poiFusionService.js";
 import { parsePlaceSources, parsePoiCategories } from "./services/placesPresentation.js";
@@ -79,6 +80,7 @@ export async function buildApp() {
 
   registerMapyRoutes(app);
   registerWeatherGridRoutes(app);
+  registerInfoRoutes(app);
 
   app.get("/layers", async () => ({ layers: layerListing() }));
 

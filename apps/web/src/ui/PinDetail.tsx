@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import type { GeoFeature } from "@mapos/layer-sdk";
+import type { GeoFeature, Place } from "@mapos/layer-sdk";
 import { distanceMeters } from "@mapos/layer-sdk";
 import { getMapStore } from "../store/mapStore";
 import { emit } from "../lib/events";
 import { geolocation, messageFor, type Fix } from "../lib/geolocation";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
-import { PIN_STYLES } from "./presets";
+import { fetchPlaceDetail, placeRefsFromFeature, type PlaceRefs } from "../lib/placeDetail";
+import { InfoEngine } from "../info";
 import { preloadPlacePhotos, resolvePhotoUrl } from "./photoCache";
 import { saveUserPlace } from "./saveUserContent";
 import { API_BASE } from "../lib/api";
@@ -26,6 +27,15 @@ function useIsDesktop() {
   return desktop;
 }
 
+function photoOpts(feature: GeoFeature) {
+  return {
+    photo: typeof feature.properties.photo === "string" ? feature.properties.photo : null,
+    wikidata: typeof feature.properties.wikidata === "string" ? feature.properties.wikidata : null
+  };
+}
+
+/** The place as the map already knows it. Rendered immediately, then replaced by the server's
+ *  fuller record — the detail must open at click speed, not at network speed. */
 const SERVICE_LABELS: Record<string, string> = {
   water: "💧 Voda",
   electricity: "⚡ Elektřina",
@@ -34,19 +44,40 @@ const SERVICE_LABELS: Record<string, string> = {
   toilets: "🚻 WC"
 };
 
-function photoOpts(feature: GeoFeature) {
-  return {
-    photo: typeof feature.properties.photo === "string" ? feature.properties.photo : null,
-    wikidata: typeof feature.properties.wikidata === "string" ? feature.properties.wikidata : null
-  };
-}
+function placeFromPin(refs: PlaceRefs, feature: GeoFeature): Place {
+  const p = feature.properties;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  const num = (v: unknown) => (typeof v === "number" ? v : undefined);
+  const list = (v: unknown) => (Array.isArray(v) ? (v as string[]) : []);
+  // Park4Night's amenities and a user pin's tags are the same thing to a reader.
+  const tags = [...list(p.tags), ...list(p.services).map((s) => SERVICE_LABELS[s] ?? s)];
 
-interface Enrichment {
-  address?: string | null;
-  rating?: number | null;
-  ratingCount?: number | null;
-  photos?: string[];
-  tips?: Array<{ text: string }>;
+  return {
+    id: refs.id,
+    name: refs.name,
+    lng: refs.lng,
+    lat: refs.lat,
+    category: refs.category,
+    wikidata: refs.wikidata ?? undefined,
+    fsqId: refs.fsqId ?? undefined,
+    website: str(p.website),
+    phone: str(p.phone),
+    openingHours: str(p.opening_hours),
+    description: str(p.description),
+    photo: str(p.photo),
+    rating: num(p.rating),
+    ratingCount: num(p.reviews),
+    elevationM: p.ele !== undefined ? Number(p.ele) : undefined,
+    tags: tags.length ? tags : undefined,
+    sources: Object.entries(refs.refs)
+      .filter(([, ref]) => ref)
+      .map(([source, ref]) => ({
+        source: source as Place["sources"][number]["source"],
+        sourceRef: ref!,
+        confidence: 0.5,
+        refreshedAt: new Date().toISOString()
+      }))
+  };
 }
 
 export function PinDetail() {
@@ -105,79 +136,53 @@ export function PinDetail() {
     return () => window.removeEventListener("keydown", onKey);
   }, [pin, index, nearby]);
 
+  const refs = useMemo(() => (pin ? placeRefsFromFeature(pin.feature, pin.layerId) : null), [pin]);
+  const [place, setPlace] = useState<Place | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
-  const [photoIndex, setPhotoIndex] = useState(0);
-  const [enrichment, setEnrichment] = useState<Enrichment | null>(null);
 
   useEffect(() => {
-    if (!pin) return;
-    let cancelled = false;
-    setPhotoIndex(0);
-    setEnrichment(null);
-    const initial =
-      typeof pin.feature.properties.photo === "string" ? pin.feature.properties.photo : null;
+    if (!pin || !refs) return;
+    const controller = new AbortController();
+    const local = placeFromPin(refs, pin.feature);
+    setPlace(local);
+
+    const initial = local.photo ?? null;
     setPhotos(initial ? [initial] : []);
 
-    const [lng, lat] = pin.feature.geometry.coordinates;
-    const name = String(pin.feature.properties.name ?? "");
-    const category = String(pin.feature.properties.category ?? "");
-    const osmId = String(pin.feature.properties.osmId ?? pin.feature.properties.id ?? "");
-
     void (async () => {
-      const wiki = await resolvePhotoUrl(photoOpts(pin.feature));
-      if (cancelled) return;
-      const base = [wiki, initial].filter(
-        (u, i, arr): u is string => Boolean(u) && arr.indexOf(u) === i
-      );
-      setPhotos(base);
-      const params = new URLSearchParams({
-        lng: String(lng),
-        lat: String(lat),
-        name,
-        category,
-        osmId
-      });
-      try {
-        const res = await fetch(`${API_BASE}/places/enrich?${params}`);
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as Enrichment;
-        setEnrichment(data);
-        const extra = (data.photos ?? []).filter((u) => !base.includes(u));
-        setPhotos([...base, ...extra]);
-      } catch {
-        /* degrade to wiki/placeholder */
+      const [wiki, detail] = await Promise.all([
+        resolvePhotoUrl(photoOpts(pin.feature)),
+        fetchPlaceDetail(refs, controller.signal)
+      ]);
+      if (controller.signal.aborted) return;
+
+      // The server fills gaps; it never overwrites what the pin already showed, so the panel
+      // doesn't visibly rewrite itself a second after opening.
+      if (detail) {
+        setPlace({
+          ...local,
+          ...Object.fromEntries(Object.entries(detail).filter(([, v]) => v !== undefined)),
+          name: local.name || detail.name,
+          tags: local.tags ?? detail.tags,
+          sources: detail.sources.length ? detail.sources : local.sources
+        } as Place);
       }
+      const gallery = [wiki, initial, detail?.photo].filter(
+        (url, i, arr): url is string => Boolean(url) && arr.indexOf(url) === i
+      );
+      setPhotos(gallery);
     })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [pin]);
+    return () => controller.abort();
+  }, [pin, refs]);
 
-  if (!pin) return null;
+  if (!pin || !refs || !place) return null;
 
-  const [lng, lat] = pin.feature.geometry.coordinates;
-  const name = pin.feature.properties.name ?? "Pin";
-  const category = String(pin.feature.properties.category ?? pin.layerId);
-  const style = PIN_STYLES[category];
-  const isPark4night = pin.layerId === "park4night";
-  const rating =
-    enrichment?.rating ??
-    (typeof pin.feature.properties.rating === "number" ? pin.feature.properties.rating : null);
-  const reviews =
-    enrichment?.ratingCount ??
-    (typeof pin.feature.properties.reviews === "number" ? pin.feature.properties.reviews : 0);
-  const services = Array.isArray(pin.feature.properties.services)
-    ? (pin.feature.properties.services as string[])
-    : [];
+  const { lng, lat } = refs;
   const externalUrl =
     typeof pin.feature.properties.externalUrl === "string"
       ? pin.feature.properties.externalUrl
       : null;
-  const address = enrichment?.address ?? null;
-  const distance = distanceMeters(view, { lng, lat });
-  const gpsText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-  const hero = photos[photoIndex] ?? photos[0] ?? null;
 
   const planRoute = async (profile: "foot" | "bike" | "car" = "car") => {
     let fix: Fix;
@@ -203,17 +208,8 @@ export function PinDetail() {
     }
   };
 
-  const copyGps = async () => {
-    try {
-      await navigator.clipboard.writeText(gpsText);
-      store.showToast("GPS zkopírováno");
-    } catch {
-      store.showToast(gpsText);
-    }
-  };
-
   const savePlace = async () => {
-    const result = await saveUserPlace({ name, lng, lat, kind: "place" });
+    const result = await saveUserPlace({ name: place.name, lng, lat, kind: "place" });
     if (result === "auth") {
       store.openSheet("auth");
       store.showToast("Přihlas se pro uložení bodu");
@@ -261,125 +257,45 @@ export function PinDetail() {
           </div>
         </div>
         <div className="panel-body">
-          {hero ? (
-            <div className="pin-photo-wrap">
-              <img className="pin-photo" src={hero} alt="" />
-              {photos.length > 1 && (
-                <div className="pin-gallery">
-                  {photos.map((url, i) => (
-                    <button
-                      key={url}
-                      type="button"
-                      className={i === photoIndex ? "active" : ""}
-                      onClick={() => setPhotoIndex(i)}
-                    >
-                      <img src={url} alt="" />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="pin-photo-placeholder" aria-hidden>
-              {style?.icon ?? "📍"}
-            </div>
-          )}
-
-          <div className="pin-hero">
-            <div className="pin-badge" style={{ background: style?.color ?? "#B7791F" }}>
-              {style?.icon ?? "📍"}
-            </div>
-            <div>
-              <h3>{name}</h3>
-              <p className="meta">{style?.label ?? category}</p>
-            </div>
-          </div>
-
-          <div className="gps-row">
-            <span>{gpsText}</span>
-            <button
-              className="btn small"
-              type="button"
-              data-testid="copy-gps"
-              onClick={() => void copyGps()}
-            >
-              Kopírovat
-            </button>
-          </div>
-
-          {address && <p className="meta">{address}</p>}
-
-          {(rating != null || reviews > 0) && (
-            <p className="meta">
-              {rating != null ? `★ ${rating.toFixed(1)}` : "★"}{" "}
-              {reviews ? `(${reviews} recenzí)` : ""}
-            </p>
-          )}
-
-          {enrichment?.tips?.length ? (
-            <div className="discover-summary">
-              {enrichment.tips.slice(0, 3).map((tip) => (
-                <p key={tip.text} className="meta" style={{ marginBottom: 6 }}>
-                  „{tip.text}“
-                </p>
-              ))}
-            </div>
-          ) : null}
-
-          <p className="meta">
-            Vzdálenost:{" "}
-            {distance >= 1000 ? `${(distance / 1000).toFixed(1)} km` : `${Math.round(distance)} m`}
-          </p>
-
-          {isPark4night && (
-            <p className="meta" style={{ marginBottom: 10 }}>
-              Neoficiální zdroj dat (park4night.com) — zobrazeno jako prototyp.
-            </p>
-          )}
-          {services.length > 0 && (
-            <div className="tag-grid" style={{ marginBottom: 10 }}>
-              {services.map((s) => (
-                <span key={s} className="tag">
-                  {SERVICE_LABELS[s] ?? s}
-                </span>
-              ))}
-            </div>
-          )}
-          {pin.feature.properties.description ? (
-            <p>{String(pin.feature.properties.description)}</p>
-          ) : null}
-          <div className="actions">
-            {externalUrl && (
-              <a
-                className="btn"
-                href={externalUrl}
-                target="_blank"
-                rel="noreferrer"
-                data-testid="p4n-link"
-              >
-                Otevřít na Park4Night
-              </a>
-            )}
-            <a
-              className="btn"
-              href={googleMapsLink(lat, lng)}
-              target="_blank"
-              rel="noreferrer"
-              data-testid="nav-google"
-            >
-              Google Maps
-            </a>
-            <button
-              className="btn btn-accent"
-              data-testid="route-car"
-              onClick={() => void planRoute("car")}
-            >
-              Trasa
-            </button>
-            <button className="btn" data-testid="save-place" onClick={() => void savePlace()}>
-              Uložit bod
-            </button>
-          </div>
+          <InfoEngine
+            place={place}
+            refs={refs.refs}
+            photos={photos}
+            actions={
+              <>
+                {externalUrl && (
+                  <a
+                    className="btn"
+                    href={externalUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid="p4n-link"
+                  >
+                    Otevřít na Park4Night
+                  </a>
+                )}
+                <a
+                  className="btn"
+                  href={googleMapsLink(lat, lng)}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="nav-google"
+                >
+                  Google Maps
+                </a>
+                <button
+                  className="btn btn-accent"
+                  data-testid="route-car"
+                  onClick={() => void planRoute("car")}
+                >
+                  Trasa
+                </button>
+                <button className="btn" data-testid="save-place" onClick={() => void savePlace()}>
+                  Uložit bod
+                </button>
+              </>
+            }
+          />
         </div>
       </div>
     </>

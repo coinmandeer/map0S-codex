@@ -237,13 +237,132 @@
     margin-top: var(--space-7);
   }
 
-  .gps-row {
+  /* ---- Info engine ---------------------------------------------------- */
+  .pin-rating {
+    margin-left: auto;
+    font-weight: var(--weight-strong);
+    white-space: nowrap;
+  }
+
+  /* Sticks so the tabs stay reachable while a long article scrolls under them. */
+  .info-engine .tab-bar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin-top: var(--space-7);
+    background: var(--surface-solid);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .info-body {
+    padding-top: var(--space-6);
+    min-height: 120px;
+  }
+
+  .info-panel > * + * {
+    margin-top: var(--space-5);
+  }
+
+  .info-facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-3) var(--space-6);
+    margin: 0;
+    font-size: var(--text-sm);
+  }
+
+  .info-facts dt {
+    color: var(--text-faint);
+  }
+
+  .info-facts dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .info-gps {
     display: flex;
     align-items: center;
     gap: var(--space-4);
-    margin: var(--space-4) 0;
     font-family: var(--font-mono);
-    font-size: var(--text-sm);
+  }
+
+  .info-provenance {
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--border);
+  }
+
+  .info-thumb {
+    width: 100%;
+    max-height: 180px;
+    object-fit: cover;
+    border-radius: var(--radius);
+  }
+
+  .info-photos {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-3);
+  }
+
+  .info-photos img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+  }
+
+  .info-tip {
+    font-style: italic;
+    color: var(--text-muted);
+  }
+
+  .info-rating {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-4);
+  }
+
+  .weather-now {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    font-size: var(--text-2xl);
+  }
+
+  .weather-now-icon {
+    font-size: 32px;
+  }
+
+  .weather-arrow {
+    display: inline-block;
+    margin-left: var(--space-2);
+  }
+
+  .weather-hours {
+    display: flex;
+    gap: var(--space-5);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .weather-hours::-webkit-scrollbar {
+    display: none;
+  }
+
+  .weather-hour,
+  .weather-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    text-align: center;
+  }
+
+  .weather-days {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
   }
 
   /* ---- Discover ------------------------------------------------------- */

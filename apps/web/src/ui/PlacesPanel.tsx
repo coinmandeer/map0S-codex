@@ -138,6 +138,7 @@ function PlacesTab() {
           <button
             key={`${p.layerId}-${p.feature.properties.id}`}
             className="place-card"
+            data-testid="place-card"
             onClick={() => openPlace(p)}
           >
             <PlacePhoto feature={p.feature} style={style} />
