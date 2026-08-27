@@ -41,6 +41,12 @@ export default tseslint.config(
     }
   },
   {
+    // Ambient declarations exist to be picked up by the compiler, never referenced in the file
+    // that declares them — "unused" is the normal state here, not a smell.
+    files: ["**/*.d.ts"],
+    rules: { "@typescript-eslint/no-unused-vars": "off" }
+  },
+  {
     // Scripts and servers are the places where writing to stdout *is* the interface.
     files: ["scripts/**/*.mjs", "apps/api/src/**/*.ts", "**/*.test.ts", "e2e/**/*.ts"],
     languageOptions: {
