@@ -194,6 +194,9 @@ export class LayerEngine {
       if (data) {
         this.cache.set(cacheKey, data);
         this.store.setVisibleFeatures(layerId, data.features);
+        // An upstream that refused the request explains itself here; an area that genuinely
+        // has nothing in it clears any previous explanation.
+        this.store.setLayerNotice(layerId, data.notice);
         const meta = (data as FeatureCollection & { meta?: PlacesResponse["meta"] }).meta;
         if (meta) this.store.applySourceMeta(meta.sources);
         if (markPinFetch || viewportCostOf(managed.plugin) === "expensive") {

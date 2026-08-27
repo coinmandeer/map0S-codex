@@ -84,6 +84,12 @@ export interface GeoFeature {
 export interface FeatureCollection {
   type: "FeatureCollection";
   features: GeoFeature[];
+  /**
+   * Why this collection is empty, when it is empty on purpose — "zoom in further", "this source
+   * is down". Without it an upstream refusing a request and an area genuinely having nothing in
+   * it look identical to the user.
+   */
+  notice?: string;
 }
 
 /** `TMap` is the renderer handle — MapLibre's `Map` in this app. It stays a type parameter so

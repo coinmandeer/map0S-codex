@@ -66,6 +66,7 @@ export interface MapState {
   toast: string | null;
   mode: LayerMode;
   loadingLayers: Record<string, boolean>;
+  layerNotices: Record<string, string>;
   visibleFeatures: Record<string, GeoFeature[]>;
   theme: ThemeMode;
   /** True when the map moved away from the last OSM fetch — show "Hledat zde". */
@@ -286,6 +287,7 @@ export class MapStore {
       toast: null,
       mode,
       loadingLayers: {},
+      layerNotices: {},
       visibleFeatures: {},
       theme: loadInitialTheme(),
       searchHerePending: false,
@@ -370,6 +372,9 @@ export class MapStore {
   }
   get loadingLayers() {
     return this.state.loadingLayers;
+  }
+  get layerNotices() {
+    return this.state.layerNotices;
   }
   get visibleFeatures() {
     return this.state.visibleFeatures;
@@ -615,6 +620,16 @@ export class MapStore {
     if (loading) next[layerId] = true;
     else delete next[layerId];
     this.patch({ loadingLayers: next });
+  }
+
+  /** Why a layer came back empty on purpose — "zoom in", "source is down". Cleared as soon as
+   *  the layer returns something, so a stale explanation never outlives its cause. */
+  setLayerNotice(layerId: string, notice: string | undefined) {
+    if (this.state.layerNotices[layerId] === notice) return;
+    const next = { ...this.state.layerNotices };
+    if (notice) next[layerId] = notice;
+    else delete next[layerId];
+    this.patch({ layerNotices: next });
   }
 
   setVisibleFeatures(layerId: string, features: GeoFeature[]) {

@@ -16,6 +16,7 @@ import {
   parsePoiCategories,
   placesToFeatureCollection
 } from "./placesPresentation.js";
+import { dataSourceProviders } from "./dataSources/index.js";
 
 export interface FeatureRequest {
   bbox: Bbox;
@@ -67,7 +68,8 @@ export const FEATURE_PROVIDERS: FeatureProvider[] = [
     features: ({ bbox }) => getPark4nightFeatures(bbox)
   },
   { id: "weather", name: "Počasí", kind: "raster" },
-  { id: "game", name: "QuestLayer", kind: "custom-gl" }
+  { id: "game", name: "QuestLayer", kind: "custom-gl" },
+  ...dataSourceProviders
 ];
 
 const BY_ID = new Map(FEATURE_PROVIDERS.map((p) => [p.id, p]));
