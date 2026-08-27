@@ -144,4 +144,44 @@ test.describe("MapOS V3 smoke", () => {
     await expect(page.getByTestId("discover-breadcrumb")).toBeVisible();
     await expect(page.getByTestId("region-CZ-PLK")).toBeVisible();
   });
+
+  test("the discover tabs each answer their own question", async ({ page }) => {
+    await page.route("**/discover/guide*", (route) =>
+      route.fulfill({
+        json: {
+          area: "Plzeň",
+          lang: "cs",
+          sourceId: "wikivoyage",
+          attribution: "Wikivoyage (CC BY-SA 4.0)",
+          url: "https://cs.wikivoyage.org/wiki/Plze%C5%88",
+          sections: [
+            {
+              id: "see",
+              title: "Co vidět",
+              items: [
+                {
+                  name: "Velká synagoga",
+                  lng: 13.3736,
+                  lat: 49.7466,
+                  description: "Druhá největší synagoga v Evropě.",
+                  sourceRef: "wikivoyage:cs:Plzeň#Velká synagoga"
+                }
+              ]
+            }
+          ]
+        }
+      })
+    );
+
+    await page.goto("/?mode=discover&country=CZ");
+    await expect(page.getByTestId("discover-panel")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("region-CZ-PLK")).toBeVisible();
+
+    await page.getByTestId("discover-tab-guide").click();
+    await expect(page.getByTestId("discover-guide")).toContainText("Velká synagoga");
+    await expect(page.getByTestId("region-CZ-PLK")).toBeHidden();
+
+    await page.getByTestId("discover-tab-people").click();
+    await expect(page.getByTestId("discover-panel")).toContainText("Příspěvky lidí");
+  });
 });

@@ -60,6 +60,7 @@ import { getPlaceDetail } from "./services/placeDetailService.js";
 import { listDiscoverRegions } from "./services/regionService.js";
 import { getRegionSummary } from "./services/regionSummaryService.js";
 import { reverseGeocodeCountry } from "./services/discoverService.js";
+import { registerGuideRoutes } from "./routes/guideRoutes.js";
 import { initDb } from "./db/index.js";
 import { capabilities, config } from "./config.js";
 
@@ -599,6 +600,8 @@ export async function buildApp() {
     if (!region) return reply.code(400).send({ message: "region required" });
     return getRegionSummary(region);
   });
+
+  registerGuideRoutes(app);
 
   return app;
 }
