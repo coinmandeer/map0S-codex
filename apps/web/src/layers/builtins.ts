@@ -1,5 +1,6 @@
 import { OSM_POI_CATEGORIES } from "@mapos/layer-sdk";
 import { registerLayer } from "./registry";
+import "./plugins/tileLayers";
 import { createPinsLayerHandle } from "./pinsLayer";
 import { createWeatherLayerHandle } from "./weatherLayer";
 import { LazyHandle } from "./lazyHandle";

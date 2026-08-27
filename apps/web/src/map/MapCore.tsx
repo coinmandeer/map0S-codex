@@ -331,6 +331,10 @@ export function MapCore() {
 
     mapRef.current = map;
 
+    // End-to-end tests need to ask the map what it actually rendered — "is this layer attached?"
+    // has no DOM equivalent on a canvas. Dev-only, so it never reaches a production bundle.
+    if (import.meta.env.DEV) window.__maposMap = map;
+
     return () => {
       window.removeEventListener("resize", resize);
       window.removeEventListener("orientationchange", resize);
@@ -341,6 +345,7 @@ export function MapCore() {
       engineRef.current = null;
       map.remove();
       mapRef.current = null;
+      if (import.meta.env.DEV) delete window.__maposMap;
     };
   }, []);
 

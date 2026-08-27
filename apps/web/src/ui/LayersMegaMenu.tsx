@@ -1,8 +1,10 @@
-import type { OsmPoiCategoryId } from "@mapos/layer-sdk";
+import { useMemo } from "react";
+import type { LayerCategory, OsmPoiCategoryId } from "@mapos/layer-sdk";
 import { OSM_POI_CATEGORIES } from "@mapos/layer-sdk";
-import { extraLayerPlugins } from "../layers";
+import { extraLayerPlugins, type MapLayerPlugin } from "../layers";
 import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
+import { LAYER_CATEGORY_LABELS, LAYER_CATEGORY_ORDER } from "./layerLabels";
 import { CATEGORY_GROUPS, MAP_PRESETS, PIN_STYLES } from "./presets";
 
 export function LayersMegaMenu({ onClose, mobile }: { onClose: () => void; mobile: boolean }) {
@@ -28,7 +30,17 @@ export function LayersMegaMenu({ onClose, mobile }: { onClose: () => void; mobil
 
   // Layers that don't belong to a bottom-nav section — the manifests decide, so registering a
   // new standalone layer makes it appear here without touching this component.
-  const extraLayers = extraLayerPlugins(capabilities);
+  const groupedExtras = useMemo(() => {
+    const byCategory = new Map<LayerCategory, MapLayerPlugin[]>();
+    for (const plugin of extraLayerPlugins(capabilities)) {
+      const list = byCategory.get(plugin.manifest.category) ?? [];
+      list.push(plugin);
+      byCategory.set(plugin.manifest.category, list);
+    }
+    const known = LAYER_CATEGORY_ORDER.filter((c) => byCategory.has(c));
+    const rest = [...byCategory.keys()].filter((c) => !LAYER_CATEGORY_ORDER.includes(c));
+    return [...known, ...rest].map((c) => [c, byCategory.get(c)!] as const);
+  }, [capabilities]);
 
   return (
     <>
@@ -72,30 +84,35 @@ export function LayersMegaMenu({ onClose, mobile }: { onClose: () => void; mobil
 
         <section>
           <h3 className="mega-section-title">Zdroje dat</h3>
-          {extraLayers.map((entry) => {
-            const isActive = Boolean(active[entry.manifest.id]?.visible);
-            return (
-              <button
-                key={entry.manifest.id}
-                type="button"
-                className={`overflow-item ${isActive ? "active" : ""}`}
-                data-testid={`overflow-${entry.manifest.id}`}
-                onClick={() => {
-                  store.toggleLayer(entry.manifest.id);
-                  store.showToast(
-                    isActive ? `${entry.manifest.name} vypnuto` : `${entry.manifest.name} zapnuto`
-                  );
-                }}
-              >
-                <span className="overflow-icon">{entry.manifest.icon}</span>
-                <span className="overflow-name">
-                  {entry.manifest.name}
-                  {entry.manifest.experimental && <span className="beta-badge">beta</span>}
-                </span>
-                <span className={`toggle small ${isActive ? "on" : ""}`} />
-              </button>
-            );
-          })}
+          {groupedExtras.map(([category, plugins]) => (
+            <div key={category} className="group-block">
+              <div className="group-title">{LAYER_CATEGORY_LABELS[category]}</div>
+              {plugins.map(({ manifest }) => {
+                const isActive = Boolean(active[manifest.id]?.visible);
+                return (
+                  <button
+                    key={manifest.id}
+                    type="button"
+                    className={`overflow-item ${isActive ? "active" : ""}`}
+                    data-testid={`overflow-${manifest.id}`}
+                    onClick={() => {
+                      store.toggleLayer(manifest.id);
+                      store.showToast(
+                        isActive ? `${manifest.name} vypnuto` : `${manifest.name} zapnuto`
+                      );
+                    }}
+                  >
+                    <span className="overflow-icon">{manifest.icon}</span>
+                    <span className="overflow-name">
+                      {manifest.name}
+                      {manifest.experimental && <span className="beta-badge">beta</span>}
+                    </span>
+                    <span className={`toggle small ${isActive ? "on" : ""}`} />
+                  </button>
+                );
+              })}
+            </div>
+          ))}
           {active.weather?.visible && (
             <div style={{ padding: "8px 10px" }}>
               <label className="meta">Radar průhlednost</label>
