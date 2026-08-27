@@ -602,6 +602,47 @@
     opacity: 0.7;
   }
 
+  /* Sits under the mode bar, below the Search-here button's slot so the two never overlap. */
+  .layer-notices {
+    position: fixed;
+    top: calc(var(--modebar-h) + var(--space-6));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 24;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    width: min(420px, calc(100vw - 32px));
+    pointer-events: none;
+  }
+
+  .layer-notice {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-6);
+    border-radius: var(--radius);
+    background: var(--surface-solid);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+  }
+
+  .layer-notice-icon {
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .layer-notice-text strong {
+    color: var(--text);
+    font-weight: var(--weight-strong);
+  }
+
+  .app-shell.panel-open .layer-notices {
+    left: calc(var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2);
+  }
+
   .toast {
     position: fixed;
     top: calc(var(--modebar-h) + var(--space-6));
@@ -721,6 +762,10 @@
     .toast {
       top: auto;
       bottom: calc(var(--bottom-nav-h) + var(--space-6) + var(--safe-bottom));
+    }
+
+    .layer-notices {
+      width: calc(100vw - 32px);
     }
 
     .maplibregl-ctrl-bottom-right,

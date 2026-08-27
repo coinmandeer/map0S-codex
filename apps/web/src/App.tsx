@@ -9,6 +9,7 @@ import { useMapStoreSnapshot } from "./store/useMapStoreSnapshot";
 import { ModeBar } from "./ui/ModeBar";
 import { BottomNav } from "./ui/BottomNav";
 import { PlacesPanel } from "./ui/PlacesPanel";
+import { LayerNotices } from "./ui/LayerNotices";
 import { SearchHereButton } from "./ui/SearchHereButton";
 import { SourceStatus } from "./ui/SourceStatus";
 
@@ -95,6 +96,7 @@ export function App() {
       </div>
 
       <SearchHereButton />
+      <LayerNotices />
       <SourceStatus floating testId="map-source-strip" />
       <BottomNav />
       <PlacesPanel />
