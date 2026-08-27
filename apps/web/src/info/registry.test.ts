@@ -91,13 +91,21 @@ test("the built-in panels cover a bare place and grow with what it knows", async
   await import("./builtins");
 
   const bare = infoPanelsFor({ place: place(), refs: {} }).map((p) => p.id);
-  assert.deepEqual(bare, ["prehled", "wikipedia", "pocasi"]);
+  assert.equal(bare[0], "prehled", "the overview always leads");
+  // Anything that only needs coordinates is available for every place.
+  for (const id of ["wikipedia", "pocasi", "mapy-okoli", "mapillary", "windy", "odkazy"]) {
+    assert.ok(bare.includes(id), `${id} should apply to any place`);
+  }
+  assert.ok(!bare.includes("wikidata"));
+  assert.ok(!bare.includes("foursquare"));
 
   const rich = infoPanelsFor({
     place: place({ wikidata: "Q42", fsqId: "4b0" }),
     refs: {}
   }).map((p) => p.id);
-  assert.deepEqual(rich, ["prehled", "wikipedia", "wikidata", "pocasi", "foursquare"]);
+  assert.ok(rich.includes("wikidata"));
+  assert.ok(rich.includes("foursquare"));
+  assert.ok(rich.indexOf("odkazy") === rich.length - 1, "external links sort last");
 
   for (const p of allInfoPanels()) {
     assert.ok(p.attribution, `panel ${p.id} must credit its source`);

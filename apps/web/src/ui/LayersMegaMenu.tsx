@@ -162,6 +162,7 @@ export function LayersMegaMenu({ onClose, mobile }: { onClose: () => void; mobil
                         type="button"
                         className={`tag ${selected ? "selected" : ""}`}
                         data-testid={`filter-${id}`}
+                        aria-pressed={selected}
                         style={selected ? { background: style?.color ?? "#B7791F" } : undefined}
                         onClick={() => toggleCategory(id as OsmPoiCategoryId)}
                       >

@@ -79,6 +79,8 @@ registerLayer({
     primaryForModes: ["weather"]
   },
   filters: [{ id: "opacity", label: "Průhlednost", kind: "range", min: 0.2, max: 1, default: 0.6 }],
+  // Weather is an overlay: at full opacity it hides the map it is supposed to describe.
+  defaultOpacity: 0.6,
   create: (ctx) => createWeatherLayerHandle(ctx.map, ctx.layerId),
   attribution: [
     { label: "RainViewer", url: "https://www.rainviewer.com/" },

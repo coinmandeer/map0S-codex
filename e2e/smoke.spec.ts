@@ -24,6 +24,20 @@ test.describe("MapOS V3 smoke", () => {
     await expect(page.getByTestId("toast")).toBeVisible();
   });
 
+  test("the sport usecase turns on its categories and the trail overlay", async ({ page }) => {
+    await page.goto("/?layers=osm-poi&mode=poi");
+    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("preset-sport").click();
+
+    const layers = await page.evaluate(
+      () => new URLSearchParams(location.search).get("layers") ?? ""
+    );
+    expect(layers).toContain("waymarked-trails");
+
+    await expect(page.getByTestId("filter-via_ferrata")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("filter-skatepark")).toHaveAttribute("aria-pressed", "true");
+  });
+
   test("filter categories toggle in layers megamenu", async ({ page }) => {
     await page.goto("/?layers=osm-poi&mode=poi");
     await page.getByTestId("overflow-btn").click();
@@ -41,12 +55,20 @@ test.describe("MapOS V3 smoke", () => {
     await expect(page.getByTestId("theme-segmented")).toBeVisible();
   });
 
-  test("auth sheet opens from settings", async ({ page }) => {
+  // Every visitor is signed in as a guest before they touch anything, so the account sheet
+  // opens on the profile — the credentials form belongs to the sign-out state.
+  test("auth sheet opens from settings on the guest profile", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("settings-btn").click();
     await expect(page.getByTestId("settings-sheet")).toBeVisible();
     await page.getByTestId("settings-account").click();
     await expect(page.getByTestId("auth-sheet")).toBeVisible();
+    await expect(page.getByTestId("auth-sheet")).toContainText("Odhlásit");
+
+    // Signing out closes the sheet; reopening it is where the credentials form lives.
+    await page.getByText("Odhlásit").click();
+    await page.getByTestId("settings-btn").click();
+    await page.getByTestId("settings-account").click();
     await expect(page.getByTestId("auth-email")).toBeVisible();
   });
 

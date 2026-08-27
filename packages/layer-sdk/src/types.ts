@@ -151,6 +151,9 @@ export interface LayerPlugin<TMap = unknown> {
   manifest: LayerManifest;
   filters?: FilterFacet[];
   defaultFilters?: FilterValues;
+  /** Opacity a freshly enabled layer starts at. Overlays that sit on top of the basemap want
+   *  less than 1 so the map underneath stays readable. */
+  defaultOpacity?: number;
   /** Default `expensive` for `pins`, `cheap` otherwise; see `viewportCostOf`. */
   viewportCost?: ViewportCost;
   /**
@@ -267,7 +270,42 @@ export const OSM_POI_CATEGORIES = {
   shower: { label: "Sprchy", group: "services", overpass: 'node["amenity"="shower"]' },
   camp_site: { label: "Kempy", group: "stay", overpass: 'node["tourism"="camp_site"]' },
   alpine_hut: { label: "Horské chaty", group: "stay", overpass: 'node["tourism"="alpine_hut"]' },
-  shelter: { label: "Přístřešky", group: "stay", overpass: 'node["amenity"="shelter"]' }
+  shelter: { label: "Přístřešky", group: "stay", overpass: 'node["amenity"="shelter"]' },
+  via_ferrata: {
+    label: "Ferraty",
+    group: "sport",
+    overpass: 'node["highway"="via_ferrata"]'
+  },
+  climbing: {
+    label: "Lezecké skály",
+    group: "sport",
+    overpass: 'node["sport"="climbing"]'
+  },
+  fitness_trail: {
+    label: "Fitness stezky",
+    group: "sport",
+    overpass: 'node["leisure"="fitness_station"]'
+  },
+  disc_golf: {
+    label: "Disc golf",
+    group: "sport",
+    overpass: 'node["leisure"="disc_golf_course"]'
+  },
+  skatepark: {
+    label: "Skateparky",
+    group: "sport",
+    overpass: 'node["leisure"="skatepark"]'
+  },
+  swimming: {
+    label: "Koupaliště",
+    group: "sport",
+    overpass: 'node["leisure"="swimming_area"]'
+  },
+  sports_centre: {
+    label: "Sportoviště",
+    group: "sport",
+    overpass: 'node["leisure"="sports_centre"]'
+  }
 } as const;
 
 export type OsmPoiCategoryId = keyof typeof OSM_POI_CATEGORIES;

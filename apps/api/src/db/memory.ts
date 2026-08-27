@@ -158,30 +158,15 @@ export function memoryUserFeatures(bbox: Bbox): FeatureCollection {
 }
 
 export function memoryOsmFeatures(_bbox: Bbox, categories: OsmPoiCategoryId[]): FeatureCollection {
-  const demo: Record<OsmPoiCategoryId, [number, number, string][]> = {
+  // Partial on purpose: a category with no fixture is simply empty, so adding one to the SDK
+  // doesn't require an entry here.
+  const demo: Partial<Record<OsmPoiCategoryId, [number, number, string][]>> = {
     castle: [[13.3775, 49.7475, "Plzeň — historické centrum"]],
     viewpoint: [[13.382, 49.7505, "Riegrovy sady"]],
     parking: [[13.376, 49.748, "Parkoviště Centrum"]],
-    waterfall: [],
-    lake: [],
-    peak: [],
-    cave: [],
-    palace: [],
-    ruins: [],
-    museum: [],
-    monument: [],
     bar: [[13.378, 49.747, "Irish Pub"]],
-    cafe: [],
-    restaurant: [],
     brewery: [[13.379, 49.748, "Pivovar"]],
-    fuel: [],
-    charging: [],
-    drinking_water: [],
-    toilets: [],
-    shower: [],
-    camp_site: [],
-    alpine_hut: [],
-    shelter: []
+    skatepark: [[13.3805, 49.7462, "Skatepark Plzeň"]]
   };
   const features = categories.flatMap((cat) =>
     (demo[cat] ?? []).map(([lng, lat, name], i) => ({

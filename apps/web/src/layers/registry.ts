@@ -1,5 +1,6 @@
 import type maplibregl from "maplibre-gl";
 import type {
+  FilterValues,
   LayerCatalogEntry,
   LayerHandle,
   LayerMode,
@@ -78,6 +79,23 @@ export function layerIdsForMode(mode: LayerMode): string[] {
 /** Layers not tied to any section — the "extras" list in the mega-menu. */
 export function extraLayerPlugins(caps: ServerCapabilities | null = null): MapLayerPlugin[] {
   return availableLayerPlugins(caps).filter((p) => !p.manifest.modes?.length);
+}
+
+/** The state a layer starts in when it is switched on.
+ *
+ *  Owned by the plugin rather than by the store, which used to special-case `osm-poi` and
+ *  `weather` by id — every layer with a non-trivial default needed another branch there. */
+export function initialLayerState(layerId: string): {
+  visible: true;
+  opacity: number;
+  filters: FilterValues;
+} {
+  const plugin = plugins.get(layerId);
+  return {
+    visible: true,
+    opacity: plugin?.defaultOpacity ?? 1,
+    filters: { ...(plugin?.defaultFilters ?? {}) }
+  };
 }
 
 export function createLayerHandle(

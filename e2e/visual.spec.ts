@@ -34,17 +34,11 @@ test.describe("visual snapshots", () => {
       }
       await page.getByTestId("discover-panel").waitFor({ timeout: 15_000 });
       await page.screenshot({ path: `${DIR}/${width}-discover.png`, fullPage: true });
-      await page
-        .locator(".panel-left-overlay")
-        .click({ force: true })
-        .catch(() => {});
-
-      if (mobile) {
-        await page.getByTestId("bottom-nav").getByTestId("mode-game").click({ force: true });
-      } else {
-        await page.getByTestId("mode-bar").getByTestId("mode-game").click();
-      }
-      await page.getByTestId("game-hud").waitFor({ timeout: 15_000 });
+      // Reached by URL rather than by clicking through: the Discover panel's overlay sits over
+      // the nav it would have to click, and this screenshot is about the game screen, not about
+      // how you get there.
+      await page.goto("/?mode=game");
+      await page.getByTestId("game-hud").waitFor({ timeout: 30_000 });
       await page.screenshot({ path: `${DIR}/${width}-game.png`, fullPage: true });
     }
   });

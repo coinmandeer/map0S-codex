@@ -65,11 +65,24 @@ test("the previous snapshot is left untouched", () => {
 
 test("changing opacity replaces the reference too", () => {
   const before = store.activeLayers;
+  const beforeOpacity = before.weather?.opacity;
   store.setLayerOpacity("weather", 0.42);
 
   assert.notEqual(before, store.activeLayers);
   assert.equal(store.activeLayers.weather?.opacity, 0.42);
-  assert.equal(before.weather?.opacity, 1, "old snapshot keeps its opacity");
+  assert.equal(before.weather?.opacity, beforeOpacity, "old snapshot keeps its opacity");
+});
+
+test("a layer switched on starts from its plugin's defaults", () => {
+  store.toggleLayer("weather");
+  assert.equal(Object.hasOwn(store.activeLayers, "weather"), false, "precondition: weather is off");
+
+  store.toggleLayer("weather");
+  assert.equal(
+    store.activeLayers.weather?.opacity,
+    0.6,
+    "weather is an overlay and must not start opaque"
+  );
 });
 
 test("toggling a layer off replaces the reference and drops the entry", () => {

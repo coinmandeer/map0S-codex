@@ -11,7 +11,7 @@ import type {
 import { defaultPlaceSources } from "@mapos/layer-sdk";
 import { getCountryMapConfig } from "../lib/countries";
 import { emit } from "../lib/events";
-import { primaryLayerForMode } from "../layers";
+import { initialLayerState, primaryLayerForMode } from "../layers";
 
 export interface UserSession {
   id: string;
@@ -85,14 +85,6 @@ export interface MapState {
   capabilities: ServerCapabilities | null;
 }
 
-const DEFAULT_FILTERS_BY_MODE: Record<LayerMode, FilterValues> = {
-  poi: {},
-  weather: {},
-  game: {},
-  mine: {},
-  discover: {}
-};
-
 const COUNTRY_STORAGE_KEY = "mapos:country";
 const TAG_STORAGE_KEY = "mapos:active-tag";
 const GAME_TRACKING_KEY = "mapos:game-tracking";
@@ -157,9 +149,12 @@ function loadGotchiToken(): string {
   return window.localStorage.getItem(GOTCHI_TOKEN_KEY) ?? "0";
 }
 
-function defaultFiltersForMode(mode: LayerMode): FilterValues {
-  if (mode === "poi") return { categories: loadSavedCategories() };
-  return DEFAULT_FILTERS_BY_MODE[mode];
+/** A layer's own defaults, plus the one thing the plugin can't know: which POI categories this
+ *  particular user last had switched on. */
+function initialStateFor(layerId: string) {
+  const base = initialLayerState(layerId);
+  if (layerId !== "osm-poi") return base;
+  return { ...base, filters: { ...base.filters, categories: loadSavedCategories() } };
 }
 
 const CATS_STORAGE_KEY = "mapos:categories";
@@ -306,11 +301,7 @@ export class MapStore {
     // Activate the mode's primary layer on first load when URL didn't list any layers.
     const primary = primaryLayerForMode(mode);
     if (!this.state.activeLayers[primary]?.visible) {
-      this.state.activeLayers[primary] = {
-        visible: true,
-        opacity: primary === "weather" ? 0.6 : 1,
-        filters: defaultFiltersForMode(mode)
-      };
+      this.state.activeLayers[primary] = initialStateFor(primary);
     } else if (primary === "osm-poi" && !this.state.activeLayers["osm-poi"]!.filters?.categories) {
       this.state.activeLayers["osm-poi"]!.filters = { categories: loadSavedCategories() };
     }
@@ -491,11 +482,11 @@ export class MapStore {
       const { [layerId]: _removed, ...rest } = this.state.activeLayers;
       this.state.activeLayers = rest;
     } else {
-      const defaults =
-        layerId === "osm-poi" ? { categories: loadSavedCategories() } : (current?.filters ?? {});
+      const initial = initialStateFor(layerId);
       this.state.activeLayers = {
         ...this.state.activeLayers,
-        [layerId]: { visible: true, opacity: 1, filters: defaults }
+        // Filters the user already chose survive toggling the layer off and back on.
+        [layerId]: { ...initial, filters: current?.filters ?? initial.filters }
       };
     }
     this.state.activePresetId = null;
@@ -512,15 +503,11 @@ export class MapStore {
     this.setSidebarOpen(!this.state.sidebarOpen);
   }
 
-  private ensureLayerActive(layerId: string, defaults: FilterValues) {
+  private ensureLayerActive(layerId: string) {
     if (!this.state.activeLayers[layerId]?.visible) {
       this.state.activeLayers = {
         ...this.state.activeLayers,
-        [layerId]: {
-          visible: true,
-          opacity: layerId === "weather" ? 0.6 : 1,
-          filters: defaults
-        }
+        [layerId]: initialStateFor(layerId)
       };
     }
   }
@@ -545,7 +532,7 @@ export class MapStore {
 
   setMode(mode: LayerMode) {
     this.state.mode = mode;
-    this.ensureLayerActive(primaryLayerForMode(mode), defaultFiltersForMode(mode));
+    this.ensureLayerActive(primaryLayerForMode(mode));
     if (mode === "discover") this.state.sidebarOpen = true;
     this.syncToUrl();
     this.notify();
@@ -644,11 +631,12 @@ export class MapStore {
     if (cats) savePresetCategories(preset.id, cats);
     const next: MapState["activeLayers"] = {};
     for (const layerId of preset.layers) {
-      next[layerId] = {
-        visible: true,
-        opacity: layerId === "weather" ? 0.55 : 1,
-        filters: layerId === "osm-poi" && cats ? { categories: cats } : {}
-      };
+      const initial = initialLayerState(layerId);
+      // A usecase picks the categories; everything else the layer decides for itself.
+      next[layerId] =
+        layerId === "osm-poi" && cats
+          ? { ...initial, filters: { ...initial.filters, categories: cats } }
+          : initial;
     }
     this.state.activeLayers = next;
     this.state.activePresetId = preset.id;
