@@ -486,7 +486,22 @@ export async function buildMemoryApp() {
     cached: false
   }));
 
-  app.get("/discover", async () => ({ posts: [], places: [], wikipedia: [] }));
+  app.get("/discover", async () => ({
+    posts: [],
+    // Ranked shape, so the panel renders the same fields it does against the real server.
+    places: [
+      {
+        id: "demo-castle",
+        name: "Plzeň — historické centrum",
+        category: "castle",
+        lng: 13.3775,
+        lat: 49.7475,
+        score: 3.1,
+        signals: { sitelinks: 12 }
+      }
+    ],
+    wikipedia: []
+  }));
 
   return app;
 }

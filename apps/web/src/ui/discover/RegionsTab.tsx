@@ -26,6 +26,17 @@ interface NotablePlace {
   lng: number;
   lat: number;
   score?: number;
+  signals?: { pageviews?: number; sitelinks?: number; rate?: number };
+}
+
+/** Says why a place is in the list, rather than asking the reader to trust the order. */
+function notabilityNote(place: NotablePlace): string | null {
+  const { pageviews, sitelinks, rate } = place.signals ?? {};
+  const parts: string[] = [];
+  if (pageviews) parts.push(`${Math.round(pageviews / 1000)} tis. čtení/měsíc`);
+  if (sitelinks && sitelinks > 1) parts.push(`${sitelinks} jazyků`);
+  if (rate) parts.push(`hodnocení ${rate}/7`);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 export function RegionsTab({ countryCode, activeTag }: { countryCode: string; activeTag: string | null }) {
@@ -182,6 +193,9 @@ export function RegionsTab({ countryCode, activeTag }: { countryCode: string; ac
             >
               <strong>{p.name ?? "Bez názvu"}</strong>
               <span className="discover-card-kind">{p.category}</span>
+              {notabilityNote(p) && (
+                <span className="discover-card-kind">{notabilityNote(p)}</span>
+              )}
             </button>
           ))}
         </div>

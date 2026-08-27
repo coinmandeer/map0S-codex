@@ -81,7 +81,8 @@ export const config = {
       firms: env("NASA_FIRMS_MAP_KEY"),
       openaq: env("OPENAQ_API_KEY"),
       ebird: env("EBIRD_API_TOKEN"),
-      ticketmaster: env("TICKETMASTER_API_KEY")
+      ticketmaster: env("TICKETMASTER_API_KEY"),
+      opentripmap: env("OPENTRIPMAP_API_KEY")
     };
   },
   /**

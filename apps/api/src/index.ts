@@ -40,6 +40,7 @@ import {
   completeQuest
 } from "./services/gameService.js";
 import { getTopTags } from "./services/tagService.js";
+import { rankByNotability } from "./services/notabilityService.js";
 import { loadWikipediaPois } from "./services/discoverService.js";
 import { listEncounters, resolveEncounter } from "./services/encounterService.js";
 import {
@@ -274,11 +275,14 @@ export async function buildApp() {
       const bbox = [west, south, east, north].every(Number.isFinite)
         ? ([west, south, east, north] as [number, number, number, number])
         : undefined;
-      const [posts, places, wiki] = await Promise.all([
+      const [posts, candidates, wiki] = await Promise.all([
         getDiscoverPins(country, bbox, request.query.tag),
         bbox ? getTopOsmForCountry(bbox) : Promise.resolve([]),
         bbox ? loadWikipediaPois({ west, south, east, north }) : Promise.resolve([])
       ]);
+      // "Most interesting" is a claim, so it is ranked rather than sliced. Without a bbox there
+      // is nothing to rank against and the list stays as it came from the database.
+      const places = bbox ? await rankByNotability(candidates, { bbox }) : candidates;
       return { country, posts, places, wikipedia: wiki };
     } catch (err) {
       return reply.code(400).send({ message: err instanceof Error ? err.message : "Error" });

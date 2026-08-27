@@ -106,7 +106,7 @@ export async function getDiscoverPins(countryCode: string, bbox?: Bbox, tag?: st
 
 export async function getTopOsmForCountry(
   bbox: Bbox,
-  categories = ["castle", "viewpoint", "museum"]
+  categories = ["castle", "viewpoint", "museum", "palace", "ruins", "monument", "waterfall", "cave"]
 ) {
   const [w, s, e, n] = bbox;
   const rows = await db
@@ -121,14 +121,24 @@ export async function getTopOsmForCountry(
         lte(osmPois.lat, n)
       )
     )
-    .limit(30);
+    .limit(60);
   return rows
     .filter((r) => r.name)
-    .map((r) => ({
-      id: r.id,
-      name: r.name,
-      category: r.category,
-      lng: r.lng,
-      lat: r.lat
-    }));
+    .map((r) => {
+      // Mappers record these two tags on exactly the places worth ranking, and they are what
+      // lets a POI be looked up in Wikidata and Wikipedia at all.
+      const tags = (r.tags ?? {}) as Record<string, string>;
+      return {
+        id: r.id,
+        name: r.name,
+        category: r.category,
+        lng: r.lng,
+        lat: r.lat,
+        wikidataId: tags.wikidata,
+        // The tag is "cs:Pražský hrad"; the language prefix is not part of the title.
+        wikipediaTitle: tags.wikipedia?.includes(":")
+          ? tags.wikipedia.slice(tags.wikipedia.indexOf(":") + 1)
+          : tags.wikipedia
+      };
+    });
 }
