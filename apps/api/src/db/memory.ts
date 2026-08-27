@@ -157,17 +157,32 @@ export function memoryUserFeatures(bbox: Bbox): FeatureCollection {
   return { type: "FeatureCollection", features };
 }
 
+// Partial on purpose: a category with no fixture is simply empty, so adding one to the SDK
+// doesn't require an entry here.
+const demo: Partial<Record<OsmPoiCategoryId, [number, number, string][]>> = {
+  castle: [[13.3775, 49.7475, "Plzeň — historické centrum"]],
+  viewpoint: [[13.382, 49.7505, "Riegrovy sady"]],
+  parking: [[13.376, 49.748, "Parkoviště Centrum"]],
+  bar: [[13.378, 49.747, "Irish Pub"]],
+  brewery: [[13.379, 49.748, "Pivovar"]],
+  skatepark: [[13.3805, 49.7462, "Skatepark Plzeň"]]
+};
+
+/** The same fixtures seen as quest anchors, so the offline server exercises the anchored quest
+ *  path instead of only the deterministic spawner. */
+export function memoryPoiFixtures() {
+  return Object.entries(demo).flatMap(([category, entries]) =>
+    (entries ?? []).map(([lng, lat, name], i) => ({
+      osmId: `node/demo-${category}-${i}`,
+      category,
+      name,
+      lng,
+      lat
+    }))
+  );
+}
+
 export function memoryOsmFeatures(_bbox: Bbox, categories: OsmPoiCategoryId[]): FeatureCollection {
-  // Partial on purpose: a category with no fixture is simply empty, so adding one to the SDK
-  // doesn't require an entry here.
-  const demo: Partial<Record<OsmPoiCategoryId, [number, number, string][]>> = {
-    castle: [[13.3775, 49.7475, "Plzeň — historické centrum"]],
-    viewpoint: [[13.382, 49.7505, "Riegrovy sady"]],
-    parking: [[13.376, 49.748, "Parkoviště Centrum"]],
-    bar: [[13.378, 49.747, "Irish Pub"]],
-    brewery: [[13.379, 49.748, "Pivovar"]],
-    skatepark: [[13.3805, 49.7462, "Skatepark Plzeň"]]
-  };
   const features = categories.flatMap((cat) =>
     (demo[cat] ?? []).map(([lng, lat, name], i) => ({
       type: "Feature" as const,

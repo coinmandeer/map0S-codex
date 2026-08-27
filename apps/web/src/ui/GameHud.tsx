@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { Bbox } from "@mapos/layer-sdk";
 import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { loadCollectedOrbIds, loadOrbXp } from "../layers/game/orbsController";
@@ -17,7 +18,14 @@ interface GameQuest {
   id: string;
   title: string;
   rewardPoints: number;
+  /** Quests derived from a real place are claimable only on site; seeded ones are not. */
+  anchored?: boolean;
+  anchorName?: string;
 }
+
+/** Quest anchors are things to walk to, so the list is drawn from a walkable radius around the
+ *  player rather than from whatever the camera happens to frame. */
+const QUEST_RADIUS_DEG = 0.05;
 
 export function GameHud() {
   const store = getMapStore();
@@ -33,6 +41,8 @@ export function GameHud() {
   const [quests, setQuests] = useState<GameQuest[]>([]);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const [staking, setStaking] = useState<StakingOverview | null>(null);
+  const playerRef = useRef<{ lng: number; lat: number } | null>(null);
+  const [questArea, setQuestArea] = useState<Bbox | null>(null);
 
   useEffect(() => {
     const offs = [
@@ -41,23 +51,50 @@ export function GameHud() {
       on("orbs-collected", (detail) => {
         setOrbs((n) => n + (detail?.count ?? 0));
         if (typeof detail?.xp === "number") setXp(detail.xp);
+      }),
+      on("geolocation", ({ lng, lat }) => {
+        playerRef.current = { lng, lat };
+        // Refetching on every position tick would hammer the endpoint; a new area is only
+        // needed once the player has left the one the quests were fetched for.
+        setQuestArea((current) =>
+          current && lng > current[0] + 0.01 && lng < current[2] - 0.01 &&
+          lat > current[1] + 0.01 && lat < current[3] - 0.01
+            ? current
+            : [
+                lng - QUEST_RADIUS_DEG,
+                lat - QUEST_RADIUS_DEG,
+                lng + QUEST_RADIUS_DEG,
+                lat + QUEST_RADIUS_DEG
+              ]
+        );
       })
     ];
     return () => offs.forEach((off) => off());
   }, []);
 
   useEffect(() => {
-    void apiGetSafe<{ quests?: GameQuest[]; completedQuestIds?: string[] }>("/game/zones", {
-      auth: true
-    }).then((data) => {
+    const query = questArea ? `?bbox=${questArea.map((n) => n.toFixed(4)).join(",")}` : "";
+    void apiGetSafe<{ quests?: GameQuest[]; completedQuestIds?: string[] }>(
+      `/game/zones${query}`,
+      { auth: true }
+    ).then((data) => {
       setQuests((data?.quests ?? []).slice(0, 5));
       setCompleted(new Set(data?.completedQuestIds ?? []));
     });
-  }, [session]);
+  }, [session, questArea]);
 
   const claimQuest = async (quest: GameQuest) => {
+    // An anchored quest is verified server-side against the anchor's own coordinates, so the
+    // claim carries where the player is; without a fix there is nothing to verify against.
+    if (quest.anchored && !playerRef.current) {
+      store.showToast("Zapni GPS nebo se pohni, ať víme, kde jsi");
+      return;
+    }
     try {
-      const result = await apiPost<{ rewardPoints: number }>(`/game/quests/${quest.id}/complete`);
+      const result = await apiPost<{ rewardPoints: number }>(
+        `/game/quests/${quest.id}/complete`,
+        playerRef.current ?? undefined
+      );
       setCompleted((prev) => new Set(prev).add(quest.id));
       setXp((current) => current + result.rewardPoints);
       store.showToast(`Quest splněn · +${result.rewardPoints} XP`);

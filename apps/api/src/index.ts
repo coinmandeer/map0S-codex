@@ -4,6 +4,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import compress from "@fastify/compress";
+import type { Bbox } from "@mapos/layer-sdk";
 import {
   registerUser,
   loginUser,
@@ -330,20 +331,32 @@ export async function buildApp() {
     }
   });
 
-  app.get("/game/zones", async (request) => {
+  app.get<{ Querystring: { bbox?: string } }>("/game/zones", async (request) => {
     const user = await getSessionUser(getSessionId(request));
-    return getGameState(user?.id);
+    let bbox: Bbox | undefined;
+    try {
+      bbox = request.query.bbox ? parseBbox(request.query.bbox) : undefined;
+    } catch {
+      bbox = undefined;
+    }
+    return getGameState(user?.id, bbox);
   });
 
-  app.post<{ Params: { id: string } }>("/game/quests/:id/complete", async (request, reply) => {
-    const user = await getSessionUser(getSessionId(request));
-    if (!user) return reply.code(401).send({ message: "Unauthorized" });
-    try {
-      return await completeQuest(request.params.id, user.id);
-    } catch (err) {
-      return reply.code(400).send({ message: err instanceof Error ? err.message : "Error" });
+  app.post<{ Params: { id: string }; Body?: { lng?: number; lat?: number } }>(
+    "/game/quests/:id/complete",
+    async (request, reply) => {
+      const user = await getSessionUser(getSessionId(request));
+      if (!user) return reply.code(401).send({ message: "Unauthorized" });
+      const { lng, lat } = request.body ?? {};
+      const at =
+        typeof lng === "number" && typeof lat === "number" ? { lng, lat } : undefined;
+      try {
+        return await completeQuest(request.params.id, user.id, { at });
+      } catch (err) {
+        return reply.code(400).send({ message: err instanceof Error ? err.message : "Error" });
+      }
     }
-  });
+  );
 
   app.get<{ Querystring: { bbox?: string } }>("/game/ghosts", async (request, reply) => {
     try {

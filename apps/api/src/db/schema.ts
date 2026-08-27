@@ -239,9 +239,9 @@ export const questCompletions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    questId: uuid("quest_id")
-      .notNull()
-      .references(() => gameQuests.id, { onDelete: "cascade" }),
+    // Text rather than a foreign key: quests anchored to real places (see game/anchors.ts) are
+    // derived from map data and have no row to point at.
+    questId: text("quest_id").notNull(),
     rewardPoints: integer("reward_points").notNull().default(0),
     completedAt: timestamp("completed_at", { withTimezone: true }).defaultNow().notNull()
   },
@@ -266,7 +266,7 @@ export const rewardEvents = pgTable("reward_events", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   source: text("source").notNull(),
-  questId: uuid("quest_id"),
+  questId: text("quest_id"),
   amountUsd: doublePrecision("amount_usd").notNull().default(0),
   details: jsonb("details").$type<Record<string, unknown>>().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()

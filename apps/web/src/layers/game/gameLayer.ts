@@ -20,7 +20,7 @@ import {
  * through a dynamic `import()` from LayerEngine so three.js never lands in the main bundle. */
 export function createGameLayerHandle(map: maplibregl.Map, apiBase: string, layerId: string) {
   let scene: ThreeScene | null = null;
-  let zonesLoaded = false;
+  let loadedQuestArea: string | null = null;
   const store = getMapStore();
   const collectedOrbs = loadCollectedOrbIds();
   let lastOrbOrigin: { lng: number; lat: number } | null = null;
@@ -140,16 +140,20 @@ export function createGameLayerHandle(map: maplibregl.Map, apiBase: string, laye
         map.addLayer(customLayer);
       }
 
-      if (!zonesLoaded) {
-        zonesLoaded = true;
-        fetch(`${apiBase}/game/zones`, { signal })
+      // Quests anchored to real places depend on where the player is, so this is refetched per
+      // coarse viewport rather than once per session — the key keeps that to one request per
+      // area instead of one per camera nudge.
+      const questAreaKey = bbox.map((n) => n.toFixed(1)).join(",");
+      if (loadedQuestArea !== questAreaKey) {
+        loadedQuestArea = questAreaKey;
+        fetch(`${apiBase}/game/zones?bbox=${bbox.join(",")}`, { signal })
           .then((r) => (r.ok ? r.json() : null))
           .then((data: { zones?: GameZone[]; quests?: GameQuest[] } | null) => {
             if (data?.zones) scene?.syncZones(data.zones);
             if (data?.quests) scene?.syncQuests(data.quests);
           })
           .catch(() => {
-            zonesLoaded = false;
+            loadedQuestArea = null;
           });
       }
 

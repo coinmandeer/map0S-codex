@@ -176,7 +176,20 @@ const MIGRATIONS = [
     text TEXT NOT NULL,
     model TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  )`
+  )`,
+  // quest_id is text, not a reference to game_quests: quests anchored to real map features are
+  // derived rather than stored, so there is no row for them to point at.
+  `CREATE TABLE IF NOT EXISTS quest_completions (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    quest_id TEXT NOT NULL,
+    reward_points INT NOT NULL DEFAULT 0,
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS quest_completions_user_idx ON quest_completions (user_id)`,
+  `ALTER TABLE quest_completions DROP CONSTRAINT IF EXISTS quest_completions_quest_id_game_quests_id_fk`,
+  `ALTER TABLE quest_completions ALTER COLUMN quest_id TYPE TEXT`,
+  `ALTER TABLE reward_events ALTER COLUMN quest_id TYPE TEXT`
 ];
 
 export async function initDb() {

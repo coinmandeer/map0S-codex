@@ -9,6 +9,7 @@ import {
   seedMemory,
   memoryUserFeatures,
   memoryOsmFeatures,
+  memoryPoiFixtures,
   type MemoryUser
 } from "./db/memory.js";
 import { capabilities } from "./config.js";
@@ -23,6 +24,14 @@ import {
   ghostsForBbox,
   REWARD_BY_TIER
 } from "./game/spawn.js";
+import {
+  anchoredQuestsForBbox,
+  registerQuestSource,
+  verifyAnchoredQuest,
+  parseAnchoredQuestId,
+  COMPLETION_RADIUS_M,
+  type QuestAnchor
+} from "./game/anchors.js";
 import type { Bbox, OsmPoiCategoryId } from "@mapos/layer-sdk";
 import { OSM_POI_CATEGORIES } from "@mapos/layer-sdk";
 
@@ -31,6 +40,40 @@ function parseBbox(raw: string | undefined): Bbox {
   const parts = raw.split(",").map(Number);
   if (parts.length !== 4 || parts.some(Number.isNaN)) throw new Error("invalid bbox");
   return parts as Bbox;
+}
+
+/** Anchors from the demo fixtures, registered once so the offline server runs the same anchored
+ *  quest code as production instead of a stub of it. */
+function registerMemoryQuestSource() {
+  const anchorOf = (row: {
+    osmId: string;
+    name: string;
+    lng: number;
+    lat: number;
+    category: string;
+  }): QuestAnchor => ({
+    ref: `osm:${row.osmId}`,
+    name: row.name,
+    lng: row.lng,
+    lat: row.lat,
+    category: row.category
+  });
+
+  registerQuestSource({
+    id: "osm-landmarks",
+    label: "Významná místa z OSM",
+    attribution: "© OpenStreetMap přispěvatelé (ODbL)",
+    async anchors(bbox) {
+      const [w, s, e, n] = bbox;
+      return memoryPoiFixtures()
+        .filter((p) => p.lng >= w && p.lng <= e && p.lat >= s && p.lat <= n)
+        .map(anchorOf);
+    },
+    async resolve(ref) {
+      const row = memoryPoiFixtures().find((p) => `osm:${p.osmId}` === ref);
+      return row ? anchorOf(row) : null;
+    }
+  });
 }
 
 function getSessionUser(sessionId: string | undefined) {
@@ -42,6 +85,7 @@ function getSessionUser(sessionId: string | undefined) {
 
 export async function buildMemoryApp() {
   seedMemory();
+  registerMemoryQuestSource();
   const app = Fastify({ logger: false });
   await app.register(cors, { origin: true, credentials: true });
   await app.register(cookie);
@@ -223,12 +267,37 @@ export async function buildMemoryApp() {
   // rather than returning empty stubs. That parity is the point: e2e runs and local dev
   // exercise the real catch/resolve loop, which is how the mode came to look "broken" before —
   // it was only ever broken in the environments people actually ran it in.
-  app.get("/game/zones", async (request) => {
+  app.get<{ Querystring: { bbox?: string } }>("/game/zones", async (request) => {
     const user = getSessionUser(request.cookies.session);
+    const completed = user ? (memoryDb.questCompletions.get(user.id) ?? new Set<string>()) : null;
+    let anchored: Awaited<ReturnType<typeof anchoredQuestsForBbox>> = [];
+    if (request.query.bbox) {
+      try {
+        anchored = await anchoredQuestsForBbox(parseBbox(request.query.bbox));
+      } catch {
+        anchored = [];
+      }
+    }
     return {
       zones: memoryDb.zones,
-      quests: memoryDb.quests,
-      completedQuestIds: user ? [...(memoryDb.questCompletions.get(user.id) ?? [])] : []
+      quests: [
+        ...memoryDb.quests.map((q) => ({ ...q, anchored: false })),
+        ...anchored
+          .filter((q) => !completed?.has(q.id))
+          .map((q) => ({
+            id: q.id,
+            zoneId: null,
+            title: q.title,
+            description: q.description,
+            rewardPoints: q.rewardPoints,
+            lng: q.lng,
+            lat: q.lat,
+            anchored: true,
+            sourceId: q.sourceId,
+            anchorName: q.anchorName
+          }))
+      ],
+      completedQuestIds: completed ? [...completed] : []
     };
   });
 
@@ -288,17 +357,40 @@ export async function buildMemoryApp() {
     return { ok: true, rewardUsd: REWARD_BY_TIER[encounter.lootTier], loot: "mystery shard" };
   });
 
-  app.post<{ Params: { id: string } }>("/game/quests/:id/complete", async (request, reply) => {
-    const user = getSessionUser(request.cookies.session);
-    if (!user) return reply.code(401).send({ message: "Unauthorized" });
-    const quest = memoryDb.quests.find((q) => q.id === request.params.id);
-    if (!quest) return reply.code(404).send({ message: "Quest not found" });
-    const done = memoryDb.questCompletions.get(user.id) ?? new Set<string>();
-    if (done.has(quest.id)) return reply.code(400).send({ message: "Quest already completed" });
-    done.add(quest.id);
-    memoryDb.questCompletions.set(user.id, done);
-    return { ok: true, rewardPoints: quest.rewardPoints, rewardUsd: quest.rewardPoints * 0.05 };
-  });
+  app.post<{ Params: { id: string }; Body?: { lng?: number; lat?: number } }>(
+    "/game/quests/:id/complete",
+    async (request, reply) => {
+      const user = getSessionUser(request.cookies.session);
+      if (!user) return reply.code(401).send({ message: "Unauthorized" });
+      const questId = request.params.id;
+      const done = memoryDb.questCompletions.get(user.id) ?? new Set<string>();
+
+      let rewardPoints: number;
+      if (parseAnchoredQuestId(questId)) {
+        const { lng, lat } = request.body ?? {};
+        if (typeof lng !== "number" || typeof lat !== "number") {
+          return reply.code(400).send({ message: "Poloha je potřeba k potvrzení questu" });
+        }
+        const verified = await verifyAnchoredQuest(questId, { lng, lat });
+        if (!verified) return reply.code(404).send({ message: "Quest not found" });
+        if (!verified.withinRange) {
+          return reply.code(400).send({
+            message: `Jsi ${Math.round(verified.distanceM)} m daleko, potřebuješ být do ${COMPLETION_RADIUS_M} m`
+          });
+        }
+        rewardPoints = verified.quest.rewardPoints;
+      } else {
+        const quest = memoryDb.quests.find((q) => q.id === questId);
+        if (!quest) return reply.code(404).send({ message: "Quest not found" });
+        rewardPoints = quest.rewardPoints;
+      }
+
+      if (done.has(questId)) return reply.code(400).send({ message: "Quest already completed" });
+      done.add(questId);
+      memoryDb.questCompletions.set(user.id, done);
+      return { ok: true, rewardPoints, rewardUsd: rewardPoints * 0.05 };
+    }
+  );
 
   app.get("/game/staking/overview", async (request, reply) => {
     const user = getSessionUser(request.cookies.session);

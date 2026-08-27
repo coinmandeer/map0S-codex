@@ -84,6 +84,24 @@ export const config = {
       ticketmaster: env("TICKETMASTER_API_KEY")
     };
   },
+  /**
+   * Opencaching keys, one per national OKAPI instance — the network is federated, so there is
+   * no single key that covers Europe. A deployment with none simply has no cache quests.
+   */
+  get okapiInstances(): Array<{ code: string; host: string; key: string }> {
+    const instances = [
+      { code: "pl", host: "opencaching.pl", envKey: "OKAPI_KEY_PL" },
+      // The German instance shares its database with the Italian and French ones.
+      { code: "de", host: "www.opencaching.de", envKey: "OKAPI_KEY_DE" },
+      { code: "nl", host: "www.opencaching.nl", envKey: "OKAPI_KEY_NL" },
+      { code: "us", host: "www.opencaching.us", envKey: "OKAPI_KEY_US" },
+      { code: "uk", host: "opencache.uk", envKey: "OKAPI_KEY_UK" }
+    ];
+    return instances.flatMap(({ code, host, envKey }) => {
+      const key = env(envKey);
+      return key ? [{ code, host, key }] : [];
+    });
+  },
   get contact() {
     return env("MAPOS_CONTACT");
   },
@@ -105,6 +123,7 @@ export function capabilities(): ServerCapabilities {
     owm: Boolean(config.owmKey),
     windy: Boolean(config.windyKey),
     fsq: Boolean(config.fsqKey),
+    opencaching: config.okapiInstances.length > 0,
     // Derived, so adding a keyed layer means adding its key to `layerKeys` and nothing else —
     // the flag the browser needs follows automatically.
     ...Object.fromEntries(
