@@ -5136,7 +5136,7 @@
   }
 
   /* ---- Responsive ----------------------------------------------------- */
-  @media (max-width: 767px) {
+  @media (max-width: 899px) {
     .panel-left-overlay {
       display: block;
       position: fixed;
@@ -5641,7 +5641,7 @@
     font-weight: var(--weight-strong);
   }
 
-  @media (min-width: 768px) {
+  @media (min-width: 900px) {
     .map-footer-stack[data-left-open="true"] {
       left: calc(var(--sidebar-w) + var(--space-6));
     }
@@ -5722,7 +5722,7 @@
     background: var(--surface-solid);
   }
 
-  @media (max-width: 767px) {
+  @media (max-width: 899px) {
     .map-footer-stack {
       left: var(--space-4);
       right: var(--space-4);

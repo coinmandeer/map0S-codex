@@ -26,7 +26,7 @@
     display: none;
   }
 
-  @media (max-width: 767px) {
+  @media (max-width: 899px) {
     .source-strip-floating {
       left: var(--space-4);
       top: calc(var(--modebar-h) + var(--space-2));
@@ -354,7 +354,7 @@
     }
   }
 
-  @media (max-width: 767px) {
+  @media (max-width: 899px) {
     .task-center,
     .task-center[data-right-open="true"] {
       right: calc(var(--space-4) + var(--safe-right));
@@ -1461,20 +1461,21 @@
     text-align: center;
   }
 
-  /* ---- Bottom nav ----------------------------------------------------- */
+  /* ---- Bottom nav (M3 navigation bar, §3.2) --------------------------- */
   .bottom-nav {
     display: flex;
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 30;
+    /* Above the sheet: the mode switcher stays reachable however far the sheet is pulled up,
+       and the scrim is drawn below this so it never covers the nav. */
+    z-index: calc(var(--z-panel) + 1);
     height: calc(var(--bottom-nav-h) + var(--safe-bottom));
-    padding: var(--space-3) var(--space-2) calc(var(--space-3) + var(--safe-bottom));
-    background: color-mix(in srgb, var(--surface-solid) 94%, transparent);
+    padding: var(--space-4) var(--space-2) calc(var(--space-2) + var(--safe-bottom));
+    background: var(--surface);
     backdrop-filter: var(--blur);
     border-top: 1px solid var(--border);
-    box-shadow: var(--shadow-sm);
     justify-content: space-around;
     align-items: stretch;
   }
@@ -1484,35 +1485,50 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 3px;
+    justify-content: flex-start;
+    gap: var(--space-2);
     min-width: 0;
-    min-height: var(--tap-min);
-    padding: var(--space-2);
+    padding: 0;
+    border: 0;
+    background: none;
     color: var(--text-muted);
-    font-size: var(--text-3xs);
-    font-weight: var(--weight-strong);
-    border-radius: var(--radius-sm);
+    font: var(--type-label-md);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--dur) var(--ease-standard);
   }
 
-  .bottom-nav-item.active {
+  .bottom-nav-item[data-active] {
     color: var(--accent);
+  }
+
+  /* The selection marker is a pill behind the icon only, not a card around the whole item —
+     a bordered box per nav item is four competing rectangles at the bottom of the screen. */
+  .bottom-nav-indicator {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 32px;
+    border-radius: var(--radius-pill);
+    background: transparent;
+    transition: background var(--dur) var(--ease-standard);
+  }
+
+  .bottom-nav-item[data-active] .bottom-nav-indicator {
     background: var(--accent-soft);
   }
 
-  .bottom-nav-item[data-testid="mode-personal"] {
-    position: relative;
-    margin-top: -10px;
-    min-height: 54px;
-    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
-    background: var(--surface-solid);
-    box-shadow: var(--shadow-sm);
+  .bottom-nav-item:active .bottom-nav-indicator {
+    background: var(--surface-hover);
   }
 
-  .bottom-nav-icon {
-    display: grid;
-    place-items: center;
-    line-height: 1;
+  .bottom-nav-item:focus-visible {
+    outline: none;
+  }
+
+  .bottom-nav-item:focus-visible .bottom-nav-indicator {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .bottom-nav-label {
@@ -1523,7 +1539,7 @@
   }
 
   /* ---- Responsive ----------------------------------------------------- */
-  @media (min-width: 768px) {
+  @media (min-width: 900px) {
     .app-shell.panel-open .search-here-btn {
       left: calc(var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2);
     }
@@ -1532,7 +1548,7 @@
   /* At laptop widths the full utility labels would overlap the Settings control in the centred
      command bar. Keep all controls, but collapse their labels until the source-grounded 1440 px
      layout has enough room for every word. */
-  @media (max-width: 1399px) and (min-width: 768px) {
+  @media (max-width: 1399px) and (min-width: 900px) {
     .topbar-command-center {
       width: min(720px, calc(100vw - 248px));
     }
@@ -1562,7 +1578,7 @@
     }
   }
 
-  @media (max-width: 767px) {
+  @media (max-width: 899px) {
     .top-chrome {
       left: var(--space-3);
       right: var(--space-3);

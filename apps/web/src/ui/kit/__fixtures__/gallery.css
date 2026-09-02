@@ -1,0 +1,92 @@
+/* Layout for the development-only kit gallery. Not shipped: `App` only imports it behind
+   `?kit=1`, and Vite tree-shakes the dynamic branch out of the production bundle. */
+@layer utilities {
+  .kit-gallery {
+    min-height: 100dvh;
+    padding-block-end: var(--space-9);
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .kit-gallery-bar {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-topbar);
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    padding: var(--space-6) var(--space-9);
+    background: var(--surface);
+    backdrop-filter: var(--blur);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .kit-gallery-bar h1 {
+    margin: 0;
+    font: var(--type-title-lg);
+  }
+
+  .kit-gallery-spacer {
+    flex: 1;
+  }
+
+  .kit-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    align-items: start;
+    gap: var(--space-9);
+    padding: var(--space-9);
+  }
+
+  .kit-gallery-grid > .kit-section {
+    padding: var(--space-7);
+    border-radius: var(--radius-lg);
+    background: var(--surface-solid);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+
+  .kit-gallery-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-5);
+  }
+
+  .kit-gallery-badge-holder {
+    position: relative;
+    display: inline-flex;
+    color: var(--text-muted);
+  }
+
+  .kit-gallery-badge-holder .kit-badge {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+  }
+
+  .kit-gallery-icons {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: var(--space-5);
+  }
+
+  .kit-gallery-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .kit-gallery-icon small {
+    font: var(--type-label-sm);
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-faint);
+    overflow-wrap: anywhere;
+  }
+}

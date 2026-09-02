@@ -53,5 +53,23 @@ export default tseslint.config(
       globals: { process: "readonly", console: "readonly", Buffer: "readonly", fetch: "readonly" }
     },
     rules: { "no-console": "off" }
+  },
+  {
+    // Playwright driver scripts straddle two runtimes: the file runs in Node, but the callbacks
+    // passed to `page.evaluate` are serialised and run in the browser, so both sets of globals
+    // legitimately appear in the same source file.
+    files: ["e2e/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        Buffer: "readonly",
+        fetch: "readonly",
+        document: "readonly",
+        window: "readonly",
+        getComputedStyle: "readonly"
+      }
+    },
+    rules: { "no-console": "off" }
   }
 );

@@ -247,7 +247,7 @@
     display: none;
   }
 
-  @media (max-width: 767px) {
+  @media (max-width: 899px) {
     .game-mobile-controls {
       position: fixed;
       left: max(var(--space-4), env(safe-area-inset-left));

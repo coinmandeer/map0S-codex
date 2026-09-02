@@ -14,7 +14,7 @@ import { useIsMobile } from "./useIsMobile";
 import { BrandLogo } from "./BrandLogo";
 import { LayersMegaMenu } from "./LayersMegaMenu";
 import { activeLayerSummary, compactBasemapLabel } from "./modeBarPresentation";
-import { Icon } from "./primitives";
+import { Icon } from "./kit";
 
 export function ModeBar({
   onFlyToMe,
@@ -153,7 +153,7 @@ export function ModeBar({
           aria-controls="left-context-host"
           title="Zobrazit levý panel"
         >
-          <Icon name="list" />
+          <Icon name="menu" size={24} />
           {placeCount > 0 && (
             <span className="places-badge" data-testid="places-badge">
               {placeCount > 99 ? "99+" : placeCount}
@@ -184,7 +184,7 @@ export function ModeBar({
                 }}
               >
                 <span className="mode-tab-icon">
-                  <Icon name={item.icon} size={16} />
+                  <Icon name={item.icon} size={20} filled={mode === item.id} />
                 </span>
                 <span className="mode-tab-label">{item.label}</span>
               </button>
@@ -220,7 +220,7 @@ export function ModeBar({
             aria-expanded={layersOpen}
             onClick={() => setLayersOpen((value) => !value)}
           >
-            <Icon name="layers" size={16} />
+            <Icon name="layers" size={20} />
             <span className="dropdown-btn-label">Vrstvy</span>
             {layerActivity.total > 0 && (
               <span
@@ -252,7 +252,7 @@ export function ModeBar({
             else store.openSheet("tiles");
           }}
         >
-          <Icon name="tiles" />
+          <Icon name="map" />
           <span className="basemap-current-label" data-testid="basemap-current-label">
             {currentBasemapLabel}
           </span>

@@ -6,6 +6,8 @@ import type {
   LayerModeV2,
   SurfaceManifest
 } from "@mapos/layer-sdk";
+import { t } from "../i18n/cs";
+import type { IconName } from "../ui/kit/icons";
 
 export type AppMode = LayerModeV2;
 export type LegacyAppMode = "mine" | "weather" | "poi";
@@ -16,42 +18,46 @@ export interface ModeManifest {
   label: string;
   shortLabel: string;
   description: string;
-  icon: "bookmark" | "compass" | "route" | "gamepad";
+  /** A Material Symbols Rounded name from `ui/kit/icons.ts`. */
+  icon: IconName;
   testId: `mode-${AppMode}`;
 }
 
-/** The single shell-mode registry. Layers and surfaces deliberately have their own registries. */
+/** The single shell-mode registry. Layers and surfaces deliberately have their own registries.
+ *
+ *  Adding the Feed mode (§13.2) is one more entry here plus a panel — the top bar, the mobile
+ *  navigation bar and the history handling all read the list rather than hard-coding four. */
 export const MODE_MANIFESTS: readonly ModeManifest[] = [
   {
     id: "personal",
-    label: "Personal",
-    shortLabel: "Personal",
-    description: "Profil, ranky, uložené trasy, místa a vlastní obsah",
-    icon: "bookmark",
+    label: t("mode.personal"),
+    shortLabel: t("mode.personal.short"),
+    description: t("mode.personal.description"),
+    icon: "person_pin_circle",
     testId: "mode-personal"
   },
   {
     id: "discover",
-    label: "Discover",
-    shortLabel: "Discover",
-    description: "Regiony, lidé a zajímavá místa napříč Evropou",
-    icon: "compass",
+    label: t("mode.discover"),
+    shortLabel: t("mode.discover.short"),
+    description: t("mode.discover.description"),
+    icon: "explore",
     testId: "mode-discover"
   },
   {
     id: "planning",
-    label: "Plánování",
-    shortLabel: "Plán",
-    description: "Trasy, zastávky, vozidlo, náklady a podmínky po cestě",
+    label: t("mode.planning"),
+    shortLabel: t("mode.planning.short"),
+    description: t("mode.planning.description"),
     icon: "route",
     testId: "mode-planning"
   },
   {
     id: "game",
-    label: "Hra",
-    shortLabel: "Hra",
-    description: "Souběžné mapové hry nad jedním hráčem a jednou mapou",
-    icon: "gamepad",
+    label: t("mode.game"),
+    shortLabel: t("mode.game.short"),
+    description: t("mode.game.description"),
+    icon: "stadia_controller",
     testId: "mode-game"
   }
 ];
@@ -113,8 +119,8 @@ const BUILTIN_EXPERIENCE_MANIFESTS: ExperienceManifest[] = [
     id: "default",
     name: "Default",
     description: "Čistý MapOS pro cestování, objevování a komunitní mapy",
-    icon: "◎",
-    accent: "#b7791f",
+    icon: "public",
+    accent: "#1e4fd8",
     recommendedIntegrationIds: ["osm-poi", "user-layers"],
     gameIds: []
   },
@@ -122,8 +128,8 @@ const BUILTIN_EXPERIENCE_MANIFESTS: ExperienceManifest[] = [
     id: "aavegotchi",
     name: "Aavegotchi",
     description: "Gotchi avatar, questy, zóny a sběratelská hra nad mapou",
-    icon: "👻",
-    accent: "#a855f7",
+    icon: "stadia_controller",
+    accent: "#7c3aed",
     recommendedIntegrationIds: ["osm-poi", "game"],
     gameIds: ["aavegotchi"],
     avatarProviderId: "aavegotchi"

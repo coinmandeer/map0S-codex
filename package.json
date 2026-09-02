@@ -51,6 +51,7 @@
     "eslint": "^10.9.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.9.6",
+    "subset-font": "^2.7.0",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.68.0"
   }

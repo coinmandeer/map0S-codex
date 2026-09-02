@@ -1,13 +1,14 @@
-import { StrictMode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import maplibregl from "maplibre-gl";
 import maplibreWorker from "maplibre-gl/dist/maplibre-gl-csp-worker?url";
 import { App } from "./App";
 import { getMapStore } from "./store/mapStore";
-// Archivo carries both the body and display roles — the wdth axis (62–125%) is what gives
-// headings their Followable-style expanded look without shipping a second family.
-import "@fontsource-variable/archivo/standard.css";
+import { ToastProvider, TooltipProvider } from "./ui/kit";
+// Inter covers body and headings alike. The icon font is not imported here: it is declared
+// in kit.css against a committed subset, so it is fetched only once something renders a glyph.
+import "@fontsource-variable/inter/standard.css";
 import "./styles/global.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -30,19 +31,36 @@ if ("serviceWorker" in navigator) {
   }
 }
 
-// Required for Vite production builds — without this the map canvas stays blank
-maplibregl.setWorkerUrl(maplibreWorker);
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 30_000, retry: 1 }
   }
 });
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </StrictMode>
-);
+const root = createRoot(document.getElementById("root")!);
+
+function render(children: ReactNode) {
+  root.render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </StrictMode>
+  );
+}
+
+// `?kit=1` renders the component gallery instead of the app, so a token change can be
+// reviewed in one screenshot per theme. The import is dynamic and dev-gated, which keeps the
+// gallery and its fixture CSS out of the production bundle entirely.
+if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("kit")) {
+  void Promise.all([
+    import("./ui/kit/__fixtures__/KitGallery"),
+    import("./ui/kit/__fixtures__/gallery.css")
+  ]).then(([module]) => render(<module.KitGallery />));
+} else {
+  // Required for Vite production builds — without this the map canvas stays blank.
+  maplibregl.setWorkerUrl(maplibreWorker);
+  render(<App />);
+}

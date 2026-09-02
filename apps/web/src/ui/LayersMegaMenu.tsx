@@ -12,6 +12,7 @@ import {
 import { experienceById, experienceRegistry } from "../product/registry";
 import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
+import { Icon, type IconName } from "./kit";
 import { LAYER_CATEGORY_LABELS, LAYER_CATEGORY_ORDER } from "./layerLabels";
 import { nextPresetIndex } from "./presetNavigation";
 import { CATEGORY_GROUPS, MAP_PRESETS, PIN_STYLES } from "./presets";
@@ -151,7 +152,9 @@ export function LayersMegaMenu({
                     store.showToast(`${item.name}: vrstvy zůstaly zachované`);
                   }}
                 >
-                  <span className="experience-icon">{item.icon}</span>
+                  <span className="experience-icon">
+                    <Icon name={item.icon as IconName} size={20} />
+                  </span>
                   <span>
                     <strong>{item.name}</strong>
                     <small>{item.description}</small>
