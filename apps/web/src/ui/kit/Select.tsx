@@ -49,9 +49,7 @@ export function Select<T extends string>({
       {option.icon && <Icon name={option.icon} size={20} />}
       <span className="kit-option-text">
         <BaseSelect.ItemText className="kit-option-label">{option.label}</BaseSelect.ItemText>
-        {option.description && (
-          <span className="kit-option-description">{option.description}</span>
-        )}
+        {option.description && <span className="kit-option-description">{option.description}</span>}
       </span>
       <BaseSelect.ItemIndicator className="kit-option-indicator">
         <Icon name="check" size={18} weight={600} />
@@ -60,7 +58,11 @@ export function Select<T extends string>({
   );
 
   return (
-    <BaseSelect.Root value={value} onValueChange={(next) => onChange(next as T)} disabled={disabled}>
+    <BaseSelect.Root
+      value={value}
+      onValueChange={(next) => onChange(next as T)}
+      disabled={disabled}
+    >
       <div className="kit-field">
         <BaseSelect.Label className="kit-field-label" data-visually-hidden={hideLabel || undefined}>
           {label}
@@ -77,7 +79,12 @@ export function Select<T extends string>({
         </BaseSelect.Trigger>
       </div>
       <BaseSelect.Portal>
-        <BaseSelect.Positioner side="bottom" align="start" sideOffset={6} alignItemWithTrigger={false}>
+        <BaseSelect.Positioner
+          side="bottom"
+          align="start"
+          sideOffset={6}
+          alignItemWithTrigger={false}
+        >
           <BaseSelect.Popup className="kit-listbox">
             <BaseSelect.List>
               {groups

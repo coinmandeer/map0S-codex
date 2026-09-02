@@ -144,7 +144,7 @@ test.describe("map-first Discover boundary", () => {
     await page.screenshot({ path: "e2e/screenshots/390-discover-usecase.png", fullPage: true });
   });
 
-  test("registers one cancellable context task for the explicit map action", async ({ page }) => {
+  test("registers one context task for the explicit map action", async ({ page }) => {
     let requestCount = 0;
     let releaseRequest!: () => void;
     const requestGate = new Promise<void>((resolve) => {
@@ -162,16 +162,17 @@ test.describe("map-first Discover boundary", () => {
 
     const panel = page.getByTestId("discover-panel");
     await panel.getByRole("button", { name: "Zjistit co je tady" }).click();
-    const center = page.getByTestId("task-center");
-    await expect(center).toBeVisible();
+    const indicator = page.getByTestId("activity-indicator");
+    await expect(indicator).toBeVisible();
     await expect.poll(() => requestCount).toBe(1);
-    await center.getByRole("button", { name: /1 aktivní/u }).click();
-    await expect(center.getByTestId("task-center-entry")).toHaveCount(1);
-    await expect(center).toContainText("Zjišťuji kontext oblasti");
-    await expect(center.getByRole("button", { name: "Zrušit" })).toHaveCount(1);
+    await expect(
+      indicator.getByTestId("activity-row").filter({ hasText: "Zjišťuji kontext oblasti" })
+    ).toHaveCount(1);
 
     releaseRequest();
-    await expect(center).toHaveCount(0);
+    await expect(
+      indicator.getByTestId("activity-row").filter({ hasText: "Zjišťuji kontext oblasti" })
+    ).toHaveCount(0);
     await expect(panel.getByText("Kontext odpovídá tomuto výřezu.")).toBeVisible();
     expect(requestCount).toBe(1);
   });

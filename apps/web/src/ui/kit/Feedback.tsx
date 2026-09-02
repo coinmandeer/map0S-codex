@@ -40,7 +40,9 @@ export function ProgressLinear({
     >
       <span
         className="kit-progress-linear-fill"
-        style={determinate ? { transform: `scaleX(${Math.min(1, Math.max(0, value))})` } : undefined}
+        style={
+          determinate ? { transform: `scaleX(${Math.min(1, Math.max(0, value))})` } : undefined
+        }
       />
     </span>
   );

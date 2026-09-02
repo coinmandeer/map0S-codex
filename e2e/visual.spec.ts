@@ -127,7 +127,7 @@ test.describe("visual snapshots", () => {
       await page.screenshot({ path: `${DIR}/${width}-planning-actions.png`, fullPage: true });
       await aiPlanToggle.click();
 
-      await page.getByTestId("overflow-btn").click();
+      await page.getByTestId("layers-btn").click();
       await page.getByTestId("overflow-menu").waitFor();
       await page.screenshot({ path: `${DIR}/${width}-megamenu.png`, fullPage: true });
       await page.keyboard.press("Escape");
@@ -228,7 +228,7 @@ test.describe("visual snapshots", () => {
       await page.goto("/");
       await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
 
-      await page.getByTestId("overflow-btn").click();
+      await page.getByTestId("layers-btn").click();
       const layerDrawer = page.getByTestId("right-utility-drawer");
       await expect(layerDrawer).toBeVisible();
       const expectedDrawerWidth = Math.min(400, width);

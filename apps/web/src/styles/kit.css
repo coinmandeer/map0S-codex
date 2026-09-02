@@ -1448,8 +1448,12 @@
   .kit-skeleton {
     display: block;
     border-radius: var(--radius-sm);
-    background:
-      linear-gradient(90deg, var(--surface-sunken) 0%, var(--surface-hover) 50%, var(--surface-sunken) 100%);
+    background: linear-gradient(
+      90deg,
+      var(--surface-sunken) 0%,
+      var(--surface-hover) 50%,
+      var(--surface-sunken) 100%
+    );
     background-size: 200% 100%;
     animation: mapos-shimmer 1.2s var(--ease-standard) infinite;
   }

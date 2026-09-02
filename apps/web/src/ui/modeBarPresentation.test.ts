@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { activeLayerSummary, compactBasemapLabel } from "./modeBarPresentation.js";
+import { activeLayerSummary, basemapInitials, compactBasemapLabel } from "./modeBarPresentation.js";
 
 describe("ModeBar presentation", () => {
   it("counts visible POI and thematic layers while excluding structural overlays", () => {
@@ -35,8 +35,17 @@ describe("ModeBar presentation", () => {
   });
 
   it("shortens long labels by Unicode code points and keeps the full short label", () => {
+    // 14 code points is the budget §3.1 gives the Podklady button before the pill grows.
     assert.equal(compactBasemapLabel("CARTO Voyager"), "CARTO Voyager");
-    assert.equal(compactBasemapLabel("OpenFreeMap Positron"), "OpenFreeMap Posit…");
+    assert.equal(compactBasemapLabel("OpenFreeMap Positron"), "OpenFreeMap P…");
     assert.equal(compactBasemapLabel("Žluťoučký podklad", 9), "Žluťoučk…");
+  });
+
+  it("abbreviates to two letters for the phone rail", () => {
+    assert.equal(basemapInitials("CARTO Voyager"), "CV");
+    assert.equal(basemapInitials("Mapy Turist."), "MT");
+    assert.equal(basemapInitials("Positron"), "PO");
+    assert.equal(basemapInitials("Žluťoučký podklad"), "ŽP");
+    assert.equal(basemapInitials("   "), "??");
   });
 });

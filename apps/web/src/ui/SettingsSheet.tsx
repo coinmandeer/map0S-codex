@@ -367,8 +367,10 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
           <span className="setting-row-value">Rozbalit</span>
         </summary>
         <ul>
-          {sources.map((source) => (
-            <li key={`${source.usedBy}:${source.label}`}>
+          {/* A layer can cite the same provider twice (tiles and terms, say), so the pair of
+              names is not unique — only the position in the aggregated list is. */}
+          {sources.map((source, index) => (
+            <li key={`${index}:${source.usedBy}:${source.label}`}>
               <span className="attribution-used-by">{source.usedBy}</span>
               {source.url ? (
                 <a href={source.url} target="_blank" rel="noreferrer">

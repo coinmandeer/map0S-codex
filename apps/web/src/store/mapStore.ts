@@ -445,10 +445,10 @@ export class MapStore {
       activeLayers,
       selectedPin: null,
       sheet: null,
-      sidebarOpen:
-        mode === "game" ||
-        (typeof window !== "undefined" && window.innerWidth >= 768) ||
-        mode === "discover",
+      // Every mode owns a panel, and on a phone that panel is the bottom sheet, which opens at
+      // the snap §21.2 gives it. Leaving it closed on load was why `?mode=planning` showed a
+      // bare handle under the top bar on mobile (§29.2/4).
+      sidebarOpen: true,
       activePresetId: loadLastPresetId(),
       session: null,
       editMode: false,

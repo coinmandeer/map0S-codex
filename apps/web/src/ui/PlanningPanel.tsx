@@ -15,6 +15,7 @@ import {
   type TripPlan
 } from "@mapos/layer-sdk";
 import { apiGet, apiPost, apiSend } from "../lib/api";
+import { t } from "../i18n/cs";
 import { formatDistance as formatDistanceValue } from "../lib/units";
 import type { DistanceUnits } from "../settings/preferences";
 import { buildExternalPlanHandoffs } from "../planning/externalHandoff";
@@ -1073,7 +1074,14 @@ export function PlanningPanel() {
   const stopWindowEnd = stopWindowStart + visibleStops.length;
 
   return (
-    <PanelShell title="Plánování" testId="planning-panel" className="planning-panel">
+    <PanelShell
+      title={t("mode.planning")}
+      testId="planning-panel"
+      className="planning-panel"
+      // §21.2: a plan that already has stops or a route opens full on a phone; a blank form
+      // opens half, so the map the user is about to pick from stays in view.
+      hasContent={plan.stops.length > 2 || totals.ready > 0}
+    >
       <div className="planner-stack">
         {readOnlyShared && (
           <div

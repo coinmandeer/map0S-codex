@@ -31,8 +31,11 @@ export const cs = {
   // ---- Top bar and search ----------------------------------------------
   "app.name": "MapOS",
   "topbar.menu": "Panel",
+  "topbar.openPanel": "Zobrazit panel",
   "topbar.close": "Zavřít panel",
   "topbar.settings": "Nastavení",
+  "topbar.modes": "Režim mapy",
+  "topbar.presets": "Presety",
   "topbar.basemaps": "Podklady",
   "topbar.basemaps.full": "Mapové podklady",
   "topbar.layers": "Vrstvy",
@@ -57,7 +60,11 @@ export const cs = {
   "panel.collapse": "Sbalit",
   "panel.moveLeft": "Přesunout vlevo",
   "panel.moveRight": "Přesunout vpravo",
-  "panel.resize": "Změnit šířku panelu",
+  "panel.resize": "Šířka levého panelu",
+  "drawer.height": "Výška panelu",
+  "drawer.snap.peek": "Náhled",
+  "drawer.snap.half": "Do poloviny",
+  "drawer.snap.full": "Přes celou výšku",
 
   // ---- Common actions --------------------------------------------------
   "action.save": "Uložit",
@@ -85,6 +92,7 @@ export const cs = {
   "action.info": "Více informací",
 
   // ---- Status ----------------------------------------------------------
+  "status.activity": "Průběh načítání",
   "status.loading": "Načítám",
   "status.loadingLayers": "Načítám vrstvy",
   "status.offline": "Jsi offline",

@@ -180,7 +180,14 @@ export function KitGallery() {
             onChange={() => undefined}
             error="Zadej adresu ve tvaru jmeno@domena.cz"
           />
-          <NumberField label="Počet dní" value={count} onChange={setCount} min={1} max={30} unit="dní" />
+          <NumberField
+            label="Počet dní"
+            value={count}
+            onChange={setCount}
+            min={1}
+            max={30}
+            unit="dní"
+          />
           <TextArea label="Popis místa" placeholder="Co je na tom místě zajímavé?" />
         </Section>
 
@@ -207,7 +214,12 @@ export function KitGallery() {
             items={[
               { id: "1", label: "Vinaròs", detail: "Castellón, Španělsko", icon: "place" },
               { id: "2", label: "Vinařice", detail: "Kladno, Česko", icon: "place" },
-              { id: "3", label: "Vinařství u Kapličky", detail: "Zaječí, Česko", icon: "local_bar" },
+              {
+                id: "3",
+                label: "Vinařství u Kapličky",
+                detail: "Zaječí, Česko",
+                icon: "local_bar"
+              },
               {
                 id: "4",
                 label: "Zapnout vrstvu Vinice",
@@ -304,7 +316,13 @@ export function KitGallery() {
             trailing={<Switch checked label="Zapnout vrstvu" onChange={() => undefined} />}
           />
           <Divider inset />
-          <ListItem icon="route" title="Aktivní" subtitle="Vybraný řádek" active onClick={() => undefined} />
+          <ListItem
+            icon="route"
+            title="Aktivní"
+            subtitle="Vybraný řádek"
+            active
+            onClick={() => undefined}
+          />
         </Section>
 
         <Section title="Accordion" eyebrow="Struktura">
@@ -318,7 +336,12 @@ export function KitGallery() {
                 count: 2,
                 children: (
                   <>
-                    <ListItem icon="public" title="Default" subtitle="Čistý MapOS" onClick={() => undefined} />
+                    <ListItem
+                      icon="public"
+                      title="Default"
+                      subtitle="Čistý MapOS"
+                      onClick={() => undefined}
+                    />
                     <ListItem
                       icon="stadia_controller"
                       title="Aavegotchi"
@@ -333,7 +356,9 @@ export function KitGallery() {
                 title: "Kategorie",
                 icon: "layers",
                 count: 12,
-                action: <InfoTip title="Kategorie">Počet je počet zapnutých vrstev v kategorii.</InfoTip>,
+                action: (
+                  <InfoTip title="Kategorie">Počet je počet zapnutých vrstev v kategorii.</InfoTip>
+                ),
                 children: <EmptyState title="Zapni kategorii a objeví se na mapě." />
               }
             ]}
@@ -345,8 +370,19 @@ export function KitGallery() {
             value={tab}
             onValueChange={setTab}
             tabs={[
-              { id: "guide", label: "Průvodce", icon: "menu_book", children: <p>Text průvodce.</p> },
-              { id: "numbers", label: "Čísla", icon: "signal_cellular_alt", count: 8, children: <p>Statistiky.</p> },
+              {
+                id: "guide",
+                label: "Průvodce",
+                icon: "menu_book",
+                children: <p>Text průvodce.</p>
+              },
+              {
+                id: "numbers",
+                label: "Čísla",
+                icon: "signal_cellular_alt",
+                count: 8,
+                children: <p>Statistiky.</p>
+              },
               { id: "photos", label: "Fotky", icon: "photo_library", children: <p>Galerie.</p> }
             ]}
           />
@@ -403,7 +439,9 @@ export function KitGallery() {
             <ProgressCircular size={32} />
             <Button
               variant="outlined"
-              onClick={() => notify("Vrstva zapnutá", { description: "Kempy · 42 míst", tone: "success" })}
+              onClick={() =>
+                notify("Vrstva zapnutá", { description: "Kempy · 42 míst", tone: "success" })
+              }
             >
               Toast
             </Button>
@@ -461,7 +499,12 @@ export function KitGallery() {
           </>
         }
       >
-        <TextField label="Odkaz" value="https://mapos.app/p/abc123" onChange={() => undefined} readOnly />
+        <TextField
+          label="Odkaz"
+          value="https://mapos.app/p/abc123"
+          onChange={() => undefined}
+          readOnly
+        />
       </Dialog>
 
       <ConfirmDialog

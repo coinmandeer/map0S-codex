@@ -84,9 +84,22 @@
     --sidebar-w: 360px;
     --drawer-w: 380px;
     --topbar-h: 48px;
-    /* Legacy name for the top chrome band; the v3 top bar is one 48 px pill. */
-    --modebar-h: var(--topbar-h);
+    --chrome-inset: 12px;
+    /* Bottom edge of the floating top bar plus a gap — the y anything else floating over the
+       map starts at. This used to be measured from the DOM by a ResizeObserver, which meant
+       the first paint used a 108 px guess and then jumped; it is a constant now because the
+       bar is one fixed-height pill. */
+    --chrome-top: calc(var(--safe-top) + var(--chrome-inset) + var(--topbar-h) + var(--space-2));
+    /* Legacy name, kept so older rules keep resolving to the same y. */
+    --modebar-h: var(--chrome-top);
+    /* Written by the panel and drawer while they are open, so the top bar can centre itself
+       over the remaining map area instead of over the whole window. */
+    --sidebar-w-open: 0px;
+    --drawer-w-open: 0px;
     --bottom-nav-h: 0px;
+    /* Height of the open mobile sheet, published by PanelShell while it is on screen (§21.2).
+       The map's bottom chrome rides on top of it. */
+    --sheet-h: 0px;
     --map-strip-h: 112px; /* map left visible above a full-height mobile sheet (§21.2) */
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-top: env(safe-area-inset-top, 0px);
@@ -95,13 +108,20 @@
     --visual-viewport-h: 100dvh;
     --visual-viewport-offset-top: 0px;
 
-    /* ---- Stacking ------------------------------------------------------- */
+    /* ---- Stacking -------------------------------------------------------
+       The order that matters: the scrim dims the map but never the bottom nav, and the bottom
+       nav stays above the sheet so mode switching keeps working while a panel is open (§21.2).
+       Popovers outrank dialogs because the search popover opens from a bar that can itself
+       float above a dialog. */
     --z-map-control: 5;
     --z-footer: 10;
-    --z-topbar: 20;
+    /* Above the scrim: search, Vrstvy and Podklady are chrome, not content behind the sheet, and
+       an open sheet must not make them unreachable. Still below the panel itself (§3.1). */
+    --z-topbar: 28;
+    --z-scrim: 25;
     --z-panel: 30;
-    --z-drawer: 40;
-    --z-scrim: 45;
+    --z-drawer: 32;
+    --z-bottom-nav: 35;
     --z-dialog: 50;
     --z-popover: 60;
     --z-toast: 70;
@@ -139,7 +159,10 @@
     --surface-hover: rgba(31, 31, 31, 0.06);
     --text: #1f1f1f;
     --text-muted: #5f6368;
-    --text-faint: #9aa0a6;
+    /* The lightest text in the system, and still 4.5:1 on `--surface-solid`. The previous
+       #9aa0a6 was 2.4:1, which the audit caught on every supporting line in a panel — a
+       "quieter" grey is not worth a line the user has to squint at. */
+    --text-faint: #70757a;
     --accent: #1e4fd8;
     --accent-soft: rgba(30, 79, 216, 0.1);
     --accent-hover: #173fb0;
@@ -154,8 +177,7 @@
     --info: #1e4fd8;
 
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.06);
-    --shadow-sm:
-      0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
     --shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
     --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.16);
@@ -194,7 +216,7 @@
     --surface-hover: rgba(255, 255, 255, 0.08);
     --text: #e8eaed;
     --text-muted: #9aa0a6;
-    --text-faint: #6b7075;
+    --text-faint: #878c92;
     --accent: #8ab4f8;
     --accent-soft: rgba(138, 180, 248, 0.16);
     --accent-hover: #a8c7fa;
@@ -209,8 +231,7 @@
     --info: #8ab4f8;
 
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-sm:
-      0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
     --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
     --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.62);

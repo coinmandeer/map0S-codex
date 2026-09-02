@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { SavedPlaceCollectionV2, SavedPlaceV2, TripPlan } from "@mapos/layer-sdk";
 import { apiGet, apiSend } from "../lib/api";
 import { emit } from "../lib/events";
+import { t } from "../i18n/cs";
 import {
   loadAllSavedPlaces,
   loadSavedPlaceCollections,
@@ -265,7 +266,7 @@ export function MinePanel() {
   );
 
   return (
-    <PanelShell title="Personal" testId="mine-panel" className="mine-panel">
+    <PanelShell title={t("mode.personal")} testId="mine-panel" className="mine-panel">
       <div className="mine-stack">
         <section className="mine-overview" data-testid="personal-overview">
           <div className="mine-profile">

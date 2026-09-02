@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getMapStore } from "../store/mapStore";
+import { t } from "../i18n/cs";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { loadOrbXp, persistOrbXp } from "../layers/game/orbsController";
 import {
@@ -248,7 +249,7 @@ export function GameHud() {
   if (!open || mode !== "game") return null;
 
   return (
-    <PanelShell title="Hra" testId="game-panel" className="game-panel">
+    <PanelShell title={t("mode.game")} testId="game-panel" className="game-panel">
       <div className="game-hud" data-testid="game-hud">
         <div className="game-hud-title">
           <strong>

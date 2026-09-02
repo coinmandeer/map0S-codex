@@ -20,8 +20,9 @@ import { emit } from "../lib/events";
 import { geolocation, type Fix } from "../lib/geolocation";
 import { formatDistance } from "../lib/units";
 import { createBlankPlanDocument } from "../planning/planDraft";
+import { t } from "../i18n/cs";
 import { LAYER_MODES } from "./modes";
-import { Icon } from "./primitives";
+import { Icon } from "./kit";
 
 interface GeoHit {
   display_name: string;
@@ -121,10 +122,13 @@ function recentKind(intent: LocationIntent): RecentSearchKind {
 
 export function CommandSearch({
   onFlyToMe,
-  mode
+  mode,
+  showLocationLabel = false
 }: {
   onFlyToMe: () => Promise<Fix | null>;
   mode: "personal" | "discover" | "planning" | "game";
+  /** Wide viewports get "Poloha" next to the target icon; narrow ones keep the tooltip only. */
+  showLocationLabel?: boolean;
 }) {
   const store = getMapStore();
   const shell = getShellStore();
@@ -156,6 +160,7 @@ export function CommandSearch({
   const [aiSelection, setAiSelection] = useState<AiSearchResult | null>(null);
   const [aiPlanPreviewed, setAiPlanPreviewed] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [justLocated, setJustLocated] = useState(false);
   const [permission, setPermission] = useState<PermissionState | "unknown">("unknown");
 
   const intent = useMemo(
@@ -174,6 +179,14 @@ export function CommandSearch({
       mode: item.id
     }))
   });
+
+  // A brief filled/accented target after a fix, so the button confirms it did something even
+  // when the map was already looking at you.
+  useEffect(() => {
+    if (!justLocated) return;
+    const timer = window.setTimeout(() => setJustLocated(false), 1000);
+    return () => window.clearTimeout(timer);
+  }, [justLocated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -502,6 +515,7 @@ export function CommandSearch({
     setLocating(true);
     try {
       const fix = await onFlyToMe();
+      if (fix) setJustLocated(true);
       if (!fix || mode !== "discover") return;
       const response = await fetch(`${API_BASE}/geocode/reverse?lat=${fix.lat}&lng=${fix.lng}`);
       if (!response.ok) return;
@@ -561,7 +575,13 @@ export function CommandSearch({
   };
 
   const label = intentLabel(intent);
-  const locationState = locating ? "locating" : permission === "denied" ? "denied" : "idle";
+  const locationState = locating
+    ? "locating"
+    : justLocated
+      ? "active"
+      : permission === "denied"
+        ? "denied"
+        : "idle";
   const showMenu = focused && (intent.kind === "empty" || label !== null || searching);
   const networkIntent =
     intent.kind === "address" ||
@@ -573,52 +593,64 @@ export function CommandSearch({
   return (
     <div
       className="topbar-search"
+      data-focused={focused || undefined}
       onFocus={() => setFocused(true)}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
       }}
     >
-      <Icon name="search" size={16} />
-      <input
-        data-testid="place-search"
-        aria-label="Hledat místo, souřadnice, odkaz, tag nebo použít AI"
-        placeholder="Místo, GPS, odkaz, #tag nebo AI…"
-        value={query}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={showMenu}
-        aria-controls="command-search-suggestions"
-        onChange={(event) => setQuery(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            setFocused(false);
-            return;
-          }
-          if (event.key === "Enter") {
-            event.preventDefault();
-            executeIntent();
-          }
-        }}
-      />
-      {searching && <span className="spinner" aria-label="Hledám" />}
-      {activeTag && (
-        <button className="tag-chip" onClick={() => store.setActiveTag(null)} type="button">
-          #{activeTag} ✕
-        </button>
-      )}
+      <span className="topbar-search-field">
+        <Icon name="search" size={20} className="topbar-search-icon" />
+        <input
+          data-testid="place-search"
+          aria-label={t("search.label")}
+          placeholder={t("search.placeholder")}
+          value={query}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={showMenu}
+          aria-controls="command-search-suggestions"
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setFocused(false);
+              return;
+            }
+            if (event.key === "Enter") {
+              event.preventDefault();
+              executeIntent();
+            }
+          }}
+        />
+        {searching && <span className="spinner" aria-label="Hledám" />}
+        {activeTag && (
+          <button className="tag-chip" onClick={() => store.setActiveTag(null)} type="button">
+            #{activeTag} ✕
+          </button>
+        )}
+      </span>
       <button
         type="button"
         className="search-locate-btn"
         data-testid="location-btn"
         data-state={locationState}
-        title={locationState === "denied" ? "Poloha je zakázaná v prohlížeči" : "Moje poloha"}
-        aria-label="Moje poloha"
+        title={
+          locationState === "denied" ? "Poloha je zakázaná v prohlížeči" : t("search.myLocation")
+        }
+        aria-label={t("search.myLocation")}
         aria-busy={locating}
         disabled={locating}
         onClick={() => void flyToMe()}
       >
-        {locating ? <span className="spinner" /> : <Icon name="crosshair" size={16} />}
-        <span className="search-locate-label">Moje poloha</span>
+        <Icon
+          name={locating ? "progress_activity" : "my_location"}
+          size={20}
+          filled={locationState === "active"}
+          className={locating ? "mapos-spin" : undefined}
+        />
+        {showLocationLabel && (
+          <span className="search-locate-label">{t("search.myLocation.short")}</span>
+        )}
       </button>
 
       {showMenu && (

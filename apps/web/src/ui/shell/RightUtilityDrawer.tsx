@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef } from "react";
+import { t } from "../../i18n/cs";
 import type { RightUtility } from "../../store/shellState";
 import { getShellStore } from "../../store/shellStore";
 import { useShellStoreSnapshot } from "../../store/useShellStoreSnapshot";
+import { IconButton, ProgressCircular } from "../kit";
 import { LayersMegaMenu } from "../LayersMegaMenu";
-import { Icon } from "../primitives";
+import { useIsMobile } from "../useIsMobile";
 import { captureFocusedElement, restoreFocus } from "./focusRestore";
 
 const BasemapContent = lazy(() =>
@@ -14,9 +16,9 @@ const SettingsContent = lazy(() =>
 );
 
 const TITLES: Record<Exclude<RightUtility["type"], "closed">, string> = {
-  layers: "Vrstvy",
-  basemaps: "Mapové podklady",
-  settings: "Nastavení"
+  layers: t("topbar.layers"),
+  basemaps: t("topbar.basemaps.full"),
+  settings: t("topbar.settings")
 };
 
 export function RightUtilityDrawer() {
@@ -27,6 +29,7 @@ export function RightUtilityDrawer() {
 
 function OpenRightUtilityDrawer({ type }: { type: Exclude<RightUtility["type"], "closed"> }) {
   const shell = getShellStore();
+  const mobile = useIsMobile();
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
@@ -37,6 +40,17 @@ function OpenRightUtilityDrawer({ type }: { type: Exclude<RightUtility["type"], 
       restoreFocus(restoreFocusRef.current);
     };
   }, []);
+
+  // The top bar and the Podklady/Vrstvy buttons slide left by the drawer width while it is
+  // open, so both stay reachable and act as a switch between the three drawers.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty(
+      "--drawer-w-open",
+      mobile ? "0px" : getComputedStyle(root).getPropertyValue("--drawer-w").trim() || "380px"
+    );
+    return () => root.style.setProperty("--drawer-w-open", "0px");
+  }, [mobile]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -62,19 +76,17 @@ function OpenRightUtilityDrawer({ type }: { type: Exclude<RightUtility["type"], 
     >
       <div className="shell-right-drawer-header">
         <h2>{TITLES[type]}</h2>
-        <button
+        <IconButton
           ref={closeRef}
-          type="button"
-          className="icon-btn small"
-          data-testid="right-utility-close"
+          icon="close"
+          size="sm"
+          label={`${t("panel.close")}: ${TITLES[type]}`}
+          testId="right-utility-close"
           onClick={() => shell.closeRightUtility()}
-          aria-label={`Zavřít: ${TITLES[type]}`}
-        >
-          <Icon name="close" size={16} />
-        </button>
+        />
       </div>
       <div className="shell-right-drawer-body" data-testid={compatibilityTestId}>
-        <Suspense fallback={<span className="spinner" aria-label="Načítám" />}>
+        <Suspense fallback={<ProgressCircular label={t("status.loading")} />}>
           {type === "layers" && (
             <LayersMegaMenu mobile={false} embedded onClose={() => shell.closeRightUtility()} />
           )}

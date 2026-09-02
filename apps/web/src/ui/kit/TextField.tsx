@@ -25,7 +25,11 @@ function FieldFrame({ label, hint, error, hideLabel, children, id }: FieldFrameP
   return (
     <div className="kit-field" data-invalid={error ? true : undefined}>
       {label && (
-        <label className="kit-field-label" htmlFor={id} data-visually-hidden={hideLabel || undefined}>
+        <label
+          className="kit-field-label"
+          htmlFor={id}
+          data-visually-hidden={hideLabel || undefined}
+        >
           {label}
         </label>
       )}
@@ -39,8 +43,10 @@ function FieldFrame({ label, hint, error, hideLabel, children, id }: FieldFrameP
   );
 }
 
-export interface TextFieldProps
-  extends Omit<InputHTMLAttributes<HTMLInputElement>, "className" | "size"> {
+export interface TextFieldProps extends Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  "className" | "size"
+> {
   label?: string;
   hint?: string;
   error?: string;
@@ -87,15 +93,16 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
 
 /** A text field pre-wired for search: `type=search`, the magnifier, a clear button and
  *  `role=searchbox` semantics. Kept separate so every search box in the app is identical. */
-export const SearchField = forwardRef<HTMLInputElement, TextFieldProps>(function SearchField(
-  props,
-  ref
-) {
-  return <TextField {...props} ref={ref} type="search" icon={props.icon ?? "search"} />;
-});
+export const SearchField = forwardRef<HTMLInputElement, TextFieldProps>(
+  function SearchField(props, ref) {
+    return <TextField {...props} ref={ref} type="search" icon={props.icon ?? "search"} />;
+  }
+);
 
-export interface TextAreaProps
-  extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "className"> {
+export interface TextAreaProps extends Omit<
+  TextareaHTMLAttributes<HTMLTextAreaElement>,
+  "className"
+> {
   label?: string;
   hint?: string;
   error?: string;
@@ -161,7 +168,9 @@ export function NumberField({
       max={max}
       step={step}
     >
-      {label && <BaseNumberField.ScrubArea className="kit-field-label">{label}</BaseNumberField.ScrubArea>}
+      {label && (
+        <BaseNumberField.ScrubArea className="kit-field-label">{label}</BaseNumberField.ScrubArea>
+      )}
       <BaseNumberField.Group className="kit-input-shell" data-size="md">
         <BaseNumberField.Decrement className="kit-stepper" aria-label="Snížit">
           <Icon name="remove" size={18} />

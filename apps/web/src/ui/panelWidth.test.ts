@@ -13,9 +13,9 @@ describe("desktop left panel width", () => {
   it("uses the source-grounded min, default and viewport-safe maximum", () => {
     assert.deepEqual(leftPanelWidthBounds(900), { min: 320, max: 414 });
     assert.deepEqual(leftPanelWidthBounds(1024), { min: 320, max: 471 });
-    assert.deepEqual(leftPanelWidthBounds(1440), { min: 320, max: 560 });
+    assert.deepEqual(leftPanelWidthBounds(1440), { min: 320, max: 480 });
     assert.equal(clampLeftPanelWidth(100, 1440), 320);
-    assert.equal(clampLeftPanelWidth(900, 1440), 560);
+    assert.equal(clampLeftPanelWidth(900, 1440), 480);
     assert.equal(clampLeftPanelWidth(Number.NaN, 1440), LEFT_PANEL_DEFAULT_WIDTH);
   });
 

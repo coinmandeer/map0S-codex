@@ -5,7 +5,7 @@ const DAY_MS = 86_400_000;
 
 async function openEvents(page: Parameters<typeof stubEvents>[0]) {
   await page.goto("/");
-  await page.getByTestId("overflow-btn").click();
+  await page.getByTestId("layers-btn").click();
   await page.getByTestId("overflow-events").click();
   const drawer = page.getByTestId("right-utility-drawer");
   if (await drawer.isVisible()) await page.getByTestId("right-utility-close").click();

@@ -116,7 +116,7 @@ test.describe("basemap picker", () => {
     );
 
     await page.keyboard.press("Escape");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await page.getByTestId("experience-selector").locator("summary").click();
     const osm = page.getByTestId("layer-source-osm");
     const wikipedia = page.getByTestId("layer-source-wikipedia");

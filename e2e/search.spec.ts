@@ -35,9 +35,9 @@ test.describe("transparent global search", () => {
 
     // Start without POI so the AI layer change must be previewed and confirmed.
     await page.goto("/?layers=earthquakes&lng=13.3775&lat=49.7475&z=13");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await page.getByTestId("overflow-osm-poi").click();
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     const input = page.getByTestId("place-search");
     await input.fill("najdi mi nejbližší bar");
     await expect.poll(() => geocodeFixtures).toBeGreaterThan(0);

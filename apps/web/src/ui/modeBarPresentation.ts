@@ -37,7 +37,23 @@ export function activeLayerSummary(
   return { poi, thematic, total: poi + thematic };
 }
 
-export function compactBasemapLabel(label: string, maxCharacters = 18): string {
+/** Two letters for the phone rail (§3.2), where the button is a 44 px square and the full name
+ *  has nowhere to go: initials of the first two words, or the first two letters of a single one. */
+export function basemapInitials(label: string): string {
+  const words = label
+    .trim()
+    .split(/[\s·/–-]+/u)
+    .filter((word) => /\p{L}|\p{N}/u.test(word));
+  if (words.length === 0) return "??";
+  if (words.length === 1) return Array.from(words[0]!).slice(0, 2).join("").toLocaleUpperCase("cs");
+  return words
+    .slice(0, 2)
+    .map((word) => Array.from(word)[0]!)
+    .join("")
+    .toLocaleUpperCase("cs");
+}
+
+export function compactBasemapLabel(label: string, maxCharacters = 14): string {
   const normalized = label.trim();
   const characters = Array.from(normalized);
   if (characters.length <= maxCharacters) return normalized;

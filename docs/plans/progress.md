@@ -19,7 +19,7 @@ Branch: `ui-redesign-v3`. Baseline commit: `aa3f37c`.
 Recorded here rather than in the plan document, which is frozen during implementation.
 
 - **`VITE_APP_SHELL_V3` flag dropped.** §7 asks for a flag that keeps the v2 shell as a
-  rollback path. The v2 shell is not a separate composition — `AppShell` *is* the layout the
+  rollback path. The v2 shell is not a separate composition — `AppShell` _is_ the layout the
   owner already tuned, and Phases 1–4 evolve it in place rather than building a parallel
   tree. A second live shell would double every panel change for the whole redesign and the
   baseline commit already provides the rollback. `VITE_APP_SHELL_V2` stays as-is.
@@ -28,30 +28,34 @@ Recorded here rather than in the plan document, which is frozen during implement
 
 ## Phase 0 — Design system foundation (§2)
 
-- [ ] §2.1 Base UI, Inter Variable, Material Symbols Rounded, dnd-kit installed
-- [ ] §2.2 `tokens.css` rewritten to the neutral palette with the dark-blue accent, Archivo removed
-- [ ] §2.4 `--radius-md` and the rest of the shape/size scale defined (fixes §29.2)
-- [ ] §2.5 motion tokens + `motion.css` keyframes
-- [ ] §2.1 `ui/kit/*` primitives with `styles/kit.css`
-- [ ] §2.1 `KitGallery` reachable at `?kit=1` in dev
-- [ ] §2.6 `i18n/cs.ts` with the mode names Osobní / Objevuj / Plánování / Hra
-- [ ] AK: KitGallery light+dark clean, text contrast ≥ 4.5:1 under axe
+- [x] §2.1 Base UI, Inter Variable, Material Symbols Rounded, dnd-kit installed (commit b20b980)
+- [x] §2.2 `tokens.css` rewritten to the neutral palette with the dark-blue accent, Archivo removed (commit b20b980)
+- [x] §2.4 `--radius-md` and the rest of the shape/size scale defined (fixes §29.2) (commit b20b980)
+- [x] §2.5 motion tokens + `motion.css` keyframes (commit b20b980)
+- [x] §2.1 `ui/kit/*` primitives with `styles/kit.css` (commit b20b980)
+- [x] §2.1 `KitGallery` reachable at `?kit=1` in dev (commit b20b980)
+- [x] §2.6 `i18n/cs.ts` with the mode names Osobní / Objevuj / Plánování / Hra (commit b20b980)
+- [x] AK: KitGallery light+dark clean, text contrast ≥ 4.5:1 under axe (commit b20b980)
 
 ## Phase 1 — Shell (§3, §4.1, §4.2, §4.12) + §29.2 defects
 
-- [ ] §3.1 `TopBar` with a 280 px search, no clipped mode labels at 1440 px
-- [ ] §4.1 `CommandSearch` popover, Material target icon for "my location"
-- [ ] §3.1 hamburger, Podklady/Vrstvy buttons with badge, `overflow-btn` → `layers-btn`
-- [ ] §4.2 `PanelShell` header/footer, `RightUtilityDrawer` at 380 px
-- [ ] §3.2 mobile `BottomNav` + sheet snaps peek/half/full
-- [ ] §4.12 `ActivityIndicator`, `SourceStatus` strip removed
-- [ ] §29.2 sidebar starts at `top: 0`, top bar centred over the map area
-- [ ] §29.2 stylelint rejects unknown custom properties
-- [ ] §29.2 `overflow-wrap` on panel text (fixes the AI section overlap)
-- [ ] §29.2 Discover panel renders on desktop (transform instead of `left`)
-- [ ] §29.2 mobile default snap is half; scrim does not cover the bottom nav
-- [ ] §29.2 z-index: Esc in the search popover no longer leaves the modal beneath it open
-- [ ] AK: smoke test "every mode shows a panel"; `smoke.spec.ts` + `shellEnhancements.spec.ts` green
+- [x] §3.1 `TopBar` with a 280 px search, no clipped mode labels at 1440 px (shot docs/shots/phase-1/01-map-1440-light.jpg)
+- [x] §4.1 `CommandSearch` popover, Material target icon for "my location" (shot docs/shots/phase-1/02-search-empty-1440-light.jpg)
+- [x] §3.1 hamburger, Podklady/Vrstvy buttons with badge, `overflow-btn` → `layers-btn`
+- [x] §4.2 `PanelShell` header/footer, `RightUtilityDrawer` at 380 px
+- [x] §3.2 mobile `BottomNav` + sheet snaps peek/half/full (shot docs/shots/phase-1/06-planning-empty-390-light.jpg)
+- [x] §4.12 `ActivityIndicator`, `SourceStatus` strip removed (`e2e/activityIndicator.spec.ts`)
+- [x] §29.2 sidebar starts at `top: 0`, top bar centred over the map area
+- [x] §29.2 unknown custom properties rejected — `npm run test:css-tokens` instead of stylelint,
+      which would have meant adopting a second style toolchain for one rule
+- [x] §29.2 `overflow-wrap` on panel text (fixes the AI section overlap)
+- [x] §29.2 Discover panel renders on desktop (transform instead of `left`)
+- [x] §29.2 mobile default snap is half; scrim does not cover the bottom nav — and at `full` it
+      is no longer a scrim at all but the map strip's hit area, which snaps back to `half` (§21.2)
+- [x] §29.2 z-index: Esc in the search popover no longer leaves the modal beneath it open
+- [x] AK: smoke test "every mode shows a panel"; `smoke.spec.ts` + `shellEnhancements.spec.ts` green
+- [x] Audit round: chrome states (map, search empty, search AI) at 0 findings in
+      `docs/shots/phase-1/audit.md`; panel and drawer findings are Phase 2/3 work
 
 ## Phase 2 — Drawers (§4.7, §4.8, §4.9)
 

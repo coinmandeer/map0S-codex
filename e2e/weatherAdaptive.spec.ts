@@ -35,9 +35,59 @@ function weatherGrid(url: string) {
   };
 }
 
+/** A point on the canvas that really hits a rendered weather sector.
+ *
+ *  The grid is rebuilt whenever the camera settles, and the camera now carries the chrome's
+ *  padding, so a point derived from one serialisation of the source can be stale by the time it
+ *  is used. This retries until a sector is both on canvas and hit-testable. */
+async function hittableSectorPoint(page: Page): Promise<{ x: number; y: number }> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const point = await page.evaluate(() => {
+      const map = window.__maposMap;
+      if (!map?.getLayer("fill-weather-sectors")) return null;
+      const source = map.getSource("source-weather-sectors") as
+        { serialize?: () => { data?: GeoJSON.FeatureCollection } } | undefined;
+      const sectors = (source?.serialize?.().data?.features ?? []).filter(
+        (feature) => feature.properties?.kind === "sector"
+      );
+      const rect = map.getCanvas().getBoundingClientRect();
+      // Middle out: the centre of the viewport is the least likely to be clipped.
+      const order = sectors
+        .map((sector, index) => ({ sector, index }))
+        .sort(
+          (a, b) => Math.abs(a.index - sectors.length / 2) - Math.abs(b.index - sectors.length / 2)
+        );
+      for (const { sector } of order) {
+        const ring = (sector.geometry as GeoJSON.Polygon).coordinates[0]!;
+        const lng = (Math.min(...ring.map(([x]) => x)) + Math.max(...ring.map(([x]) => x))) / 2;
+        const lat = (Math.min(...ring.map(([, y]) => y)) + Math.max(...ring.map(([, y]) => y))) / 2;
+        const projected = map.project([lng, lat]);
+        if (
+          projected.x < 1 ||
+          projected.y < 1 ||
+          projected.x > rect.width - 1 ||
+          projected.y > rect.height - 1
+        )
+          continue;
+        if (
+          !map.queryRenderedFeatures([projected.x, projected.y], {
+            layers: ["fill-weather-sectors"]
+          }).length
+        )
+          continue;
+        return { x: rect.left + projected.x, y: rect.top + projected.y };
+      }
+      return null;
+    });
+    if (point) return point;
+    await page.waitForTimeout(250);
+  }
+  throw new Error("no weather sector became hit-testable");
+}
+
 async function selectWeather(page: Page, id: "temperature" | "clouds") {
   if (!(await page.getByTestId("overflow-menu").isVisible())) {
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
   }
   await page.locator(`label:has([data-testid="weather-visualization-${id}"])`).click();
   await expect(page.getByTestId(`weather-visualization-${id}`)).toBeChecked();
@@ -140,33 +190,7 @@ test.describe("adaptive weather map UI", () => {
       )
       .toBeGreaterThan(0);
 
-    const point = await page.evaluate(() => {
-      const map = window.__maposMap!;
-      const source = map.getSource("source-weather-sectors") as {
-        serialize: () => { data: GeoJSON.FeatureCollection };
-      };
-      const sectors = source
-        .serialize()
-        .data.features.filter((feature) => feature.properties?.kind === "sector");
-      const geometry = sectors[Math.floor(sectors.length / 2)]!.geometry as GeoJSON.Polygon;
-      const ring = geometry.coordinates[0]!;
-      const lng = (Math.min(...ring.map(([x]) => x)) + Math.max(...ring.map(([x]) => x))) / 2;
-      const lat = (Math.min(...ring.map(([, y]) => y)) + Math.max(...ring.map(([, y]) => y))) / 2;
-      const projected = map.project([lng, lat]);
-      const rect = map.getCanvas().getBoundingClientRect();
-      return { x: rect.left + projected.x, y: rect.top + projected.y };
-    });
-    await expect
-      .poll(() =>
-        page.evaluate(({ x, y }) => {
-          const map = window.__maposMap!;
-          const rect = map.getCanvas().getBoundingClientRect();
-          return map.queryRenderedFeatures([x - rect.left, y - rect.top], {
-            layers: ["fill-weather-sectors"]
-          }).length;
-        }, point)
-      )
-      .toBeGreaterThan(0);
+    const point = await hittableSectorPoint(page);
     await page.mouse.move(point.x, point.y);
     const detail = page.getByTestId("weather-map-detail");
     await expect(detail).toContainText("Náhled v mapě");

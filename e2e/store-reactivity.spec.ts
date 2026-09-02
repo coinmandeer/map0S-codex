@@ -13,7 +13,7 @@ test.describe("legacy weather deep links keep weather as an additive Discover la
     await expect(page).toHaveURL(/[?&]mode=discover(?:&|$)/);
     await expect(page.getByTestId("discover-panel")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("global-timeline")).toBeVisible({ timeout: 30_000 });
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await expect(page.getByTestId("overflow-menu")).toBeVisible();
   });
 

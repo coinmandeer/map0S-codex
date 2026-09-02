@@ -67,7 +67,10 @@ export default tseslint.config(
         fetch: "readonly",
         document: "readonly",
         window: "readonly",
-        getComputedStyle: "readonly"
+        getComputedStyle: "readonly",
+        innerWidth: "readonly",
+        innerHeight: "readonly",
+        matchMedia: "readonly"
       }
     },
     rules: { "no-console": "off" }

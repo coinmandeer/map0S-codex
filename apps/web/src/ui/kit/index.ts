@@ -27,21 +27,8 @@ export {
   type TextAreaProps,
   type TextFieldProps
 } from "./TextField";
-export {
-  Checkbox,
-  RadioGroup,
-  RangeSlider,
-  Slider,
-  Switch,
-  type RadioOption
-} from "./Choice";
-export {
-  Select,
-  Combobox,
-  type ComboboxItem,
-  type SelectGroup,
-  type SelectOption
-} from "./Select";
+export { Checkbox, RadioGroup, RangeSlider, Slider, Switch, type RadioOption } from "./Choice";
+export { Select, Combobox, type ComboboxItem, type SelectGroup, type SelectOption } from "./Select";
 export { Accordion, Tabs, type AccordionSection, type TabDefinition } from "./Disclosure";
 export {
   ConfirmDialog,
@@ -54,12 +41,7 @@ export {
   type MenuAction
 } from "./Overlay";
 export { Badge, Chip, Divider, ListItem, Section, StatChip } from "./Display";
-export {
-  EmptyState,
-  InlineNotice,
-  ProgressCircular,
-  ProgressLinear,
-  Skeleton
-} from "./Feedback";
+export { EmptyState, InlineNotice, ProgressCircular, ProgressLinear, Skeleton } from "./Feedback";
 export { ToastProvider, notify, toastManager, type ToastTone } from "./Toast";
 export { useMediaQuery } from "./useMediaQuery";
+export { useElementWidth } from "./useElementWidth";

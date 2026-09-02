@@ -5,6 +5,12 @@ import { Icon, type IconName } from "./Icon";
 
 type NativeButton = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className">;
 
+/** Kit components own their base class; callers may add one for positioning only, never for
+ *  restyling the control itself. */
+function classes(base: string, extra?: string): string {
+  return extra ? `${base} ${extra}` : base;
+}
+
 export interface ButtonProps extends NativeButton {
   /** `filled` is the one primary action on a surface, `tonal` a secondary one, `text` a
    *  tertiary one. More than one filled button per panel and neither reads as primary. */
@@ -17,6 +23,8 @@ export interface ButtonProps extends NativeButton {
   loading?: boolean;
   children?: ReactNode;
   testId?: string;
+  /** Positioning only — see `classes`. */
+  className?: string;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -30,6 +38,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     disabled,
     children,
     testId,
+    className,
     ...rest
   },
   ref
@@ -39,7 +48,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {...rest}
       ref={ref}
       type={rest.type ?? "button"}
-      className="kit-button"
+      className={classes("kit-button", className)}
       data-variant={variant}
       data-size={size}
       data-block={block || undefined}
@@ -68,10 +77,22 @@ export interface IconButtonProps extends NativeButton {
   active?: boolean;
   round?: boolean;
   testId?: string;
+  /** Positioning only — see `classes`. */
+  className?: string;
 }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { icon, label, variant = "plain", size = "md", active = false, round = false, testId, ...rest },
+  {
+    icon,
+    label,
+    variant = "plain",
+    size = "md",
+    active = false,
+    round = false,
+    testId,
+    className,
+    ...rest
+  },
   ref
 ) {
   return (
@@ -79,7 +100,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       {...rest}
       ref={ref}
       type={rest.type ?? "button"}
-      className="kit-icon-button"
+      className={classes("kit-icon-button", className)}
       data-variant={variant}
       data-size={size}
       data-round={round || undefined}

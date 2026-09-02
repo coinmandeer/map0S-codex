@@ -391,7 +391,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(page.getByTestId("map-picker-host")).toBeVisible();
     await expect(page.getByTestId("map-picker-host")).toContainText("Vyber polohu zastávky 1");
 
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await expect(page.getByTestId("right-utility-drawer")).toHaveAttribute(
       "data-utility",
       "layers"

@@ -1,19 +1,23 @@
 /* Docked sidebar (desktop) / bottom sheet (mobile) content: places list, pin detail,
    discover, weather timeline. */
 @layer panels {
+  /* Full-height column from the top edge of the viewport (§29.2 fix 1). The top bar floats
+     over the map *beside* it, so starting the panel below the bar only bought a band of dead
+     space at the top of every panel — and, because the offset was measured from the DOM, a
+     visible jump on first paint. */
   .panel-left {
     position: fixed;
-    top: calc(var(--modebar-h) + var(--space-3));
+    top: 0;
     left: 0;
-    bottom: 0;
+    height: 100dvh;
     width: min(var(--sidebar-w), 100%);
-    z-index: 40;
+    z-index: var(--z-panel);
     background: var(--surface-solid);
     border-right: 1px solid var(--border);
     box-shadow: var(--shadow);
     display: flex;
     flex-direction: column;
-    animation: slideInLeft var(--dur-slow) var(--ease-out);
+    animation: slideInLeft var(--dur-slow) var(--ease-emph-decel);
   }
 
   .panel-left-resizer {
@@ -44,25 +48,38 @@
     background: var(--accent);
   }
 
+  /* 56 px header (§4.2): title on the left, at most one contextual action plus close on the
+     right, and nothing else — no subtitles, no source strips. */
   .panel-left-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-4);
-    padding: var(--space-6) var(--space-6) var(--space-5);
-    padding-top: calc(var(--space-6) + var(--safe-top));
+    min-height: 56px;
+    padding-inline: var(--space-7) var(--space-5);
+    padding-top: var(--safe-top);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
   .panel-left-header h2 {
-    font-size: var(--text-lg);
-    font-family: var(--font-display);
-    font-stretch: var(--display-stretch);
-    letter-spacing: var(--display-tracking);
-    font-weight: var(--weight-display);
+    font: var(--type-title-lg);
     margin: 0;
     margin-right: auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Sticky home for a panel's single primary action (§4.2). */
+  .panel-left-footer {
+    flex-shrink: 0;
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-7);
+    padding-bottom: calc(var(--space-5) + var(--safe-bottom));
+    border-top: 1px solid var(--border);
+    background: var(--surface-solid);
   }
 
   /* Drag zone for the mobile snap points. Desktop never renders it. */
@@ -73,8 +90,12 @@
   .panel-left-body {
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: var(--space-6) var(--space-6) var(--space-9);
+    scrollbar-gutter: stable;
+    padding: var(--space-7) var(--space-7) var(--space-9);
     flex: 1;
+    /* Long unbroken strings — coordinates, request keys, URLs — used to push panel text over
+       neighbouring rows instead of wrapping (§29.2 fix 2). */
+    overflow-wrap: anywhere;
   }
 
   /* PlacesPanel's own backdrop: only a real modal scrim on mobile (drawer over the map).
@@ -5137,64 +5158,75 @@
 
   /* ---- Responsive ----------------------------------------------------- */
   @media (max-width: 899px) {
+    /* Not a scrim: at the `full` snap this is the hit area of the 112 px map strip, and tapping
+       it snaps the sheet back to `half` (§21.2). It is undimmed because the strip is meant to be
+       readable and to react to what is selected in the sheet, and it stays clear of the top bar
+       and the bottom navigation bar so both remain reachable. */
     .panel-left-overlay {
       display: block;
       position: fixed;
-      inset: 0;
-      background: var(--scrim);
-      z-index: 35;
-      animation: fadeIn var(--dur) var(--ease-out);
+      top: var(--chrome-top);
+      left: 0;
+      right: 0;
+      bottom: calc(var(--bottom-nav-h) + var(--sheet-h) + var(--safe-bottom));
+      background: transparent;
+      /* Above the map canvas, below every piece of chrome that lives in the strip: zoom
+         controls, the legend and the activity pill stay clickable. */
+      z-index: 1;
     }
 
-    /* Sheet height is driven by --panel-snap: set per snap index below, or written
-       inline while a drag is in flight (transition off so it tracks the finger). */
+    /* Sheet height comes from the snap, or from --panel-snap-h while a drag is in flight.
+       `full` leaves a 112 px strip of map above it (§21.2) instead of covering the screen. */
     .panel-left {
       top: auto;
       left: 0;
       right: 0;
       bottom: calc(var(--bottom-nav-h) + var(--safe-bottom));
       width: 100%;
-      height: var(--panel-snap, 62dvh);
-      max-height: calc(100dvh - var(--modebar-h) - var(--bottom-nav-h) - 8px);
+      height: var(--panel-snap-h, var(--panel-snap));
       border-right: none;
-      border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-      animation: slideUp var(--dur-slow) var(--ease-out);
-      transition: height var(--dur-slow) var(--ease-out);
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      animation: slideUp var(--dur-slow) var(--ease-emph-decel);
+      transition: height var(--dur-slow) var(--ease-emph-decel);
+    }
+
+    /* While dragging, the inline height must track the finger with no easing in the way. */
+    .panel-left[style*="--panel-snap-h"] {
+      transition: none;
     }
 
     .panel-left-resizer {
       display: none;
     }
 
-    .panel-left[data-snap="0"] {
-      --panel-snap: 30dvh;
-    }
-    .panel-left[data-snap="1"] {
-      --panel-snap: 62dvh;
-    }
-    .panel-left[data-snap="2"] {
-      --panel-snap: 90dvh;
+    .panel-left[data-snap="peek"] {
+      --panel-snap: 96px;
     }
 
+    .panel-left[data-snap="half"] {
+      --panel-snap: 50dvh;
+    }
+
+    .panel-left[data-snap="full"] {
+      --panel-snap: calc(
+        100dvh - var(--chrome-top) - var(--map-strip-h) - var(--bottom-nav-h) - var(--safe-bottom)
+      );
+    }
+
+    /* The keyboard shrinks the visual viewport but not the layout viewport, so the sheet has to
+       be lifted by the difference — otherwise its lower half, inputs included, is behind the
+       keyboard. */
     html[data-soft-keyboard="open"] .panel-left {
-      bottom: var(--safe-bottom);
-      height: calc(var(--visual-viewport-h) - var(--modebar-h) - var(--space-2));
-      max-height: calc(var(--visual-viewport-h) - var(--modebar-h) - var(--space-2));
+      bottom: calc(100dvh - var(--visual-viewport-h) + var(--safe-bottom));
+      height: calc(var(--visual-viewport-h) - var(--chrome-top) - var(--space-2));
       transition: none;
-    }
-
-    /* At peek height the scrim would hide the map the sheet is meant to leave visible. */
-    .panel-left[data-snap="0"] ~ .panel-left-overlay,
-    .panel-left-overlay:has(+ .panel-left[data-snap="0"]) {
-      opacity: 0;
-      pointer-events: none;
     }
 
     .panel-grabber {
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 22px;
+      height: 20px;
       padding-top: var(--space-3);
       flex-shrink: 0;
       cursor: grab;
@@ -5205,8 +5237,26 @@
       cursor: grabbing;
     }
 
+    .panel-handle {
+      width: 32px;
+      height: 4px;
+      border-radius: var(--radius-pill);
+      background: var(--border-strong);
+    }
+
+    /* In `full` the header stays put while the body scrolls under it. */
     .panel-left .panel-left-header {
-      padding-top: var(--space-4);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      min-height: 48px;
+      padding-top: 0;
+      background: var(--surface-solid);
+    }
+
+    .panel-left .panel-left-header .kit-icon-button {
+      width: var(--tap-min);
+      height: var(--tap-min);
     }
 
     .map-timeline {
@@ -5440,39 +5490,39 @@
   }
 
   /* ---- D06 shell hosts ------------------------------------------------- */
+  /* Full-height column, same as the left sidebar: the top bar and the Podklady/Vrstvy buttons
+     slide left by this width instead of being covered, so the two act as a switch between the
+     three drawers (§3.1). */
   .shell-right-drawer {
     position: fixed;
-    /* Keep the command bar, including the button that opened this utility, operable. */
-    top: var(--modebar-h);
+    top: 0;
     right: 0;
-    bottom: 0;
-    z-index: 60;
-    width: min(400px, 100vw);
+    height: 100dvh;
+    z-index: var(--z-drawer);
+    width: min(var(--drawer-w), 100vw);
     display: flex;
     flex-direction: column;
     background: var(--surface-solid);
     border-left: 1px solid var(--border);
     box-shadow: var(--shadow-lg);
-    animation: slideInRight var(--dur-slow) var(--ease-out);
+    animation: slideInRight var(--dur-slow) var(--ease-emph-decel);
   }
 
   .shell-right-drawer-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-4);
     flex: 0 0 auto;
-    padding: calc(var(--space-6) + var(--safe-top)) var(--space-6) var(--space-5);
+    min-height: 56px;
+    padding-inline: var(--space-7) var(--space-5);
+    padding-top: var(--safe-top);
     border-bottom: 1px solid var(--border);
   }
 
   .shell-right-drawer-header h2 {
     margin: 0;
-    font-family: var(--font-display);
-    font-size: var(--text-lg);
-    font-stretch: var(--display-stretch);
-    font-weight: var(--weight-display);
-    letter-spacing: var(--display-tracking);
+    margin-right: auto;
+    font: var(--type-title-lg);
   }
 
   .shell-right-drawer-body {
@@ -5480,7 +5530,9 @@
     min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    padding: var(--space-6) var(--space-6) calc(var(--space-8) + var(--safe-bottom));
+    scrollbar-gutter: stable;
+    overflow-wrap: anywhere;
+    padding: var(--space-7) var(--space-7) calc(var(--space-8) + var(--safe-bottom));
   }
 
   .layers-megamenu.is-embedded {
@@ -5737,15 +5789,24 @@
       gap: 1px;
     }
 
+    /* On a phone the drawers are sheets too, at the `full` snap (§3.2), and stay above the
+       bottom navigation bar. */
     .shell-right-drawer {
-      top: var(--modebar-h);
+      top: auto;
+      left: 0;
       bottom: calc(var(--bottom-nav-h) + var(--safe-bottom));
-      width: min(400px, 100vw);
+      height: calc(
+        100dvh - var(--chrome-top) - var(--map-strip-h) - var(--bottom-nav-h) - var(--safe-bottom)
+      );
+      width: 100%;
+      border-left: 0;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      animation: slideUp var(--dur-slow) var(--ease-emph-decel);
     }
 
     html[data-soft-keyboard="open"] .shell-right-drawer {
       bottom: var(--safe-bottom);
-      height: calc(var(--visual-viewport-h) - var(--modebar-h));
+      height: calc(var(--visual-viewport-h) - var(--chrome-top));
     }
 
     .shell-map-picker-actions {

@@ -6,6 +6,7 @@ import { usesMapyTiles } from "@mapos/layer-sdk";
 import { MapyLogoControl } from "./styleManager";
 import { overlayForBasemap, resolveBasemap, styleForBasemap } from "./basemapStyle";
 import { apply3dBuildings } from "./buildings3d";
+import { chromeMapPadding, readChromeInsets } from "./chromePadding";
 import { getMapStore, getMapBbox, type LayerMode } from "../store/mapStore";
 import { LayerEngine } from "../engine/LayerEngine";
 import { activeAttribution } from "../layers/attribution";
@@ -648,6 +649,53 @@ export function MapCore() {
     return on("layers-changed", handler);
   }, [store.activeLayers]);
 
+  // Keep the camera's idea of "centre" aligned with the part of the map the chrome leaves
+  // visible. The shell publishes its widths and the sheet height as custom properties on
+  // `<html>`, including while the sheet is being dragged, so this follows the finger.
+  useEffect(() => {
+    let frame = 0;
+    let retry = 0;
+    const apply = () => {
+      frame = 0;
+      const map = mapRef.current;
+      if (!map) return;
+      const padding = chromeMapPadding(readChromeInsets(), {
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+      const current = map.getPadding();
+      if (
+        current.top === padding.top &&
+        current.right === padding.right &&
+        current.bottom === padding.bottom &&
+        current.left === padding.left
+      )
+        return;
+      // `setPadding` moves the camera, which aborts a flight in progress — a location fix would
+      // stop halfway because opening a panel wrote a custom property. Wait for the camera.
+      if (map.isMoving() || map.isZooming() || map.isRotating()) {
+        window.clearTimeout(retry);
+        retry = window.setTimeout(schedule, 150);
+        return;
+      }
+      map.setPadding(padding, { duration: 0 });
+    };
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(apply);
+    };
+    schedule();
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.documentElement, { attributeFilter: ["style"] });
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.clearTimeout(retry);
+      observer.disconnect();
+      window.removeEventListener("resize", schedule);
+    };
+  }, []);
+
   useEffect(() => {
     let lastFittedRoute: typeof store.routePreview = null;
     const updateRoute = () => {
@@ -703,13 +751,9 @@ export function MapCore() {
         (b, coord) => b.extend(coord as [number, number]),
         new maplibregl.LngLatBounds(fittedCoordinates[0]!, fittedCoordinates[0]!)
       );
-      const desktop = window.innerWidth >= 900;
-      map.fitBounds(bounds, {
-        padding: desktop
-          ? { top: 96, right: 76, bottom: 220, left: store.sidebarOpen ? 420 : 76 }
-          : { top: 88, right: 48, bottom: store.sidebarOpen ? 430 : 96, left: 48 },
-        maxZoom: 15
-      });
+      // The camera padding already describes what the chrome covers, so the fit only has to
+      // add a little slack around the route itself.
+      map.fitBounds(bounds, { padding: 24, maxZoom: 15 });
     };
     updateRoute();
     return store.subscribe(updateRoute);

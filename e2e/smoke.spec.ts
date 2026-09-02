@@ -5,7 +5,7 @@ test.describe("MapOS V3 smoke", () => {
   test("mode bar is visible with layers control", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("mode-bar")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("overflow-btn")).toBeVisible();
+    await expect(page.getByTestId("layers-btn")).toBeVisible();
     await expect(page.getByTestId("hamburger-btn")).toHaveCount(0);
     await page.getByTestId("planning-panel").getByRole("button", { name: "Zavřít" }).click();
     const panelToggle = page.getByTestId("hamburger-btn");
@@ -15,7 +15,20 @@ test.describe("MapOS V3 smoke", () => {
     await panelToggle.click();
     await expect(page.getByTestId("left-context-host")).toHaveAttribute("data-context", "mode");
     await expect(page.getByTestId("hamburger-btn")).toHaveCount(0);
+    await expect(page.getByTestId("command-center")).toBeVisible();
+  });
+
+  test("the command pill shows the wordmark when the map has the window to itself", async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.getByTestId("planning-panel").getByRole("button", { name: "Zavřít" }).click();
     await expect(page.getByTestId("brand-pill")).toContainText("MapOS");
+    // §3.1 gives up the wordmark before it gives up a mode label, so an open panel drops it.
+    await page.getByTestId("hamburger-btn").click();
+    await expect(page.getByTestId("brand-pill")).toHaveCount(0);
+    await expect(page.getByTestId("mode-planning")).toContainText("Plánování");
   });
 
   test("planning panel opens", async ({ page }) => {
@@ -26,7 +39,7 @@ test.describe("MapOS V3 smoke", () => {
 
   test("layers drawer exposes only the four canonical presets", async ({ page }) => {
     await page.goto("/?layers=osm-poi&mode=poi");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await expect(page.getByTestId("overflow-menu")).toBeVisible();
     await expect(page.getByTestId("usecase-menu")).toBeVisible();
     await expect(page.locator("[data-preset-index]")).toHaveCount(4);
@@ -38,7 +51,7 @@ test.describe("MapOS V3 smoke", () => {
 
   test("the sport usecase turns on its categories and the trail overlay", async ({ page }) => {
     await page.goto("/?layers=osm-poi&mode=poi");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await page.getByTestId("preset-sport").click();
 
     const layers = await page.evaluate(
@@ -52,7 +65,7 @@ test.describe("MapOS V3 smoke", () => {
 
   test("filter categories toggle in layers megamenu", async ({ page }) => {
     await page.goto("/?layers=osm-poi&mode=poi");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await page.getByTestId("category-accordion").locator("summary").click();
     await expect(page.getByTestId("filter-castle")).toBeVisible();
     await page.getByTestId("filter-castle").click();
@@ -71,7 +84,7 @@ test.describe("MapOS V3 smoke", () => {
     await expect(page.getByTestId("provider-mapy")).toHaveCount(0);
     await expect(page.getByText("Pohyb", { exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await page.getByTestId("experience-selector").locator("summary").click();
     for (const source of [
       "osm",
@@ -121,7 +134,7 @@ test.describe("MapOS V3 smoke", () => {
     // The source preference remains visible, while the separately rendered layer needs the
     // technical server capability. The offline fixture server deliberately reports it as off.
     await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await expect(page.getByTestId("overflow-menu")).toBeVisible();
     await expect(page.getByTestId("overflow-park4night")).toHaveCount(0);
   });
@@ -138,7 +151,7 @@ test.describe("MapOS V3 smoke", () => {
     );
 
     await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await page.getByTestId("overflow-park4night").click();
     await expect(page.getByTestId("toast")).toContainText("Park4Night");
   });
@@ -192,9 +205,9 @@ test.describe("MapOS V3 smoke", () => {
     await expect(page.getByTestId("mode-game")).toBeVisible();
     await expect(page.getByTestId("mode-weather")).toHaveCount(0);
     await expect(page.getByTestId("mode-mine")).toHaveCount(0);
-    await expect(bottomNav).toContainText("Personal");
+    await expect(bottomNav).toContainText("Osobní");
     await expect(bottomNav).toContainText("Plán");
-    await expect(bottomNav).toContainText("Discover");
+    await expect(bottomNav).toContainText("Objevuj");
     await expect(bottomNav).toContainText("Hra");
 
     await page.getByTestId("mode-game").click();
@@ -202,9 +215,9 @@ test.describe("MapOS V3 smoke", () => {
 
     await page.goto("/?mode=weather");
     await expect(page).toHaveURL(/[?&]mode=discover(?:&|$)/);
-    await expect(page.getByTestId("mode-discover")).toHaveClass(/active/);
+    await expect(page.getByTestId("mode-discover")).toHaveAttribute("data-active", "true");
     await expect(page.getByTestId("global-timeline")).toBeVisible({ timeout: 30_000 });
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await expect(page.getByTestId("weather-visualization-radar")).toBeChecked();
     await expect(page.getByTestId("weather-visualization-temperature")).toBeVisible();
   });

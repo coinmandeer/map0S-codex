@@ -16,11 +16,13 @@ import { SourceStatus } from "../SourceStatus";
 import { TaskCenter } from "../TaskCenter";
 import { legendContributions, timelineContributions } from "../footerContributions";
 import { ModuleErrorBoundary } from "../primitives/ModuleErrorBoundary";
+import { ActivityIndicator } from "./ActivityIndicator";
 import { MapFooterStack } from "./MapFooterStack";
 import { LegendStack } from "./LegendStack";
 import { MapPickerHost } from "./MapPickerHost";
 import { ModalHost } from "./ModalHost";
 import { RightUtilityDrawer } from "./RightUtilityDrawer";
+import { TopBar } from "./TopBar";
 
 const PinDetail = lazy(() =>
   import("../PinDetail").then((module) => ({ default: module.PinDetail }))
@@ -156,11 +158,9 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
 
   return (
     <>
-      <div className="shell-command-zone chrome top-chrome" data-testid="command-bar-host">
-        <ModuleErrorBoundary moduleId="command-bar" title="Horní ovládání" compact>
-          <ModeBar onFlyToMe={onFlyToMe} shellManagedUtilities />
-        </ModuleErrorBoundary>
-      </div>
+      <ModuleErrorBoundary moduleId="command-bar" title="Horní ovládání" compact>
+        <TopBar onFlyToMe={onFlyToMe} />
+      </ModuleErrorBoundary>
 
       <ModuleErrorBoundary
         moduleId="search-here"
@@ -173,11 +173,8 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
       <ModuleErrorBoundary moduleId="layer-notices" title="Stav vrstev" compact placement="overlay">
         <LayerNotices />
       </ModuleErrorBoundary>
-      <ModuleErrorBoundary moduleId="source-status" title="Stav zdrojů" compact placement="overlay">
-        <SourceStatus floating testId="map-source-strip" />
-      </ModuleErrorBoundary>
-      <ModuleErrorBoundary moduleId="task-center" title="Průběh úloh" compact placement="overlay">
-        <TaskCenter />
+      <ModuleErrorBoundary moduleId="activity" title="Průběh načítání" compact placement="overlay">
+        <ActivityIndicator />
       </ModuleErrorBoundary>
       <ModuleErrorBoundary
         moduleId="bottom-navigation"
