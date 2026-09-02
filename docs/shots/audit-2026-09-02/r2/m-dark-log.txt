@@ -1,0 +1,6 @@
+url: http://localhost:5173/?lng=10.20000&lat=51.00000&z=4.0&mode=planning&layers=osm-poi
+planning boxes: {"leftHost":{"top":0,"left":0,"w":390,"h":0},"panelBody":null,"commandBar":{"top":10,"left":6,"w":378,"h":122},"modeBar":{"top":10,"left":6,"w":378,"h":122},"panelLeft":null,"cssVars":"--topbar-h= --sidebar-w=100% --chrome-top= --shell-top= --top-chrome-h= --command-h="}
+planning overlaps: []
+search overlaps: []
+discover boxes: {"leftHost":{"top":0,"left":0,"w":390,"h":0},"panelBody":{"top":334,"left":0,"w":390,"h":450},"commandBar":{"top":10,"left":6,"w":378,"h":122},"modeBar":{"top":10,"left":6,"w":378,"h":122},"panelLeft":{"top":261,"left":0,"w":390,"h":523},"cssVars":"--topbar-h= --sidebar-w=320px --chrome-top= --shell-top= --top-chrome-h= --command-h="}
+discover overlaps: []
