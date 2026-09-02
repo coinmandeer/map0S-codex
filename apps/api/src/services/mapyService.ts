@@ -8,6 +8,7 @@
 
 import type { Bbox } from "@mapos/layer-sdk";
 import { config } from "../config.js";
+import { fetchBytes, fetchJson } from "../utils/upstream.js";
 
 const BASE = "https://api.mapy.com";
 
@@ -43,12 +44,12 @@ async function mapyJson<T>(
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
   }
-  const res = await fetch(url, {
-    headers: { "User-Agent": config.userAgent },
-    signal: AbortSignal.timeout(12_000)
+  return fetchJson<T>(url.toString(), {
+    providerId: "mapy-api",
+    ttlMs: 5 * 60_000,
+    timeoutMs: 12_000,
+    maxResponseBytes: 4 * 1024 * 1024
   });
-  if (!res.ok) throw new Error(`mapy ${path} ${res.status}`);
-  return (await res.json()) as T;
 }
 
 /** Raster tile bytes plus content type, for streaming straight back to the client. */
@@ -61,15 +62,15 @@ export async function fetchMapyTile(
 ): Promise<{ body: ArrayBuffer; contentType: string }> {
   const suffix = retina ? "@2x" : "";
   const url = `${BASE}/v1/maptiles/${mapset}/256${suffix}/${z}/${x}/${y}?apikey=${encodeURIComponent(keyOrThrow())}`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": config.userAgent },
-    signal: AbortSignal.timeout(12_000)
+  return fetchBytes(url, {
+    providerId: "mapy-tiles",
+    // Browser/CDN cache headers own tile retention; keeping binary tiles in the JSON LRU would
+    // waste API heap while providing no additional network saving.
+    ttlMs: 0,
+    timeoutMs: 12_000,
+    maxResponseBytes: 4 * 1024 * 1024,
+    acceptedContentTypes: ["image/*"]
   });
-  if (!res.ok) throw new Error(`mapy tile ${res.status}`);
-  return {
-    body: await res.arrayBuffer(),
-    contentType: res.headers.get("content-type") ?? "image/png"
-  };
 }
 
 export interface MapyGeocodeItem {

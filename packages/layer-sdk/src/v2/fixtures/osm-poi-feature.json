@@ -1,0 +1,65 @@
+{
+  "schema": "mapos.feature",
+  "schemaVersion": "2.0.0",
+  "id": "place:osm:node:987654321",
+  "revision": 1,
+  "geometry": {
+    "type": "Point",
+    "coordinates": [14.42076, 50.08804]
+  },
+  "properties": {
+    "title": "Ukázkové komunitní místo",
+    "kind": "place",
+    "category": "viewpoint",
+    "subcategory": null,
+    "layerIds": ["osm-poi"],
+    "summary": "Ukázka otevřeného POI převedeného současným OSM adapterem do v2 kontraktu.",
+    "description": null,
+    "address": null,
+    "tags": ["výhled", "venku"],
+    "urls": [
+      {
+        "label": "Zdrojový záznam",
+        "url": "https://www.openstreetmap.org/node/987654321",
+        "kind": "source"
+      }
+    ],
+    "media": [],
+    "openingHours": null,
+    "providerFields": {
+      "osm": {
+        "elementType": "node",
+        "tags": {
+          "tourism": "viewpoint"
+        }
+      }
+    },
+    "extensions": {
+      "dev.mapos.migration": {
+        "legacyLayerId": "osm-poi"
+      }
+    }
+  },
+  "sources": [
+    {
+      "providerId": "osm",
+      "sourceId": "node/987654321",
+      "originalUrl": "https://www.openstreetmap.org/node/987654321",
+      "retrievedAt": "2026-09-01T08:00:00Z",
+      "confidence": 0.92,
+      "attribution": "© OpenStreetMap contributors",
+      "license": "ODbL-1.0",
+      "rights": "open",
+      "fieldPaths": ["/geometry", "/properties/title", "/properties/category"],
+      "rawRef": "node/987654321"
+    }
+  ],
+  "access": {
+    "visibility": "public",
+    "ownerId": null,
+    "permissions": ["view", "comment", "review", "share", "export"],
+    "entitlementId": null
+  },
+  "createdAt": "2026-09-01T08:00:00Z",
+  "updatedAt": "2026-09-01T08:00:00Z"
+}

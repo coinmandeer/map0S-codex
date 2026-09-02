@@ -127,7 +127,10 @@ export function splitSections(wikitext: string): Array<{ heading: string; body: 
 
   while ((match = headingRe.exec(wikitext))) {
     if (previous) {
-      sections.push({ heading: previous.heading, body: wikitext.slice(previous.start, match.index) });
+      sections.push({
+        heading: previous.heading,
+        body: wikitext.slice(previous.start, match.index)
+      });
     }
     previous = { heading: match[1]!, start: match.index + match[0].length };
   }

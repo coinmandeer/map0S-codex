@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-const MOBILE_MQ = "(max-width: 899px)";
+/** The source-grounded shell treats 768–1023 px as tablet, not as a stretched phone. */
+export const MOBILE_MQ = "(max-width: 767px)";
 
 export function useIsMobile() {
   const [mobile, setMobile] = useState(() =>

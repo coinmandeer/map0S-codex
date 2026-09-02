@@ -1,25 +1,55 @@
 import type { FastifyRequest } from "fastify";
+import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import { eq, and, gt } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { users, sessions } from "../db/schema.js";
+import { identityAuditEvents, sessions, userIdentities, users } from "../db/schema.js";
+import { ClientError } from "../utils/clientError.js";
 
 const SESSION_DAYS = 30;
 
 export async function registerUser(email: string, password: string, displayName: string) {
-  const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (existing.length) throw new Error("Email already registered");
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
+  if (existing.length) throw new ClientError("Email already registered");
   const passwordHash = await bcrypt.hash(password, 10);
-  const [user] = await db.insert(users).values({ email, passwordHash, displayName }).returning();
-  return user!;
+  return db.transaction(async (transaction) => {
+    const [user] = await transaction
+      .insert(users)
+      .values({ email: normalizedEmail, passwordHash, displayName })
+      .returning();
+    const identityId = randomUUID();
+    await transaction.insert(userIdentities).values({
+      id: identityId,
+      userId: user!.id,
+      type: "email",
+      provider: "password",
+      subject: normalizedEmail,
+      displayLabel: normalizedEmail,
+      simulated: false,
+      verifiedAt: null
+    });
+    await transaction.insert(identityAuditEvents).values({
+      id: randomUUID(),
+      userId: user!.id,
+      identityId,
+      action: "identity-linked",
+      provider: "password"
+    });
+    return user!;
+  });
 }
 
 export async function loginUser(email: string, password: string) {
-  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (!user) throw new Error("Invalid credentials");
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email.trim().toLowerCase()))
+    .limit(1);
+  if (!user) throw new ClientError("Invalid credentials", 401);
   const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) throw new Error("Invalid credentials");
+  if (!ok) throw new ClientError("Invalid credentials", 401);
   const sessionId = nanoid(32);
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000);
   await db.insert(sessions).values({ id: sessionId, userId: user.id, expiresAt });
@@ -28,6 +58,29 @@ export async function loginUser(email: string, password: string) {
 
 export async function logoutSession(sessionId: string) {
   await db.delete(sessions).where(eq(sessions.id, sessionId));
+}
+
+/** Rotates a verified session in one transaction after a new authentication factor is linked. */
+export async function rotateSession(userId: string, currentSessionId: string) {
+  return db.transaction(async (transaction) => {
+    const [current] = await transaction
+      .select()
+      .from(sessions)
+      .where(
+        and(
+          eq(sessions.id, currentSessionId),
+          eq(sessions.userId, userId),
+          gt(sessions.expiresAt, new Date())
+        )
+      )
+      .limit(1);
+    if (!current) throw new ClientError("Session is no longer valid", 401);
+    const sessionId = nanoid(32);
+    const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000);
+    await transaction.delete(sessions).where(eq(sessions.id, currentSessionId));
+    await transaction.insert(sessions).values({ id: sessionId, userId, expiresAt });
+    return { sessionId, expiresAt };
+  });
 }
 
 export async function getSessionUser(sessionId: string | undefined) {
@@ -81,15 +134,37 @@ export async function upgradeGuest(
   password: string,
   displayName: string
 ) {
-  const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (existing.length) throw new Error("Email already registered");
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
+  if (existing.length) throw new ClientError("Email already registered");
   const passwordHash = await bcrypt.hash(password, 10);
-  const [user] = await db
-    .update(users)
-    .set({ email, passwordHash, displayName, isGuest: 0 })
-    .where(eq(users.id, userId))
-    .returning();
-  return user!;
+  return db.transaction(async (transaction) => {
+    const [user] = await transaction
+      .update(users)
+      .set({ email: normalizedEmail, passwordHash, displayName, isGuest: 0 })
+      .where(eq(users.id, userId))
+      .returning();
+    if (!user) throw new ClientError("Guest account not found", 404);
+    const identityId = randomUUID();
+    await transaction.insert(userIdentities).values({
+      id: identityId,
+      userId,
+      type: "email",
+      provider: "password",
+      subject: normalizedEmail,
+      displayLabel: normalizedEmail,
+      simulated: false,
+      verifiedAt: null
+    });
+    await transaction.insert(identityAuditEvents).values({
+      id: randomUUID(),
+      userId,
+      identityId,
+      action: "identity-linked",
+      provider: "password"
+    });
+    return user;
+  });
 }
 
 export function publicUser(user: typeof users.$inferSelect) {

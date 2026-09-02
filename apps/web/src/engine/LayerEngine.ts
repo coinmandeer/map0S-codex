@@ -8,9 +8,19 @@ import type {
   LayerRuntimeContext,
   PlacesResponse
 } from "@mapos/layer-sdk";
-import { viewportCostOf } from "@mapos/layer-sdk";
+import { assertFeatureQueryResultV2, featureV2ToV1, viewportCostOf } from "@mapos/layer-sdk";
+import type { MapDataLayerLifecycle } from "@mapos/map-runtime";
 import type { MapStore } from "../store/mapStore";
-import { createLayerHandle, getLayerPlugin, type MapLayerPlugin } from "../layers";
+import {
+  createLayerHandle,
+  getLayerManifestV2,
+  getLayerPlugin,
+  type MapLayerPlugin
+} from "../layers";
+import { on } from "../lib/events";
+import { TaskRegistry, taskRegistry } from "../tasks/TaskRegistry";
+import { applyFeatureOwnership, ownedUserPinRefs } from "./featureOwnership";
+import { safeBrowserErrorFields } from "../lib/safeError";
 
 type ActiveEntry = { visible: boolean; opacity: number; filters: FilterValues };
 
@@ -22,6 +32,20 @@ interface ManagedLayer {
 
 const CACHE_TTL_MS = 10 * 60_000;
 const CACHE_MAX_ENTRIES = 200;
+const MAX_REFRESH_CONCURRENCY = 4;
+
+export async function runBounded(jobs: Array<() => Promise<void>>, limit: number): Promise<void> {
+  const workerCount = Math.max(1, Math.min(Math.trunc(limit) || 1, jobs.length));
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (next < jobs.length) {
+        const job = jobs[next++];
+        if (job) await job();
+      }
+    })
+  );
+}
 
 /** Small client-side response cache keyed by layer + rounded bbox + filters, so panning back
  * to a recently-seen area (or reapplying the same filter) renders instantly while the network
@@ -29,9 +53,9 @@ const CACHE_MAX_ENTRIES = 200;
 class FeatureCache {
   private store = new Map<string, { data: FeatureCollection; ts: number }>();
 
-  key(layerId: string, bbox: Bbox, filters: FilterValues): string {
+  key(sessionScope: string, layerId: string, bbox: Bbox, filters: FilterValues): string {
     const rounded = bbox.map((n) => Math.round(n * 80) / 80).join(",");
-    return `${layerId}|${rounded}|${JSON.stringify(filters)}`;
+    return `${sessionScope}|${layerId}|${rounded}|${JSON.stringify(filters)}`;
   }
 
   get(key: string): FeatureCollection | null {
@@ -52,12 +76,21 @@ class FeatureCache {
       if (oldest) this.store.delete(oldest);
     }
   }
+
+  clear() {
+    this.store.clear();
+  }
+}
+
+function sessionScope(userId: string | null | undefined): string {
+  return userId ? `user:${userId}` : "anonymous";
 }
 
 export class LayerEngine {
   private map: maplibregl.Map;
   private apiBase: string;
   private store: MapStore;
+  private tasks: TaskRegistry;
   private managed = new Map<string, ManagedLayer>();
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private lastBbox: Bbox | null = null;
@@ -65,11 +98,74 @@ export class LayerEngine {
   private lastPinFetchBbox: Bbox | null = null;
   private cache = new FeatureCache();
   private abortControllers = new Map<string, AbortController>();
+  private layerTaskIds = new Map<string, string>();
+  /** Invalidates requests even when a third-party handle ignores AbortSignal. */
+  private sessionGeneration = 0;
+  /** Invalidates queued and in-flight work from a superseded viewport refresh. */
+  private refreshGeneration = 0;
+  private currentSessionScope: string;
+  private offSessionChanged: () => void;
+  private layerLifecycle: MapDataLayerLifecycle | null;
+  /** Unfiltered responses. Rendering is derived from these so switching the personal layer off
+   * can restore its fused community copies without another network request. */
+  private layerData = new Map<string, FeatureCollection>();
 
-  constructor(map: maplibregl.Map, apiBase: string, store: MapStore) {
+  constructor(
+    map: maplibregl.Map,
+    apiBase: string,
+    store: MapStore,
+    tasks: TaskRegistry = taskRegistry,
+    layerLifecycle: MapDataLayerLifecycle | null = null
+  ) {
     this.map = map;
     this.apiBase = apiBase;
     this.store = store;
+    this.tasks = tasks;
+    this.layerLifecycle = layerLifecycle;
+    this.currentSessionScope = sessionScope(store.session?.id);
+    this.offSessionChanged = on("session-changed", ({ userId }) => {
+      this.handleSessionChanged(userId);
+    });
+  }
+
+  /**
+   * Authentication may change without a page reload. Private layer responses therefore cannot
+   * survive an identity boundary in memory or on the map. Aborting is only the first guard: a
+   * plugin may ignore the signal, so every request also captures `sessionGeneration` and a late
+   * response from the previous identity is discarded.
+   */
+  private handleSessionChanged(userId: string | null) {
+    const nextScope = sessionScope(userId);
+    if (nextScope === this.currentSessionScope) return;
+
+    this.currentSessionScope = nextScope;
+    this.sessionGeneration += 1;
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    this.refreshGeneration += 1;
+    for (const controller of this.abortControllers.values()) controller.abort();
+    for (const taskId of this.layerTaskIds.values()) {
+      this.retireLayerTask(taskId, "Změnila se aktivní identita");
+    }
+    this.abortControllers.clear();
+    this.layerTaskIds.clear();
+    this.cache.clear();
+    this.layerData.clear();
+    this.lastPinFetchBbox = null;
+
+    const empty: FeatureCollection = { type: "FeatureCollection", features: [] };
+    for (const [layerId, managed] of this.managed) {
+      managed.handle.setData?.(empty);
+      this.store.setVisibleFeatures(layerId, []);
+      this.store.setLayerNotice(layerId, undefined);
+      this.store.setLayerLoading(layerId, false);
+    }
+
+    // The session is already patched in MapStore before the event is emitted, so this request is
+    // made with the new cookie and repopulates visible layers without waiting for a map move.
+    if (this.lastBbox) void this.doRefresh(this.lastBbox, true);
   }
 
   syncLayers(active: Record<string, ActiveEntry>) {
@@ -78,19 +174,50 @@ export class LayerEngine {
       if (!managed) continue;
       managed.handle.setVisible(state.visible);
       managed.handle.setOpacity(state.opacity);
-      if (this.lastBbox) {
-        void this.refreshOne(layerId, managed, this.lastBbox, state.filters);
-      }
     }
 
+    let ownershipChanged = false;
     for (const layerId of this.managed.keys()) {
       if (!active[layerId]?.visible) {
-        this.abortControllers.get(layerId)?.abort();
+        const taskId = this.layerTaskIds.get(layerId);
+        if (taskId) {
+          const task = this.tasks.get(taskId);
+          if (task?.status === "failed") this.tasks.dismiss(taskId);
+          else this.tasks.cancel(taskId);
+        } else this.abortControllers.get(layerId)?.abort();
         this.abortControllers.delete(layerId);
+        this.layerTaskIds.delete(layerId);
         this.managed.get(layerId)?.handle.detach();
         this.managed.delete(layerId);
+        ownershipChanged = this.layerData.delete(layerId) || ownershipChanged;
+        this.store.setVisibleFeatures(layerId, []);
         this.store.setLayerLoading(layerId, false);
       }
+    }
+    if (ownershipChanged) this.reconcilePinLayers();
+  }
+
+  private acceptLayerData(layerId: string, managed: ManagedLayer, data: FeatureCollection) {
+    this.layerData.set(layerId, data);
+    if (managed.plugin.kind === "pins") {
+      this.reconcilePinLayers();
+      return;
+    }
+    managed.handle.setData?.(data);
+    this.store.setVisibleFeatures(layerId, data.features);
+  }
+
+  /** Re-renders all pin collections together. This is the one ownership boundary between the
+   * public community catalogue and the user's editable layers. */
+  private reconcilePinLayers() {
+    const ownedRefs = ownedUserPinRefs(this.layerData.get("user-layers"));
+    for (const [layerId, managed] of this.managed) {
+      if (managed.plugin.kind !== "pins") continue;
+      const raw = this.layerData.get(layerId);
+      if (!raw) continue;
+      const visible = applyFeatureOwnership(layerId, raw, ownedRefs);
+      managed.handle.setData?.(visible);
+      this.store.setVisibleFeatures(layerId, visible.features);
     }
   }
 
@@ -100,10 +227,11 @@ export class LayerEngine {
       console.warn(`No layer plugin registered for "${layerId}" — ignoring.`);
       return undefined;
     }
+    const create = () => createLayerHandle(plugin, this.map, this.apiBase);
     const managed: ManagedLayer = {
       layerId,
       plugin,
-      handle: createLayerHandle(plugin, this.map, this.apiBase)
+      handle: this.layerLifecycle?.attach({ id: layerId, create }) ?? create()
     };
     this.managed.set(layerId, managed);
     return managed;
@@ -111,6 +239,18 @@ export class LayerEngine {
 
   private ensureAttached(layerId: string): ManagedLayer | undefined {
     return this.managed.get(layerId) ?? this.attachLayer(layerId);
+  }
+
+  /** A newer request for the same layer replaces its old visible failure. Running work remains
+   * traceable as stale, while terminal history from unrelated layers is left untouched. */
+  private retireLayerTask(taskId: string, message?: string) {
+    const task = this.tasks.get(taskId);
+    if (!task) return;
+    if (task.status === "failed") {
+      this.tasks.dismiss(taskId);
+      return;
+    }
+    if (task.status === "running") this.tasks.markStale(taskId, message);
   }
 
   /** The slice of app state layers are allowed to fold into their requests. */
@@ -146,11 +286,18 @@ export class LayerEngine {
   }
 
   private async doRefresh(bbox: Bbox, force: boolean) {
+    const refreshGeneration = ++this.refreshGeneration;
+    for (const controller of this.abortControllers.values()) controller.abort();
+    for (const taskId of this.layerTaskIds.values()) this.retireLayerTask(taskId);
+    this.abortControllers.clear();
+    this.layerTaskIds.clear();
+
     const active = this.store.activeLayers;
     const confirmPins = !force && this.pinLayersNeedConfirm(bbox);
     if (confirmPins) this.store.setSearchHerePending(true);
     else if (force) this.store.setSearchHerePending(false);
 
+    const jobs: Array<() => Promise<void>> = [];
     for (const layerId of Object.keys(active)) {
       const state = active[layerId];
       if (!state?.visible) continue;
@@ -160,8 +307,20 @@ export class LayerEngine {
       // An expensive layer waits to be asked ("Search here") rather than re-querying Overpass
       // on every pan; a cheap one just follows the map.
       if (!force && confirmPins && expensive) continue;
-      void this.refreshOne(layerId, managed, bbox, state.filters, force && expensive);
+      jobs.push(async () => {
+        if (refreshGeneration !== this.refreshGeneration) return;
+        await this.refreshOne(
+          layerId,
+          managed,
+          bbox,
+          state.filters,
+          force && expensive,
+          force,
+          refreshGeneration
+        );
+      });
     }
+    await runBounded(jobs, MAX_REFRESH_CONCURRENCY);
   }
 
   private async refreshOne(
@@ -169,21 +328,60 @@ export class LayerEngine {
     managed: ManagedLayer,
     bbox: Bbox,
     filters: FilterValues,
-    markPinFetch = false
+    markPinFetch = false,
+    forceRefresh = false,
+    refreshGeneration = this.refreshGeneration
   ) {
+    const requestGeneration = this.sessionGeneration;
+    const requestSessionScope = this.currentSessionScope;
     const mergedFilters = managed.plugin.deriveFilters?.(filters, this.runtimeContext()) ?? filters;
-    const cacheKey = this.cache.key(layerId, bbox, mergedFilters);
+    const globalQuery = getLayerManifestV2(layerId)?.queryPolicy.strategy === "global";
+    const cacheBbox: Bbox = globalQuery ? [-180, -90, 180, 90] : bbox;
+    const cacheKey = this.cache.key(requestSessionScope, layerId, cacheBbox, mergedFilters);
     const cached = this.cache.get(cacheKey);
     if (cached) {
-      managed.handle.setData?.(cached);
-      this.store.setVisibleFeatures(layerId, cached.features);
+      this.acceptLayerData(layerId, managed, cached);
+      // A global personal collection is invariant under map movement. Revalidating it for every
+      // pan wastes mobile data and causes visible churn; explicit layer/session changes use force.
+      if (globalQuery && !forceRefresh) {
+        this.store.setLayerLoading(layerId, false);
+        return;
+      }
     } else {
       this.store.setLayerLoading(layerId, true);
     }
 
+    const previousTaskId = this.layerTaskIds.get(layerId);
+    if (previousTaskId) this.retireLayerTask(previousTaskId);
     this.abortControllers.get(layerId)?.abort();
     const controller = new AbortController();
     this.abortControllers.set(layerId, controller);
+    const task = this.tasks.start({
+      type:
+        layerId === "weather"
+          ? "weather"
+          : managed.plugin.kind === "pins"
+            ? "layer-query"
+            : managed.plugin.kind === "custom-gl"
+              ? "game-asset"
+              : "tile-load",
+      label: `Načítám ${managed.plugin.manifest.name}`,
+      layerId,
+      cancellable: true,
+      cancel: () => controller.abort(),
+      retry: () =>
+        this.refreshOne(
+          layerId,
+          managed,
+          bbox,
+          filters,
+          markPinFetch,
+          true,
+          this.refreshGeneration
+        ),
+      telemetry: { cache: cached ? "hit" : "miss", budget: 100 }
+    });
+    this.layerTaskIds.set(layerId, task.id);
 
     if (managed.plugin.reportsSourceStatus) {
       this.store.markSourcesLoading(this.store.enabledPoiSources);
@@ -191,28 +389,53 @@ export class LayerEngine {
 
     try {
       const data = await managed.handle.update(bbox, mergedFilters, controller.signal);
-      if (data) {
-        this.cache.set(cacheKey, data);
-        this.store.setVisibleFeatures(layerId, data.features);
-        // An upstream that refused the request explains itself here; an area that genuinely
-        // has nothing in it clears any previous explanation.
-        this.store.setLayerNotice(layerId, data.notice);
-        const meta = (data as FeatureCollection & { meta?: PlacesResponse["meta"] }).meta;
-        if (meta) this.store.applySourceMeta(meta.sources);
-        if (markPinFetch || viewportCostOf(managed.plugin) === "expensive") {
-          this.lastPinFetchBbox = bbox;
-          this.store.setSearchHerePending(false);
+      const current =
+        !controller.signal.aborted &&
+        requestGeneration === this.sessionGeneration &&
+        refreshGeneration === this.refreshGeneration &&
+        requestSessionScope === this.currentSessionScope &&
+        this.managed.get(layerId) === managed;
+      if (current) {
+        if (data) {
+          this.cache.set(cacheKey, data);
+          this.acceptLayerData(layerId, managed, data);
+          // An upstream that refused the request explains itself here; an area that genuinely
+          // has nothing in it clears any previous explanation.
+          this.store.setLayerNotice(layerId, data.notice);
+          const meta = (data as FeatureCollection & { meta?: PlacesResponse["meta"] }).meta;
+          if (meta) this.store.applySourceMeta(meta.sources);
+          if (markPinFetch || viewportCostOf(managed.plugin) === "expensive") {
+            this.lastPinFetchBbox = bbox;
+            this.store.setSearchHerePending(false);
+          }
         }
+        this.tasks.succeed(task.id, { received: data?.features.length ?? 0 });
+      } else if (!controller.signal.aborted) {
+        this.tasks.markStale(task.id);
       }
     } catch (err) {
-      if (!(err instanceof DOMException && err.name === "AbortError")) {
-        console.warn(`Layer ${layerId} refresh failed:`, err);
+      if (
+        !controller.signal.aborted &&
+        !(err instanceof DOMException && err.name === "AbortError")
+      ) {
+        console.warn(`Layer ${layerId} refresh failed`, safeBrowserErrorFields(err));
+        this.tasks.fail(task.id, {
+          code: "LAYER_QUERY_FAILED",
+          message: "Vrstva se nepodařila načíst",
+          retryable: true
+        });
       }
     } finally {
       if (this.abortControllers.get(layerId) === controller) {
         this.abortControllers.delete(layerId);
+        if (
+          this.layerTaskIds.get(layerId) === task.id &&
+          this.tasks.get(task.id)?.status !== "failed"
+        ) {
+          this.layerTaskIds.delete(layerId);
+        }
+        this.store.setLayerLoading(layerId, false);
       }
-      this.store.setLayerLoading(layerId, false);
     }
   }
 
@@ -222,12 +445,24 @@ export class LayerEngine {
 
   destroy() {
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
-    for (const controller of this.abortControllers.values()) controller.abort();
+    this.offSessionChanged();
+    this.refreshGeneration += 1;
+    for (const [layerId, controller] of this.abortControllers) {
+      const taskId = this.layerTaskIds.get(layerId);
+      if (taskId) this.tasks.cancel(taskId);
+      else controller.abort();
+    }
+    for (const taskId of this.layerTaskIds.values()) {
+      if (this.tasks.get(taskId)?.status === "failed") this.tasks.dismiss(taskId);
+    }
     this.abortControllers.clear();
+    this.layerTaskIds.clear();
     for (const managed of this.managed.values()) {
       managed.handle.detach();
     }
     this.managed.clear();
+    this.layerData.clear();
+    this.cache.clear();
   }
 }
 
@@ -236,7 +471,8 @@ export async function fetchLayerFeatures(
   layerId: string,
   bbox: Bbox,
   filters: FilterValues,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  contractVersion: 1 | 2 = 1
 ): Promise<FeatureCollection> {
   const params = new URLSearchParams({
     bbox: bbox.join(","),
@@ -244,7 +480,18 @@ export async function fetchLayerFeatures(
       Object.entries(filters).map(([k, v]) => [k, Array.isArray(v) ? v.join(",") : String(v)])
     )
   });
-  const res = await fetch(`${apiBase}/layers/${layerId}/features?${params}`, { signal });
+  if (contractVersion === 2) params.set("limit", "100");
+  const path =
+    contractVersion === 2 ? `/v2/layers/${layerId}/features` : `/layers/${layerId}/features`;
+  const res = await fetch(`${apiBase}${path}?${params}`, { signal });
   if (!res.ok) throw new Error(`Failed to fetch ${layerId}: ${res.status}`);
-  return res.json() as Promise<FeatureCollection>;
+  if (contractVersion === 1) return res.json() as Promise<FeatureCollection>;
+
+  const result: unknown = await res.json();
+  assertFeatureQueryResultV2(result);
+  return {
+    type: "FeatureCollection",
+    features: result.data.features.map(featureV2ToV1),
+    ...(result.notices[0]?.message ? { notice: result.notices[0].message } : {})
+  };
 }

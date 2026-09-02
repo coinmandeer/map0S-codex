@@ -7,7 +7,8 @@
  *  renders an empty box.
  */
 
-import { config } from "../config.js";
+import { isIP } from "node:net";
+import { fetchMetadata, type UpstreamMetadata } from "../utils/upstream.js";
 
 export type EmbedVerdict = "allowed" | "blocked" | "unknown";
 
@@ -18,31 +19,84 @@ export interface EmbedProbe {
   reason: string;
 }
 
+/** Hosts the production CSP permits in frames. Keep this deliberately narrower than a general
+ * web proxy: an arbitrary probe target would let callers make the API connect to internal
+ * services. Wildcards have the same semantics as CSP wildcards and do not include the apex. */
+const EMBED_HOSTS: Array<{ hostname: string; subdomains?: boolean; frameSrc: string }> = [
+  { hostname: "wikipedia.org", subdomains: true, frameSrc: "https://*.wikipedia.org" },
+  { hostname: "www.openstreetmap.org", frameSrc: "https://www.openstreetmap.org" },
+  { hostname: "mapillary.com", subdomains: true, frameSrc: "https://*.mapillary.com" },
+  { hostname: "embed.windy.com", frameSrc: "https://embed.windy.com" },
+  { hostname: "opentopomap.org", frameSrc: "https://opentopomap.org" },
+  { hostname: "www.youtube-nocookie.com", frameSrc: "https://www.youtube-nocookie.com" }
+];
+
 /**
  * Hosts whose behaviour is known and stable, so a probe is a waste of a round trip.
  *
- * Verified by measurement rather than documentation — several of these advertise embed URLs
- * while still sending `X-Frame-Options` on them.
+ * Verified by measurement rather than documentation. YouTube is intentionally still probed so
+ * the safe redirect path remains exercised for an allowlisted service whose behaviour can vary.
  */
-const KNOWN: Array<{ pattern: RegExp; verdict: EmbedVerdict; reason: string }> = [
-  { pattern: /(^|\.)m\.wikipedia\.org$/, verdict: "allowed", reason: "known-good" },
-  { pattern: /(^|\.)wikipedia\.org$/, verdict: "allowed", reason: "known-good" },
-  { pattern: /(^|\.)openstreetmap\.org$/, verdict: "allowed", reason: "known-good" },
-  { pattern: /(^|\.)mapillary\.com$/, verdict: "allowed", reason: "known-good" },
-  { pattern: /(^|\.)windy\.com$/, verdict: "allowed", reason: "known-good" },
-  { pattern: /(^|\.)opentopomap\.org$/, verdict: "allowed", reason: "known-good" },
-  { pattern: /(^|\.)youtube(-nocookie)?\.com$/, verdict: "allowed", reason: "known-good" },
-  { pattern: /(^|\.)google\.[a-z.]+$/, verdict: "blocked", reason: "known-bad" },
-  { pattern: /(^|\.)foursquare\.com$/, verdict: "blocked", reason: "known-bad" },
-  { pattern: /(^|\.)komoot\.(com|de)$/, verdict: "blocked", reason: "known-bad" },
-  { pattern: /(^|\.)thecrag\.com$/, verdict: "blocked", reason: "known-bad" },
-  { pattern: /(^|\.)geocaching\.com$/, verdict: "blocked", reason: "known-bad" },
-  { pattern: /(^|\.)park4night\.com$/, verdict: "blocked", reason: "known-bad" }
+const KNOWN_ALLOWED: RegExp[] = [
+  /(^|\.)wikipedia\.org$/,
+  /^www\.openstreetmap\.org$/,
+  /(^|\.)mapillary\.com$/,
+  /^embed\.windy\.com$/,
+  /^opentopomap\.org$/
 ];
 
 const cache = new Map<string, { probe: EmbedProbe; expiresAt: number }>();
 const TTL_MS = 24 * 3600_000;
 const MAX_ENTRIES = 500;
+const MAX_REDIRECTS = 4;
+const PROBE_TIMEOUT_MS = 8000;
+const MAX_PROBE_RESPONSE_BYTES = 64 * 1024;
+
+interface ValidUrl {
+  ok: true;
+  url: URL;
+}
+
+interface InvalidUrl {
+  ok: false;
+  reason: string;
+}
+
+type UrlValidation = ValidUrl | InvalidUrl;
+
+function isAllowlistedHost(hostname: string): boolean {
+  return EMBED_HOSTS.some(
+    (entry) =>
+      (entry.subdomains === true && hostname.endsWith(`.${entry.hostname}`)) ||
+      (entry.subdomains !== true && hostname === entry.hostname)
+  );
+}
+
+function validateUrl(rawUrl: string): UrlValidation {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return { ok: false, reason: "invalid url" };
+  }
+  if (parsed.protocol !== "https:") return { ok: false, reason: "not https" };
+  if (parsed.username || parsed.password) return { ok: false, reason: "credentials not allowed" };
+  if (parsed.port && parsed.port !== "443") return { ok: false, reason: "port not allowed" };
+
+  const hostname = parsed.hostname.toLowerCase();
+  const bareHostname = hostname.startsWith("[") ? hostname.slice(1, -1) : hostname;
+  if (
+    bareHostname === "localhost" ||
+    bareHostname.endsWith(".localhost") ||
+    // No supported embed service uses an IP-literal URL. Rejecting every literal also covers
+    // private, loopback, link-local, metadata and alternative IPv4 spellings after URL parsing.
+    isIP(bareHostname) !== 0
+  ) {
+    return { ok: false, reason: "private or local address" };
+  }
+  if (!isAllowlistedHost(hostname)) return { ok: false, reason: "host not allowlisted" };
+  return { ok: true, url: parsed };
+}
 
 function readCsp(header: string | null): EmbedVerdict | null {
   if (!header) return null;
@@ -58,27 +112,79 @@ function readCsp(header: string | null): EmbedVerdict | null {
   return "blocked";
 }
 
-async function probe(url: string): Promise<EmbedProbe> {
-  let res: Response;
-  try {
-    // HEAD first: most servers answer it, and it avoids pulling a whole page just to read two
-    // headers. GET is the fallback for the ones that reject HEAD outright.
-    res = await fetch(url, {
-      method: "HEAD",
-      redirect: "follow",
-      headers: { "User-Agent": config.userAgent },
-      signal: AbortSignal.timeout(8000)
+interface SafeFetchResult {
+  response?: UpstreamMetadata;
+  finalUrl?: string;
+  blockedReason?: string;
+}
+
+async function fetchWithValidatedRedirects(
+  initialUrl: string,
+  method: "HEAD" | "GET",
+  signal: AbortSignal
+): Promise<SafeFetchResult> {
+  let currentUrl = initialUrl;
+  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
+    const validation = validateUrl(currentUrl);
+    if (!validation.ok) return { blockedReason: validation.reason };
+
+    const response = await fetchMetadata(validation.url.href, {
+      providerId: "embed-probe",
+      method,
+      headers: {
+        ...(method === "GET" ? { Range: "bytes=0-0" } : {})
+      },
+      signal,
+      timeoutMs: PROBE_TIMEOUT_MS
     });
+    if (![301, 302, 303, 307, 308].includes(response.status)) {
+      return { response, finalUrl: validation.url.href };
+    }
+
+    const location = response.headers.get("location");
+    if (!location) return { blockedReason: "redirect without location" };
+    if (redirects === MAX_REDIRECTS) return { blockedReason: "too many redirects" };
+    try {
+      currentUrl = new URL(location, validation.url).href;
+    } catch {
+      return { blockedReason: "invalid redirect" };
+    }
+  }
+  return { blockedReason: "too many redirects" };
+}
+
+async function probe(url: string): Promise<EmbedProbe> {
+  let res: UpstreamMetadata | undefined;
+  try {
+    // One deadline covers HEAD, every redirect and the GET fallback, so a redirect chain cannot
+    // multiply the timeout. GET asks for one byte; the shared transport cancels its body before
+    // returning the response metadata.
+    const signal = AbortSignal.timeout(PROBE_TIMEOUT_MS);
+    const head = await fetchWithValidatedRedirects(url, "HEAD", signal);
+    if (head.blockedReason) {
+      return { url, verdict: "blocked", reason: `redirect rejected: ${head.blockedReason}` };
+    }
+    res = head.response;
+    if (!res) return { url, verdict: "unknown", reason: "probe failed" };
+
     if (res.status === 405 || res.status === 501) {
-      res = await fetch(url, {
-        method: "GET",
-        redirect: "follow",
-        headers: { "User-Agent": config.userAgent },
-        signal: AbortSignal.timeout(8000)
-      });
+      const get = await fetchWithValidatedRedirects(head.finalUrl ?? url, "GET", signal);
+      if (get.blockedReason) {
+        return { url, verdict: "blocked", reason: `redirect rejected: ${get.blockedReason}` };
+      }
+      res = get.response;
+      if (!res) return { url, verdict: "unknown", reason: "probe failed" };
+      const contentLength = Number(res.headers.get("content-length"));
+      if (Number.isFinite(contentLength) && contentLength > MAX_PROBE_RESPONSE_BYTES) {
+        return { url, verdict: "unknown", reason: "probe response too large" };
+      }
     }
   } catch {
     return { url, verdict: "unknown", reason: "probe failed" };
+  }
+
+  if (res.status >= 400) {
+    return { url, verdict: "unknown", reason: "probe returned an error status" };
   }
 
   const xfo = res.headers.get("x-frame-options")?.toLowerCase().trim();
@@ -87,26 +193,21 @@ async function probe(url: string): Promise<EmbedProbe> {
   }
 
   const csp = readCsp(res.headers.get("content-security-policy"));
-  if (csp) return { url, verdict: csp, reason: "csp frame-ancestors" };
+  if (csp) {
+    return { url, verdict: csp, reason: "csp frame-ancestors" };
+  }
 
   return { url, verdict: "allowed", reason: "no framing restriction" };
 }
 
 export async function checkEmbeddable(rawUrl: string): Promise<EmbedProbe> {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return { url: rawUrl, verdict: "blocked", reason: "invalid url" };
-  }
-  // Anything framed runs in the user's browser; plain HTTP inside an HTTPS page would be blocked
-  // as mixed content anyway.
-  if (parsed.protocol !== "https:") {
-    return { url: rawUrl, verdict: "blocked", reason: "not https" };
-  }
+  const validation = validateUrl(rawUrl);
+  if (!validation.ok) return { url: rawUrl, verdict: "blocked", reason: validation.reason };
+  const parsed = validation.url;
 
-  const known = KNOWN.find((entry) => entry.pattern.test(parsed.hostname));
-  if (known) return { url: rawUrl, verdict: known.verdict, reason: known.reason };
+  if (KNOWN_ALLOWED.some((pattern) => pattern.test(parsed.hostname))) {
+    return { url: rawUrl, verdict: "allowed", reason: "known-good" };
+  }
 
   const key = `${parsed.origin}${parsed.pathname}`;
   const hit = cache.get(key);
@@ -124,14 +225,7 @@ export async function checkEmbeddable(rawUrl: string): Promise<EmbedProbe> {
 /** Origins the browser is allowed to frame, as a CSP `frame-src` value. Derived from the same
  *  allowlist the probe uses, so the two can't drift apart. */
 export function frameSrcAllowlist(): string[] {
-  return [
-    "https://*.wikipedia.org",
-    "https://www.openstreetmap.org",
-    "https://*.mapillary.com",
-    "https://embed.windy.com",
-    "https://opentopomap.org",
-    "https://www.youtube-nocookie.com"
-  ];
+  return EMBED_HOSTS.map((entry) => entry.frameSrc);
 }
 
 export function __resetEmbedCache() {

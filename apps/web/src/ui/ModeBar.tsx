@@ -1,58 +1,60 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { availableLayerPlugins, getLayerManifestV2 } from "../layers";
+import { isStructuralTileOverlayId } from "../layers/plugins/tileLayers";
+import { resolveBasemap } from "../map/basemapStyle";
 import { getMapStore } from "../store/mapStore";
-import { emit } from "../lib/events";
+import { getShellStore } from "../store/shellStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
-import { API_BASE } from "../lib/api";
-import { geolocation, type Fix } from "../lib/geolocation";
-import { CountryPicker } from "./CountryPicker";
+import { useShellStoreSnapshot } from "../store/useShellStoreSnapshot";
+import type { Fix } from "../lib/geolocation";
+import { CommandSearch } from "./CommandSearch";
 import { LAYER_MODES } from "./modes";
 import { useIsMobile } from "./useIsMobile";
 import { BrandLogo } from "./BrandLogo";
 import { LayersMegaMenu } from "./LayersMegaMenu";
+import { activeLayerSummary, compactBasemapLabel } from "./modeBarPresentation";
 import { Icon } from "./primitives";
 
-interface GeoHit {
-  display_name: string;
-  lat: string;
-  lon: string;
-}
-
-interface TagHit {
-  tag: string;
-  count: number;
-}
-
-export function ModeBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> }) {
+export function ModeBar({
+  onFlyToMe,
+  shellManagedUtilities = false
+}: {
+  onFlyToMe: () => Promise<Fix | null>;
+  /** AppShell owns utility content; the legacy fallback keeps the current local popover. */
+  shellManagedUtilities?: boolean;
+}) {
   const store = getMapStore();
-  const activeTag = useMapStoreSnapshot((s) => s.activeTag);
-  const mode = useMapStoreSnapshot((s) => s.mode);
+  const shell = getShellStore();
+  const mode = useShellStoreSnapshot((state) => state.mode);
+  const leftContext = useShellStoreSnapshot((state) => state.leftContext);
+  const rightUtility = useShellStoreSnapshot((state) => state.rightUtility);
   const visibleFeatures = useMapStoreSnapshot((s) => s.visibleFeatures);
+  const activeLayers = useMapStoreSnapshot((s) => s.activeLayers);
+  const capabilities = useMapStoreSnapshot((s) => s.capabilities);
+  const experienceId = useMapStoreSnapshot((s) => s.experienceId);
+  const basemapId = useMapStoreSnapshot((s) => s.basemapId);
+  const theme = useMapStoreSnapshot((s) => s.theme);
   const mobile = useIsMobile();
 
   const placeCount = Object.values(visibleFeatures).reduce((n, feats) => n + feats.length, 0);
+  const layerActivity = activeLayerSummary(
+    activeLayers,
+    availableLayerPlugins(capabilities).map((plugin) => ({
+      id: plugin.manifest.id,
+      kind: plugin.kind,
+      category: getLayerManifestV2(plugin.manifest.id)?.category ?? plugin.manifest.category,
+      experienceIds: plugin.manifest.experienceIds
+    })),
+    experienceId,
+    isStructuralTileOverlayId
+  );
+  const layersStatus = `${layerActivity.total} aktivní: ${layerActivity.poi} POI, ${layerActivity.thematic} tematické`;
+  const currentBasemap = resolveBasemap(basemapId, theme);
+  const currentBasemapLabel = compactBasemapLabel(currentBasemap.label);
+  const basemapControlLabel = `Mapové podklady: ${currentBasemap.label}`;
 
-  const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<GeoHit[]>([]);
-  const [tagHits, setTagHits] = useState<TagHit[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [layersOpen, setLayersOpen] = useState(false);
-  const [locating, setLocating] = useState(false);
-  const [permission, setPermission] = useState<PermissionState | "unknown">("unknown");
-
-  // Read up front so a blocked button can say so in its tooltip instead of only failing once
-  // the user has clicked and waited.
-  useEffect(() => {
-    let cancelled = false;
-    void geolocation.permission().then((state) => {
-      if (!cancelled) setPermission(state);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const locationState = locating ? "locating" : permission === "denied" ? "denied" : "idle";
+  const [legacyLayersOpen, setLegacyLayersOpen] = useState(false);
 
   const shellRef = useRef<HTMLDivElement>(null);
   const layersRef = useRef<HTMLDivElement>(null);
@@ -76,37 +78,21 @@ export function ModeBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> })
     };
   }, [mobile, mode]);
 
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!trimmed || trimmed.length < 2) {
-      setHits([]);
-      setTagHits([]);
-      return;
+  const layersOpen = shellManagedUtilities ? rightUtility.type === "layers" : legacyLayersOpen;
+  const setLayersOpen = (open: boolean | ((current: boolean) => boolean)) => {
+    // A layer toggle can re-render this bar while the drawer keeps focus. Read the current shell
+    // snapshot at click time so the opener remains a reliable close toggle even in that race.
+    const current = shellManagedUtilities
+      ? shell.snapshot.rightUtility.type === "layers"
+      : legacyLayersOpen;
+    const next = typeof open === "function" ? open(current) : open;
+    if (shellManagedUtilities) {
+      if (next) shell.openRightUtility("layers");
+      else if (shell.snapshot.rightUtility.type === "layers") shell.closeRightUtility();
+    } else {
+      setLegacyLayersOpen(next);
     }
-    if (trimmed.startsWith("#")) {
-      const t = setTimeout(() => {
-        setSearching(true);
-        fetch(`${API_BASE}/tags/top?q=${encodeURIComponent(trimmed.slice(1))}`)
-          .then((r) => (r.ok ? r.json() : { tags: [] }))
-          .then((data: { tags?: TagHit[] }) => setTagHits(data.tags ?? []))
-          .catch(() => setTagHits([]))
-          .finally(() => setSearching(false));
-      }, 200);
-      setHits([]);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => {
-      setSearching(true);
-      fetch(`${API_BASE}/geocode?q=${encodeURIComponent(trimmed)}&provider=${store.dataProvider}`)
-        .then((r) => (r.ok ? r.json() : { results: [] }))
-        .then((data: { results?: GeoHit[] }) => setHits(data.results ?? []))
-        .catch(() => setHits([]))
-        .finally(() => setSearching(false));
-    }, 280);
-    setTagHits([]);
-    return () => clearTimeout(t);
-  }, [query, store]);
-
+  };
   const closeMenus = () => setLayersOpen(false);
 
   useEffect(() => {
@@ -117,13 +103,20 @@ export function ModeBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> })
         target.closest(".sheet-menu, .sheet-backdrop, .layers-megamenu")
       )
         return;
-      if (layersRef.current && !layersRef.current.contains(target as Node)) setLayersOpen(false);
+      if (
+        !shellManagedUtilities &&
+        layersRef.current &&
+        !layersRef.current.contains(target as Node)
+      )
+        setLegacyLayersOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        closeMenus();
-        setHits([]);
-        setTagHits([]);
+        if (shellManagedUtilities && shell.snapshot.rightUtility.type === "layers") {
+          shell.closeRightUtility();
+        } else {
+          setLegacyLayersOpen(false);
+        }
       }
     };
     document.addEventListener("mousedown", onClick);
@@ -132,66 +125,33 @@ export function ModeBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> })
       document.removeEventListener("mousedown", onClick);
       document.removeEventListener("keydown", onKey);
     };
-  }, []);
+  }, [shell, shellManagedUtilities]);
 
-  const pickHit = (hit: GeoHit) => {
-    const lng = Number(hit.lon);
-    const lat = Number(hit.lat);
-    emit("fly-to", { lng, lat, zoom: 14 });
-    store.setView({ lng, lat, zoom: 14 });
-    setQuery("");
-    setHits([]);
-    setTagHits([]);
-    emit("search-here");
-  };
-
-  const pickTag = (tag: string) => {
-    store.setActiveTag(tag);
-    setQuery("");
-    setTagHits([]);
-    store.showToast(`Filtr #${tag}`);
-  };
-
-  const flyToMe = async () => {
-    if (locating) return;
-    setLocating(true);
-    try {
-      const fix = await onFlyToMe();
-      if (!fix || mode !== "discover") return;
-      // Reuses the fix rather than asking the device again, which is what made one click
-      // fire two competing geolocation requests.
-      const res = await fetch(`${API_BASE}/geocode/reverse?lat=${fix.lat}&lng=${fix.lng}`);
-      if (!res.ok) return;
-      const data = (await res.json()) as { country?: string } | null;
-      if (data?.country) store.setCountry(data.country);
-    } catch {
-      /* onFlyToMe already reported why; a failed country lookup changes nothing. */
-    } finally {
-      setLocating(false);
-      // The click may have been the prompt itself, so the answer is only known now.
-      setPermission(await geolocation.permission());
-    }
-  };
-
-  const hasSearchResults = hits.length > 0 || tagHits.length > 0;
-
-  const megamenu = layersOpen ? (
-    mobile && typeof document !== "undefined" ? (
-      createPortal(<LayersMegaMenu mobile onClose={closeMenus} />, document.body)
-    ) : (
-      <LayersMegaMenu mobile={false} onClose={closeMenus} />
-    )
-  ) : null;
+  const megamenu =
+    layersOpen && !shellManagedUtilities ? (
+      mobile && typeof document !== "undefined" ? (
+        createPortal(<LayersMegaMenu mobile onClose={closeMenus} />, document.body)
+      ) : (
+        <LayersMegaMenu mobile={false} onClose={closeMenus} />
+      )
+    ) : null;
 
   return (
-    <div className="topbar-shell" data-testid="mode-bar" ref={shellRef}>
-      <div className="topbar-row topbar-row-nav">
+    <div
+      className={`topbar-shell${shellManagedUtilities ? " shell-managed" : ""}`}
+      data-testid="mode-bar"
+      ref={shellRef}
+    >
+      {leftContext.type === "closed" && (
         <button
-          className="places-btn"
+          type="button"
+          className="places-btn topbar-hamburger"
           data-testid="hamburger-btn"
-          onClick={() => store.togglePanel()}
-          aria-label="Seznam míst"
-          title="Seznam míst"
+          onClick={() => shell.toggleLeftContext()}
+          aria-label={`Zobrazit panel ${LAYER_MODES.find((item) => item.id === mode)?.label ?? "mapy"}`}
+          aria-expanded="false"
+          aria-controls="left-context-host"
+          title="Zobrazit levý panel"
         >
           <Icon name="list" />
           {placeCount > 0 && (
@@ -200,130 +160,129 @@ export function ModeBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> })
             </span>
           )}
         </button>
+      )}
 
+      <div className="topbar-command-center" data-testid="command-center">
         <div className="brand-pill" data-testid="brand-pill">
           <BrandLogo size={24} />
           <span className="brand-name">MapOS</span>
         </div>
 
-        {mode === "discover" && mobile && <CountryPicker compact />}
-
-        <div className="topbar-search">
-          <Icon name="search" size={16} />
-          <input
-            data-testid="place-search"
-            placeholder="Hledat místo nebo #tag…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          {searching && <span className="spinner" />}
-          {activeTag && (
-            <button className="tag-chip" onClick={() => store.setActiveTag(null)} type="button">
-              #{activeTag} ✕
-            </button>
-          )}
-          <button
-            type="button"
-            className="search-locate-btn"
-            data-testid="location-btn"
-            data-state={locationState}
-            title={locationState === "denied" ? "Poloha je zakázaná v prohlížeči" : "Moje poloha"}
-            aria-label="Moje poloha"
-            aria-busy={locating}
-            disabled={locating}
-            onClick={flyToMe}
-          >
-            {locating ? <span className="spinner" /> : <Icon name="crosshair" size={16} />}
-          </button>
-          {hasSearchResults && (
-            <div className="search-hits">
-              {tagHits.map((t) => (
-                <button
-                  key={t.tag}
-                  type="button"
-                  className="search-hit"
-                  onClick={() => pickTag(t.tag)}
-                >
-                  #{t.tag} <span className="meta">({t.count})</span>
-                </button>
-              ))}
-              {hits.map((h) => (
-                <button
-                  key={`${h.lat},${h.lon},${h.display_name}`}
-                  type="button"
-                  className="search-hit"
-                  onClick={() => pickHit(h)}
-                >
-                  {h.display_name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <button
-          className="icon-btn"
-          data-testid="settings-btn"
-          title="Nastavení"
-          aria-label="Nastavení"
-          onClick={() => {
-            closeMenus();
-            store.openSheet("settings");
-          }}
-        >
-          <Icon name="settings" />
-        </button>
-      </div>
-
-      <div className="topbar-row topbar-row-tools">
-        {mode === "discover" && !mobile && <CountryPicker compact={false} />}
+        <CommandSearch onFlyToMe={onFlyToMe} mode={mode} />
 
         {!mobile && (
           <nav className="mode-tabs" aria-label="Režim mapy">
-            {LAYER_MODES.map((m) => (
+            {LAYER_MODES.map((item) => (
               <button
-                key={m.id}
+                key={item.id}
                 type="button"
-                className={`mode-tab ${mode === m.id ? "active" : ""}`}
-                data-testid={m.testId}
+                className={`mode-tab ${mode === item.id ? "active" : ""}`}
+                data-testid={item.testId}
                 onClick={() => {
                   closeMenus();
-                  store.setMode(m.id);
+                  shell.setMode(item.id);
                 }}
               >
                 <span className="mode-tab-icon">
-                  <Icon name={m.icon} size={16} />
+                  <Icon name={item.icon} size={16} />
                 </span>
-                <span className="mode-tab-label">{m.label}</span>
+                <span className="mode-tab-label">{item.label}</span>
               </button>
             ))}
           </nav>
         )}
 
-        <div className="topbar-dropdowns">
-          <div className="modebar-overflow" ref={layersRef}>
-            <button
-              type="button"
-              className={`dropdown-btn ${layersOpen ? "open" : ""}`}
-              data-testid="overflow-btn"
-              title="Vrstvy mapy"
-              onClick={() => setLayersOpen((v) => !v)}
-            >
-              <Icon name="layers" size={16} />
-              <span className="dropdown-btn-label">Vrstvy</span>
-            </button>
-            <button
-              type="button"
-              className="visually-hidden"
-              data-testid="usecase-btn"
-              onClick={() => setLayersOpen(true)}
-            >
-              Presety
-            </button>
-            {megamenu}
-          </div>
-        </div>
+        {!mobile && (
+          <button
+            className="icon-btn topbar-settings"
+            data-testid="settings-btn"
+            title="Nastavení"
+            aria-label="Nastavení"
+            onClick={() => {
+              closeMenus();
+              if (shellManagedUtilities) shell.openRightUtility("settings");
+              else store.openSheet("settings");
+            }}
+          >
+            <Icon name="settings" />
+          </button>
+        )}
       </div>
+
+      <div className="topbar-utility-rail" data-testid="utility-rail">
+        <div className="modebar-overflow" ref={layersRef}>
+          <button
+            type="button"
+            className={`dropdown-btn ${layersOpen ? "open" : ""}${layerActivity.total ? " has-active" : ""}`}
+            data-testid="overflow-btn"
+            title={`Vrstvy mapy · ${layersStatus}`}
+            aria-label={`Vrstvy mapy, ${layersStatus}`}
+            aria-expanded={layersOpen}
+            onClick={() => setLayersOpen((value) => !value)}
+          >
+            <Icon name="layers" size={16} />
+            <span className="dropdown-btn-label">Vrstvy</span>
+            {layerActivity.total > 0 && (
+              <span
+                className="layer-count-badge"
+                data-testid="active-layer-count"
+                data-poi-count={layerActivity.poi}
+                data-thematic-count={layerActivity.thematic}
+                aria-hidden="true"
+              >
+                {layerActivity.total > 99 ? "99+" : layerActivity.total}
+              </span>
+            )}
+            <span className="visually-hidden" aria-live="polite">
+              {layersStatus}
+            </span>
+          </button>
+          {megamenu}
+        </div>
+
+        <button
+          type="button"
+          className="icon-btn basemap-current-btn"
+          data-testid="basemap-btn"
+          title={basemapControlLabel}
+          aria-label={basemapControlLabel}
+          onClick={() => {
+            closeMenus();
+            if (shellManagedUtilities) shell.openRightUtility("basemaps");
+            else store.openSheet("tiles");
+          }}
+        >
+          <Icon name="tiles" />
+          <span className="basemap-current-label" data-testid="basemap-current-label">
+            {currentBasemapLabel}
+          </span>
+        </button>
+
+        {mobile && (
+          <button
+            className="icon-btn topbar-settings"
+            data-testid="settings-btn"
+            title="Nastavení"
+            aria-label="Nastavení"
+            onClick={() => {
+              closeMenus();
+              if (shellManagedUtilities) shell.openRightUtility("settings");
+              else store.openSheet("settings");
+            }}
+          >
+            <Icon name="settings" />
+          </button>
+        )}
+      </div>
+
+      <button
+        type="button"
+        className="visually-hidden"
+        data-testid="usecase-btn"
+        onClick={() => setLayersOpen(true)}
+      >
+        Presety
+      </button>
     </div>
   );
 }

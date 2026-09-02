@@ -8,7 +8,8 @@ export function SearchHereButton() {
   const store = getMapStore();
   const pending = useMapStoreSnapshot((s) => s.searchHerePending);
   const loading = useMapStoreSnapshot((s) => s.loadingLayers);
-  if (!pending) return null;
+  const showSearchHere = useMapStoreSnapshot((s) => s.preferences.showSearchHere);
+  if (!pending || !showSearchHere) return null;
 
   return (
     <button

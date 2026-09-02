@@ -1,5 +1,5 @@
 import type { Bbox, GeoFeature } from "@mapos/layer-sdk";
-import { fetchJson } from "../../utils/upstream.js";
+import { fetchJson, fetchText } from "../../utils/upstream.js";
 import { countriesForPoint } from "../../data/euCountries.js";
 import { bboxCenter, point, withinBbox, type DataSource } from "./types.js";
 
@@ -75,9 +75,13 @@ function parseCsvLine(line: string): string[] {
 async function loadSystems(): Promise<GbfsSystem[]> {
   if (systemsCache && systemsCache.expiresAt > Date.now()) return systemsCache.value;
 
-  const res = await fetch(SYSTEMS_CSV, { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`systems.csv ${res.status}`);
-  const text = await res.text();
+  const text = await fetchText(SYSTEMS_CSV, {
+    providerId: "gbfs-registry",
+    ttlMs: 24 * 3600_000,
+    timeoutMs: 15_000,
+    maxResponseBytes: 2 * 1024 * 1024,
+    acceptedContentTypes: ["text/plain", "text/csv"]
+  });
 
   const [header, ...rows] = text.split(/\r?\n/).filter(Boolean);
   const columns = parseCsvLine(header ?? "");
@@ -93,7 +97,7 @@ async function loadSystems(): Promise<GbfsSystem[]> {
     const discoveryUrl = cells[urlAt] ?? "";
     const auth = (cells[authAt] ?? "").toLowerCase();
     // Feeds behind an API key can't be read without registering per operator.
-    if (!discoveryUrl.startsWith("http") || (auth && auth !== "no authentication")) return [];
+    if (!discoveryUrl.startsWith("https://") || (auth && auth !== "no authentication")) return [];
     return [
       {
         countryCode: (cells[countryAt] ?? "").toUpperCase(),
@@ -142,7 +146,7 @@ interface Station {
 
 async function loadStations(system: GbfsSystem): Promise<GeoFeature[]> {
   const discovery = await fetchJson<GbfsFeedList>(system.discoveryUrl, {
-    source: `GBFS ${system.name}`,
+    providerId: "gbfs-discovery",
     ttlMs: 6 * 3600_000,
     timeoutMs: 8000
   });
@@ -151,7 +155,7 @@ async function loadStations(system: GbfsSystem): Promise<GeoFeature[]> {
   if (!stationUrl) return [];
 
   const stations = await fetchJson<{ data?: { stations?: Station[] } }>(stationUrl, {
-    source: `GBFS ${system.name}`,
+    providerId: "gbfs-stations",
     ttlMs: 10 * 60_000,
     timeoutMs: 8000
   });

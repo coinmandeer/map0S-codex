@@ -12,8 +12,29 @@ import { createTileLayer, subdomains, type TileLayerSpec } from "../tileLayer";
 
 const OSM_CREDIT = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
+/**
+ * Raster maps that describe map structure rather than feature records. They stay additive, but
+ * their controls belong beside the base map instead of in the ordinary Layers integrations list.
+ */
+export const STRUCTURAL_TILE_OVERLAY_IDS = [
+  "cyclosm",
+  "waymarked-trails",
+  "openrailwaymap",
+  "openseamap",
+  "opentopomap",
+  "opensnowmap"
+] as const;
+
+export type StructuralTileOverlayId = (typeof STRUCTURAL_TILE_OVERLAY_IDS)[number];
+
+const STRUCTURAL_TILE_OVERLAY_ID_SET = new Set<string>(STRUCTURAL_TILE_OVERLAY_IDS);
+
+export function isStructuralTileOverlayId(id: string): id is StructuralTileOverlayId {
+  return STRUCTURAL_TILE_OVERLAY_ID_SET.has(id);
+}
+
 function tilePlugin(args: {
-  id: string;
+  id: StructuralTileOverlayId;
   name: string;
   icon: string;
   color: string;
@@ -59,6 +80,7 @@ tilePlugin({
   category: "outdoor",
   attributionLabel: "CyclOSM",
   attributionUrl: "https://www.cyclosm.org/",
+  license: "CC-BY-SA-2.0",
   spec: {
     tiles: subdomains("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"),
     maxzoom: 20,
@@ -135,6 +157,7 @@ tilePlugin({
   category: "transport",
   attributionLabel: "OpenSeaMap",
   attributionUrl: "https://www.openseamap.org/",
+  license: "ODbL-1.0",
   spec: {
     tiles: ["https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"],
     maxzoom: 18,

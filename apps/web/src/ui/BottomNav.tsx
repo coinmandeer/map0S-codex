@@ -1,13 +1,13 @@
-import { getMapStore } from "../store/mapStore";
-import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
+import { getShellStore } from "../store/shellStore";
+import { useShellStoreSnapshot } from "../store/useShellStoreSnapshot";
 import { LAYER_MODES } from "./modes";
 import { useIsMobile } from "./useIsMobile";
 import { Icon } from "./primitives";
 
 export function BottomNav() {
   const mobile = useIsMobile();
-  const store = getMapStore();
-  const mode = useMapStoreSnapshot((s) => s.mode);
+  const shell = getShellStore();
+  const mode = useShellStoreSnapshot((state) => state.mode);
 
   if (!mobile) return null;
 
@@ -19,7 +19,7 @@ export function BottomNav() {
           type="button"
           className={`bottom-nav-item ${mode === item.id ? "active" : ""}`}
           data-testid={item.testId}
-          onClick={() => store.setMode(item.id)}
+          onClick={() => shell.setMode(item.id)}
         >
           <span className="bottom-nav-icon">
             <Icon name={item.icon} size={20} />

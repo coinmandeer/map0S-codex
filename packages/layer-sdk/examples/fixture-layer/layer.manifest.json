@@ -1,0 +1,16 @@
+{
+  "schema": "mapos.layer-manifest",
+  "schemaVersion": "2.0.0",
+  "sdkRange": "^2.0.0",
+  "minimumRuntime": "19.0.0",
+  "id": "partner.public-parks",
+  "name": "Public parks fixture",
+  "description": "A data-only example layer for the offline MapOS contract runner.",
+  "category": "community",
+  "geometryKinds": ["Point"],
+  "renderer": { "type": "symbols", "cluster": true },
+  "source": { "type": "static" },
+  "queryPolicy": { "strategy": "viewport", "maxResultsPerViewport": 20 },
+  "attribution": [{ "label": "MapOS example data", "license": "CC0-1.0" }],
+  "capabilities": ["query", "detail"]
+}

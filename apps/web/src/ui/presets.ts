@@ -12,6 +12,8 @@ export const PIN_STYLES: Record<string, PinStyle> = {
   waterfall: { color: "#0891B2", label: "Vodopád", icon: "≈", group: "nature" },
   lake: { color: "#0284C7", label: "Voda", icon: "○", group: "nature" },
   peak: { color: "#57534E", label: "Vrchol", icon: "▲", group: "nature" },
+  observation_tower: { color: "#0F766E", label: "Rozhledna", icon: "⌁", group: "nature" },
+  nature_park: { color: "#15803D", label: "Přírodní park", icon: "♧", group: "nature" },
   cave: { color: "#78716C", label: "Jeskyně", icon: "∩", group: "nature" },
   castle: { color: "#B7791F", label: "Hrad", icon: "♜", group: "culture" },
   palace: { color: "#92400E", label: "Zámek", icon: "♛", group: "culture" },
@@ -22,6 +24,7 @@ export const PIN_STYLES: Record<string, PinStyle> = {
   cafe: { color: "#EA580C", label: "Kavárna", icon: "☕", group: "food" },
   restaurant: { color: "#DC2626", label: "Restaurace", icon: "🍴", group: "food" },
   brewery: { color: "#CA8A04", label: "Pivovar", icon: "🍺", group: "food" },
+  shop: { color: "#7C3AED", label: "Obchod", icon: "▤", group: "services" },
   parking: { color: "#475569", label: "Parkování", icon: "P", group: "services" },
   fuel: { color: "#334155", label: "Palivo", icon: "⛽", group: "services" },
   charging: { color: "#16A34A", label: "EV", icon: "⚡", group: "services" },
@@ -34,6 +37,7 @@ export const PIN_STYLES: Record<string, PinStyle> = {
   via_ferrata: { color: "#B45309", label: "Ferrata", icon: "⛓", group: "sport" },
   climbing: { color: "#9A3412", label: "Lezení", icon: "🧗", group: "sport" },
   fitness_trail: { color: "#65A30D", label: "Fitness", icon: "💪", group: "sport" },
+  fitness_centre: { color: "#4D7C0F", label: "Posilovna", icon: "◆", group: "sport" },
   disc_golf: { color: "#0D9488", label: "Disc golf", icon: "🥏", group: "sport" },
   skatepark: { color: "#7C3AED", label: "Skatepark", icon: "🛹", group: "sport" },
   swimming: { color: "#0284C7", label: "Koupaliště", icon: "🏊", group: "sport" },
@@ -75,62 +79,52 @@ export const MAP_PRESETS: MapPreset[] = [
   {
     id: "day-trip",
     name: "Výlet",
-    description: "Hrady, vyhlídky, parkování",
+    description: "Hrady, vyhlídky, voda, vrcholy a přírodní parky",
     icon: "🧭",
     layers: ["osm-poi"],
-    categories: ["castle", "palace", "ruins", "viewpoint", "parking", "museum"]
-  },
-  {
-    id: "nature",
-    name: "Příroda",
-    description: "Vrcholy, voda, vyhlídky",
-    icon: "🌲",
-    layers: ["osm-poi"],
-    categories: ["viewpoint", "waterfall", "lake", "peak", "cave", "alpine_hut"]
+    categories: [
+      "castle",
+      "palace",
+      "ruins",
+      "viewpoint",
+      "lake",
+      "peak",
+      "observation_tower",
+      "nature_park",
+      "parking",
+      "museum"
+    ]
   },
   {
     id: "city",
     name: "Město",
-    description: "Jídlo, kultura, parkování",
+    description: "Kavárny, obchody, jídlo, kultura, bary a pivovary",
     icon: "🏙",
     layers: ["osm-poi"],
-    categories: ["cafe", "restaurant", "bar", "museum", "monument", "parking"]
+    categories: ["cafe", "shop", "restaurant", "bar", "brewery", "museum", "monument", "parking"]
   },
   {
-    id: "camp",
-    name: "Kemp",
-    description: "Kempování a služby",
-    icon: "⛺",
-    layers: ["osm-poi"],
-    categories: ["camp_site", "shelter", "drinking_water", "shower", "toilets", "parking"]
-  },
-  {
-    id: "gastro",
-    name: "Gastro",
-    description: "Restaurace, kavárny, bary, pivovary",
-    icon: "🍽",
-    layers: ["osm-poi"],
-    categories: ["restaurant", "cafe", "bar", "brewery"]
-  },
-  {
-    id: "road-services",
-    name: "Služby na cestě",
-    description: "Palivo, EV, voda, WC, sprchy",
-    icon: "⛽",
-    layers: ["osm-poi"],
-    categories: ["fuel", "charging", "drinking_water", "toilets", "shower", "parking"]
-  },
-  {
-    id: "vanlife",
-    name: "Vanlife",
-    description: "Kempy a Park4Night místa",
+    id: "travel",
+    name: "Cestování",
+    description: "Kempy, služby a otevřená vanlife místa",
     icon: "🚐",
-    layers: ["osm-poi", "park4night"],
-    categories: ["camp_site", "shelter", "drinking_water", "parking"]
+    layers: ["osm-poi", "vanlife"],
+    categories: [
+      "camp_site",
+      "caravan_site",
+      "shelter",
+      "fuel",
+      "charging",
+      "drinking_water",
+      "toilets",
+      "shower",
+      "dump_station",
+      "parking"
+    ]
   },
   {
     id: "sport",
-    name: "Sportovní výzvy",
+    name: "Sport",
     description: "Ferraty, lezení, skateparky, koupaliště",
     icon: "🧗",
     // Trail overlays turn a set of points into something you can actually plan around: the
@@ -143,16 +137,9 @@ export const MAP_PRESETS: MapPreset[] = [
       "skatepark",
       "swimming",
       "fitness_trail",
+      "fitness_centre",
       "sports_centre"
     ]
-  },
-  {
-    id: "game",
-    name: "Noční hra",
-    description: "QuestLayer + ghost zóny",
-    icon: "🎮",
-    layers: ["game", "osm-poi"],
-    categories: ["castle", "viewpoint", "museum"]
   }
 ];
 

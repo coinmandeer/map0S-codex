@@ -1,6 +1,6 @@
 import type { GeoFeature } from "@mapos/layer-sdk";
 import { config } from "../../config.js";
-import { UpstreamError, fetchJson } from "../../utils/upstream.js";
+import { UpstreamError, fetchJson, fetchText } from "../../utils/upstream.js";
 import { bboxCenter, bboxSpanKm, point, withinBbox, type DataSource } from "./types.js";
 
 /**
@@ -60,7 +60,7 @@ export const chargingStations: DataSource = {
     >(
       `https://api.openchargemap.io/v3/poi?output=json&maxresults=300&compact=true&verbose=false` +
         `&boundingbox=(${north},${west}),(${south},${east})&key=${encodeURIComponent(key)}`,
-      { source: "OpenChargeMap", ttlMs: 30 * 60_000 }
+      { providerId: "openchargemap", ttlMs: 30 * 60_000 }
     );
 
     return rows.flatMap((row): GeoFeature[] => {
@@ -114,7 +114,7 @@ export const mapillary: DataSource = {
       `https://graph.mapillary.com/images?access_token=${encodeURIComponent(token)}` +
         `&bbox=${bbox.join(",")}&limit=200` +
         `&fields=id,thumb_256_url,captured_at,compass_angle,computed_geometry,geometry`,
-      { source: "Mapillary", ttlMs: 30 * 60_000 }
+      { providerId: "mapillary", ttlMs: 30 * 60_000 }
     );
 
     return (data.data ?? []).flatMap((img): GeoFeature[] => {
@@ -145,11 +145,15 @@ export const activeFires: DataSource = {
       `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(key)}` +
       `/VIIRS_SNPP_NRT/${west},${south},${east},${north}/${days}`;
 
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) throw new UpstreamError("NASA FIRMS", `FIRMS odpověděl ${res.status}`);
-    const text = await res.text();
+    const text = await fetchText(url, {
+      providerId: "nasa-firms",
+      ttlMs: 5 * 60_000,
+      timeoutMs: 15_000,
+      maxResponseBytes: 4 * 1024 * 1024,
+      acceptedContentTypes: ["text/csv", "text/plain", "application/octet-stream"]
+    });
     // An invalid key comes back as a plain-text message with a 200, not an error status.
-    if (!text.includes("latitude")) throw new UpstreamError("NASA FIRMS", "neplatný MAP_KEY");
+    if (!text.includes("latitude")) throw new UpstreamError("nasa-firms", "neplatný MAP_KEY");
 
     const [header, ...rows] = text.trim().split(/\r?\n/);
     const columns = (header ?? "").split(",");
@@ -193,7 +197,7 @@ export const openAq: DataSource = {
         datetimeLast?: { utc?: string };
       }>;
     }>(`https://api.openaq.org/v3/locations?bbox=${bbox.join(",")}&limit=200`, {
-      source: "OpenAQ",
+      providerId: "openaq",
       ttlMs: 30 * 60_000,
       headers: { "X-API-Key": key }
     });
@@ -243,7 +247,7 @@ export const birdSightings: DataSource = {
     >(
       `https://api.ebird.org/v2/data/obs/geo/recent?lat=${lat.toFixed(4)}&lng=${lng.toFixed(4)}` +
         `&dist=${dist}&back=${back}&maxResults=200`,
-      { source: "eBird", ttlMs: 20 * 60_000, headers: { "X-eBirdApiToken": token } }
+      { providerId: "ebird", ttlMs: 20 * 60_000, headers: { "X-eBirdApiToken": token } }
     );
 
     return rows.flatMap((obs, i): GeoFeature[] => {

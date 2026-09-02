@@ -1,10 +1,13 @@
-import { OSM_POI_CATEGORIES } from "@mapos/layer-sdk";
+import { OSM_POI_CATEGORIES, VANLIFE_CATEGORIES } from "@mapos/layer-sdk";
 import { registerLayer } from "./registry";
 import "./plugins/tileLayers";
 import "./plugins/dataLayers";
+import "./plugins/geologyLayer";
+import "./savedPlacesLayer";
 import { createPinsLayerHandle } from "./pinsLayer";
 import { createWeatherLayerHandle } from "./weatherLayer";
 import { LazyHandle } from "./lazyHandle";
+import { GAME_ROAD_SOURCE } from "./game/roadSource";
 
 /**
  * The layers MapOS ships with. Each one is a plain object: nothing here is special-cased in the
@@ -26,8 +29,10 @@ registerLayer({
     color: "#3b82f6",
     description: "Hrady, vyhlídky, parkování, bary a další z OpenStreetMap",
     category: "travel",
-    modes: ["poi", "discover"],
-    primaryForModes: ["poi", "discover"]
+    modes: ["planning", "discover"],
+    primaryForModes: ["planning", "discover"],
+    uiGroup: "places",
+    experienceIds: ["default", "aavegotchi"]
   },
   filters: [
     {
@@ -56,14 +61,16 @@ registerLayer({
     description: "Vlastní piny a sdílené vrstvy",
     category: "user",
     modes: ["mine"],
-    primaryForModes: ["mine"]
+    uiGroup: "community",
+    experienceIds: ["default", "aavegotchi"]
   },
   deriveFilters: (filters, ctx) => ({
     ...filters,
     ...(ctx.activeTag ? { tag: ctx.activeTag } : {}),
     ...(ctx.countryCode ? { country: ctx.countryCode } : {})
   }),
-  create: (ctx) => createPinsLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId, ctx.color)
+  create: (ctx) => createPinsLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId, ctx.color),
+  attribution: [{ label: "MapOS uživatelská data", license: "per-feature owner rights" }]
 });
 
 registerLayer({
@@ -75,15 +82,22 @@ registerLayer({
     color: "#6366f1",
     description: "Radar, teplota, vítr a další vrstvy",
     category: "weather",
-    modes: ["weather"],
-    primaryForModes: ["weather"]
+    uiGroup: "environment",
+    temporal: true,
+    experienceIds: ["default", "aavegotchi"]
   },
   filters: [{ id: "opacity", label: "Průhlednost", kind: "range", min: 0.2, max: 1, default: 0.6 }],
+  // One exclusive visualization. Legacy keys remain so old weather URLs still resolve safely.
+  defaultFilters: { visualization: "radar", radar: true, variable: null },
   // Weather is an overlay: at full opacity it hides the map it is supposed to describe.
   defaultOpacity: 0.6,
   create: (ctx) => createWeatherLayerHandle(ctx.map, ctx.layerId),
   attribution: [
-    { label: "RainViewer", url: "https://www.rainviewer.com/" },
+    {
+      label: "RainViewer",
+      url: "https://www.rainviewer.com/",
+      license: "RainViewer API Terms"
+    },
     { label: "Open-Meteo", url: "https://open-meteo.com/", license: "CC-BY-4.0" }
   ]
 });
@@ -98,13 +112,17 @@ registerLayer({
     description: "3D questy, ghost zóny a Aavegotchi svět",
     category: "game",
     modes: ["game"],
-    primaryForModes: ["game"]
+    primaryForModes: ["game"],
+    uiGroup: "game",
+    experienceIds: ["default", "aavegotchi"],
+    performance: { maxEntities: 180, refreshIntervalMs: 30_000 }
   },
   create: (ctx) =>
     new LazyHandle(async () => {
       const { createGameLayerHandle } = await import("./game/gameLayer");
       return createGameLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId);
-    })
+    }),
+  attribution: [...GAME_ROAD_SOURCE.attribution]
 });
 
 registerLayer({
@@ -114,9 +132,49 @@ registerLayer({
     name: "Park4Night",
     icon: "🚐",
     color: "#0EA5A4",
-    description: "Tábořiště a parkovací místa pro karavany (neoficiální zdroj, prototyp)",
+    description: "Parkovací a kempovací místa z Park4Night pro prototyp",
     category: "travel",
-    experimental: true
+    experimental: true,
+    // Prototype policy keeps rights metadata advisory. Availability is controlled only by the
+    // explicit server capability; the OSM vanlife layer below remains the keyless fallback.
+    requiresCapability: "park4night"
   },
-  create: (ctx) => createPinsLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId, ctx.color)
+  create: (ctx) => createPinsLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId, ctx.color),
+  attribution: [
+    {
+      label: "Park4Night",
+      url: "https://plus.park4night.com/en/cgu",
+      license: "PARK4NIGHT-GTCU-ARTICLE-5-PRIOR-AUTHORIZATION-REQUIRED"
+    }
+  ]
+});
+
+registerLayer({
+  kind: "pins",
+  manifest: {
+    id: "vanlife",
+    name: "Karavany a kempy",
+    icon: "🚐",
+    color: "#0EA5A4",
+    description: "Kempy, stání pro obytná auta, výlevky a pitná voda z OpenStreetMap",
+    category: "travel",
+    modes: ["planning"],
+    uiGroup: "travel",
+    experienceIds: ["default", "aavegotchi"]
+  },
+  filters: [
+    {
+      id: "categories",
+      label: "Kategorie",
+      kind: "multi-select",
+      options: VANLIFE_CATEGORIES.map((id) => ({ id, label: OSM_POI_CATEGORIES[id].label })),
+      default: [...VANLIFE_CATEGORIES]
+    }
+  ],
+  // This is a thematic OSM layer, not a second copy of the whole fused catalogue. Keeping it
+  // OSM-only also keeps its attribution accurate and prevents community pins from being drawn
+  // again underneath the main POI layer.
+  deriveFilters: (filters) => ({ ...filters, sources: ["osm"] }),
+  create: (ctx) => createPinsLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId, ctx.color),
+  attribution: [OSM_ATTRIBUTION]
 });

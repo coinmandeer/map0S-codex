@@ -27,6 +27,8 @@ Optional configuration lives in `.env` (copy from `.env.example`); every entry i
 - `apps/web` — Vite, React and MapLibre
 - `apps/api` — Fastify and PostGIS
 - `packages/layer-sdk` — the shared contracts: layer plugins, place sources, info panels
+- `packages/map-runtime` — UI-neutral manifest registry, capability negotiation and MapLibre layer lifecycle
+- `apps/runtime-starter` — keyless clean-room application over those two public workspaces
 
 The engine is built around registries, and nearly every feature is a new entry in one of them
 rather than a change to the core. [CONTRIBUTING.md](CONTRIBUTING.md) walks through them with
@@ -37,6 +39,23 @@ minimal examples:
 3. **Info panels** — anything shown in the place detail dialog, including embedded iframes.
 4. **Quest sources** — real places the game can anchor a quest to.
 5. **Guide sources** — editorial content for a region in Objevuj.
+6. **Basemaps** — the background everything else is drawn on.
+
+Product architecture decisions are recorded in [`docs/adr`](docs/adr): modes share an additive
+layer stack, and `UserLayer` is the current ownership and publishing unit until a real multi-user
+workspace workflow requires a `Project`.
+
+## Basemaps
+
+The background is chosen separately from the sources of places, so anyone's imagery can sit
+under anyone else's pins. Keyless backgrounds cover street, terrain and satellite (CARTO,
+OpenFreeMap, OpenTopoMap, Sentinel-2 cloudless, NASA GIBS, Esri World Imagery); with a free key
+the picker also offers Mapy.com, Google, HERE, MapTiler, Thunderforest, Stadia, TomTom and
+Geoapify. Keyed tiles go through a server-side proxy, so no key reaches the browser. Aerial
+backgrounds can carry a label overlay, and vector ones can extrude buildings into 3D.
+
+[docs/basemaps.md](docs/basemaps.md) lists where to register, how much each gives away for free
+and which of them ask for a credit card.
 
 ## Layers
 

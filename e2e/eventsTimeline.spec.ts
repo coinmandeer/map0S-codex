@@ -1,121 +1,100 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures/offlineTest";
+import { stubEvents } from "./fixtures/events";
 
 const DAY_MS = 86_400_000;
 
-function isoDaysFromNow(days: number, hour = 20): string {
-  const date = new Date();
-  date.setHours(hour, 0, 0, 0);
-  return new Date(date.getTime() + days * DAY_MS).toISOString();
+async function openEvents(page: Parameters<typeof stubEvents>[0]) {
+  await page.goto("/");
+  await page.getByTestId("overflow-btn").click();
+  await page.getByTestId("overflow-events").click();
+  const drawer = page.getByTestId("right-utility-drawer");
+  if (await drawer.isVisible()) await page.getByTestId("right-utility-close").click();
+  await expect(page.getByTestId("discover-panel")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("event-explorer")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("global-timeline")).toBeVisible({ timeout: 20_000 });
 }
 
-/** Events land inside whatever bbox the app asked for, on the days the histogram is checked
- *  against: two tomorrow, one in five days. */
-function eventsWithin(requestUrl: string) {
-  const [west, south, east, north] = new URL(requestUrl)
-    .searchParams.get("bbox")!
-    .split(",")
-    .map(Number) as [number, number, number, number];
-
-  const schedule = [1, 1, 5];
-  return {
-    type: "FeatureCollection",
-    features: schedule.map((dayOffset, i) => {
-      const t = (i + 1) / (schedule.length + 1);
-      return {
-        type: "Feature",
-        geometry: {
-          type: "Point",
-          coordinates: [west + (east - west) * t, south + (north - south) * t]
-        },
-        properties: {
-          id: `tm:${i}`,
-          name: `Koncert ${i}`,
-          layerId: "events",
-          category: "event",
-          startsAt: isoDaysFromNow(dayOffset),
-          venue: "Hala"
-        }
-      };
-    })
-  };
-}
-
-test.describe("events timeline", () => {
+test.describe("annual events UI", () => {
   test.beforeEach(async ({ page }) => {
-    // The layer is gated on a server key the dev server doesn't have, so the capability is
-    // faked rather than the key.
-    await page.route("**/config", async (route) => {
-      const response = await route.fetch();
-      const body = await response.json();
-      await route.fulfill({
-        json: { ...body, capabilities: { ...body.capabilities, ticketmaster: true } }
-      });
-    });
-    await page.route("**/layers/events/features**", (route) =>
-      route.fulfill({ json: eventsWithin(route.request().url()) })
-    );
+    await stubEvents(page);
   });
 
-  test("the range writes itself into the layer's filters", async ({ page }) => {
+  test("uses one host with a nonlinear full-year range instead of a competing seven-day cursor", async ({
+    page
+  }) => {
     const windows: Array<{ from: string | null; to: string | null }> = [];
-    page.on("request", (req) => {
-      if (!req.url().includes("/layers/events/features")) return;
-      const params = new URL(req.url()).searchParams;
+    page.on("request", (request) => {
+      if (!request.url().includes("/v2/layers/events/features")) return;
+      const params = new URL(request.url()).searchParams;
       windows.push({ from: params.get("from"), to: params.get("to") });
     });
 
-    await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
-    await page.getByTestId("overflow-events").click();
-    // The menu stays open over the timeline, so it has to be dismissed before clicking through.
-    await page.getByTestId("overflow-btn").click();
-
-    await expect(page.getByTestId("events-timeline")).toBeVisible({ timeout: 20_000 });
-
-    // The default window is today plus a week, and the layer asks for exactly that.
-    await expect
-      .poll(() => windows.filter((w) => w.from && w.to).length, { timeout: 20_000 })
-      .toBeGreaterThan(0);
-    const week = windows.findLast((w) => w.from && w.to)!;
-    expect(new Date(week.to!).getTime() - new Date(week.from!).getTime()).toBeGreaterThan(
-      6 * DAY_MS
-    );
-
-    await page.getByTestId("events-preset-today").click();
-    await expect(page.getByTestId("events-preset-today")).toHaveAttribute("aria-pressed", "true");
-
-    // Moving the range refetches — the timeline writes a filter and the engine does the rest.
+    await openEvents(page);
+    await expect(page.getByText("Události na 12 měsíců", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("timeline-scrubber")).toBeHidden();
+    await page.getByTestId("events-preset-year").click();
+    await expect(page.getByTestId("events-range-from")).toHaveAttribute("aria-valuenow", "0");
+    await expect(page.getByTestId("events-range-to")).toHaveAttribute("aria-valuenow", "1000");
     await expect
       .poll(
-        () =>
-          windows.some(
-            (w) => w.from && w.to && w.from.slice(0, 10) === w.to.slice(0, 10)
-          ),
+        () => {
+          const current = windows.findLast((window) => window.from && window.to);
+          return current ? new Date(current.to!).getTime() - new Date(current.from!).getTime() : 0;
+        },
         { timeout: 20_000 }
       )
-      .toBe(true);
+      .toBeGreaterThan(365 * DAY_MS);
+    await expect(page.getByTestId("events-count")).toContainText("4 událostí");
   });
 
-  test("the histogram counts what the map loaded and arrows move a handle", async ({ page }) => {
-    await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
-    await page.getByTestId("overflow-events").click();
+  test("sidebar filters map results and opens a sourced detail without calling unknown price free", async ({
+    page
+  }) => {
+    await openEvents(page);
+    await page.getByTestId("events-preset-year").click();
+    const explorer = page.getByTestId("event-explorer");
+    await expect(explorer.locator(".event-explorer-card")).toHaveCount(4, { timeout: 20_000 });
+    await expect(explorer).toContainText("Cena neuvedena");
 
-    await expect(page.getByTestId("events-count")).toContainText("3", { timeout: 20_000 });
-
-    // Two events tomorrow, one on day five: the bar heights are the proof the axis is drawn
-    // from real data rather than being an empty strip.
-    const heights = await page.evaluate(() =>
-      [...document.querySelectorAll(".range-bar")].slice(0, 6).map((el) => (el as HTMLElement).style.height)
+    await explorer.getByLabel("Kategorie událostí").selectOption("Music");
+    await expect(explorer.locator(".event-explorer-card")).toHaveCount(1, { timeout: 20_000 });
+    await expect(explorer).toContainText("Hudba pod širým nebem");
+    await expect(explorer.getByRole("link", { name: /oficiální stránku/i })).toHaveAttribute(
+      "href",
+      "https://events.example.invalid/music-free"
     );
-    expect(heights[1]).toBe("100%");
-    expect(heights[5]).toBe("50%");
 
-    const from = page.getByTestId("events-range-from");
-    await expect(from).toHaveAttribute("aria-valuenow", "0");
-    await from.focus();
-    await page.keyboard.press("ArrowRight");
-    await expect(from).toHaveAttribute("aria-valuenow", "1");
-    await expect(page.getByTestId("events-range")).toContainText("zítra");
+    await explorer.getByRole("button", { name: /Hudba pod širým nebem/ }).click();
+    await expect(page.getByTestId("event-pin-detail")).toContainText("Hudba pod širým nebem");
+    await expect(page.getByTestId("event-pin-detail")).toContainText("Event E2E fixture");
+    await page.getByTestId("event-pin-detail").getByRole("button", { name: "✕" }).click();
+
+    await explorer.getByLabel("Kategorie událostí").selectOption("");
+    await explorer.getByLabel("Cena událostí").selectOption("false");
+    await expect(explorer.locator(".event-explorer-card")).toHaveCount(2, { timeout: 20_000 });
+    await expect(explorer).toContainText("250–500 CZK");
+    await expect(explorer).not.toContainText("Souseds & mapa města");
+  });
+
+  test("mobile explorer expands by keyboard and keeps the viewport free of horizontal overflow", async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openEvents(page);
+    await page.getByRole("slider", { name: "Výška panelu" }).press("ArrowUp");
+    const explorer = page.getByTestId("event-explorer");
+    await explorer.scrollIntoViewIfNeeded();
+    await expect(explorer).toBeVisible();
+    await explorer.getByTestId("events-explorer-preset-year").click();
+    await expect(explorer.locator(".event-explorer-card")).toHaveCount(4, { timeout: 20_000 });
+    await expect(page.getByTestId("events-range-to")).toHaveAttribute("aria-valuenow", "1000");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
+      )
+    ).toBe(true);
+    expect(
+      await explorer.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
+    ).toBe(true);
   });
 });

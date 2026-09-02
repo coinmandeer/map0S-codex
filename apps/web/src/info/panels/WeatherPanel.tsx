@@ -1,31 +1,31 @@
 import { EmptyState, Skeleton } from "../../ui/primitives";
+import { DailyForecastDetails, forecastWeatherIcon } from "../../ui/weather/DailyForecastDetails";
+import type { ForecastDay, ForecastHour } from "../../ui/weather/forecastDetails";
 import { useInfoData } from "../useInfoData";
 import type { InfoPanelProps } from "../registry";
 
 interface Forecast {
-  current: { temperature: number; windSpeed: number; windDirection: number; code: number } | null;
-  hourly: Array<{ time: string; temperature: number; precipitation: number; code: number }>;
-  daily: Array<{ date: string; min: number; max: number; precipitation: number; code: number }>;
+  current: {
+    temperature: number | null;
+    windSpeed: number | null;
+    windDirection: number | null;
+    code: number | null;
+  } | null;
+  hourly: ForecastHour[];
+  daily: ForecastDay[];
+  source: { id: string; label: string; url: string | null; license: string };
+  climate: {
+    status: "unavailable";
+    normals: [];
+    extremes: [];
+    source: null;
+    gate: string;
+    reason: string;
+  };
 }
 
-/** WMO weather codes, grouped to the granularity a glyph can actually convey. */
-function weatherIcon(code: number): string {
-  if (code === 0) return "☀️";
-  if (code <= 2) return "🌤️";
-  if (code === 3) return "☁️";
-  if (code <= 48) return "🌫️";
-  if (code <= 57) return "🌦️";
-  if (code <= 67) return "🌧️";
-  if (code <= 77) return "🌨️";
-  if (code <= 82) return "🌧️";
-  if (code <= 86) return "🌨️";
-  return "⛈️";
-}
-
-const DAYS = ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"];
-
-function hour(time: string): string {
-  return time.slice(11, 16);
+function degrees(value: number | null): string {
+  return value === null ? "—" : `${Math.round(value)}°`;
 }
 
 export function WeatherPanel({ place }: InfoPanelProps) {
@@ -41,55 +41,52 @@ export function WeatherPanel({ place }: InfoPanelProps) {
     );
   }
 
-  const { current, hourly, daily } = state.data;
+  const { current, hourly, daily, source, climate } = state.data;
   return (
     <div className="info-panel" data-testid="panel-pocasi">
       {current && (
         <div className="weather-now">
           <span className="weather-now-icon" aria-hidden>
-            {weatherIcon(current.code)}
+            {forecastWeatherIcon(current.code)}
           </span>
-          <strong>{Math.round(current.temperature)} °C</strong>
+          <strong>{degrees(current.temperature)}</strong>
           <span className="meta">
-            vítr {Math.round(current.windSpeed)} km/h
-            <span
-              className="weather-arrow"
-              style={{ transform: `rotate(${current.windDirection}deg)` }}
-              aria-hidden
-            >
-              ↑
-            </span>
+            vítr {current.windSpeed === null ? "—" : `${Math.round(current.windSpeed)} km/h`}
+            {current.windDirection !== null ? (
+              <span
+                className="weather-arrow"
+                style={{ transform: `rotate(${current.windDirection}deg)` }}
+                aria-hidden
+              >
+                ↑
+              </span>
+            ) : null}
           </span>
         </div>
       )}
 
-      <div className="weather-hours">
-        {hourly
-          .filter((_, i) => i % 3 === 0)
-          .map((h) => (
-            <div key={h.time} className="weather-hour">
-              <span className="meta">{hour(h.time)}</span>
-              <span aria-hidden>{weatherIcon(h.code)}</span>
-              <strong>{Math.round(h.temperature)}°</strong>
-            </div>
-          ))}
-      </div>
+      <section className="weather-forecast-block" aria-labelledby="weather-seven-day-title">
+        <h4 id="weather-seven-day-title">Předpověď na 7 dní</h4>
+        <DailyForecastDetails daily={daily} hourly={hourly} />
 
-      <div className="weather-days">
-        {daily.map((d) => (
-          <div key={d.date} className="weather-day">
-            <span className="meta">{DAYS[new Date(d.date).getDay()]}</span>
-            <span aria-hidden>{weatherIcon(d.code)}</span>
-            <span>
-              <strong>{Math.round(d.max)}°</strong>{" "}
-              <span className="meta">{Math.round(d.min)}°</span>
-            </span>
-            {d.precipitation > 0 && <span className="meta">{d.precipitation.toFixed(1)} mm</span>}
-          </div>
-        ))}
-      </div>
+        <p className="meta weather-source">
+          Zdroj:{" "}
+          {source.url ? (
+            <a href={source.url} target="_blank" rel="noreferrer">
+              {source.label}
+            </a>
+          ) : (
+            source.label
+          )}{" "}
+          · {source.license}
+        </p>
+      </section>
 
-      <p className="meta">Open-Meteo (CC BY 4.0)</p>
+      <section className="weather-climate-block" aria-labelledby="weather-climate-title">
+        <h4 id="weather-climate-title">Klimatické statistiky a historické extrémy</h4>
+        <p className="meta">{climate.reason}</p>
+        <p className="meta">Zdroj není připojen; z 7denní předpovědi tyto údaje neodvozujeme.</p>
+      </section>
     </div>
   );
 }

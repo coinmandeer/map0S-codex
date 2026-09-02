@@ -1,4 +1,4 @@
-import { PLACE_SOURCES } from "@mapos/layer-sdk";
+import { RELEASED_PLACE_SOURCES } from "@mapos/layer-sdk";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { SourceIconStrip } from "./primitives";
 
@@ -14,17 +14,17 @@ export function SourceStatus({
 }) {
   const sourceStatus = useMapStoreSnapshot((s) => s.sourceStatus);
   const poiSources = useMapStoreSnapshot((s) => s.poiSources);
-
-  const sources = PLACE_SOURCES.filter((source) => poiSources[source.id]).map((source) => ({
-    id: source.id,
-    label: source.label,
-    glyph: source.glyph,
-    state: sourceStatus[source.id]?.state ?? "idle",
-    count: sourceStatus[source.id]?.count,
-    message: sourceStatus[source.id]?.message
-  }));
+  const sources = RELEASED_PLACE_SOURCES.filter((source) => poiSources[source.id]).map(
+    (source) => ({
+      id: source.id,
+      label: source.label,
+      glyph: source.glyph,
+      state: sourceStatus[source.id]?.state ?? "idle",
+      count: sourceStatus[source.id]?.count,
+      message: sourceStatus[source.id]?.message
+    })
+  );
 
   const strip = <SourceIconStrip sources={sources} testId={testId} />;
-  if (!floating) return strip;
-  return <div className="source-strip-floating">{strip}</div>;
+  return <div className={floating ? "source-strip-floating" : "source-task-status"}>{strip}</div>;
 }

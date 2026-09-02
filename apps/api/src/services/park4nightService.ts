@@ -3,42 +3,76 @@ import type { Bbox, FeatureCollection } from "@mapos/layer-sdk";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { park4nightCells, park4nightPlaces } from "../db/schema.js";
+import { safeErrorLogFields } from "../utils/clientError.js";
 import { cellBounds, cellId, cellsForBbox, type Cell } from "../utils/tileGrid.js";
+import { fetchJson } from "../utils/upstream.js";
+
+/**
+ * Park4Night, read through the endpoint their mobile app uses.
+ *
+ * Two things are worth knowing before touching this file.
+ *
+ * First, the endpoint answers `{"api_infos": "This data is not public, STOP your parsing"}` and is
+ * not a stable public API. The checked-in source-rights record preserves that warning, but the
+ * prototype operator explicitly made it advisory. `PARK4NIGHT_ENABLED=1` is therefore the sole
+ * runtime switch; request pacing, response-size limits and graceful fallback still apply.
+ *
+ * Second, the response is an object with the places under `lieux`, not the bare array this module
+ * was written against. `Array.isArray(data) ? data : []` meant the layer had been quietly
+ * returning nothing at all.
+ */
 
 const P4N_ENDPOINT = "https://guest.park4night.com/services/V4.1/lieuxGetFilter.php";
 const CELL_TTL_MS = 7 * 24 * 3600_000;
-const CELL_ZOOM = 8;
+/**
+ * The endpoint answers with the hundred places nearest the point, which around Plzeň reaches
+ * about 20 km. A zoom-8 cell is five times that across, so asking once at its centre left most
+ * of the cell unvisited while marking it fetched; zoom 11 is roughly the radius one call covers.
+ */
+const CELL_ZOOM = 11;
+/** One request per second, so this also caps how long a cold viewport waits. */
 const MAX_CELLS = 6;
-
-let lastRequestAt = 0;
 
 /** Park4Night's public API is unofficial and has no documented rate limits — be a polite
  * neighbour and never issue more than one request per second. */
-async function rateLimitedFetch(url: string): Promise<Response | null> {
-  const wait = Math.max(0, lastRequestAt + 1000 - Date.now());
-  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-  lastRequestAt = Date.now();
+async function rateLimitedFetch(url: string): Promise<unknown | null> {
   try {
-    return await fetch(url, {
-      headers: { "User-Agent": config.userAgent },
-      signal: AbortSignal.timeout(8000)
+    return await fetchJson<unknown>(url, {
+      providerId: "park4night",
+      ttlMs: 60 * 60_000,
+      timeoutMs: 8_000,
+      minIntervalMs: 1_000,
+      maxResponseBytes: 2 * 1024 * 1024
     });
   } catch {
     return null;
   }
 }
 
+/**
+ * Their place codes, of which the three this once handled are a small minority — around a third
+ * of a typical response used to land in "other". `P` is a plain car park, `PN` one you may sleep
+ * at, `AR` a motorhome service point, `ACC_*` paid accommodation of various kinds.
+ */
+const CODE_CATEGORIES: Record<string, string> = {
+  C: "p4n-camping",
+  CS: "p4n-camping",
+  P: "p4n-parking",
+  PJ: "p4n-parking",
+  PSS: "p4n-parking",
+  PN: "p4n-night",
+  DS: "p4n-night",
+  A: "p4n-aire",
+  AR: "p4n-aire",
+  APN: "p4n-aire",
+  ACC_P: "p4n-accommodation",
+  ACC_PR: "p4n-accommodation",
+  ACC_G: "p4n-accommodation",
+  ACC_C: "p4n-accommodation"
+};
+
 function codeToCategory(code: string | undefined): string {
-  switch (code) {
-    case "C":
-      return "p4n-camping";
-    case "P":
-      return "p4n-parking";
-    case "A":
-      return "p4n-aire";
-    default:
-      return "p4n-other";
-  }
+  return (code && CODE_CATEGORIES[code]) ?? "p4n-other";
 }
 
 interface P4nPlace {
@@ -58,15 +92,19 @@ interface P4nPlace {
   photos?: Array<{ link_thumb?: string }>;
 }
 
-async function fetchAroundPoint(lat: number, lng: number): Promise<P4nPlace[]> {
-  const res = await rateLimitedFetch(`${P4N_ENDPOINT}?latitude=${lat}&longitude=${lng}`);
-  if (!res?.ok) return [];
-  try {
-    const data = (await res.json()) as unknown;
-    return Array.isArray(data) ? (data as P4nPlace[]) : [];
-  } catch {
-    return [];
+/** Exported for the test: the shape of the envelope is the whole reason this layer was blank. */
+export function parsePark4nightResponse(data: unknown): P4nPlace[] {
+  if (Array.isArray(data)) return data as P4nPlace[];
+  if (data && typeof data === "object") {
+    const places = (data as { lieux?: unknown }).lieux;
+    if (Array.isArray(places)) return places as P4nPlace[];
   }
+  return [];
+}
+
+async function fetchAroundPoint(lat: number, lng: number): Promise<P4nPlace[]> {
+  const data = await rateLimitedFetch(`${P4N_ENDPOINT}?latitude=${lat}&longitude=${lng}`);
+  return parsePark4nightResponse(data);
 }
 
 async function ensureCellFetched(cell: Cell) {
@@ -119,10 +157,19 @@ async function ensureCellFetched(cell: Cell) {
 }
 
 export async function getPark4nightFeatures(bbox: Bbox): Promise<FeatureCollection> {
+  if (!config.park4nightEnabled) {
+    return {
+      type: "FeatureCollection",
+      features: [],
+      notice:
+        "Park4Night je blokovaný — chybí předchozí výslovné oprávnění provozovatele dle GTCU čl. 5."
+    };
+  }
+
   const cells = cellsForBbox(bbox, MAX_CELLS, CELL_ZOOM);
   for (const cell of cells) {
     await ensureCellFetched(cell).catch((err) =>
-      console.warn("Park4Night cell fetch failed:", err)
+      console.warn("Park4Night cell fetch failed", safeErrorLogFields(err))
     );
   }
 

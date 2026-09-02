@@ -31,7 +31,7 @@ async function wikipediaSummary(lang: string, title: string): Promise<WikipediaA
       thumbnail?: { source?: string };
     }>(
       `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}?redirect=true`,
-      { source: "wikipedia", ttlMs: 6 * 3600_000 }
+      { providerId: "wikipedia", ttlMs: 6 * 3600_000 }
     );
     // Disambiguation pages are technically a hit but tell the reader nothing about the place.
     if (!data.extract || data.type === "disambiguation") return null;
@@ -56,7 +56,7 @@ async function titlesFromQid(qid: string): Promise<Array<{ lang: string; title: 
     entities?: Record<string, { sitelinks?: Record<string, { title?: string }> }>;
   }>(
     `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=sitelinks&format=json&origin=*`,
-    { source: "wikidata", ttlMs: 24 * 3600_000 }
+    { providerId: "wikidata", ttlMs: 24 * 3600_000, minIntervalMs: 150, retries: 2 }
   );
   const sitelinks = data.entities?.[qid]?.sitelinks ?? {};
   return WIKI_LANGS.map((lang) => ({ lang, title: sitelinks[`${lang}wiki`]?.title ?? "" })).filter(
@@ -142,7 +142,7 @@ export async function getWikidataFacts(qid: string): Promise<WikidataFacts | nul
     >;
   }>(
     `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=labels|descriptions|claims|sitelinks&languages=cs|en|de&format=json&origin=*`,
-    { source: "wikidata", ttlMs: 24 * 3600_000 }
+    { providerId: "wikidata", ttlMs: 24 * 3600_000, minIntervalMs: 150, retries: 2 }
   );
 
   const entity = data.entities?.[qid];
@@ -182,7 +182,12 @@ export async function getWikidataFacts(qid: string): Promise<WikidataFacts | nul
         entities?: Record<string, { labels?: Record<string, { value: string }> }>;
       }>(
         `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids}&props=labels&languages=cs|en|de&format=json&origin=*`,
-        { source: "wikidata", ttlMs: 7 * 24 * 3600_000 }
+        {
+          providerId: "wikidata",
+          ttlMs: 7 * 24 * 3600_000,
+          minIntervalMs: 150,
+          retries: 2
+        }
       );
       for (const [id, ent] of Object.entries(resolved.entities ?? {})) {
         const label = pick(ent.labels);
@@ -207,9 +212,41 @@ export async function getWikidataFacts(qid: string): Promise<WikidataFacts | nul
 }
 
 export interface PointForecast {
-  current: { temperature: number; windSpeed: number; windDirection: number; code: number } | null;
-  hourly: Array<{ time: string; temperature: number; precipitation: number; code: number }>;
-  daily: Array<{ date: string; min: number; max: number; precipitation: number; code: number }>;
+  current: {
+    temperature: number | null;
+    windSpeed: number | null;
+    windDirection: number | null;
+    code: number | null;
+  } | null;
+  hourly: Array<{
+    time: string;
+    temperature: number | null;
+    precipitation: number | null;
+    code: number | null;
+  }>;
+  daily: Array<{
+    date: string;
+    min: number | null;
+    max: number | null;
+    precipitation: number | null;
+    code: number | null;
+  }>;
+  source: {
+    id: "open-meteo-forecast";
+    label: "Open-Meteo Forecast API";
+    url: "https://open-meteo.com/";
+    license: "CC BY 4.0";
+  };
+  /** Climate normals and historical records need a separate licensed historical adapter.
+   * They must never be inferred from this seven-day forecast. */
+  climate: {
+    status: "unavailable";
+    normals: [];
+    extremes: [];
+    source: null;
+    gate: "climate-provider-not-configured";
+    reason: string;
+  };
 }
 
 /** Open-Meteo needs no key and allows commercial use below 10k calls a day, which is why the
@@ -218,8 +255,8 @@ export async function getPointForecast(lng: number, lat: number): Promise<PointF
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}` +
     `&current=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code` +
-    `&hourly=temperature_2m,precipitation,weather_code&forecast_hours=24` +
-    `&daily=temperature_2m_min,temperature_2m_max,precipitation_sum,weather_code&forecast_days=5` +
+    `&hourly=temperature_2m,precipitation,weather_code&forecast_hours=168` +
+    `&daily=temperature_2m_min,temperature_2m_max,precipitation_sum,weather_code&forecast_days=7` +
     `&timezone=auto`;
 
   const data = await fetchJson<{
@@ -242,33 +279,50 @@ export async function getPointForecast(lng: number, lat: number): Promise<PointF
       precipitation_sum?: number[];
       weather_code?: number[];
     };
-  }>(url, { source: "open-meteo", ttlMs: 30 * 60_000 });
+  }>(url, { providerId: "open-meteo", ttlMs: 30 * 60_000 });
 
   const hourlyTimes = data.hourly?.time ?? [];
   const dailyTimes = data.daily?.time ?? [];
+  const numberOrNull = (value: unknown): number | null =>
+    typeof value === "number" && Number.isFinite(value) ? value : null;
 
   return {
     current: data.current
       ? {
-          temperature: data.current.temperature_2m ?? 0,
-          windSpeed: data.current.wind_speed_10m ?? 0,
-          windDirection: data.current.wind_direction_10m ?? 0,
-          code: data.current.weather_code ?? 0
+          temperature: numberOrNull(data.current.temperature_2m),
+          windSpeed: numberOrNull(data.current.wind_speed_10m),
+          windDirection: numberOrNull(data.current.wind_direction_10m),
+          code: numberOrNull(data.current.weather_code)
         }
       : null,
-    hourly: hourlyTimes.slice(0, 24).map((time, i) => ({
+    hourly: hourlyTimes.slice(0, 168).map((time, i) => ({
       time,
-      temperature: data.hourly?.temperature_2m?.[i] ?? 0,
-      precipitation: data.hourly?.precipitation?.[i] ?? 0,
-      code: data.hourly?.weather_code?.[i] ?? 0
+      temperature: numberOrNull(data.hourly?.temperature_2m?.[i]),
+      precipitation: numberOrNull(data.hourly?.precipitation?.[i]),
+      code: numberOrNull(data.hourly?.weather_code?.[i])
     })),
-    daily: dailyTimes.slice(0, 5).map((date, i) => ({
+    daily: dailyTimes.slice(0, 7).map((date, i) => ({
       date,
-      min: data.daily?.temperature_2m_min?.[i] ?? 0,
-      max: data.daily?.temperature_2m_max?.[i] ?? 0,
-      precipitation: data.daily?.precipitation_sum?.[i] ?? 0,
-      code: data.daily?.weather_code?.[i] ?? 0
-    }))
+      min: numberOrNull(data.daily?.temperature_2m_min?.[i]),
+      max: numberOrNull(data.daily?.temperature_2m_max?.[i]),
+      precipitation: numberOrNull(data.daily?.precipitation_sum?.[i]),
+      code: numberOrNull(data.daily?.weather_code?.[i])
+    })),
+    source: {
+      id: "open-meteo-forecast",
+      label: "Open-Meteo Forecast API",
+      url: "https://open-meteo.com/",
+      license: "CC BY 4.0"
+    },
+    climate: {
+      status: "unavailable",
+      normals: [],
+      extremes: [],
+      source: null,
+      gate: "climate-provider-not-configured",
+      reason:
+        "Klimatické normály a historické extrémy vyžadují samostatný ověřený historický zdroj."
+    }
   };
 }
 
@@ -300,15 +354,15 @@ export async function getFoursquareDetail(fsqId: string): Promise<FoursquareDeta
       categories?: Array<{ name?: string }>;
     }>(
       `https://api.foursquare.com/v3/places/${fsqId}?fields=name,rating,price,stats,hours,categories`,
-      { source: "foursquare", headers, ttlMs: 6 * 3600_000 }
+      { providerId: "foursquare", headers, ttlMs: 6 * 3600_000 }
     ).catch(() => null),
     fetchJson<Array<{ prefix: string; suffix: string }>>(
       `https://api.foursquare.com/v3/places/${fsqId}/photos?limit=6`,
-      { source: "foursquare", headers, ttlMs: 6 * 3600_000 }
+      { providerId: "foursquare", headers, ttlMs: 6 * 3600_000 }
     ).catch(() => []),
     fetchJson<Array<{ text: string }>>(
       `https://api.foursquare.com/v3/places/${fsqId}/tips?limit=5`,
-      { source: "foursquare", headers, ttlMs: 6 * 3600_000 }
+      { providerId: "foursquare", headers, ttlMs: 6 * 3600_000 }
     ).catch(() => [])
   ]);
 

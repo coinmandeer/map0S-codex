@@ -17,6 +17,9 @@ export interface WeatherGrid {
   v?: (number | null)[];
   min: number;
   max: number;
+  median: number;
+  sampleCount: number;
+  validAt: string;
   generatedAt: string;
 }
 

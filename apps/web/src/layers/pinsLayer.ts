@@ -9,11 +9,31 @@ const iconImageExpr: maplibregl.ExpressionSpecification = [
   ["image", "pin-default"]
 ];
 
+export type PinsLayerLoader = (
+  bbox: Bbox,
+  filters: FilterValues,
+  signal?: AbortSignal
+) => Promise<FeatureCollection>;
+
+export interface PinsLayerOptions {
+  /** Personal pins are intentionally a little easier to spot than catalogue results. */
+  personal?: boolean;
+}
+
+export function pinIconSizeExpression(personal: boolean): maplibregl.ExpressionSpecification {
+  return personal
+    ? ["interpolate", ["linear"], ["zoom"], 5, 0.42, 8, 0.55, 12, 0.66, 16, 0.8]
+    : ["interpolate", ["linear"], ["zoom"], 5, 0.35, 8, 0.48, 12, 0.58, 16, 0.7];
+}
+
 export function createPinsLayerHandle(
   map: maplibregl.Map,
   apiBase: string,
   layerId: string,
-  color: string
+  color: string,
+  loader: PinsLayerLoader = (bbox, filters, signal) =>
+    fetchLayerFeatures(apiBase, layerId, bbox, filters, signal),
+  options: PinsLayerOptions = {}
 ) {
   const sourceId = `source-${layerId}`;
   const clusterLayerId = `pins-${layerId}-cluster`;
@@ -67,7 +87,7 @@ export function createPinsLayerHandle(
       filter: ["!", ["has", "point_count"]],
       layout: {
         "icon-image": iconImageExpr,
-        "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.35, 8, 0.48, 12, 0.58, 16, 0.7],
+        "icon-size": pinIconSizeExpression(Boolean(options.personal)),
         "icon-anchor": "bottom",
         "icon-allow-overlap": true,
         "icon-ignore-placement": true
@@ -110,7 +130,7 @@ export function createPinsLayerHandle(
       signal?: AbortSignal
     ): Promise<FeatureCollection | null> {
       ensureLayers();
-      const data = await fetchLayerFeatures(apiBase, layerId, bbox, filters, signal);
+      const data = await loader(bbox, filters, signal);
       setData(data);
       return data;
     },

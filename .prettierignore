@@ -6,3 +6,5 @@ test-results/
 playwright-report/
 package-lock.json
 LICENSE
+infra/*.inc
+packages/layer-sdk/src/v2/layerManifestValidator.generated.ts

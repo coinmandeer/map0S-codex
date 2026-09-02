@@ -1,6 +1,6 @@
 {
   "name": "@mapos/layer-sdk",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -11,10 +11,23 @@
       "import": "./dist/index.js"
     }
   },
+  "bin": {
+    "mapos-layer": "./bin/mapos-layer.mjs"
+  },
   "scripts": {
+    "generate:manifest-validator": "node scripts/generate-layer-manifest-validator.mjs",
+    "check:manifest-validator": "node scripts/generate-layer-manifest-validator.mjs --check",
+    "prebuild": "npm run check:manifest-validator",
     "build": "tsc -p tsconfig.json",
+    "pretypecheck": "npm run check:manifest-validator",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test 'src/**/*.test.ts'"
+    "pretest": "npm run check:manifest-validator",
+    "test": "node --import tsx --test 'src/**/*.test.ts'",
+    "test:cli": "node --test 'test/**/*.test.mjs'"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
   },
   "devDependencies": {
     "tsx": "^4.20.3",

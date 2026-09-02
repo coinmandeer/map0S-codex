@@ -9,6 +9,7 @@
  */
 
 import type { Bbox } from "@mapos/layer-sdk";
+import { fetchJson } from "../utils/upstream.js";
 
 const OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast";
 
@@ -68,6 +69,10 @@ export interface WeatherGrid {
   v?: (number | null)[];
   min: number;
   max: number;
+  median: number;
+  sampleCount: number;
+  /** Forecast/archive hour represented by the grid. */
+  validAt: string;
   generatedAt: string;
 }
 
@@ -117,7 +122,7 @@ function gridPoints(bbox: Bbox, cols: number, rows: number) {
 }
 
 interface OpenMeteoPoint {
-  current?: Record<string, number | string | undefined>;
+  hourly?: Record<string, string[] | number[] | undefined>;
 }
 
 const cache = new Map<string, { grid: WeatherGrid; bucket: number }>();
@@ -145,7 +150,25 @@ export interface WeatherGridQuery {
   variable: WeatherVariableId;
   cols?: number;
   rows?: number;
+  at?: string | Date | number;
   signal?: AbortSignal;
+}
+
+function normalizeHour(at?: string | Date | number): Date {
+  const parsed = at instanceof Date ? at : at === undefined ? new Date() : new Date(at);
+  const safe = Number.isFinite(parsed.getTime()) ? parsed : new Date();
+  safe.setUTCMinutes(0, 0, 0);
+  const now = Date.now();
+  const min = now - 24 * 3600_000;
+  const max = now + 7 * 24 * 3600_000;
+  return new Date(Math.max(min, Math.min(max, safe.getTime())));
+}
+
+function medianOf(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
 }
 
 export async function fetchWeatherGrid({
@@ -153,26 +176,35 @@ export async function fetchWeatherGrid({
   variable,
   cols = DEFAULT_GRID_COLS,
   rows = DEFAULT_GRID_ROWS,
+  at,
   signal
 }: WeatherGridQuery): Promise<WeatherGrid> {
   const spec = WEATHER_VARIABLES[variable];
   const { cols: safeCols, rows: safeRows } = clampGrid(cols, rows);
   const snapped = snapBbox(bbox);
 
+  const targetHour = normalizeHour(at);
+  const targetEpochHour = Math.floor(targetHour.getTime() / 3600_000);
   const bucket = Math.floor(Date.now() / CACHE_BUCKET_MS);
-  const key = `${variable}:${safeCols}x${safeRows}:${snapped.join(",")}`;
+  const key = `${variable}:${targetEpochHour}:${safeCols}x${safeRows}:${snapped.join(",")}`;
   const cached = cacheGet(key, bucket);
   if (cached) return cached;
 
   const { lats, lngs } = gridPoints(snapped, safeCols, safeRows);
   const url =
     `${OPEN_METEO_URL}?latitude=${lats.join(",")}&longitude=${lngs.join(",")}` +
-    `&current=${spec.fields.join(",")}&wind_speed_unit=ms&timezone=GMT`;
+    `&hourly=${spec.fields.join(",")}&past_days=1&forecast_days=8` +
+    `&wind_speed_unit=ms&timezone=GMT`;
 
-  const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error(`Open-Meteo responded ${response.status}`);
-
-  const payload = (await response.json()) as OpenMeteoPoint | OpenMeteoPoint[];
+  const payload = await fetchJson<OpenMeteoPoint | OpenMeteoPoint[]>(url, {
+    providerId: "weather-open-meteo-grid",
+    // This module's bounded grid cache retains the decoded result. The shared client still
+    // coalesces in-flight calls but should not retain a second copy of the large point array.
+    ttlMs: 0,
+    timeoutMs: 12_000,
+    maxResponseBytes: 4 * 1024 * 1024,
+    signal
+  });
   const points = Array.isArray(payload) ? payload : [payload];
 
   const values: (number | null)[] = [];
@@ -180,19 +212,31 @@ export async function fetchWeatherGrid({
   const v: (number | null)[] = [];
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
+  const numericValues: number[] = [];
 
   for (let i = 0; i < safeCols * safeRows; i += 1) {
-    const current = points[i]?.current;
-    const primary = current?.[spec.fields[0]!];
+    const hourly = points[i]?.hourly;
+    const times = (hourly?.time ?? []) as string[];
+    let hourIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let h = 0; h < times.length; h += 1) {
+      const distance = Math.abs(new Date(`${times[h]}Z`).getTime() - targetHour.getTime());
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        hourIndex = h;
+      }
+    }
+    const primary = (hourly?.[spec.fields[0]!] as number[] | undefined)?.[hourIndex];
     const value = typeof primary === "number" ? primary : null;
     values.push(value);
     if (value !== null) {
       min = Math.min(min, value);
       max = Math.max(max, value);
+      numericValues.push(value);
     }
 
     if (spec.vector) {
-      const direction = current?.["wind_direction_10m"];
+      const direction = (hourly?.wind_direction_10m as number[] | undefined)?.[hourIndex];
       if (value !== null && typeof direction === "number") {
         // Meteorological convention: direction is where the wind blows *from*.
         const rad = ((direction + 180) * Math.PI) / 180;
@@ -216,6 +260,9 @@ export async function fetchWeatherGrid({
     ...(spec.vector ? { u, v } : {}),
     min: Number.isFinite(min) ? min : 0,
     max: Number.isFinite(max) ? max : 0,
+    median: medianOf(numericValues),
+    sampleCount: numericValues.length,
+    validAt: targetHour.toISOString(),
     generatedAt: new Date().toISOString()
   };
 

@@ -1,5 +1,7 @@
 import type { DataProvider } from "@mapos/layer-sdk";
 import { config } from "../config.js";
+import { ClientError, safeErrorLogFields } from "../utils/clientError.js";
+import { fetchJson } from "../utils/upstream.js";
 import {
   isMapyRouteProfile,
   mapyElevation,
@@ -41,31 +43,45 @@ export interface RouteResult {
 
 function parsePoint(raw: string): [number, number] {
   const [lng, lat] = raw.split(",").map(Number);
-  if (!Number.isFinite(lng) || !Number.isFinite(lat)) throw new Error(`invalid point: ${raw}`);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+    throw new ClientError(`invalid point: ${raw}`);
+  }
   return [lng!, lat!];
 }
 
-async function osrmRoute(from: string, to: string, profile: RouteProfile): Promise<RouteResult> {
+async function osrmRoutes(
+  from: string,
+  to: string,
+  profile: RouteProfile,
+  waypoints: string[] = [],
+  alternatives = 1
+): Promise<RouteResult[]> {
   const osrmProfile = PROFILE_MAP[profile] ?? "foot";
-  const url = `${OSRM_BASE}/${osrmProfile}/${from};${to}?overview=full&geometries=geojson`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`OSRM error: ${res.status}`);
-  const data = (await res.json()) as {
+  const points = [from, ...waypoints, to].join(";");
+  const alternativeCount = Math.min(2, Math.max(1, Math.floor(alternatives)));
+  // A simplified GeoJSON overview is sufficient for an interactive plan and keeps the optional
+  // second route economical on mobile data. Waypoint metadata is unused, so omit it as well.
+  const url = `${OSRM_BASE}/${osrmProfile}/${points}?overview=simplified&geometries=geojson&alternatives=${alternativeCount > 1 ? alternativeCount : "false"}&skip_waypoints=true`;
+  const data = await fetchJson<{
     routes: Array<{
       distance: number;
       duration: number;
       geometry: { coordinates: [number, number][] };
     }>;
-  };
-  const route = data.routes[0];
-  if (!route) throw new Error("No route found");
-  return {
+  }>(url, {
+    providerId: "routing-osrm",
+    ttlMs: 5 * 60_000,
+    timeoutMs: 10_000,
+    maxResponseBytes: 4 * 1024 * 1024
+  });
+  if (!data.routes.length) throw new ClientError("No route found", 404);
+  return data.routes.slice(0, alternativeCount).map((route) => ({
     coordinates: route.geometry.coordinates,
     distanceM: route.distance,
     durationS: route.duration,
-    provider: "osm",
+    provider: "osm" as const,
     profile: osrmProfile
-  };
+  }));
 }
 
 /** Samples the route at ~20 evenly spaced points — enough for a profile chart, far below the
@@ -83,12 +99,20 @@ async function sampleElevation(
   }
 }
 
-export async function fetchRoute(
+export interface FetchRouteOptions {
+  provider?: DataProvider;
+  waypoints?: string[];
+  avoidToll?: boolean;
+  /** OSRM can return fewer routes than requested. Kept at two to bound transfer and UI fan-out. */
+  alternatives?: number;
+}
+
+export async function fetchRouteAlternatives(
   from: string,
   to: string,
   profile: RouteProfile | MapyRouteProfile = "foot",
-  options: { provider?: DataProvider; waypoints?: string[]; avoidToll?: boolean } = {}
-): Promise<RouteResult> {
+  options: FetchRouteOptions = {}
+): Promise<RouteResult[]> {
   const wantsMapy = options.provider === "mapy" && Boolean(config.mapyKey);
 
   if (wantsMapy) {
@@ -111,22 +135,37 @@ export async function fetchRoute(
         avoidToll: options.avoidToll
       });
       const coordinates = route.geometry.coordinates;
-      return {
-        coordinates,
-        distanceM: route.length,
-        durationS: route.duration,
-        provider: "mapy",
-        profile: mapyProfile,
-        elevation: await sampleElevation(coordinates)
-      };
+      return [
+        {
+          coordinates,
+          distanceM: route.length,
+          durationS: route.duration,
+          provider: "mapy",
+          profile: mapyProfile,
+          elevation: await sampleElevation(coordinates)
+        }
+      ];
     } catch (err) {
       // A dead upstream or an exhausted quota must not break route planning outright.
-      console.warn("Mapy routing failed, falling back to OSRM:", err);
+      console.warn("Mapy routing failed; using OSRM fallback", safeErrorLogFields(err));
     }
   }
 
   const osrmProfile: RouteProfile = isMapyRouteProfile(profile)
     ? MAPY_TO_OSRM[profile]
     : (profile as RouteProfile);
-  return osrmRoute(from, to, osrmProfile);
+  return osrmRoutes(from, to, osrmProfile, options.waypoints, options.alternatives ?? 1);
+}
+
+export async function fetchRoute(
+  from: string,
+  to: string,
+  profile: RouteProfile | MapyRouteProfile = "foot",
+  options: FetchRouteOptions = {}
+): Promise<RouteResult> {
+  const routes = await fetchRouteAlternatives(from, to, profile, {
+    ...options,
+    alternatives: 1
+  });
+  return routes[0]!;
 }

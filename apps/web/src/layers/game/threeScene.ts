@@ -1,16 +1,33 @@
 import * as THREE from "three";
 import maplibregl from "maplibre-gl";
 import type mapboxglNS from "maplibre-gl";
+import { MAX_ORBS, type GameOrb as OrbShape } from "./orbsController";
 import {
   instantiate,
+  instantiateModel,
   loadModel,
+  loadModelSpec,
   pickAction,
-  pickZoneModelKey,
-  preloadModels,
-  type ModelKey
+  type ModelInstance,
+  type ModelKey,
+  type ModelSpec
 } from "./modelCatalog";
-import { createGhostSprite, createPlaceholderGhostSprite } from "./ghostRenderer";
-import { hashSeed, metersToLngLatOffset, mulberry32 } from "./zoneUtils";
+import {
+  NEUTRAL_AVATAR_SELECTION,
+  animationCandidates,
+  defaultAvatarAssetProvider,
+  selectAvatarLod,
+  type AvatarAnimationState,
+  type AvatarAssetProvider,
+  type AvatarAssetResolution,
+  type AvatarInventorySelection,
+  type AvatarLodLevel,
+  type GamePerformanceTier
+} from "./avatarAssets";
+import { legacyAvatarSelection } from "./avatarInventory";
+import { GamePerformanceMonitor, defaultGamePerformanceTier } from "./gamePerformance";
+import { createNeutralAvatar, type NeutralAvatarInstance } from "./neutralAvatar";
+import { createPlaceholderGhostSprite, disposeSprite } from "./ghostRenderer";
 
 export interface GameZone {
   id: string;
@@ -21,6 +38,16 @@ export interface GameZone {
   category?: string | null;
   lootTier?: string | null;
   zoneKind?: string | null;
+  minStakeUsd?: number;
+  activeFrom?: string | null;
+  activeUntil?: string | null;
+  isTemporary?: boolean;
+  lifecycle?: "active" | "scheduled" | "expired";
+  isLive?: boolean;
+  startsInSeconds?: number | null;
+  endsInSeconds?: number | null;
+  sizeTier?: "S" | "M" | "L" | "XL";
+  eventTag?: string | null;
 }
 
 export interface GameQuest {
@@ -46,11 +73,8 @@ export interface GameGhost {
   gotchiId: string | null;
 }
 
-export interface GameOrb {
-  id: string;
-  lng: number;
-  lat: number;
-}
+/** Owned by orbsController, which decides where dots go; the scene only draws them. */
+export type GameOrb = OrbShape;
 
 function haversineM(a: { lng: number; lat: number }, b: { lng: number; lat: number }): number {
   const R = 6371000;
@@ -78,11 +102,31 @@ function createFallbackPlayer(): THREE.Group {
   const legR = legL.clone();
   legR.position.x = 0.5;
   root.add(body, head, legL, legR);
+  root.scale.setScalar(0.76);
   return root;
 }
 
-const PLAYER_POSITION_LERP = 0.14;
+function disposeObjectResources(root: THREE.Object3D) {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (mesh.geometry) geometries.add(mesh.geometry);
+    const material = mesh.material;
+    if (material) {
+      for (const item of Array.isArray(material) ? material : [material]) materials.add(item);
+    }
+  });
+  for (const geometry of geometries) geometry.dispose();
+  for (const material of materials) material.dispose();
+}
+
+const PLAYER_POSITION_LERP = 0.28;
 const PLAYER_HEADING_LERP = 0.18;
+const PLAYER_SETTLE_DISTANCE_SQ = 0.01;
+const PLAYER_SETTLE_HEADING = 0.004;
+/** The scene asks MapLibre for at most 30 frames per second while the player is moving. MapLibre
+ * can still render faster during a camera gesture, but an idle game no longer manufactures work. */
 /** Anchor is re-rooted once the player/view drifts this far, to keep Three.js coordinates
  * (single-precision floats) close to the origin — otherwise distant geometry starts jittering. */
 const ANCHOR_RECENTER_DEG = 0.05;
@@ -112,26 +156,86 @@ export class ThreeScene {
 
   private playerRoot: THREE.Group | null = null;
   private playerMixer: THREE.AnimationMixer | null = null;
+  private playerActions = new Map<string, THREE.AnimationAction>();
+  private playerAnimationAction: THREE.AnimationAction | null = null;
+  private playerAnimationState: AvatarAnimationState = "idle";
+  private neutralAvatar: NeutralAvatarInstance | null = null;
+  private playerVisualKind: "legacy" | "neutral" | "asset-glb" | null = null;
+  private playerMoving = false;
+  private playerOwnsResources = false;
   private playerLngLat: { lng: number; lat: number } | null = null;
+  private playerDisplayPosition = new THREE.Vector3();
+  private playerTargetPosition = new THREE.Vector3();
+  private playerDisplayReady = false;
   private playerHeading = 0;
   private playerTargetHeading = 0;
 
   private zoneProps = new Map<string, THREE.Group>();
+  private zoneData = new Map<string, GameZone>();
   private questProps = new Map<string, THREE.Group>();
   private encounterProps = new Map<string, THREE.Group>();
   private ghostSprites = new Map<string, THREE.Sprite>();
-  private orbMeshes = new Map<string, THREE.Mesh>();
-  private gotchiAvatarSprite: THREE.Sprite | null = null;
+  private orbData = new Map<string, GameOrb>();
+  private orbSphereGeometry = new THREE.SphereGeometry(2.2, 8, 6);
+  private orbSphereMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  private orbSphereMesh = new THREE.InstancedMesh(
+    this.orbSphereGeometry,
+    this.orbSphereMaterial,
+    MAX_ORBS
+  );
+  private orbHaloGeometry = new THREE.CircleGeometry(7, 16);
+  private orbHaloMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.4,
+    depthWrite: false
+  });
+  private orbHaloMesh = new THREE.InstancedMesh(
+    this.orbHaloGeometry,
+    this.orbHaloMaterial,
+    MAX_ORBS
+  );
+  private questGeometry = new THREE.OctahedronGeometry(3.4, 0);
+  private questMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffd166,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false
+  });
+  private playerMarker: THREE.Mesh;
   private avatarStyle: "cube" | "aavegotchi" = "cube";
+  private avatarRequest = 0;
+  private avatarSelection: AvatarInventorySelection = NEUTRAL_AVATAR_SELECTION;
+  private avatarResolution: AvatarAssetResolution = {
+    kind: "neutral-placeholder",
+    selection: NEUTRAL_AVATAR_SELECTION,
+    reason: "no-asset"
+  };
+  private avatarLod: AvatarLodLevel | null = null;
+  private desiredAvatarLod: AvatarLodLevel | null = null;
+  private avatarLoadStartedAt: number | null = null;
+  private avatarLoadMs: number | null = null;
+  private avatarLoadError: string | null = null;
+  private avatarInteractionUntil = 0;
+  private performanceTier: GamePerformanceTier;
+  private performanceMonitor = new GamePerformanceMonitor();
+  private lastAvatarZoomBand = -1;
   private raycaster = new THREE.Raycaster();
   private lastRenderAt = 0;
   private disposed = false;
   private opacity = 1;
+  private repaintTimer: ReturnType<typeof setTimeout> | null = null;
+  private projectionTranslate = new THREE.Matrix4();
+  private projectionScale = new THREE.Matrix4();
+  private instanceMatrix = new THREE.Matrix4();
+  private instanceColour = new THREE.Color();
 
   constructor(
     private map: maplibregl.Map,
-    gl: WebGLRenderingContext | WebGL2RenderingContext
+    gl: WebGLRenderingContext | WebGL2RenderingContext,
+    private avatarAssetProvider: AvatarAssetProvider = defaultAvatarAssetProvider
   ) {
+    this.performanceTier = defaultGamePerformanceTier();
     this.renderer = new THREE.WebGLRenderer({
       canvas: map.getCanvas(),
       context: gl,
@@ -144,36 +248,188 @@ export class ThreeScene {
     dir.position.set(60, 120, 90);
     this.scene.add(dir);
 
+    this.playerMarker = new THREE.Mesh(
+      new THREE.RingGeometry(4.4, 6.2, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xffb020,
+        transparent: true,
+        opacity: 0.78,
+        depthWrite: false
+      })
+    );
+    this.playerMarker.position.z = 0.08;
+    this.scene.add(this.playerMarker);
+
+    this.orbSphereMesh.count = 0;
+    this.orbHaloMesh.count = 0;
+    this.orbSphereMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.orbHaloMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.scene.add(this.orbSphereMesh, this.orbHaloMesh);
+
     const center = map.getCenter();
     this.setAnchor(center.lng, center.lat);
+  }
 
+  private ensurePlayerModel() {
+    if (this.disposed || (this.playerRoot && this.playerVisualKind === "legacy")) return;
+    const request = ++this.avatarRequest;
+    this.clearPlayerVisual();
     void loadModel("player").then((loaded) => {
-      if (this.disposed) return;
+      if (this.disposed || request !== this.avatarRequest || this.avatarStyle !== "cube") return;
       if (loaded) {
         const instance = instantiate(loaded, "player");
-        this.playerRoot = instance.root;
-        this.playerMixer = instance.mixer;
-        const walk = pickAction(instance.actions, ["walk", "run", "idle"]);
-        walk?.play();
+        this.mountPlayerInstance(instance, "legacy", false);
       } else {
-        this.playerRoot = createFallbackPlayer();
+        this.mountPlayerRoot(createFallbackPlayer(), "legacy", true);
       }
-      this.scene.add(this.playerRoot);
-      this.map.triggerRepaint();
+      this.requestRepaint();
     });
+  }
 
-    preloadModels([
-      "tree",
-      "treeA",
-      "bush",
-      "crystal",
-      "chest",
-      "goblin",
-      "wolf",
-      "demon",
-      "giant",
-      "chicken"
-    ]);
+  private clearPlayerVisual() {
+    this.playerMixer?.stopAllAction();
+    if (this.playerRoot) {
+      this.scene.remove(this.playerRoot);
+      if (this.neutralAvatar) this.neutralAvatar.dispose();
+      else if (this.playerOwnsResources) disposeObjectResources(this.playerRoot);
+    }
+    this.playerRoot = null;
+    this.playerMixer = null;
+    this.playerActions = new Map();
+    this.playerAnimationAction = null;
+    this.neutralAvatar = null;
+    this.playerOwnsResources = false;
+    this.playerVisualKind = null;
+  }
+
+  private mountPlayerRoot(
+    root: THREE.Group,
+    kind: "legacy" | "neutral" | "asset-glb",
+    ownsResources: boolean
+  ) {
+    this.playerRoot = root;
+    this.playerVisualKind = kind;
+    this.playerOwnsResources = ownsResources;
+    root.position.copy(this.playerDisplayPosition);
+    root.rotation.z = this.playerHeading;
+    if (this.opacity < 1) this.applyOpacityTo(root);
+    this.scene.add(root);
+    this.applyAvatarAnimation(this.playerMoving ? "walk" : "idle", true);
+  }
+
+  private mountPlayerInstance(
+    instance: ModelInstance,
+    kind: "legacy" | "asset-glb",
+    ownsResources: boolean
+  ) {
+    this.playerMixer = instance.mixer;
+    this.playerActions = instance.actions;
+    this.mountPlayerRoot(instance.root, kind, ownsResources);
+  }
+
+  private mountNeutralAvatar() {
+    this.clearPlayerVisual();
+    const neutral = createNeutralAvatar(this.performanceTier);
+    this.neutralAvatar = neutral;
+    this.avatarLod = null;
+    this.mountPlayerRoot(neutral.root, "neutral", false);
+  }
+
+  private actionForState(state: AvatarAnimationState): THREE.AnimationAction | null {
+    let candidates: string[] = [state];
+    if (this.avatarStyle === "aavegotchi" && this.avatarResolution.kind === "asset-glb") {
+      candidates = animationCandidates(this.avatarResolution.descriptor, state);
+    } else if (state === "walk") {
+      candidates = ["walk", "run"];
+    }
+    for (const candidate of candidates) {
+      for (const [name, action] of this.playerActions) {
+        if (name.includes(candidate.toLowerCase())) return action;
+      }
+    }
+    return state === "idle" || state === "walk"
+      ? pickAction(this.playerActions, state === "walk" ? ["walk", "run"] : ["idle"])
+      : null;
+  }
+
+  private applyAvatarAnimation(state: AvatarAnimationState, force = false) {
+    if (!force && state === this.playerAnimationState) return;
+    this.playerAnimationState = state;
+    this.neutralAvatar?.setAnimation(state);
+    const next = this.actionForState(state);
+    if (next === this.playerAnimationAction) return;
+    this.playerAnimationAction?.fadeOut(0.12);
+    this.playerAnimationAction = next;
+    if (next) {
+      next.reset().fadeIn(0.12).play();
+      if (state === "idle" && this.playerMixer) {
+        this.playerMixer.update(0);
+        next.paused = true;
+      } else {
+        next.paused = false;
+      }
+    }
+  }
+
+  private ensureAvatarAssetForZoom() {
+    if (this.disposed || this.avatarResolution.kind !== "asset-glb") return;
+    const { descriptor } = this.avatarResolution;
+    const lod = selectAvatarLod(descriptor, this.performanceTier, this.map.getZoom());
+    if (this.avatarLod === lod.level || this.desiredAvatarLod === lod.level) return;
+    this.desiredAvatarLod = lod.level;
+    this.avatarLoadStartedAt = performance.now();
+    this.avatarLoadError = null;
+    const request = this.avatarRequest;
+    const spec: ModelSpec = {
+      url: lod.url,
+      targetHeight: descriptor.targetHeightM,
+      yawOffset: Math.PI,
+      animated: true
+    };
+    void loadModelSpec(`avatar:${descriptor.id}:${descriptor.version}:${lod.level}`, spec).then(
+      (loaded) => {
+        if (
+          this.disposed ||
+          request !== this.avatarRequest ||
+          this.avatarResolution.kind !== "asset-glb" ||
+          this.avatarResolution.descriptor.id !== descriptor.id ||
+          this.desiredAvatarLod !== lod.level
+        )
+          return;
+        this.avatarLoadMs = Math.max(0, performance.now() - (this.avatarLoadStartedAt ?? 0));
+        if (!loaded) {
+          this.avatarLoadError = "glb-load-failed";
+          this.desiredAvatarLod = null;
+          return;
+        }
+        const instance = instantiateModel(loaded, spec);
+        this.clearPlayerVisual();
+        this.avatarLod = lod.level;
+        this.desiredAvatarLod = null;
+        this.mountPlayerInstance(instance, "asset-glb", false);
+        this.requestRepaint();
+      }
+    );
+  }
+
+  private requestRepaint() {
+    if (this.disposed) return;
+    if (this.repaintTimer) {
+      clearTimeout(this.repaintTimer);
+      this.repaintTimer = null;
+    }
+    this.map.triggerRepaint();
+  }
+
+  private requestAnimationRepaint() {
+    if (this.disposed || this.repaintTimer) return;
+    this.repaintTimer = setTimeout(
+      () => {
+        this.repaintTimer = null;
+        if (!this.disposed) this.map.triggerRepaint();
+      },
+      1000 / (this.performanceTier === "low" ? 24 : 30)
+    );
   }
 
   /** Applies the layer opacity across every material in the scene. Objects added later pick
@@ -182,46 +438,82 @@ export class ThreeScene {
     const next = Math.max(0, Math.min(1, opacity));
     if (next === this.opacity) return;
     this.opacity = next;
-    this.applyOpacity();
-    this.map.triggerRepaint();
+    this.applyOpacityTo(this.scene);
+    this.requestRepaint();
   }
 
-  private applyOpacity() {
-    const opacity = this.opacity;
-    this.scene.traverse((object) => {
+  private applyOpacityTo(root: THREE.Object3D) {
+    root.traverse((object) => {
       const material = (object as THREE.Mesh | THREE.Sprite).material as
         THREE.Material | THREE.Material[] | undefined;
       if (!material) return;
       for (const m of Array.isArray(material) ? material : [material]) {
-        m.transparent = opacity < 1 || m.transparent;
-        m.opacity = opacity;
-        m.needsUpdate = true;
+        const metadata = m.userData as {
+          maposBaseOpacity?: number;
+          maposBaseTransparent?: boolean;
+        };
+        metadata.maposBaseOpacity ??= m.opacity;
+        metadata.maposBaseTransparent ??= m.transparent;
+        const effectiveOpacity = metadata.maposBaseOpacity * this.opacity;
+        const transparent = Boolean(metadata.maposBaseTransparent || effectiveOpacity < 1);
+        if (m.transparent !== transparent) {
+          m.transparent = transparent;
+          m.needsUpdate = true;
+        }
+        m.opacity = effectiveOpacity;
       }
     });
   }
 
   setAvatarStyle(style: "cube" | "aavegotchi", gotchiId?: string) {
     this.avatarStyle = style;
-    if (this.gotchiAvatarSprite) {
-      this.scene.remove(this.gotchiAvatarSprite);
-      this.gotchiAvatarSprite = null;
+    if (style === "cube") {
+      this.ensurePlayerModel();
+      return;
     }
-    if (style === "aavegotchi" && gotchiId) {
-      void import("./ghostRenderer").then(({ createGhostSprite }) =>
-        createGhostSprite(gotchiId).then((sprite) => {
-          if (this.disposed) return;
-          sprite.scale.set(8, 8, 1);
-          this.gotchiAvatarSprite = sprite;
-          this.scene.add(sprite);
-          this.map.triggerRepaint();
-        })
-      );
-    }
-    if (this.playerRoot) this.playerRoot.visible = style === "cube";
+    this.setAvatarSelection(legacyAvatarSelection(style, gotchiId));
+  }
+
+  setAvatarSelection(selection: AvatarInventorySelection) {
+    this.avatarStyle = "aavegotchi";
+    this.avatarSelection = selection;
+    this.avatarResolution = this.avatarAssetProvider.resolve(selection, this.performanceTier);
+    this.avatarRequest += 1;
+    this.desiredAvatarLod = null;
+    this.avatarLod = null;
+    this.avatarLoadMs = null;
+    this.avatarLoadError = null;
+    // A synchronous original 3D placeholder keeps movement available during GLB decode and is
+    // also the permanent safe fallback when the URL or performance validation fails.
+    this.mountNeutralAvatar();
+    this.ensureAvatarAssetForZoom();
+    this.requestRepaint();
+  }
+
+  setPerformanceTier(tier: GamePerformanceTier) {
+    if (tier === this.performanceTier) return;
+    this.performanceTier = tier;
+    this.orbHaloMesh.visible = tier !== "low";
+    this.lastAvatarZoomBand = -1;
+    if (this.avatarStyle === "aavegotchi") this.setAvatarSelection(this.avatarSelection);
+    this.requestRepaint();
+  }
+
+  triggerAvatarAnimation(state: "collect" | "interact", durationMs = 700) {
+    this.avatarInteractionUntil = performance.now() + Math.max(150, Math.min(2_000, durationMs));
+    this.applyAvatarAnimation(state);
+    this.requestAnimationRepaint();
   }
 
   private setAnchor(lng: number, lat: number) {
     this.anchor = { lng, lat, merc: maplibregl.MercatorCoordinate.fromLngLat({ lng, lat }, 0) };
+    if (this.playerLngLat) {
+      const position = this.localFromLngLat(this.playerLngLat.lng, this.playerLngLat.lat);
+      this.playerTargetPosition.set(position.x, position.y, 0);
+      this.playerDisplayPosition.copy(this.playerTargetPosition);
+      this.playerDisplayReady = true;
+    }
+    this.updateStaticPositions();
   }
 
   private localFromLngLat(lng: number, lat: number): { x: number; y: number } {
@@ -240,88 +532,208 @@ export class ThreeScene {
     if (prev && Math.hypot(lng - prev.lng, lat - prev.lat) > 1e-7) {
       this.playerTargetHeading = Math.atan2(lng - prev.lng, lat - prev.lat);
     }
-    if (!this.anchor) this.setAnchor(lng, lat);
-    else if (
+    let reanchored = false;
+    if (!this.anchor) {
+      this.setAnchor(lng, lat);
+      reanchored = true;
+    } else if (
       Math.abs(lng - this.anchor.lng) > ANCHOR_RECENTER_DEG ||
       Math.abs(lat - this.anchor.lat) > ANCHOR_RECENTER_DEG
     ) {
       this.setAnchor(lng, lat);
+      reanchored = true;
     }
-    this.map.triggerRepaint();
+    if (!reanchored) {
+      const position = this.localFromLngLat(lng, lat);
+      this.playerTargetPosition.set(position.x, position.y, 0);
+      if (!this.playerDisplayReady) {
+        this.playerDisplayPosition.copy(this.playerTargetPosition);
+        this.playerDisplayReady = true;
+      }
+    }
+    this.playerMarker.position.set(
+      this.playerDisplayPosition.x,
+      this.playerDisplayPosition.y,
+      0.08
+    );
+    this.requestRepaint();
+  }
+
+  private positionObject(object: THREE.Object3D, lng: number, lat: number, z: number) {
+    const position = this.localFromLngLat(lng, lat);
+    object.position.set(position.x, position.y, z);
+  }
+
+  /** Geographic positions only change when data changes or the kilometre-scale local anchor is
+   * recentered. Recomputing Mercator coordinates for every prop and orb on every frame was pure
+   * idle cost. */
+  private updateStaticPositions() {
+    if (!this.anchor) return;
+    for (const group of this.zoneProps.values()) {
+      for (const child of group.children) {
+        const { lng, lat } = child.userData as { lng?: number; lat?: number };
+        if (Number.isFinite(lng) && Number.isFinite(lat))
+          this.positionObject(child, lng!, lat!, child.position.z);
+      }
+    }
+    for (const group of [...this.questProps.values(), ...this.encounterProps.values()]) {
+      const { lng, lat } = group.userData as { lng: number; lat: number };
+      this.positionObject(group, lng, lat, 0);
+    }
+    for (const sprite of this.ghostSprites.values()) {
+      const { lng, lat } = sprite.userData as { lng: number; lat: number };
+      this.positionObject(sprite, lng, lat, 6);
+    }
+    this.renderOrbInstances();
+  }
+
+  private renderOrbInstances() {
+    let index = 0;
+    for (const orb of this.orbData.values()) {
+      if (index >= MAX_ORBS) break;
+      const { x, y } = this.localFromLngLat(orb.lng, orb.lat);
+      this.instanceColour.setHex(orb.towards ? 0x63d2ff : 0xffd166);
+
+      this.instanceMatrix.makeTranslation(x, y, 1.6);
+      this.orbSphereMesh.setMatrixAt(index, this.instanceMatrix);
+      this.orbSphereMesh.setColorAt(index, this.instanceColour);
+
+      this.instanceMatrix.makeTranslation(x, y, 0.2);
+      this.orbHaloMesh.setMatrixAt(index, this.instanceMatrix);
+      this.orbHaloMesh.setColorAt(index, this.instanceColour);
+      index += 1;
+    }
+    this.orbSphereMesh.count = index;
+    this.orbHaloMesh.count = index;
+    this.orbSphereMesh.instanceMatrix.needsUpdate = true;
+    this.orbHaloMesh.instanceMatrix.needsUpdate = true;
+    if (this.orbSphereMesh.instanceColor) this.orbSphereMesh.instanceColor.needsUpdate = true;
+    if (this.orbHaloMesh.instanceColor) this.orbHaloMesh.instanceColor.needsUpdate = true;
+    if (index > 0) {
+      this.orbSphereMesh.computeBoundingSphere();
+      this.orbHaloMesh.computeBoundingSphere();
+    }
+  }
+
+  private setPlayerMoving(moving: boolean) {
+    if (moving === this.playerMoving) return;
+    this.playerMoving = moving;
+    if (performance.now() < this.avatarInteractionUntil) return;
+    this.applyAvatarAnimation(moving ? "walk" : "idle");
   }
 
   syncZones(zones: GameZone[]) {
     const seen = new Set<string>();
+    let removed = false;
     for (const zone of zones) {
       seen.add(zone.id);
+      this.zoneData.set(zone.id, zone);
       if (this.zoneProps.has(zone.id)) continue;
       const group = new THREE.Group();
       this.zoneProps.set(zone.id, group);
       this.scene.add(group);
-      void this.populateZone(zone, group);
+      this.addZoneBeacon(zone, group);
     }
     for (const [id, group] of this.zoneProps) {
       if (!seen.has(id)) {
         this.scene.remove(group);
+        this.disposeZoneBeacon(group);
         this.zoneProps.delete(id);
+        this.zoneData.delete(id);
+        removed = true;
       }
     }
+    if (removed) this.requestRepaint();
   }
 
-  private async populateZone(zone: GameZone, group: THREE.Group) {
-    const rand = mulberry32(hashSeed(zone.id));
-    const count = 3 + Math.floor(rand() * 3);
-    for (let i = 0; i < count; i++) {
-      const key: ModelKey = pickZoneModelKey(Math.floor(rand() * 1000), zone.category);
-      const loaded = await loadModel(key);
-      if (!loaded || this.disposed || !this.zoneProps.has(zone.id)) continue;
-      const instance = instantiate(loaded, key);
-      const angle = rand() * Math.PI * 2;
-      const radius = 8 + rand() * Math.min(Math.max(zone.radiusM, 15), 60);
-      const { dLng, dLat } = metersToLngLatOffset(
-        Math.cos(angle) * radius,
-        Math.sin(angle) * radius,
-        zone.lat
-      );
-      instance.root.userData.lng = zone.lng + dLng;
-      instance.root.userData.lat = zone.lat + dLat;
-      instance.root.rotation.z = rand() * Math.PI * 2;
-      group.add(instance.root);
-      this.map.triggerRepaint();
+  private addZoneBeacon(zone: GameZone, group: THREE.Group) {
+    const kind = zone.zoneKind ?? "standard";
+    const colour = kind === "event" ? 0xffc857 : kind === "staker_gate" ? 0xa855f7 : 0x21d4b4;
+    const opacity = zone.lifecycle === "scheduled" ? 0.3 : 0.72;
+    const radius = Math.max(24, Math.min(zone.radiusM, 240));
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(Math.max(1, radius - 3), radius, 64),
+      new THREE.MeshBasicMaterial({
+        color: colour,
+        transparent: true,
+        opacity: opacity * 0.65,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      })
+    );
+    ring.position.z = 0.12;
+
+    const geometry =
+      kind === "event"
+        ? new THREE.OctahedronGeometry(6)
+        : kind === "staker_gate"
+          ? new THREE.TorusGeometry(6, 1.5, 8, 28)
+          : new THREE.IcosahedronGeometry(5.5, 0);
+    const beacon = new THREE.Mesh(
+      geometry,
+      new THREE.MeshLambertMaterial({
+        color: colour,
+        emissive: colour,
+        emissiveIntensity: 0.25,
+        transparent: true,
+        opacity
+      })
+    );
+    beacon.position.z = 9;
+
+    for (const object of [ring, beacon]) {
+      object.userData = { lng: zone.lng, lat: zone.lat, zoneProcedural: true };
+      this.positionObject(object, zone.lng, zone.lat, object.position.z);
+      if (this.opacity < 1) this.applyOpacityTo(object);
+      group.add(object);
+    }
+    this.requestRepaint();
+  }
+
+  private disposeZoneBeacon(group: THREE.Group) {
+    for (const child of group.children) {
+      if (child.userData.zoneProcedural) disposeObjectResources(child);
     }
   }
 
   syncQuests(quests: GameQuest[]) {
     const seen = new Set<string>();
+    let removed = false;
     for (const quest of quests) {
       seen.add(quest.id);
       if (this.questProps.has(quest.id)) continue;
       const group = new THREE.Group();
       group.userData = { lng: quest.lng, lat: quest.lat, questId: quest.id };
+      this.positionObject(group, quest.lng, quest.lat, 0);
       this.questProps.set(quest.id, group);
       this.scene.add(group);
-      void loadModel("chest").then((loaded) => {
-        if (!loaded || this.disposed || !this.questProps.has(quest.id)) return;
-        const instance = instantiate(loaded, "chest");
-        group.add(instance.root);
-        this.map.triggerRepaint();
-      });
+      // A shared procedural marker is both clearer than a field of unrelated treasure chests and
+      // avoids downloading/decoding/cloning the same GLB seven times during game startup.
+      const marker = new THREE.Mesh(this.questGeometry, this.questMaterial);
+      marker.position.z = 4;
+      marker.rotation.z = Math.PI / 4;
+      if (this.opacity < 1) this.applyOpacityTo(marker);
+      group.add(marker);
     }
     for (const [id, group] of this.questProps) {
       if (!seen.has(id)) {
         this.scene.remove(group);
         this.questProps.delete(id);
+        removed = true;
       }
     }
+    if (removed) this.requestRepaint();
   }
 
   syncEncounters(encounters: GameEncounter[]) {
     const seen = new Set<string>();
+    let removed = false;
     for (const enc of encounters) {
       seen.add(enc.id);
       if (this.encounterProps.has(enc.id)) continue;
       const group = new THREE.Group();
       group.userData = { lng: enc.lng, lat: enc.lat, encounterId: enc.id };
+      this.positionObject(group, enc.lng, enc.lat, 0);
       this.encounterProps.set(enc.id, group);
       this.scene.add(group);
       const modelKey = (
@@ -332,16 +744,19 @@ export class ThreeScene {
       void loadModel(modelKey).then((loaded) => {
         if (!loaded || this.disposed || !this.encounterProps.has(enc.id)) return;
         const instance = instantiate(loaded, modelKey);
+        if (this.opacity < 1) this.applyOpacityTo(instance.root);
         group.add(instance.root);
-        this.map.triggerRepaint();
+        this.requestRepaint();
       });
     }
     for (const [id, group] of this.encounterProps) {
       if (!seen.has(id)) {
         this.scene.remove(group);
         this.encounterProps.delete(id);
+        removed = true;
       }
     }
+    if (removed) this.requestRepaint();
   }
 
   removeEncounter(id: string) {
@@ -349,76 +764,140 @@ export class ThreeScene {
     if (!group) return;
     this.scene.remove(group);
     this.encounterProps.delete(id);
+    this.requestRepaint();
   }
 
   syncGhosts(ghosts: GameGhost[]) {
     const seen = new Set<string>();
+    let removed = false;
     for (const ghost of ghosts) {
       seen.add(ghost.id);
       if (this.ghostSprites.has(ghost.id)) continue;
       const placeholder = createPlaceholderGhostSprite();
       placeholder.userData = { lng: ghost.lng, lat: ghost.lat, ghostId: ghost.id };
+      this.positionObject(placeholder, ghost.lng, ghost.lat, 6);
+      if (this.opacity < 1) this.applyOpacityTo(placeholder);
       this.ghostSprites.set(ghost.id, placeholder);
       this.scene.add(placeholder);
-
-      void createGhostSprite(ghost.gotchiId ?? "0").then((sprite) => {
-        if (this.disposed || !this.ghostSprites.has(ghost.id)) return;
-        sprite.userData = { lng: ghost.lng, lat: ghost.lat, ghostId: ghost.id };
-        this.scene.remove(placeholder);
-        this.scene.add(sprite);
-        this.ghostSprites.set(ghost.id, sprite);
-        this.map.triggerRepaint();
-      });
     }
     for (const [id, sprite] of this.ghostSprites) {
       if (!seen.has(id)) {
         this.scene.remove(sprite);
+        disposeSprite(sprite);
         this.ghostSprites.delete(id);
+        removed = true;
       }
     }
+    if (removed) this.requestRepaint();
   }
 
   removeGhost(id: string) {
     const sprite = this.ghostSprites.get(id);
     if (!sprite) return;
     this.scene.remove(sprite);
+    disposeSprite(sprite);
     this.ghostSprites.delete(id);
+    this.requestRepaint();
+  }
+
+  /** What the scene is currently holding. The game draws into a custom WebGL layer, so this is the
+   *  only way an end-to-end test can ask whether the player and their dots are actually there. */
+  get contents() {
+    return {
+      orbs: this.orbData.size,
+      zones: this.zoneProps.size,
+      ghosts: this.ghostSprites.size,
+      quests: this.questProps.size,
+      hasPlayer: Boolean(this.playerLngLat && this.playerRoot),
+      avatarStyle: this.avatarStyle,
+      playerVisible: Boolean(
+        this.avatarStyle === "cube" &&
+        this.playerRoot?.visible &&
+        this.playerVisualKind === "legacy"
+      ),
+      hasGotchiAvatar: Boolean(
+        this.avatarStyle === "aavegotchi" && this.playerRoot?.visible && this.playerVisualKind
+      ),
+      avatarVisualKind: this.playerVisualKind,
+      avatarLod: this.avatarLod,
+      isAssetBackedAvatar: this.avatarResolution.kind === "asset-glb"
+    };
+  }
+
+  /** Compatibility/diagnostic view used by browser tests without exposing the rest of the
+   * mutable Three.js scene graph. */
+  get projectionCamera() {
+    return this.camera;
+  }
+
+  /** Concise, player-relevant state for the deterministic web-game test client. */
+  get textState() {
+    const player = this.playerLngLat;
+    return {
+      coordinateSystem: "WGS84 lng/lat; x=east, y=north; distances are metres",
+      avatar: this.avatarStyle,
+      avatarAsset: {
+        selectionId: this.avatarSelection.inventoryItemId,
+        selectionSource: this.avatarSelection.source,
+        resolution: this.avatarResolution.kind,
+        fallbackReason:
+          this.avatarResolution.kind === "neutral-placeholder"
+            ? this.avatarResolution.reason
+            : null,
+        lod: this.avatarLod,
+        animation: this.playerAnimationState,
+        loadMs: this.avatarLoadMs,
+        loadError: this.avatarLoadError,
+        sourceMetadataEvidence:
+          this.avatarResolution.kind === "asset-glb"
+            ? this.avatarResolution.descriptor.licence.evidencePath
+            : null,
+        hasAssetPayload: this.avatarResolution.kind === "asset-glb"
+      },
+      player,
+      counts: this.contents,
+      performanceTier: this.performanceTier,
+      performance: this.performanceMonitor.snapshot(this.performanceTier),
+      zones: [...this.zoneData.values()].map((zone) => ({
+        id: zone.id,
+        name: zone.name,
+        kind: zone.zoneKind ?? "standard",
+        lifecycle: zone.lifecycle ?? "active",
+        lng: zone.lng,
+        lat: zone.lat,
+        radiusM: zone.radiusM,
+        endsInSeconds: zone.endsInSeconds ?? null,
+        minStakeUsd: zone.minStakeUsd ?? 0
+      })),
+      visibleOrbs: [...this.orbData.entries()].slice(0, 24).map(([id, data]) => {
+        return {
+          id,
+          lng: data.lng,
+          lat: data.lat,
+          distanceM: player ? Math.round(haversineM(player, data)) : null,
+          towards: data.towards ?? null
+        };
+      })
+    };
   }
 
   syncOrbs(orbs: GameOrb[]) {
-    const seen = new Set<string>();
-    for (const orb of orbs) {
-      seen.add(orb.id);
-      if (this.orbMeshes.has(orb.id)) continue;
-      const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.9, 10, 10),
-        new THREE.MeshBasicMaterial({ color: 0xffd166 })
-      );
-      mesh.userData = { lng: orb.lng, lat: orb.lat, orbId: orb.id };
-      this.orbMeshes.set(orb.id, mesh);
-      this.scene.add(mesh);
-    }
-    for (const [id, mesh] of this.orbMeshes) {
-      if (!seen.has(id)) {
-        this.scene.remove(mesh);
-        this.orbMeshes.delete(id);
-      }
-    }
-    this.map.triggerRepaint();
+    this.orbData = new Map(orbs.slice(0, MAX_ORBS).map((orb) => [orb.id, orb]));
+    this.renderOrbInstances();
+    this.requestRepaint();
   }
 
   collectNearbyOrbs(maxM = 8): string[] {
     if (!this.playerLngLat) return [];
     const collected: string[] = [];
-    for (const [id, mesh] of this.orbMeshes) {
-      const { lng, lat } = mesh.userData as { lng: number; lat: number };
+    for (const [id, orb] of this.orbData) {
+      const { lng, lat } = orb;
       if (haversineM(this.playerLngLat, { lng, lat }) <= maxM) collected.push(id);
     }
-    for (const id of collected) {
-      const mesh = this.orbMeshes.get(id);
-      if (!mesh) continue;
-      this.scene.remove(mesh);
-      this.orbMeshes.delete(id);
+    for (const id of collected) this.orbData.delete(id);
+    if (collected.length) {
+      this.renderOrbInstances();
+      this.requestRepaint();
     }
     return collected;
   }
@@ -452,79 +931,135 @@ export class ThreeScene {
     return null;
   }
 
-  render(matrix: number[] | Float32Array) {
+  render(matrix: ArrayLike<number>) {
     if (!this.anchor || this.disposed) return;
 
+    const zoomBand = Math.floor(this.map.getZoom() * 2);
+    if (zoomBand !== this.lastAvatarZoomBand) {
+      this.lastAvatarZoomBand = zoomBand;
+      this.ensureAvatarAssetForZoom();
+    }
+
     const scale = this.anchor.merc.meterInMercatorCoordinateUnits();
-    const projection = new THREE.Matrix4().fromArray(Array.from(matrix) as number[]);
-    const translate = new THREE.Matrix4().makeTranslation(
+    this.camera.projectionMatrix.fromArray(matrix as number[]);
+    this.projectionTranslate.makeTranslation(
       this.anchor.merc.x,
       this.anchor.merc.y,
       this.anchor.merc.z ?? 0
     );
-    const scaleMatrix = new THREE.Matrix4().makeScale(scale, -scale, scale);
-    this.camera.projectionMatrix = projection.multiply(translate).multiply(scaleMatrix);
+    this.projectionScale.makeScale(scale, -scale, scale);
+    this.camera.projectionMatrix.multiply(this.projectionTranslate).multiply(this.projectionScale);
     this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
 
     const now = performance.now();
     const dt = this.lastRenderAt === 0 ? 0.016 : Math.min((now - this.lastRenderAt) / 1000, 0.1);
     this.lastRenderAt = now;
 
-    // Cheaper than threading opacity through every sync method, and objects stream in
-    // asynchronously (GLBs, gotchi sprites) so a one-shot application would miss them.
-    if (this.opacity < 1) this.applyOpacity();
+    let positionMoving = false;
+    let headingMoving = false;
+    if (this.playerLngLat && this.playerDisplayReady) {
+      const distanceSq = this.playerDisplayPosition.distanceToSquared(this.playerTargetPosition);
+      if (distanceSq > PLAYER_SETTLE_DISTANCE_SQ) {
+        this.playerDisplayPosition.lerp(this.playerTargetPosition, PLAYER_POSITION_LERP);
+        positionMoving = true;
+      } else {
+        this.playerDisplayPosition.copy(this.playerTargetPosition);
+      }
+      this.playerMarker.position.set(
+        this.playerDisplayPosition.x,
+        this.playerDisplayPosition.y,
+        0.08
+      );
+      if (this.playerRoot) this.playerRoot.position.copy(this.playerDisplayPosition);
 
-    if (this.playerLngLat && this.playerRoot) {
-      const { x, y } = this.localFromLngLat(this.playerLngLat.lng, this.playerLngLat.lat);
-      this.playerRoot.position.lerp(new THREE.Vector3(x, y, 0), PLAYER_POSITION_LERP);
+      const headingDelta = Math.atan2(
+        Math.sin(this.playerTargetHeading - this.playerHeading),
+        Math.cos(this.playerTargetHeading - this.playerHeading)
+      );
+      if (Math.abs(headingDelta) > PLAYER_SETTLE_HEADING) {
+        headingMoving = true;
+      } else {
+        this.playerHeading = this.playerTargetHeading;
+      }
       this.playerHeading = lerpAngle(
         this.playerHeading,
         this.playerTargetHeading,
         PLAYER_HEADING_LERP
       );
-      this.playerRoot.rotation.z = this.playerHeading;
+      if (this.playerRoot) this.playerRoot.rotation.z = this.playerHeading;
     }
-    this.playerMixer?.update(dt);
-
-    for (const group of this.zoneProps.values()) {
-      for (const child of group.children) {
-        const { lng, lat } = child.userData as { lng: number; lat: number };
-        const { x, y } = this.localFromLngLat(lng, lat);
-        child.position.set(x, y, child.position.z);
-      }
+    this.setPlayerMoving(positionMoving);
+    const interacting = now < this.avatarInteractionUntil;
+    if (!interacting && this.playerAnimationState !== (positionMoving ? "walk" : "idle")) {
+      this.applyAvatarAnimation(positionMoving ? "walk" : "idle");
     }
-    for (const group of [...this.questProps.values(), ...this.encounterProps.values()]) {
-      const { lng, lat } = group.userData as { lng: number; lat: number };
-      const { x, y } = this.localFromLngLat(lng, lat);
-      group.position.set(x, y, 0);
-    }
-    if (this.gotchiAvatarSprite && this.playerLngLat) {
-      const { x, y } = this.localFromLngLat(this.playerLngLat.lng, this.playerLngLat.lat);
-      this.gotchiAvatarSprite.position.set(x, y, 8);
-    }
-    for (const sprite of this.ghostSprites.values()) {
-      const { lng, lat } = sprite.userData as { lng: number; lat: number };
-      const { x, y } = this.localFromLngLat(lng, lat);
-      sprite.position.set(x, y, 6);
-    }
-    const pulse = 0.9 + Math.sin(now / 220) * 0.18;
-    for (const mesh of this.orbMeshes.values()) {
-      const { lng, lat } = mesh.userData as { lng: number; lat: number };
-      const { x, y } = this.localFromLngLat(lng, lat);
-      mesh.position.set(x, y, 1.6);
-      mesh.scale.setScalar(pulse);
+    if (positionMoving || interacting) {
+      this.playerMixer?.update(dt);
+      this.neutralAvatar?.update(dt);
     }
 
+    const renderStartedAt = performance.now();
     this.renderer.resetState();
     this.renderer.clearDepth();
     this.renderer.render(this.scene, this.camera);
 
-    // Keep animating (walk cycle, ghost arrival) even when the map camera is idle.
-    this.map.triggerRepaint();
+    const info = this.renderer.info;
+    const visibleEntities =
+      this.orbData.size +
+      this.zoneProps.size +
+      this.questProps.size +
+      this.encounterProps.size +
+      this.ghostSprites.size +
+      (this.playerRoot ? 1 : 0);
+    this.performanceMonitor.record({
+      frameMs: Math.max(0, performance.now() - renderStartedAt),
+      drawCalls: info.render.calls,
+      triangles: info.render.triangles,
+      geometries: info.memory.geometries,
+      textures: info.memory.textures,
+      visibleEntities
+    });
+
+    if (positionMoving || headingMoving || interacting) this.requestAnimationRepaint();
   }
 
   destroy() {
+    if (this.disposed) return;
     this.disposed = true;
+    this.avatarRequest += 1;
+    if (this.repaintTimer) {
+      clearTimeout(this.repaintTimer);
+      this.repaintTimer = null;
+    }
+    this.playerMixer?.stopAllAction();
+
+    // Cached GLB instances share their materials. Restore their base opacity before releasing the
+    // scene so a later activation never inherits an old layer-slider value.
+    if (this.opacity !== 1) {
+      this.opacity = 1;
+      this.applyOpacityTo(this.scene);
+    }
+    for (const sprite of this.ghostSprites.values()) disposeSprite(sprite);
+    for (const group of this.zoneProps.values()) this.disposeZoneBeacon(group);
+    disposeObjectResources(this.playerMarker);
+    this.orbSphereMesh.dispose();
+    this.orbHaloMesh.dispose();
+    this.orbSphereGeometry.dispose();
+    this.orbSphereMaterial.dispose();
+    this.orbHaloGeometry.dispose();
+    this.orbHaloMaterial.dispose();
+    this.questGeometry.dispose();
+    this.questMaterial.dispose();
+    if (this.neutralAvatar) this.neutralAvatar.dispose();
+    else if (this.playerRoot && this.playerOwnsResources) disposeObjectResources(this.playerRoot);
+
+    this.scene.clear();
+    this.zoneProps.clear();
+    this.zoneData.clear();
+    this.questProps.clear();
+    this.encounterProps.clear();
+    this.ghostSprites.clear();
+    this.orbData.clear();
     this.renderer.dispose();
   }
 }

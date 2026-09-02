@@ -1,0 +1,140 @@
+{
+  "layers": [
+    {
+      "manifest": {
+        "schema": "mapos.layer-manifest",
+        "schemaVersion": "2.0.0",
+        "sdkRange": "^2.0.0",
+        "id": "starter.public-parks",
+        "name": "Public parks",
+        "description": "A checked-in, data-only public-space fixture.",
+        "color": "#278344",
+        "category": "community",
+        "geometryKinds": ["Point"],
+        "renderer": { "type": "circles", "cluster": false },
+        "source": { "type": "static" },
+        "queryPolicy": { "strategy": "viewport", "maxResultsPerViewport": 20 },
+        "attribution": [
+          {
+            "label": "MapOS clean-room fixture",
+            "license": "CC0-1.0",
+            "requiredOnExport": true
+          }
+        ],
+        "capabilities": ["query", "detail", "export"]
+      },
+      "features": [
+        {
+          "schema": "mapos.feature",
+          "schemaVersion": "2.0.0",
+          "id": "starter:park:stromovka",
+          "revision": 1,
+          "geometry": { "type": "Point", "coordinates": [14.416, 50.106] },
+          "properties": {
+            "title": "Stromovka",
+            "kind": "place",
+            "category": "park",
+            "layerIds": ["starter.public-parks"],
+            "summary": "Rendered from the first portable registration."
+          },
+          "sources": [
+            {
+              "providerId": "mapos-example",
+              "sourceId": "starter-fixture",
+              "retrievedAt": "2026-09-01T00:00:00.000Z",
+              "confidence": 1,
+              "license": "CC0-1.0",
+              "attribution": "MapOS clean-room fixture",
+              "rights": "open"
+            }
+          ],
+          "access": { "visibility": "public" },
+          "createdAt": "2026-09-01T00:00:00.000Z",
+          "updatedAt": "2026-09-01T00:00:00.000Z"
+        },
+        {
+          "schema": "mapos.feature",
+          "schemaVersion": "2.0.0",
+          "id": "starter:park:letna",
+          "revision": 1,
+          "geometry": { "type": "Point", "coordinates": [14.416, 50.095] },
+          "properties": {
+            "title": "Letná",
+            "kind": "place",
+            "category": "park",
+            "layerIds": ["starter.public-parks"],
+            "summary": "Also available through the keyboard-first list."
+          },
+          "sources": [
+            {
+              "providerId": "mapos-example",
+              "sourceId": "starter-fixture",
+              "retrievedAt": "2026-09-01T00:00:00.000Z",
+              "confidence": 1,
+              "license": "CC0-1.0",
+              "attribution": "MapOS clean-room fixture",
+              "rights": "open"
+            }
+          ],
+          "access": { "visibility": "public" },
+          "createdAt": "2026-09-01T00:00:00.000Z",
+          "updatedAt": "2026-09-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "manifest": {
+        "schema": "mapos.layer-manifest",
+        "schemaVersion": "2.0.0",
+        "sdkRange": "^2.0.0",
+        "id": "starter.drinking-water",
+        "name": "Drinking water",
+        "description": "A second runtime registration added without importing or changing MapOS UI.",
+        "color": "#2463a7",
+        "category": "infrastructure",
+        "geometryKinds": ["Point"],
+        "renderer": { "type": "circles", "cluster": false },
+        "source": { "type": "static" },
+        "queryPolicy": { "strategy": "viewport", "maxResultsPerViewport": 20 },
+        "attribution": [
+          {
+            "label": "MapOS clean-room fixture",
+            "license": "CC0-1.0",
+            "requiredOnExport": true
+          }
+        ],
+        "capabilities": ["query", "detail", "export"]
+      },
+      "features": [
+        {
+          "schema": "mapos.feature",
+          "schemaVersion": "2.0.0",
+          "id": "starter:water:vystaviste",
+          "revision": 1,
+          "geometry": { "type": "Point", "coordinates": [14.431, 50.107] },
+          "properties": {
+            "title": "Výstaviště fountain",
+            "kind": "place",
+            "category": "drinking-water",
+            "layerIds": ["starter.drinking-water"],
+            "summary": "The independently registered second layer."
+          },
+          "sources": [
+            {
+              "providerId": "mapos-example",
+              "sourceId": "starter-fixture",
+              "retrievedAt": "2026-09-01T00:00:00.000Z",
+              "confidence": 1,
+              "license": "CC0-1.0",
+              "attribution": "MapOS clean-room fixture",
+              "rights": "open"
+            }
+          ],
+          "access": { "visibility": "public" },
+          "createdAt": "2026-09-01T00:00:00.000Z",
+          "updatedAt": "2026-09-01T00:00:00.000Z"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "mapos.task",
+  "schemaVersion": "2.0.0",
+  "id": "task:layer-query:osm:viewport:01",
+  "type": "layer-query",
+  "label": "Načítám hrady a vyhlídky",
+  "status": "running",
+  "progress": 0.62,
+  "message": "Zpracováno 62 z maximálně 100 výsledků.",
+  "layerId": "osm-poi",
+  "parentId": null,
+  "requestKey": null,
+  "startedAt": "2026-09-01T08:20:00Z",
+  "finishedAt": null,
+  "cancellable": true,
+  "error": null,
+  "telemetry": {
+    "cache": "miss",
+    "budget": 100,
+    "received": 62,
+    "source": "overpass"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mapos.dev/v2/entitlement.schema.json",
+  "title": "MapOS Entitlement v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "id",
+    "subject",
+    "product",
+    "status",
+    "grants",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schema": { "const": "mapos.entitlement" },
+    "schemaVersion": { "type": "string", "pattern": "^2\\.\\d+\\.\\d+$" },
+    "id": { "type": "string" },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "enum": ["user", "wallet", "session", "organization"] },
+        "id": { "type": "string" }
+      }
+    },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "enum": ["layer", "layer-bundle", "subscription", "content", "feature", "world"]
+        },
+        "id": { "type": "string" },
+        "providerId": { "type": ["string", "null"] }
+      }
+    },
+    "status": { "enum": ["pending", "active", "grace", "expired", "revoked", "refunded"] },
+    "grants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "view",
+          "query",
+          "detail",
+          "comment",
+          "review",
+          "export",
+          "collaborate",
+          "commercial-use"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "enum": ["mapos", "stripe", "crypto", "external", "admin", "promotion"] },
+        "externalCustomerId": { "type": ["string", "null"] },
+        "externalTransactionId": { "type": ["string", "null"] },
+        "referralId": { "type": ["string", "null"] }
+      }
+    },
+    "startsAt": { "type": ["string", "null"], "format": "date-time" },
+    "endsAt": { "type": ["string", "null"], "format": "date-time" },
+    "metadata": { "type": "object", "additionalProperties": true },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

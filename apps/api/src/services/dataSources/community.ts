@@ -45,7 +45,7 @@ export const commonsPhotos: DataSource = {
         >;
       };
     }>(`https://commons.wikimedia.org/w/api.php?${params}`, {
-      source: "Wikimedia Commons",
+      providerId: "wikimedia-commons",
       ttlMs: 30 * 60_000
     });
 
@@ -107,7 +107,7 @@ export const refugeRestrooms: DataSource = {
         downvote?: number;
       }>
     >(`https://www.refugerestrooms.org/api/v1/restrooms/by_location.json?${params}`, {
-      source: "Refuge Restrooms",
+      providerId: "refuge-restrooms",
       ttlMs: 60 * 60_000,
       // Their instance is a small volunteer deployment that regularly takes ten seconds or
       // more to answer; the default timeout turns a slow success into a failure.

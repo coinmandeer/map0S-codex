@@ -17,13 +17,14 @@
  */
 
 import type { Bbox, OsmPoiCategoryId } from "@mapos/layer-sdk";
-import { and, gte, inArray, lte } from "drizzle-orm";
+import { and, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { mapyCells, mapyPois } from "../db/schema.js";
 import { isoForBbox, langsForBbox, type MapyLang } from "../data/euCountries.js";
 import { isMapySearchable, keywordsFor, labelMatchesCategory } from "../data/mapyKeywords.js";
 import { cellBounds, cellId, cellsForBbox, type Cell } from "../utils/tileGrid.js";
 import { config } from "../config.js";
+import { safeErrorLogFields } from "../utils/clientError.js";
 import { mapySuggest, MapyNotConfiguredError } from "./mapyService.js";
 
 const CELL_TTL_MS = 7 * 24 * 3600_000;
@@ -84,7 +85,7 @@ async function runWithConcurrency<T>(items: T[], limit: number, fn: (item: T) =>
       try {
         await fn(item);
       } catch (err) {
-        console.warn("Mapy probe failed:", err);
+        console.warn("Mapy probe failed", safeErrorLogFields(err));
       }
     }
   });
@@ -147,21 +148,40 @@ async function runProbe(probe: Probe, iso: string | undefined): Promise<void> {
     }));
 
   if (rows.length) {
-    // Coordinate-derived ids make the same place from two keywords collapse naturally, but two
-    // probes racing on the same place would still conflict — delete-then-insert keeps it simple.
+    // Coordinate-derived ids make the same place from two keywords collapse naturally. Upsert
+    // is important here: probes run concurrently and two requests may discover the same POI at
+    // once, so delete-then-insert can still race on the primary key.
     const ids = [...new Set(rows.map((r) => r.id))];
     const unique = ids.map((id) => rows.find((r) => r.id === id)!);
-    await db.delete(mapyPois).where(inArray(mapyPois.id, ids));
-    await db.insert(mapyPois).values(unique);
+    await db
+      .insert(mapyPois)
+      .values(unique)
+      .onConflictDoUpdate({
+        target: mapyPois.id,
+        set: {
+          category: sql`excluded.category`,
+          name: sql`excluded.name`,
+          label: sql`excluded.label`,
+          location: sql`excluded.location`,
+          poiType: sql`excluded.poi_type`,
+          lng: sql`excluded.lng`,
+          lat: sql`excluded.lat`,
+          cellId: sql`excluded.cell_id`,
+          fetchedAt: new Date()
+        }
+      });
   }
 
-  await db.insert(mapyCells).values({
-    id: probeId(probe),
-    cellId: cellId(probe.cell),
-    category: probe.category,
-    keyword: probe.keyword,
-    lang: probe.lang
-  });
+  await db
+    .insert(mapyCells)
+    .values({
+      id: probeId(probe),
+      cellId: cellId(probe.cell),
+      category: probe.category,
+      keyword: probe.keyword,
+      lang: probe.lang
+    })
+    .onConflictDoUpdate({ target: mapyCells.id, set: { fetchedAt: new Date() } });
 }
 
 export async function getMapyPois(

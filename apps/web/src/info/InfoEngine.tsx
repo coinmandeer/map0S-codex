@@ -1,55 +1,95 @@
 import { useMemo, useState, type ReactNode } from "react";
-import type { Place, PlaceSourceId } from "@mapos/layer-sdk";
+import {
+  isDisplayableDetailMedia,
+  type DetailFieldValue,
+  type DetailMediaAsset,
+  type DetailSurfaceId,
+  type Place,
+  type PlaceSourceId
+} from "@mapos/layer-sdk";
+import { DETAIL_SURFACE_V2_ENABLED } from "../lib/featureFlags";
 import { TabBar } from "../ui/primitives";
+import { ModuleErrorBoundary } from "../ui/primitives/ModuleErrorBoundary";
 import { PIN_STYLES } from "../ui/presets";
-import { infoPanelsFor } from "./registry";
+import { detailSurfaceOrder, safeExternalUrl } from "./detailModel";
+import { infoPanelsFor, type InfoPanel } from "./registry";
 
-/**
- * The place detail's body: hero, tab strip, active panel.
- *
- * The engine knows nothing about any individual panel. It asks the registry which panels this
- * place earns, and renders the one the user picked — so a new source of information about a
- * place is a new file plus a `registerInfoPanel` call, not a change here.
- */
-export function InfoEngine({
-  place,
-  refs,
-  photos = [],
-  actions
-}: {
+interface InfoEngineProps {
   place: Place;
   refs: Partial<Record<PlaceSourceId, string>>;
+  /** Rights-complete media only. Raw legacy photo URLs are accepted by the rollback branch. */
+  media?: DetailMediaAsset[];
+  /** @deprecated Compatibility input used only when VITE_DETAIL_SURFACE_V2 is disabled. */
   photos?: string[];
+  providerFields?: DetailFieldValue[];
+  /** MapOS-owned community content; provider panels remain separate registry entries. */
+  social?: ReactNode;
+  /** Owner-only/device-only content, rendered in its own labelled bucket. */
+  privateContent?: ReactNode;
   /** Rendered under the hero — routing, saving and other things only the caller can do. */
   actions?: ReactNode;
+}
+
+const SURFACES: Record<DetailSurfaceId, { label: string; icon: string }> = {
+  overview: { label: "Přehled", icon: "📋" },
+  media: { label: "Média", icon: "▧" },
+  practical: { label: "Praktické", icon: "ℹ️" },
+  social: { label: "Sociální", icon: "◎" },
+  more: { label: "Více", icon: "•••" }
+};
+
+function groupBy<T>(values: T[], keyFor: (value: T) => string): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+  for (const value of values) {
+    const key = keyFor(value);
+    grouped.set(key, [...(grouped.get(key) ?? []), value]);
+  }
+  return grouped;
+}
+
+function newestSourceDate(place: Place): string | null {
+  const dates = place.sources
+    .map((source) => Date.parse(source.refreshedAt))
+    .filter(Number.isFinite)
+    .sort((left, right) => right - left);
+  return dates.length ? new Date(dates[0]!).toLocaleString("cs-CZ") : null;
+}
+
+function PlaceHero({
+  place,
+  media,
+  photoIndex,
+  setPhotoIndex
+}: {
+  place: Place;
+  media: DetailMediaAsset[];
+  photoIndex: number;
+  setPhotoIndex(index: number): void;
 }) {
-  const panels = useMemo(() => infoPanelsFor({ place, refs }), [place, refs]);
-  const [requested, setRequested] = useState<string | null>(null);
-  const [photoIndex, setPhotoIndex] = useState(0);
-
-  // Stepping to a neighbouring pin can take its tab away with it; falling back to the first
-  // panel keeps the detail from going blank mid-browse.
-  const active = panels.find((p) => p.id === requested) ?? panels[0];
-  const Panel = active?.render;
-
   const style = PIN_STYLES[place.category];
+  const photos = media.filter((asset) => asset.kind === "photo");
   const hero = photos[photoIndex] ?? photos[0] ?? null;
+  const refreshed = newestSourceDate(place);
 
   return (
-    <div className="info-engine">
+    <>
       {hero ? (
         <div className="pin-photo-wrap">
-          <img className="pin-photo" src={hero} alt="" />
+          <img className="pin-photo" src={hero.url} alt={hero.caption ?? place.name} />
+          <p className="media-credit">
+            {hero.attribution} · {hero.license}
+          </p>
           {photos.length > 1 && (
             <div className="pin-gallery">
-              {photos.map((url, i) => (
+              {photos.map((asset, index) => (
                 <button
-                  key={url}
+                  key={asset.id}
                   type="button"
-                  className={i === photoIndex ? "active" : ""}
-                  onClick={() => setPhotoIndex(i)}
+                  className={index === photoIndex ? "active" : ""}
+                  onClick={() => setPhotoIndex(index)}
+                  aria-label={`Fotografie ${index + 1}`}
                 >
-                  <img src={url} alt="" />
+                  <img src={asset.thumbnailUrl ?? asset.url} alt="" />
                 </button>
               ))}
             </div>
@@ -68,6 +108,7 @@ export function InfoEngine({
         <div>
           <h3>{place.name}</h3>
           <p className="meta">{style?.label ?? place.category}</p>
+          {refreshed && <p className="meta">Zdrojová data: {refreshed}</p>}
         </div>
         {place.rating != null && (
           <span className="pin-rating">
@@ -76,19 +117,282 @@ export function InfoEngine({
           </span>
         )}
       </div>
+    </>
+  );
+}
 
+function PanelGroup({
+  panels,
+  place,
+  refs,
+  sourceLabels = false
+}: {
+  panels: InfoPanel[];
+  place: Place;
+  refs: Partial<Record<PlaceSourceId, string>>;
+  sourceLabels?: boolean;
+}) {
+  const [requested, setRequested] = useState<string | null>(null);
+  const active = panels.find((panel) => panel.id === requested) ?? panels[0];
+  const Panel = active?.render;
+  if (!Panel || !active) return null;
+
+  return (
+    <div className="detail-panel-group">
+      {panels.length > 1 && (
+        <TabBar
+          tabs={panels.map((panel) => ({ id: panel.id, label: panel.label, icon: panel.icon }))}
+          active={active.id}
+          onChange={setRequested}
+          testId="info-tab"
+        />
+      )}
+      {panels.length === 1 && (
+        <span className="legacy-info-tab-marker" data-testid={`info-tab-${active.id}`} />
+      )}
+      {sourceLabels && (
+        <div className="detail-source-label">
+          <strong>{active.label}</strong>
+          <span>{active.attribution}</span>
+        </div>
+      )}
+      <ModuleErrorBoundary
+        moduleId={`place-detail-extension:${active.id}`}
+        title={active.label}
+        compact
+        resetKey={active.id}
+      >
+        <Panel place={place} refs={refs} />
+      </ModuleErrorBoundary>
+    </div>
+  );
+}
+
+function fieldContent(field: DetailFieldValue): ReactNode {
+  const value = Array.isArray(field.value) ? field.value.join(" · ") : field.value;
+  if (field.kind === "link") {
+    const url = safeExternalUrl(String(value));
+    if (url) {
+      return (
+        <a href={url} target="_blank" rel="noreferrer">
+          {new URL(url).hostname.replace(/^www\./, "")}
+        </a>
+      );
+    }
+  }
+  if (field.kind === "phone") {
+    return <a href={`tel:${String(value).replace(/\s+/g, "")}`}>{String(value)}</a>;
+  }
+  if (field.kind === "email") return <a href={`mailto:${String(value)}`}>{String(value)}</a>;
+  if (typeof value === "boolean") return value ? "Ano" : "Ne";
+  return String(value);
+}
+
+function ProviderFields({ fields }: { fields: DetailFieldValue[] }) {
+  if (!fields.length) return null;
+  const bySource = groupBy(fields, (field) => `${field.sourceId}\0${field.sourceLabel}`);
+  return (
+    <div className="detail-provider-fields">
+      {[...bySource.entries()].map(([key, values]) => {
+        const [sourceId, sourceLabel] = key.split("\0");
+        return (
+          <section className="detail-source-group" key={key} data-source-id={sourceId}>
+            <div className="detail-source-label">
+              <strong>{sourceLabel}</strong>
+              <span>Údaje poskytovatele</span>
+            </div>
+            <dl className="info-facts">
+              {values.map((field) => (
+                <div className="detail-field-row" key={field.id}>
+                  <dt>{field.label}</dt>
+                  <dd>{fieldContent(field)}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function MediaGallery({ media }: { media: DetailMediaAsset[] }) {
+  return (
+    <div className="detail-media-grid" data-testid="detail-media-gallery">
+      {media.map((asset) => (
+        <figure key={asset.id} className="detail-media-item">
+          {asset.kind === "photo" && (
+            <img src={asset.thumbnailUrl ?? asset.url} alt={asset.caption ?? ""} loading="lazy" />
+          )}
+          {asset.kind === "video" && (
+            <video controls preload="metadata" poster={asset.thumbnailUrl}>
+              <source src={asset.url} />
+            </video>
+          )}
+          {asset.kind === "link" && (
+            <a href={asset.url} target="_blank" rel="noreferrer">
+              {asset.caption ?? "Otevřít médium"}
+            </a>
+          )}
+          <figcaption>
+            {asset.caption && <span>{asset.caption}</span>}
+            {asset.sourceUrl ? (
+              <a href={asset.sourceUrl} target="_blank" rel="noreferrer">
+                {asset.attribution} · {asset.license}
+              </a>
+            ) : (
+              <span>
+                {asset.attribution} · {asset.license}
+              </span>
+            )}
+          </figcaption>
+        </figure>
+      ))}
+    </div>
+  );
+}
+
+function LegacyInfoEngine({ place, refs, photos = [], actions, social }: InfoEngineProps) {
+  const panels = useMemo(() => infoPanelsFor({ place, refs }), [place, refs]);
+  const [requested, setRequested] = useState<string | null>(null);
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const active = panels.find((panel) => panel.id === requested) ?? panels[0];
+  const Panel = active?.render;
+  const legacyMedia: DetailMediaAsset[] = photos.map((url, index) => ({
+    id: `legacy-${index}`,
+    kind: "photo",
+    url,
+    sourceId: "legacy",
+    sourceLabel: "Legacy",
+    attribution: "Legacy",
+    license: "Legacy rollback only",
+    moderationStatus: "approved",
+    transformStatus: "ready"
+  }));
+
+  return (
+    <div className="info-engine" data-detail-surface="legacy">
+      <PlaceHero
+        place={place}
+        media={legacyMedia}
+        photoIndex={photoIndex}
+        setPhotoIndex={setPhotoIndex}
+      />
       {actions && <div className="actions">{actions}</div>}
-
       <TabBar
-        tabs={panels.map((p) => ({ id: p.id, label: p.label, icon: p.icon }))}
+        tabs={panels.map((panel) => ({ id: panel.id, label: panel.label, icon: panel.icon }))}
         active={active?.id ?? ""}
         onChange={setRequested}
         testId="info-tab"
       />
+      <div className="info-body" role="tabpanel" data-testid="info-panel-body">
+        {Panel ? (
+          <ModuleErrorBoundary
+            moduleId={`legacy-place-detail-extension:${active?.id ?? "unknown"}`}
+            title={active?.label ?? "Rozšíření detailu"}
+            compact
+            resetKey={active?.id}
+          >
+            <Panel place={place} refs={refs} />
+          </ModuleErrorBoundary>
+        ) : null}
+      </div>
+      {social}
+    </div>
+  );
+}
+
+function UnifiedInfoEngine(props: InfoEngineProps) {
+  const {
+    place,
+    refs,
+    providerFields = [],
+    social,
+    privateContent,
+    actions,
+    media: rawMedia = []
+  } = props;
+  const panels = useMemo(() => infoPanelsFor({ place, refs }), [place, refs]);
+  const media = useMemo(() => rawMedia.filter(isDisplayableDetailMedia), [rawMedia]);
+  const [requestedSurface, setRequestedSurface] = useState<DetailSurfaceId>("overview");
+  const [photoIndex, setPhotoIndex] = useState(0);
+
+  const grouped = useMemo(() => groupBy(panels, (panel) => panel.surface ?? "more"), [panels]);
+  const available = useMemo(() => {
+    return detailSurfaceOrder({
+      media: media.length > 0,
+      practical: Boolean(providerFields.length || grouped.get("practical")?.length),
+      social: Boolean(social || privateContent || grouped.get("social")?.length),
+      more: Boolean(grouped.get("more")?.length)
+    });
+  }, [grouped, media.length, privateContent, providerFields.length, social]);
+  const activeSurface = available.includes(requestedSurface) ? requestedSurface : available[0]!;
+  const surfacePanels = grouped.get(activeSurface) ?? [];
+
+  return (
+    <div className="info-engine" data-detail-surface="v2">
+      <PlaceHero
+        place={place}
+        media={media}
+        photoIndex={photoIndex}
+        setPhotoIndex={setPhotoIndex}
+      />
+      {actions && <div className="actions detail-sticky-actions">{actions}</div>}
+
+      <TabBar
+        tabs={available.map((id) => ({ id, ...SURFACES[id] }))}
+        active={activeSurface}
+        onChange={(id) => setRequestedSurface(id as DetailSurfaceId)}
+        testId="detail-section"
+      />
 
       <div className="info-body" role="tabpanel" data-testid="info-panel-body">
-        {Panel ? <Panel place={place} refs={refs} /> : null}
+        {activeSurface === "media" && <MediaGallery media={media} />}
+        {activeSurface === "practical" && (
+          <>
+            {surfacePanels.length > 0 && (
+              <PanelGroup panels={surfacePanels} place={place} refs={refs} />
+            )}
+            <ProviderFields fields={providerFields} />
+          </>
+        )}
+        {activeSurface === "social" && (
+          <div className="detail-social-groups">
+            {surfacePanels.length > 0 && (
+              <section className="detail-source-group" data-content-owner="provider">
+                <PanelGroup panels={surfacePanels} place={place} refs={refs} sourceLabels />
+              </section>
+            )}
+            {social && (
+              <section className="detail-source-group" data-content-owner="mapos">
+                {social}
+              </section>
+            )}
+            {privateContent && (
+              <section className="detail-source-group" data-content-owner="private">
+                <div className="detail-source-label">
+                  <strong>Soukromé</strong>
+                  <span>Jen toto zařízení</span>
+                </div>
+                {privateContent}
+              </section>
+            )}
+          </div>
+        )}
+        {(activeSurface === "overview" || activeSurface === "more") && (
+          <PanelGroup panels={surfacePanels} place={place} refs={refs} />
+        )}
       </div>
     </div>
+  );
+}
+
+/** Manifest/registry-driven unified place detail. The layer decides provider fields/actions; the
+ * host owns the five stable surfaces and the source-content boundaries. */
+export function InfoEngine(props: InfoEngineProps) {
+  return DETAIL_SURFACE_V2_ENABLED ? (
+    <UnifiedInfoEngine {...props} />
+  ) : (
+    <LegacyInfoEngine {...props} />
   );
 }

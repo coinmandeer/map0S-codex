@@ -1,56 +1,47 @@
-import { Suspense, lazy, useEffect } from "react";
+import { useEffect } from "react";
 import { MapCore } from "./map/MapCore";
-import { apiGetSafe, apiPost } from "./lib/api";
-import type { ServerCapabilities, UserSession } from "./store/mapStore";
+import { apiGetSafe } from "./lib/api";
+import { APP_SHELL_V2_ENABLED } from "./lib/featureFlags";
+import type { ServerCapabilities } from "./store/mapStore";
 import { getMapStore } from "./store/mapStore";
 import { emit } from "./lib/events";
 import { geolocation, messageFor, type Fix } from "./lib/geolocation";
 import { useMapStoreSnapshot } from "./store/useMapStoreSnapshot";
-import { ModeBar } from "./ui/ModeBar";
-import { BottomNav } from "./ui/BottomNav";
-import { PlacesPanel } from "./ui/PlacesPanel";
-import { LayerNotices } from "./ui/LayerNotices";
-import { SearchHereButton } from "./ui/SearchHereButton";
-import { SourceStatus } from "./ui/SourceStatus";
-
-const PinDetail = lazy(() => import("./ui/PinDetail").then((m) => ({ default: m.PinDetail })));
-const AuthSheet = lazy(() => import("./ui/AuthSheet").then((m) => ({ default: m.AuthSheet })));
-const EditLayerSheet = lazy(() =>
-  import("./ui/EditLayerSheet").then((m) => ({ default: m.EditLayerSheet }))
-);
-const RouteSheet = lazy(() => import("./ui/RouteSheet").then((m) => ({ default: m.RouteSheet })));
-const SettingsSheet = lazy(() =>
-  import("./ui/SettingsSheet").then((m) => ({ default: m.SettingsSheet }))
-);
-const WeatherTimeline = lazy(() =>
-  import("./ui/WeatherTimeline").then((m) => ({ default: m.WeatherTimeline }))
-);
-const EventsTimeline = lazy(() =>
-  import("./ui/EventsTimeline").then((m) => ({ default: m.EventsTimeline }))
-);
-const GameHud = lazy(() => import("./ui/GameHud").then((m) => ({ default: m.GameHud })));
-const DiscoverPanel = lazy(() =>
-  import("./ui/DiscoverPanel").then((m) => ({ default: m.DiscoverPanel }))
-);
-const GameSimulationBridge = lazy(() =>
-  import("./ui/GameSimulationBridge").then((m) => ({ default: m.GameSimulationBridge }))
-);
+import { bootstrapGuestSession } from "./lib/sessionBootstrap";
+import { AppShell, LegacyAppShell } from "./ui/shell/AppShell";
+import { ModuleErrorBoundary } from "./ui/primitives/ModuleErrorBoundary";
+import { useVisualViewportLayout } from "./ui/useVisualViewportLayout";
 
 export function App() {
   const store = getMapStore();
-  const sheet = useMapStoreSnapshot((s) => s.sheet);
-  const toast = useMapStoreSnapshot((s) => s.toast);
-  const mode = useMapStoreSnapshot((s) => s.mode);
   const sidebarOpen = useMapStoreSnapshot((s) => s.sidebarOpen);
   const theme = useMapStoreSnapshot((s) => s.theme);
+  const preferences = useMapStoreSnapshot((s) => s.preferences);
+  const experienceId = useMapStoreSnapshot((s) => s.experienceId);
   const themeClass = theme === "dark" ? "theme-dark" : "theme-light";
+  useVisualViewportLayout();
 
   useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle("theme-dark", theme === "dark");
     root.classList.toggle("theme-light", theme === "light");
+    root.classList.toggle("density-compact", preferences.density === "compact");
     root.style.colorScheme = theme;
-  }, [theme]);
+    root.lang = preferences.locale;
+  }, [preferences.density, preferences.locale, theme]);
+
+  useEffect(() => {
+    if (preferences.theme !== "system" || typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => store.applySystemTheme(query.matches);
+    apply();
+    query.addEventListener?.("change", apply);
+    return () => query.removeEventListener?.("change", apply);
+  }, [preferences.theme, store]);
+
+  useEffect(() => {
+    document.documentElement.dataset.experience = experienceId;
+  }, [experienceId]);
 
   useEffect(() => {
     void apiGetSafe<{ capabilities: ServerCapabilities }>("/config").then((data) => {
@@ -60,7 +51,7 @@ export function App() {
     // Every visitor gets an identity before they touch anything, so catching a ghost, saving a
     // place or (later) following someone never stops to ask for a login. Existing sessions are
     // returned unchanged, which makes this safe to call on every boot.
-    void apiPost<{ user: UserSession }>("/auth/guest")
+    void bootstrapGuestSession()
       .then((data) => store.setSession(data.user))
       .catch(() => {
         /* Offline or API down — the map still works read-only. */
@@ -91,59 +82,22 @@ export function App() {
   };
 
   return (
-    <div className={`app-shell ${themeClass} ${sidebarOpen ? "panel-open" : ""}`}>
-      <MapCore />
-
-      <div className="chrome top-chrome">
-        <ModeBar onFlyToMe={flyToMe} />
-      </div>
-
-      <SearchHereButton />
-      <LayerNotices />
-      <SourceStatus floating testId="map-source-strip" />
-      <BottomNav />
-      <PlacesPanel />
-      <Suspense fallback={null}>
-        <DiscoverPanel />
-      </Suspense>
-
-      {mode === "game" && (
-        <Suspense fallback={null}>
-          <GameSimulationBridge />
-        </Suspense>
-      )}
-
-      {mode === "weather" && (
-        <Suspense fallback={null}>
-          <WeatherTimeline />
-        </Suspense>
-      )}
-
-      {/* Events are a layer rather than a mode, so their timeline follows the layer being on,
-          not the mode being selected — you can watch what's on while browsing anything. */}
-      <Suspense fallback={null}>
-        <EventsTimeline />
-      </Suspense>
-
-      {mode === "game" && (
-        <Suspense fallback={null}>
-          <GameHud />
-        </Suspense>
-      )}
-
-      <Suspense fallback={null}>
-        {sheet === "pin" && <PinDetail />}
-        {sheet === "auth" && <AuthSheet />}
-        {sheet === "edit" && <EditLayerSheet />}
-        {sheet === "route" && <RouteSheet />}
-        {sheet === "settings" && <SettingsSheet />}
-      </Suspense>
-
-      {toast && (
-        <div className="toast" data-testid="toast">
-          {toast}
-        </div>
-      )}
+    <div
+      className={`app-shell ${themeClass} density-${preferences.density} experience-${experienceId} ${sidebarOpen ? "panel-open" : ""}`}
+      data-shell={APP_SHELL_V2_ENABLED ? "v2" : "legacy"}
+    >
+      {/* The map is intentionally outside the feature-flag branch: opening a surface or rolling
+          the chrome back can never construct a second MapLibre instance. */}
+      <ModuleErrorBoundary moduleId="map-renderer" title="Mapu se nepodařilo spustit">
+        <MapCore />
+      </ModuleErrorBoundary>
+      <ModuleErrorBoundary moduleId="app-shell" title="Ovládání mapy se nepodařilo načíst">
+        {APP_SHELL_V2_ENABLED ? (
+          <AppShell onFlyToMe={flyToMe} />
+        ) : (
+          <LegacyAppShell onFlyToMe={flyToMe} />
+        )}
+      </ModuleErrorBoundary>
     </div>
   );
 }

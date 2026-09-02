@@ -16,10 +16,10 @@ export function guideSources(): GuideSourceAdapter[] {
 
 /** First source with something to say wins. Guides are editorial, so merging two of them would
  *  produce a guide nobody wrote. */
-export async function getGuide(area: GuideArea): Promise<Guide | null> {
+export async function getGuide(area: GuideArea, signal?: AbortSignal): Promise<Guide | null> {
   for (const adapter of guideSources()) {
     try {
-      const guide = await adapter.fetchGuide(area);
+      const guide = await adapter.fetchGuide(area, signal);
       if (guide?.sections.length) return guide;
     } catch {
       // A guide is a bonus on top of the map; a failing source must not fail the panel.

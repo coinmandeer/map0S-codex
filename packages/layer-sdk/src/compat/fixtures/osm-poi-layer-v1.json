@@ -1,0 +1,38 @@
+{
+  "manifest": {
+    "id": "osm-poi",
+    "name": "OSM POI",
+    "icon": "📍",
+    "color": "#3b82f6",
+    "description": "Hrady, vyhlídky, parkování, bary a další z OpenStreetMap",
+    "category": "travel",
+    "modes": ["planning", "discover"],
+    "primaryForModes": ["planning", "discover"],
+    "uiGroup": "places",
+    "experienceIds": ["default", "aavegotchi"]
+  },
+  "options": {
+    "kind": "pins",
+    "viewportCost": "cheap",
+    "filters": [
+      {
+        "id": "categories",
+        "label": "Kategorie",
+        "kind": "multi-select",
+        "options": [
+          { "id": "castle", "label": "Hrady" },
+          { "id": "viewpoint", "label": "Vyhlídky" },
+          { "id": "parking", "label": "Parkování" }
+        ],
+        "default": ["castle", "viewpoint", "parking"]
+      }
+    ],
+    "attribution": [
+      {
+        "label": "© OpenStreetMap přispěvatelé",
+        "url": "https://www.openstreetmap.org/copyright",
+        "license": "ODbL-1.0"
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema": "mapos.entitlement",
+  "schemaVersion": "2.0.0",
+  "id": "ent:partner-camper-demo:monthly:user-demo",
+  "subject": { "type": "user", "id": "user:demo" },
+  "product": { "type": "layer", "id": "partner-camper-demo", "providerId": "partner-camper-demo" },
+  "status": "active",
+  "grants": ["view", "query", "detail", "comment", "review"],
+  "source": {
+    "provider": "mapos",
+    "externalCustomerId": null,
+    "externalTransactionId": "demo-transaction-001",
+    "referralId": "partner-ref-demo"
+  },
+  "startsAt": "2026-09-01T00:00:00Z",
+  "endsAt": "2026-10-01T00:00:00Z",
+  "metadata": { "demoOnly": true },
+  "createdAt": "2026-09-01T00:00:00Z",
+  "updatedAt": "2026-09-01T00:00:00Z"
+}

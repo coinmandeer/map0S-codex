@@ -6,10 +6,12 @@ import {
   allLayerPlugins,
   availableLayerPlugins,
   extraLayerPlugins,
+  getLayerManifestV2,
   getLayerPlugin,
   layerIdsForMode,
   primaryLayerForMode,
   registerLayer,
+  registerLayerV2,
   resetLayerRegistry
 } from "./registry";
 import "./builtins";
@@ -41,8 +43,8 @@ describe("layer registry", () => {
             id: "osm-poi",
             name: "Dup",
             icon: "x",
-            color: "#000",
-            description: "",
+            color: "#000000",
+            description: "Duplicate registration fixture",
             category: "travel"
           }
         }),
@@ -51,22 +53,27 @@ describe("layer registry", () => {
   });
 
   it("derives each mode's primary layer from the manifests", () => {
-    assert.equal(primaryLayerForMode("poi"), "osm-poi");
-    assert.equal(primaryLayerForMode("weather"), "weather");
+    assert.equal(primaryLayerForMode("planning"), "osm-poi");
     assert.equal(primaryLayerForMode("game"), "game");
-    assert.equal(primaryLayerForMode("mine"), "user-layers");
+    assert.equal(primaryLayerForMode("mine"), "my-saved-places");
     assert.equal(primaryLayerForMode("discover"), "osm-poi");
+    assert.throws(() => primaryLayerForMode("weather"), /No layer claims/);
   });
 
   it("lists a mode's layers from the manifests rather than a hard-coded set", () => {
-    assert.deepEqual(layerIdsForMode("weather"), ["weather"]);
-    assert.ok(layerIdsForMode("poi").includes("osm-poi"));
+    assert.deepEqual(layerIdsForMode("weather"), []);
+    assert.ok(layerIdsForMode("planning").includes("osm-poi"));
+    assert.ok(layerIdsForMode("mine").includes("my-saved-places"));
   });
 
   it("treats layers without modes as extras", () => {
     const ids = extraLayerPlugins(null).map((p) => p.manifest.id);
-    assert.ok(ids.includes("park4night"), "park4night belongs to no section");
+    assert.ok(ids.includes("geology"), "geology belongs to no section");
+    assert.ok(ids.includes("weather"), "weather is an additive layer, not a mode section");
     assert.ok(!ids.includes("osm-poi"), "osm-poi is a section's primary layer");
+    // Park4Night is mode-less too, but its capability is off unless a deployment opts in — so
+    // "no section" is not enough to make it an extra.
+    assert.ok(!ids.includes("park4night"), "park4night stays hidden without its capability");
   });
 
   it("hides layers whose capability the server lacks", () => {
@@ -76,8 +83,8 @@ describe("layer registry", () => {
         id: "test-keyed",
         name: "Keyed",
         icon: "k",
-        color: "#000",
-        description: "",
+        color: "#000000",
+        description: "Capability negotiation fixture",
         category: "travel",
         requiresCapability: "mapy"
       }
@@ -116,6 +123,15 @@ describe("layer registry", () => {
       mine.deriveFilters!({}, { activeTag: null, countryCode: "CZ", enabledPoiSources: [] }),
       { country: "CZ" }
     );
+
+    const vanlife = getLayerPlugin("vanlife")!;
+    assert.deepEqual(
+      vanlife.deriveFilters!(
+        { categories: ["camp_site"] },
+        { activeTag: null, countryCode: "CZ", enabledPoiSources: ["osm", "user", "mapy"] }
+      ),
+      { categories: ["camp_site"], sources: ["osm"] }
+    );
   });
 
   it("every registered layer carries the fields the shell reads", () => {
@@ -124,6 +140,46 @@ describe("layer registry", () => {
       assert.ok(m.id && m.name && m.icon && m.color, `${m.id} is missing display fields`);
       assert.equal(typeof plugin.create, "function", `${m.id} has no create()`);
     }
+  });
+
+  it("hosts v1 and v2 manifests together without special-casing the migrated layer id", () => {
+    assert.equal(getLayerManifestV2("osm-poi")?.schemaVersion, "2.0.0");
+    const earthquakes = getLayerManifestV2("earthquakes");
+    assert.equal(earthquakes?.schema, "mapos.layer-manifest");
+    assert.equal(earthquakes?.queryPolicy.maxResultsPerViewport, 100);
+    assert.equal(getLayerPlugin("earthquakes")?.manifest.name, "Zemětřesení");
+    assert.deepEqual(getLayerPlugin("earthquakes")?.defaultFilters, {
+      days: 30,
+      minMagnitude: 1
+    });
+  });
+
+  it("rejects an unknown v2 major without partially registering the layer", () => {
+    const before = allLayerPlugins().length;
+    assert.throws(
+      () =>
+        registerLayerV2({
+          ...noopPlugin,
+          manifest: {
+            schema: "mapos.layer-manifest",
+            schemaVersion: "3.0.0",
+            sdkRange: "^3.0.0",
+            id: "future-layer",
+            name: "Future",
+            description: "Unsupported future contract",
+            category: "community",
+            geometryKinds: ["Point"],
+            renderer: { type: "circles" },
+            source: { type: "static" },
+            queryPolicy: { strategy: "viewport", maxResultsPerViewport: 100 },
+            attribution: [{ label: "Fixture" }],
+            capabilities: ["query"]
+          }
+        }),
+      /UNSUPPORTED_SCHEMA_MAJOR/
+    );
+    assert.equal(allLayerPlugins().length, before);
+    assert.equal(getLayerPlugin("future-layer"), undefined);
   });
 
   it("can be emptied for isolation", () => {

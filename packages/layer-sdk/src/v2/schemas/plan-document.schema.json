@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mapos.dev/v2/plan-document.schema.json",
+  "title": "MapOS PlanDocument v2",
+  "description": "Versioned plan with one independently routable segment for every adjacent stop pair.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "id",
+    "revision",
+    "name",
+    "status",
+    "visibility",
+    "routePolicy",
+    "stops",
+    "segments",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schema": { "const": "mapos.plan" },
+    "schemaVersion": { "type": "string", "pattern": "^2\\.\\d+\\.\\d+$" },
+    "id": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "revision": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "description": { "type": ["string", "null"], "maxLength": 20000 },
+    "status": { "enum": ["draft", "planned", "active", "completed", "archived"] },
+    "visibility": { "enum": ["private", "unlisted", "public"] },
+    "ownerId": { "type": ["string", "null"] },
+    "timezone": { "type": ["string", "null"] },
+    "departureAt": { "type": ["string", "null"], "format": "date-time" },
+    "vehicle": {
+      "anyOf": [{ "$ref": "#/$defs/vehicle" }, { "type": "null" }]
+    },
+    "routePolicy": { "$ref": "#/$defs/routePolicy" },
+    "stops": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/stop" }
+    },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/segment" }
+    },
+    "annotations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/annotation" }
+    },
+    "conversationIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "activatedLayerIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "metadata": { "type": "object", "additionalProperties": true },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "position": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number", "minimum": -180, "maximum": 180 },
+        { "type": "number", "minimum": -90, "maximum": 90 }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": { "const": "Point" },
+        "coordinates": { "$ref": "#/$defs/position" }
+      }
+    },
+    "lineString": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": { "const": "LineString" },
+        "coordinates": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/position" }
+        }
+      }
+    },
+    "vehicle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile"],
+      "properties": {
+        "profile": { "enum": ["foot", "bike", "car", "moto", "camper", "truck"] },
+        "heightM": { "type": ["number", "null"], "minimum": 0 },
+        "widthM": { "type": ["number", "null"], "minimum": 0 },
+        "lengthM": { "type": ["number", "null"], "minimum": 0 },
+        "weightT": { "type": ["number", "null"], "minimum": 0 },
+        "fuel": { "enum": ["petrol", "diesel", "cng", "lng", "phev", "bev", "h2", null] },
+        "euroClass": { "type": ["string", "null"] },
+        "evRangeKm": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "routePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "preference"],
+      "properties": {
+        "profile": { "enum": ["foot", "bike", "car", "moto", "camper", "truck"] },
+        "preference": { "enum": ["fast", "short", "nohwy", "adventure"] },
+        "avoid": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["tolls", "ferries", "motorways", "unpaved", "low-emission-zones", "borders"]
+          }
+        },
+        "autoBasemap": { "type": "boolean" },
+        "weatherAlongRoute": { "type": "boolean" },
+        "trafficAlongRoute": { "type": "boolean" }
+      }
+    },
+    "stop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "order", "name", "location", "dwellMinutes"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "order": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "location": { "$ref": "#/$defs/point" },
+        "sourceFeatureId": { "type": ["string", "null"] },
+        "arrivalAt": { "type": ["string", "null"], "format": "date-time" },
+        "departureAt": { "type": ["string", "null"], "format": "date-time" },
+        "dwellMinutes": { "type": "integer", "minimum": 0 },
+        "notes": { "type": ["string", "null"], "maxLength": 10000 },
+        "conversationId": { "type": ["string", "null"] },
+        "status": { "enum": ["suggested", "accepted", "visited", "skipped"] },
+        "locked": { "type": "boolean" },
+        "constraints": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "alternative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "providerId",
+        "profile",
+        "preference",
+        "geometry",
+        "distanceM",
+        "durationS",
+        "warnings"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 },
+        "profile": { "type": "string", "minLength": 1 },
+        "preference": { "enum": ["fast", "short", "nohwy", "adventure"] },
+        "geometry": { "$ref": "#/$defs/lineString" },
+        "distanceM": { "type": "number", "minimum": 0 },
+        "durationS": { "type": "number", "minimum": 0 },
+        "departureAt": { "type": ["string", "null"], "format": "date-time" },
+        "arrivalAt": { "type": ["string", "null"], "format": "date-time" },
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "restrictions": { "type": "array", "items": true },
+        "toll": true,
+        "weather": true,
+        "computedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "order", "fromStopId", "toStopId", "policyHash", "status", "alternatives"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer", "minimum": 0 },
+        "fromStopId": { "type": "string", "minLength": 1 },
+        "toStopId": { "type": "string", "minLength": 1 },
+        "policyHash": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["pending", "routing", "ready", "stale", "partial", "failed"] },
+        "provider": { "type": ["string", "null"] },
+        "providerRequestFingerprint": { "type": ["string", "null"] },
+        "profile": { "type": ["string", "null"] },
+        "alternatives": { "type": "array", "items": { "$ref": "#/$defs/alternative" } },
+        "selectedAlternativeId": { "type": ["string", "null"] },
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "calculatedAt": { "type": ["string", "null"], "format": "date-time" },
+        "staleReason": { "type": ["string", "null"] },
+        "notes": { "type": ["string", "null"], "maxLength": 10000 }
+      }
+    },
+    "annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "scope", "body", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "scope": { "enum": ["plan", "stop", "segment"] },
+        "targetId": { "type": ["string", "null"] },
+        "body": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "authorId": { "type": ["string", "null"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

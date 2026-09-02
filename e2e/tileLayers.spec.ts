@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures/offlineTest";
 
 /** A 1x1 transparent PNG, so the specs never depend on the real tile servers being up. */
 const PNG = Buffer.from(
@@ -20,11 +20,11 @@ async function stubTiles(page: import("@playwright/test").Page) {
 }
 
 test.describe("keyless tile overlays", () => {
-  test("each registered overlay appears in the layers menu", async ({ page }) => {
+  test("each registered overlay appears with the structural map surfaces", async ({ page }) => {
     await stubTiles(page);
     await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
-    await expect(page.getByTestId("overflow-menu")).toBeVisible();
+    await page.getByTestId("basemap-btn").click();
+    await expect(page.getByTestId("tiles-sheet")).toBeVisible();
 
     for (const id of [
       "cyclosm",
@@ -49,7 +49,7 @@ test.describe("keyless tile overlays", () => {
     });
 
     await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("basemap-btn").click();
     await page.getByTestId("overflow-cyclosm").click();
 
     await expect.poll(() => requested.length, { timeout: 15_000 }).toBeGreaterThan(0);
@@ -59,7 +59,7 @@ test.describe("keyless tile overlays", () => {
   test("turning an overlay off removes it from the map", async ({ page }) => {
     await stubTiles(page);
     await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("basemap-btn").click();
     await page.getByTestId("overflow-opentopomap").click();
 
     const layerId = "raster-tile-opentopomap";

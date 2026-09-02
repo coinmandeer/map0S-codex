@@ -54,11 +54,15 @@
     --tap-min: 44px;
 
     /* ---- Layout -------------------------------------------------------- */
-    --sidebar-w: 300px;
+    --sidebar-w: 368px;
     --modebar-h: 108px;
     --bottom-nav-h: 0px;
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-top: env(safe-area-inset-top, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --visual-viewport-h: 100dvh;
+    --visual-viewport-offset-top: 0px;
 
     /* ---- Motion -------------------------------------------------------- */
     --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -156,7 +160,20 @@
     --layer-user: #2dd4bf;
   }
 
-  @media (max-width: 899px) {
+  [data-experience="aavegotchi"] {
+    --accent: #9c4dcc;
+    --accent-hover: #7e35ad;
+    --accent-soft: rgba(156, 77, 204, 0.18);
+    --layer-game: #b86fe3;
+  }
+
+  [data-experience="aavegotchi"].theme-dark {
+    --accent: #d28cff;
+    --accent-hover: #e0adff;
+    --accent-soft: rgba(210, 140, 255, 0.2);
+  }
+
+  @media (max-width: 767px) {
     :root {
       --modebar-h: 104px;
       --bottom-nav-h: 60px;
@@ -169,6 +186,15 @@
       --dur-fast: 1ms;
       --dur: 1ms;
       --dur-slow: 1ms;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
     }
   }
 }

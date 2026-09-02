@@ -4,14 +4,31 @@ const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | und
 
 export const API_BASE = viteEnv?.VITE_API_BASE_URL ?? "/api";
 
+const SAFE_REQUEST_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+
+export interface ApiResponseWithMetadata<T> {
+  data: T;
+  /** Validated server-generated X-Request-ID; never derived from a URL or request body. */
+  requestId: string | null;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
-    message: string
+    message: string,
+    readonly requestId: string | null = null
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+export function safeApiRequestId(value: string | null): string | null {
+  return value !== null && SAFE_REQUEST_ID.test(value) ? value : null;
+}
+
+function responseRequestId(response: Response): string | null {
+  return safeApiRequestId(response.headers.get("X-Request-ID"));
 }
 
 export interface ApiRequestOptions {
@@ -39,13 +56,40 @@ async function parseError(res: Response): Promise<string> {
   return data?.message ?? `${res.status} ${res.statusText}`;
 }
 
-export async function apiGet<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+export async function apiGetWithMetadata<T>(
+  path: string,
+  options: ApiRequestOptions = {}
+): Promise<ApiResponseWithMetadata<T>> {
   const res = await fetch(`${API_BASE}${path}${buildQuery(options.query)}`, {
     signal: options.signal,
     credentials: options.auth ? "include" : "same-origin"
   });
-  if (!res.ok) throw new ApiError(res.status, await parseError(res));
-  return (await res.json()) as T;
+  const requestId = responseRequestId(res);
+  if (!res.ok) throw new ApiError(res.status, await parseError(res), requestId);
+  return { data: (await res.json()) as T, requestId };
+}
+
+export async function apiGet<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  return (await apiGetWithMetadata<T>(path, options)).data;
+}
+
+export async function apiSendWithMetadata<T>(
+  method: "POST" | "PATCH" | "DELETE",
+  path: string,
+  body?: unknown,
+  options: ApiRequestOptions = {}
+): Promise<ApiResponseWithMetadata<T>> {
+  const res = await fetch(`${API_BASE}${path}${buildQuery(options.query)}`, {
+    method,
+    signal: options.signal,
+    credentials: "include",
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const requestId = responseRequestId(res);
+  if (!res.ok) throw new ApiError(res.status, await parseError(res), requestId);
+  if (res.status === 204) return { data: undefined as T, requestId };
+  return { data: (await res.json()) as T, requestId };
 }
 
 export async function apiSend<T>(
@@ -54,20 +98,19 @@ export async function apiSend<T>(
   body?: unknown,
   options: ApiRequestOptions = {}
 ): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}${buildQuery(options.query)}`, {
-    method,
-    signal: options.signal,
-    credentials: "include",
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
-  if (!res.ok) throw new ApiError(res.status, await parseError(res));
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  return (await apiSendWithMetadata<T>(method, path, body, options)).data;
 }
 
 export function apiPost<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
   return apiSend<T>("POST", path, body, options);
+}
+
+export function apiPostWithMetadata<T>(
+  path: string,
+  body?: unknown,
+  options?: ApiRequestOptions
+): Promise<ApiResponseWithMetadata<T>> {
+  return apiSendWithMetadata<T>("POST", path, body, options);
 }
 
 /** Resolves to `null` instead of throwing — for optional/degradable data sources. */

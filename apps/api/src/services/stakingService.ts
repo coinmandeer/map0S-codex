@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { rewardEvents, stakingPositions } from "../db/schema.js";
+import { ClientError } from "../utils/clientError.js";
 
 const APY = 0.03;
 const SECONDS_PER_YEAR = 365 * 24 * 60 * 60;
@@ -52,9 +53,9 @@ export async function getStakingOverview(userId: string) {
 }
 
 export async function stakeUsd(userId: string, amountUsd: number) {
-  if (amountUsd <= 0) throw new Error("Invalid amount");
+  if (amountUsd <= 0) throw new ClientError("Invalid amount");
   const row = await accrue(userId);
-  if (!row) throw new Error("No staking position");
+  if (!row) throw new ClientError("No staking position");
   await db
     .update(stakingPositions)
     .set({ stakedUsd: row.stakedUsd + amountUsd, updatedAt: new Date() })
@@ -63,9 +64,11 @@ export async function stakeUsd(userId: string, amountUsd: number) {
 }
 
 export async function unstakeUsd(userId: string, amountUsd: number) {
-  if (amountUsd <= 0) throw new Error("Invalid amount");
+  if (amountUsd <= 0) throw new ClientError("Invalid amount");
   const row = await accrue(userId);
-  if (!row || amountUsd > row.stakedUsd) throw new Error("Cannot unstake more than staked");
+  if (!row || amountUsd > row.stakedUsd) {
+    throw new ClientError("Cannot unstake more than staked");
+  }
   await db
     .update(stakingPositions)
     .set({ stakedUsd: row.stakedUsd - amountUsd, updatedAt: new Date() })

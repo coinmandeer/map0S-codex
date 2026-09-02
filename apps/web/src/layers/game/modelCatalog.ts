@@ -28,7 +28,9 @@ export interface ModelSpec {
 export const MODELS = {
   player: {
     url: "/models/cube-guy-character.glb",
-    targetHeight: 9,
+    // A map-game avatar needs to remain legible from the follow camera. Six metres is still far
+    // below the former building-sized model while clearly reading as the controlled character.
+    targetHeight: 6.8,
     yawOffset: Math.PI,
     animated: true
   },
@@ -81,7 +83,7 @@ export function pickZoneModelKey(seed: number, category: string | null | undefin
 
 // ---------- loading ----------
 
-interface LoadedModel {
+export interface LoadedModel {
   scene: THREE.Group;
   animations: THREE.AnimationClip[];
   /** Uniform scale that brings the model to `targetHeight`. */
@@ -91,12 +93,17 @@ interface LoadedModel {
 }
 
 const loader = new GLTFLoader();
-const cache = new Map<ModelKey, Promise<LoadedModel | null>>();
+const cache = new Map<string, Promise<LoadedModel | null>>();
 
 export function loadModel(key: ModelKey): Promise<LoadedModel | null> {
-  const cached = cache.get(key);
+  return loadModelSpec(`catalog:${key}`, MODELS[key] as ModelSpec);
+}
+
+/** Generic, cache-keyed GLB loader used after local-URL and performance checks have passed. It
+ * performs no URL policy itself; callers must validate first. */
+export function loadModelSpec(cacheKey: string, spec: ModelSpec): Promise<LoadedModel | null> {
+  const cached = cache.get(cacheKey);
   if (cached) return cached;
-  const spec = MODELS[key] as ModelSpec;
   const promise = loader
     .loadAsync(spec.url)
     .then((gltf) => {
@@ -115,7 +122,7 @@ export function loadModel(key: ModelKey): Promise<LoadedModel | null> {
       };
     })
     .catch(() => null);
-  cache.set(key, promise);
+  cache.set(cacheKey, promise);
   return promise;
 }
 
@@ -131,7 +138,10 @@ export interface ModelInstance {
 }
 
 export function instantiate(loaded: LoadedModel, key: ModelKey): ModelInstance {
-  const spec = MODELS[key] as ModelSpec;
+  return instantiateModel(loaded, MODELS[key] as ModelSpec);
+}
+
+export function instantiateModel(loaded: LoadedModel, spec: ModelSpec): ModelInstance {
   const root = new THREE.Group();
   const visual = new THREE.Group();
   visual.rotation.x = Math.PI / 2;

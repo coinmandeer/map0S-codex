@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures/offlineTest";
 
 /** Points are placed inside whatever bbox the app asked for — a fixture with fixed coordinates
  *  only renders if the map happens to be looking at them, which makes the test a coin flip. */
@@ -32,7 +32,7 @@ test.describe("keyless data layers", () => {
       route.fulfill({ json: observationsWithin(route.request().url(), 5) })
     );
 
-    await page.goto("/");
+    await page.goto("/?lng=13.3775&lat=49.7475&z=14");
     await page.getByTestId("overflow-btn").click();
     await page.getByTestId("overflow-inaturalist").click();
 

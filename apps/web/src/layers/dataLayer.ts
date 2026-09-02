@@ -4,6 +4,10 @@ import { fetchLayerFeatures } from "../engine/LayerEngine";
 
 export interface DataLayerSpec {
   color: string;
+  /** Optional categorical renderer for semantically important states such as cancelled events. */
+  colorBy?: { property: string; values: Record<string, string>; fallback?: string };
+  /** Selects the versioned feature envelope; v1 remains the default during migration. */
+  contractVersion?: 1 | 2;
   /** Numeric property to scale the circle by — magnitude, capacity. Absent means uniform dots. */
   sizeBy?: { property: string; min: number; max: number; minRadius: number; maxRadius: number };
   /** Show names next to the dots from this zoom. Off by default: for dense layers like species
@@ -30,6 +34,16 @@ export function createDataLayer(
   const labelId = `pins-${layerId}-label`;
   let opacity = 1;
   let visible = true;
+
+  function colorExpression(): maplibregl.ExpressionSpecification | string {
+    if (!spec.colorBy) return spec.color;
+    return [
+      "match",
+      ["get", spec.colorBy.property],
+      ...Object.entries(spec.colorBy.values).flatMap(([value, color]) => [value, color]),
+      spec.colorBy.fallback ?? spec.color
+    ] as unknown as maplibregl.ExpressionSpecification;
+  }
 
   function radiusExpression(): maplibregl.ExpressionSpecification | number {
     if (!spec.sizeBy) return 5;
@@ -60,7 +74,7 @@ export function createDataLayer(
       source: sourceId,
       layout: { visibility: visible ? "visible" : "none" },
       paint: {
-        "circle-color": spec.color,
+        "circle-color": colorExpression(),
         "circle-radius": radiusExpression(),
         "circle-opacity": 0.85 * opacity,
         "circle-stroke-width": 1.5,
@@ -103,7 +117,14 @@ export function createDataLayer(
   return {
     async update(bbox: Bbox, filters: FilterValues, signal?: AbortSignal) {
       ensureLayers();
-      const data = await fetchLayerFeatures(apiBase, layerId, bbox, filters, signal);
+      const data = await fetchLayerFeatures(
+        apiBase,
+        layerId,
+        bbox,
+        filters,
+        signal,
+        spec.contractVersion
+      );
       setData(data);
       return data;
     },

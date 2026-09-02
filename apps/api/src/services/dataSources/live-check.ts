@@ -5,6 +5,7 @@
  */
 
 import type { Bbox } from "@mapos/layer-sdk";
+import { safeErrorLogFields } from "../../utils/clientError.js";
 import { dataSourceProviders } from "./index.js";
 
 const PRAGUE: Bbox = [14.38, 50.06, 14.47, 50.11];
@@ -20,6 +21,6 @@ for (const provider of dataSourceProviders) {
         ` ${String(took).padStart(6)}ms  ${result.notice ? `notice: ${result.notice}` : sample}`
     );
   } catch (err) {
-    console.error(`${provider.id.padEnd(18)} FAILED  ${(err as Error).message}`);
+    console.error(`${provider.id.padEnd(18)} FAILED`, safeErrorLogFields(err));
   }
 }

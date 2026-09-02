@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
+import { __resetUpstreamCache, __setUpstreamTestDependencies } from "../utils/upstream.js";
 import {
   fetchWeatherGrid,
   isWeatherVariable,
@@ -11,17 +12,37 @@ const BBOX: [number, number, number, number] = [12, 48, 16, 51];
 
 function stubOpenMeteo(points: number, sample: Record<string, number>) {
   const calls: string[] = [];
+  const hour = new Date();
+  hour.setUTCMinutes(0, 0, 0);
+  const time = hour.toISOString().slice(0, 16);
+  const hourly = Object.fromEntries([
+    ["time", [time]],
+    ...Object.entries(sample).map(([field, value]) => [field, [value]])
+  ]);
   mock.method(globalThis, "fetch", async (input: unknown) => {
     calls.push(String(input));
-    return new Response(
-      JSON.stringify(Array.from({ length: points }, () => ({ current: sample }))),
-      { status: 200, headers: { "content-type": "application/json" } }
-    );
+    return new Response(JSON.stringify(Array.from({ length: points }, () => ({ hourly }))), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  });
+  __setUpstreamTestDependencies({
+    resolveHost: async () => ["93.184.216.34"],
+    request: (url, init) =>
+      globalThis.fetch(url, {
+        method: init.method,
+        body: init.body,
+        headers: { ...init.headers },
+        signal: init.signal
+      })
   });
   return calls;
 }
 
-test.afterEach(() => mock.restoreAll());
+test.afterEach(() => {
+  mock.restoreAll();
+  __resetUpstreamCache();
+});
 
 test("a scalar grid is fetched in one request and shaped row-major", async () => {
   const calls = stubOpenMeteo(999, { temperature_2m: 17.5 });
@@ -32,6 +53,8 @@ test("a scalar grid is fetched in one request and shaped row-major", async () =>
   assert.equal(grid.unit, "°C");
   assert.equal(grid.min, 17.5);
   assert.equal(grid.max, 17.5);
+  assert.equal(grid.median, 17.5);
+  assert.equal(grid.sampleCount, 20);
   assert.equal(grid.u, undefined, "scalars carry no flow components");
 });
 

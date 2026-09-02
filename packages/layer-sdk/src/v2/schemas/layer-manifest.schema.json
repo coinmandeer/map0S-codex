@@ -1,0 +1,728 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mapos.dev/v2/layer-manifest.schema.json",
+  "title": "MapOS LayerManifest v2",
+  "description": "Deklarativní kontrakt vrstvy. Je navržen jako evoluce dnešního LayerManifestu v @mapos/layer-sdk.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "sdkRange",
+    "id",
+    "name",
+    "description",
+    "category",
+    "geometryKinds",
+    "renderer",
+    "source",
+    "queryPolicy",
+    "capabilities"
+  ],
+  "properties": {
+    "schema": {
+      "const": "mapos.layer-manifest"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^2\\.\\d+\\.\\d+$"
+    },
+    "sdkRange": {
+      "type": "string",
+      "minLength": 1
+    },
+    "minimumRuntime": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{1,99}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 800
+    },
+    "icon": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^(#[0-9A-Fa-f]{6}|var\\(--[a-z0-9-]+\\))$"
+    },
+    "category": {
+      "enum": [
+        "travel",
+        "city",
+        "sport",
+        "weather",
+        "events",
+        "user",
+        "game",
+        "routing",
+        "outdoor",
+        "transport",
+        "environment",
+        "community",
+        "infrastructure",
+        "moving"
+      ]
+    },
+    "presetIds": {
+      "type": "array",
+      "items": {
+        "enum": ["trip", "city", "travel", "sport"]
+      },
+      "uniqueItems": true
+    },
+    "modes": {
+      "type": "array",
+      "items": {
+        "enum": ["personal", "discover", "planning", "game"]
+      },
+      "uniqueItems": true
+    },
+    "worldIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "geometryKinds": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "Point",
+          "MultiPoint",
+          "LineString",
+          "MultiLineString",
+          "Polygon",
+          "MultiPolygon",
+          "Raster",
+          "VectorTile",
+          "CustomGL"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "renderer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": [
+            "symbols",
+            "circles",
+            "line",
+            "fill",
+            "heatmap",
+            "raster",
+            "vector-style",
+            "custom-gl",
+            "three"
+          ]
+        },
+        "cluster": {
+          "type": "boolean"
+        },
+        "clusterMaxZoom": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "clusterRadiusPx": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "style": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "zIndex": {
+          "type": "integer",
+          "minimum": -10000,
+          "maximum": 10000
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": [
+            "static",
+            "declarative-http",
+            "server-adapter",
+            "raster-tiles",
+            "vector-tiles",
+            "realtime",
+            "user-data",
+            "computed",
+            "custom-runtime"
+          ]
+        },
+        "adapterId": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "method": {
+          "enum": ["GET", "POST"]
+        },
+        "tileTemplate": {
+          "type": "string"
+        },
+        "responseAdapter": {
+          "type": "string"
+        },
+        "requiresServerProxy": {
+          "type": "boolean"
+        },
+        "authRef": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+        },
+        "query": {
+          "type": "object",
+          "maxProperties": 24,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^(bbox|west|south|east|north|limit|cursor|zoom|filter:[A-Za-z][A-Za-z0-9_.-]{0,63})$"
+          }
+        },
+        "mapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["idPath", "titlePath", "longitudePath", "latitudePath"],
+          "properties": {
+            "itemsPath": { "$ref": "#/$defs/dataPath" },
+            "idPath": { "$ref": "#/$defs/dataPath" },
+            "titlePath": { "$ref": "#/$defs/dataPath" },
+            "categoryPath": { "$ref": "#/$defs/dataPath" },
+            "longitudePath": { "$ref": "#/$defs/dataPath" },
+            "latitudePath": { "$ref": "#/$defs/dataPath" },
+            "summaryPath": { "$ref": "#/$defs/dataPath" },
+            "descriptionPath": { "$ref": "#/$defs/dataPath" },
+            "sourceIdPath": { "$ref": "#/$defs/dataPath" },
+            "nextCursorPath": { "$ref": "#/$defs/dataPath" }
+          }
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 10000
+        },
+        "maxResponseBytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 2097152
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "declarative-http" } }, "required": ["type"] },
+          "then": {
+            "required": ["endpoint", "requiresServerProxy", "mapping"],
+            "properties": {
+              "endpoint": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https://[^@#]+$"
+              },
+              "method": { "const": "GET" },
+              "requiresServerProxy": { "const": true }
+            },
+            "not": { "required": ["responseAdapter"] }
+          }
+        }
+      ]
+    },
+    "queryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy"],
+      "properties": {
+        "strategy": {
+          "enum": ["viewport", "tile", "realtime", "global", "manual"]
+        },
+        "maxResultsPerViewport": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "debounceMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "minZoom": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "maxZoom": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "searchHere": {
+          "enum": ["never", "after-pan", "manual-only", "when-empty"]
+        },
+        "ranking": {
+          "enum": ["distance", "relevance", "popularity", "time", "provider", "hybrid"]
+        },
+        "cacheTtlSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2592000
+        },
+        "staleWhileRevalidateSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2592000
+        },
+        "cursorPagination": {
+          "type": "boolean"
+        }
+      }
+    },
+    "filters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "kind"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "multi-select",
+              "single-select",
+              "toggle",
+              "range",
+              "text",
+              "date-range",
+              "distance"
+            ]
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "label"],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "icon": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "step": {
+            "type": "number"
+          },
+          "default": {},
+          "providerField": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tabs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "label", "source"],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "source": {
+                "enum": ["canonical", "provider", "mapos-social", "ai", "media", "custom"]
+              },
+              "providerId": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "fieldOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "aiEnrichment": {
+          "enum": ["disabled", "on-open", "on-demand", "background"]
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "kind"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "open-url",
+              "save",
+              "share",
+              "route-to",
+              "comment",
+              "review",
+              "provider-action",
+              "purchase",
+              "tip",
+              "custom"
+            ]
+          },
+          "urlTemplate": {
+            "type": "string"
+          },
+          "requiresPermission": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "attribution": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label"],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "license": {
+            "type": "string"
+          },
+          "requiredOnMap": {
+            "type": "boolean"
+          },
+          "requiredOnExport": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "query",
+          "filter",
+          "detail",
+          "comments",
+          "reviews",
+          "media",
+          "export",
+          "import",
+          "realtime",
+          "temporal",
+          "routing",
+          "ai-search",
+          "ai-enrich",
+          "commerce",
+          "collaboration",
+          "game"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "requiresServerCapabilities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "temporal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "cursorKinds": {
+          "type": "array",
+          "items": {
+            "enum": ["instant", "range", "forecast", "replay"]
+          },
+          "uniqueItems": true
+        },
+        "defaultRangeHours": {
+          "type": "number",
+          "minimum": 0
+        },
+        "timelinePriority": {
+          "type": "integer"
+        }
+      }
+    },
+    "legend": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": ["categorical", "continuous", "numeric", "icon", "custom"]
+        },
+        "title": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label"],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "value": {},
+              "color": {
+                "type": "string"
+              },
+              "icon": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "stops": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "label"],
+            "properties": {
+              "value": {
+                "type": "number"
+              },
+              "label": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultVisibility": {
+          "enum": ["public", "unlisted", "private", "entitled"]
+        },
+        "canCreate": {
+          "type": "boolean"
+        },
+        "canEdit": {
+          "type": "boolean"
+        },
+        "canComment": {
+          "type": "boolean"
+        },
+        "canExport": {
+          "type": "boolean"
+        },
+        "requiresAuth": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ai": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "discoverable": {
+          "type": "boolean"
+        },
+        "searchableFields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "permissionProjection": {
+          "enum": [
+            "metadata-only",
+            "public-features",
+            "entitled-features",
+            "owner-private",
+            "disabled"
+          ]
+        }
+      }
+    },
+    "commerce": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "enum": ["free", "entitlement", "subscription", "one-time", "external"]
+        },
+        "productId": {
+          "type": "string"
+        },
+        "previewPolicy": {
+          "enum": ["none", "metadata", "sample", "blurred"]
+        },
+        "tipsEnabled": {
+          "type": "boolean"
+        },
+        "referralUrlTemplate": {
+          "type": "string"
+        }
+      }
+    },
+    "importExport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "importFormats": {
+          "type": "array",
+          "items": {
+            "enum": ["geojson", "gpx", "kml", "csv", "json", "mapos-package"]
+          },
+          "uniqueItems": true
+        },
+        "exportFormats": {
+          "type": "array",
+          "items": {
+            "enum": ["geojson", "gpx", "kml", "csv", "json", "mapos-package"]
+          },
+          "uniqueItems": true
+        },
+        "includeProviderFields": {
+          "type": "boolean"
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "checkEndpoint": {
+          "type": "string"
+        },
+        "expectedLatencyMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failureMode": {
+          "enum": ["hide", "disabled-with-reason", "stale-cache", "empty-with-notice"]
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "legacyLayerId": {
+          "type": "string"
+        },
+        "legacyAdapter": {
+          "type": "string"
+        },
+        "deprecatedAfter": {
+          "type": "string",
+          "format": "date"
+        },
+        "migrationNotes": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "dataPath": {
+      "type": "string",
+      "pattern": "^(?!.*(?:^|\\.)(?:__proto__|prototype|constructor)(?:\\.|$))[A-Za-z_][A-Za-z0-9_-]*(?:\\.[A-Za-z_][A-Za-z0-9_-]*)*$"
+    }
+  }
+}

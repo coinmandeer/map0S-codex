@@ -8,10 +8,7 @@ import { PIN_STYLES, type PinStyle } from "./presets";
 import { preloadPlacePhotos, resolvePhotoUrl } from "./photoCache";
 import { PanelShell } from "./PanelShell";
 import { SourceStatus } from "./SourceStatus";
-
-function formatDistance(m: number): string {
-  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
-}
+import { formatDistance } from "../lib/units";
 
 function PlacePhoto({ feature, style }: { feature: GeoFeature; style?: PinStyle }) {
   const directPhoto =
@@ -46,13 +43,14 @@ function PlacePhoto({ feature, style }: { feature: GeoFeature; style?: PinStyle 
   );
 }
 
-function PlacesTab() {
+export function PlacesTab() {
   const store = getMapStore();
   const active = useMapStoreSnapshot((s) => s.activeLayers);
   const visibleFeatures = useMapStoreSnapshot((s) => s.visibleFeatures);
   const loadingLayers = useMapStoreSnapshot((s) => s.loadingLayers);
   const view = useMapStoreSnapshot((s) => s.view);
   const searchPending = useMapStoreSnapshot((s) => s.searchHerePending);
+  const units = useMapStoreSnapshot((s) => s.preferences.units);
 
   const places = useMemo(() => {
     const all: { feature: GeoFeature; layerId: string; distance: number }[] = [];
@@ -145,7 +143,7 @@ function PlacesTab() {
             <div className="place-card-body">
               <h4>{p.feature.properties.name ?? "Bez názvu"}</h4>
               <p className="meta">
-                {style?.label ?? category} · {formatDistance(p.distance)}
+                {style?.label ?? category} · {formatDistance(p.distance, units)}
               </p>
               {tags.length > 0 && (
                 <div className="tag-row">

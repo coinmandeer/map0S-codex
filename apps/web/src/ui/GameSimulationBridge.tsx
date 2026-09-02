@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { useSimulationController } from "../layers/game/useSimulationController";
-import { emit, on } from "../lib/events";
-import { geolocation } from "../lib/geolocation";
+import { on } from "../lib/events";
+import { getMapStore } from "../store/mapStore";
 
 /** Bridges keyboard/GPS simulation to the game layer when in game mode. */
 export function GameSimulationBridge() {
@@ -10,24 +10,31 @@ export function GameSimulationBridge() {
   const view = useMapStoreSnapshot((s) => s.view);
   const cameraMode = useMapStoreSnapshot((s) => s.gameCameraMode);
   const trackingMode = useMapStoreSnapshot((s) => s.gameTrackingMode);
+  const fallbackToSimulation = useCallback(() => {
+    const store = getMapStore();
+    store.setGameTrackingMode("simulation");
+    store.showToast("GPS není dostupná; pokračuji v označené simulaci.");
+  }, []);
 
   const simulation = useSimulationController(
     { latitude: view.lat, longitude: view.lng },
-    mode === "game"
+    mode === "game",
+    fallbackToSimulation
   );
+  const { seedPosition, setMovementBearing, setRelativeMovement, setTrackingMode } = simulation;
   const seededRef = useRef(false);
 
   useEffect(() => {
-    simulation.setRelativeMovement(cameraMode === "follow");
-  }, [cameraMode, simulation]);
+    setRelativeMovement(cameraMode === "follow");
+  }, [cameraMode, setRelativeMovement]);
 
   useEffect(() => {
-    simulation.setTrackingMode(trackingMode);
-  }, [trackingMode, simulation]);
+    setTrackingMode(trackingMode);
+  }, [trackingMode, setTrackingMode]);
 
   useEffect(() => {
-    return on("map-bearing", ({ bearing }) => simulation.setMovementBearing(bearing));
-  }, [simulation]);
+    return on("map-bearing", ({ bearing }) => setMovementBearing(bearing));
+  }, [setMovementBearing]);
 
   useEffect(() => {
     if (mode !== "game") {
@@ -36,18 +43,11 @@ export function GameSimulationBridge() {
     }
     if (seededRef.current) return;
     seededRef.current = true;
-    // The map centre is a fine place to start playing from, so a missing fix is not an error
-    // here — the game just begins wherever the user was already looking.
-    geolocation
-      .getPosition({ timeoutMs: 6000, maxAgeMs: 15_000 })
-      .then((fix) => {
-        simulation.seedPosition({ latitude: fix.lat, longitude: fix.lng });
-        emit("fly-to", { lng: fix.lng, lat: fix.lat, zoom: 16 });
-      })
-      .catch(() => {
-        simulation.seedPosition({ latitude: view.lat, longitude: view.lng });
-      });
-  }, [mode, simulation, view.lat, view.lng]);
+    // Simulation starts immediately where the map already is. The old six-second best-effort GPS
+    // lookup could resolve after the player had started walking and teleport them back here. GPS is
+    // now requested only when the player explicitly selects it in the HUD.
+    seedPosition({ latitude: view.lat, longitude: view.lng });
+  }, [mode, seedPosition, view.lat, view.lng]);
 
   return null;
 }

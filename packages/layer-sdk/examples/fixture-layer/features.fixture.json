@@ -1,0 +1,12 @@
+{
+  "data": { "type": "FeatureCollection", "features": [] },
+  "meta": {
+    "limit": 20,
+    "returned": 0,
+    "truncated": false,
+    "nextCursor": null,
+    "cache": "miss",
+    "sources": []
+  },
+  "notices": []
+}

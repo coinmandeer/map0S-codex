@@ -37,32 +37,33 @@ traffic shares a rate-limit bucket with every other MapOS clone.
 
 These need no registration and are always on.
 
-| Source               | Used for                                | Licence            |
-| -------------------- | --------------------------------------- | ------------------ |
-| OpenStreetMap        | POIs via Overpass, basemap data         | ODbL 1.0           |
-| Nominatim            | Geocoding and reverse geocoding         | ODbL 1.0           |
-| OSRM                 | Route planning (public demo server)     | ODbL 1.0           |
-| CARTO basemaps       | Default light/dark vector tiles         | Free tier, no key  |
-| CyclOSM              | Cycling overlay                         | ODbL / CC-BY-SA    |
-| Waymarked Trails     | Hiking, cycling, MTB, piste routes      | CC-BY-SA 3.0       |
-| OpenRailwayMap       | Railway overlay                         | CC-BY-SA 2.0       |
-| OpenSeaMap           | Nautical marks                          | ODbL 1.0           |
-| OpenTopoMap          | Contours and hillshade                  | CC-BY-SA 3.0       |
-| OpenSnowMap          | Pistes and cross-country trails         | CC-BY-SA 2.0       |
-| USGS                 | Earthquakes                             | Public domain      |
-| iNaturalist          | Species observations with photos        | CC-BY-NC (varies)  |
-| GBIF                 | Biodiversity occurrence records         | CC-BY 4.0          |
-| Sensor.Community     | Citizen air-quality sensors             | ODbL 1.0           |
-| Wikimedia Commons    | Geolocated photos                       | CC / public domain |
-| Refuge Restrooms     | Accessible and gender-neutral toilets   | Open data          |
-| GBFS operator feeds  | Bike and scooter sharing stations       | Per operator       |
-| RainViewer           | Weather radar                           | Free tier          |
-| Open-Meteo           | Wind grid, forecasts, info panel        | CC-BY 4.0          |
-| Wikipedia / Wikidata | Articles, QIDs, place metadata, ranking | CC-BY-SA / CC0     |
-| Wikivoyage           | Objevuj guide content                   | CC-BY-SA 4.0       |
-| Wiki Loves Monuments | Quests: monuments still missing a photo | CC-BY-SA / CC0     |
-| OSM Notes            | Quests: open map problems to verify     | ODbL 1.0           |
-| Turf Game            | Quests: existing takeover zones         | Public API         |
+| Source               | Used for                                   | Licence            |
+| -------------------- | ------------------------------------------ | ------------------ |
+| OpenStreetMap        | POIs via Overpass, basemap data            | ODbL 1.0           |
+| Nominatim            | Geocoding and reverse geocoding            | ODbL 1.0           |
+| OSRM                 | Route planning (public demo server)        | ODbL 1.0           |
+| CARTO basemaps       | Default light/dark vector tiles            | Free tier, no key  |
+| CyclOSM              | Cycling overlay                            | ODbL / CC-BY-SA    |
+| Waymarked Trails     | Hiking, cycling, MTB, piste routes         | CC-BY-SA 3.0       |
+| OpenRailwayMap       | Railway overlay                            | CC-BY-SA 2.0       |
+| OpenSeaMap           | Nautical marks                             | ODbL 1.0           |
+| OpenTopoMap          | Contours and hillshade                     | CC-BY-SA 3.0       |
+| OpenSnowMap          | Pistes and cross-country trails            | CC-BY-SA 2.0       |
+| USGS                 | Earthquakes                                | Public domain      |
+| iNaturalist          | Species observations with photos           | CC-BY-NC (varies)  |
+| GBIF                 | Biodiversity occurrence records            | CC-BY 4.0          |
+| Sensor.Community     | Citizen air-quality sensors                | ODbL 1.0           |
+| Wikimedia Commons    | Geolocated photos                          | CC / public domain |
+| Refuge Restrooms     | Accessible and gender-neutral toilets      | Open data          |
+| GBFS operator feeds  | Bike and scooter sharing stations          | Per operator       |
+| RainViewer           | Weather radar                              | Free tier          |
+| Open-Meteo           | Wind grid, forecasts, info panel           | CC-BY 4.0          |
+| Wikipedia / Wikidata | Articles, QIDs, place metadata, ranking    | CC-BY-SA / CC0     |
+| Wikivoyage           | Objevuj guide content                      | CC-BY-SA 4.0       |
+| Wiki Loves Monuments | Quests: monuments still missing a photo    | CC-BY-SA / CC0     |
+| OSM Notes            | Quests: open map problems to verify        | ODbL 1.0           |
+| Turf Game            | Quests: existing takeover zones            | Public API         |
+| Macrostrat           | Geology overlay and the "Pod nohama" panel | CC-BY 4.0          |
 
 ## What the licences ask for
 
@@ -82,6 +83,79 @@ publishing it under ODbL too.
 
 iNaturalist observations are per-observer licensed and many are non-commercial. Treat the layer
 as "look, don't rebuild a product on top of it".
+
+## Geology, and what a model is for
+
+Macrostrat stitches national geological surveys into one global set of vector tiles plus a point
+API, keyless and CC BY. The tiles carry the colour each survey assigned its own units, so the
+overlay reads `["get", "color"]` and looks like a geological map because it is one.
+
+The point API answers with things like `Cadomian shale/slate, Ediacaran–Cryogenian, 541–720 Ma`.
+That is correct and useless to almost everyone, which is what the "Pod nohama" panel is for. Two
+rules came out of building it, and they generalise to any AI feature here:
+
+- **Closed vocabularies are translated in code, not by the model.** Period names and lithology
+  terms are a few dozen strings each. Left to the model, "Cadomian" next to "Cryogenian" became
+  _kambrium_, and "shale/slate" became _břidlice a svátky_ — slate read as a word about holidays.
+  Both are wrong in a way a reader cannot catch. They are lookup tables now
+  (`apps/api/src/services/geologyService.ts`), and the model gets Czech input.
+- **Say where you are.** Handed only a name, a model writes about the place of that name it
+  happens to know: asked about Riegrovy sady in Plzeň it described the Prague park, Vinohrady and
+  Žižkov included. Briefs carry the municipality from Nominatim and an instruction not to argue
+  with it.
+
+Where a survey writes in German or French, the same call translates — that part genuinely needs a
+model, and it is the part left to one.
+
+|                                               |                                          |                                      |
+| --------------------------------------------- | ---------------------------------------- | ------------------------------------ |
+| ![Geologická vrstva](shots/geology-layer.png) | ![Pod nohama](shots/geology-panel.png)   | ![Co tu je](shots/place-brief.png)   |
+| Barrandien nad Prahou, barvy přímo z dlaždice | Vysvětlení nad jednotkami, ne místo nich | Souhrn s podklady, ze kterých vznikl |
+
+## AI summaries (CML)
+
+`apps/api/src/services/cmlService.ts` is the only module that talks to a language model. Provider
+is `CML_PROVIDER`: `ollama` (Ollama Cloud, OpenAI-compatible) or `openai`. Three guarantees
+callers rely on:
+
+- **It never throws.** No key, a slow model, a retired model — all return `null`, and the caller
+  shows what it would have shown before generation existed.
+- **Identical prompts are answered from memory**, so a re-mounted tab costs nothing.
+- **Reasoning models are handled.** DeepSeek v4 and gpt-oss spend two to three thousand tokens
+  thinking before they answer, and put that in a separate `reasoning` field. A budget sized for
+  the visible answer comes back truncated or empty, so `max_tokens` defaults to 2000 and a reply
+  that hit the ceiling is discarded rather than cached.
+
+Ollama Cloud retires models on a few months' notice, and a retired one answers `410` on every
+call — which is how `deepseek-v3.1:671b` silently stopped working here. Ask what is live:
+
+```bash
+curl -H "Authorization: Bearer $OLLAMA_API_KEY" https://ollama.com/v1/models
+```
+
+Where generation appears today: the geology panel, the "Co tu je" brief in place detail, and the
+region summaries in Objevuj. Every one of them shows its sources next to the generated text, and
+every one still renders with the model switched off.
+
+## Park4Night
+
+Their API works, and the integration did not: the endpoint wraps its places in
+`{"lieux": [...]}` and the parser only accepted a bare array, so the layer had been returning
+zero features. Fixed — along with the place codes (`PN`, `PJ`, `DS`, `AR`, `ACC_*` were all
+falling into "other") and the cell size, which at zoom 8 asked once at the centre of a cell five
+times wider than the ~20 km the answer covers, then marked the whole cell fetched.
+
+The upstream response also says:
+
+> `"api_infos": "This data is not public, STOP your parsing Thank you"`
+
+[Park4Night GTCU article 5](https://plus.park4night.com/en/cgu) is preserved in the advisory source
+record as `PARK4NIGHT-GTCU-ARTICLE-5-PRIOR-AUTHORIZATION-REQUIRED`. Per ADR 0012 that record does
+not hide data or block the prototype. `PARK4NIGHT_ENABLED=1` is the sole runtime switch; the adapter
+still enforces pacing, bounded responses, timeouts, a seven-day cell cache and graceful failure.
+The **Karavany a kempy** layer remains an independent technical fallback using
+`tourism=caravan_site`, `tourism=camp_site`, `amenity=sanitary_dump_station`, drinking water,
+toilets, showers and parking from the ordinary OSM POI pipeline.
 
 ## Considered and rejected
 

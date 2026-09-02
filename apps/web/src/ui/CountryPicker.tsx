@@ -5,13 +5,9 @@ import {
   getCountrySearchIndex,
   normalizeSearchText
 } from "../lib/countries";
+import { countryFlagEmoji } from "../lib/countryFlags";
 import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
-
-function flagUrl(code: string) {
-  if (code === "ALL") return null;
-  return `https://flagcdn.com/w40/${code.toLowerCase()}.png`;
-}
 
 export function CountryPicker({ compact = false }: { compact?: boolean }) {
   const store = getMapStore();
@@ -36,7 +32,7 @@ export function CountryPicker({ compact = false }: { compact?: boolean }) {
   }, []);
 
   const label = getCountryNameCs(countryCode);
-  const flag = flagUrl(countryCode);
+  const flag = countryCode === "ALL" ? "🌍" : countryFlagEmoji(countryCode);
 
   return (
     <div
@@ -50,11 +46,9 @@ export function CountryPicker({ compact = false }: { compact?: boolean }) {
         onClick={() => setOpen((v) => !v)}
         aria-label="Vybrat zemi"
       >
-        {flag ? (
-          <img src={flag} alt="" className="country-flag" />
-        ) : (
-          <span className="country-flag-all">🌍</span>
-        )}
+        <span className={countryCode === "ALL" ? "country-flag-all" : "country-flag"} aria-hidden>
+          {flag}
+        </span>
         {!compact && <span className="country-label">{label}</span>}
         <span className="country-chevron">▾</span>
       </button>
@@ -79,11 +73,12 @@ export function CountryPicker({ compact = false }: { compact?: boolean }) {
                   setQuery("");
                 }}
               >
-                {c.code === "ALL" ? (
-                  <span className="country-flag-all">🌍</span>
-                ) : (
-                  <img src={flagUrl(c.code)!} alt="" className="country-flag" />
-                )}
+                <span
+                  className={c.code === "ALL" ? "country-flag-all" : "country-flag"}
+                  aria-hidden
+                >
+                  {c.code === "ALL" ? "🌍" : countryFlagEmoji(c.code)}
+                </span>
                 <span>{c.name}</span>
               </button>
             ))}

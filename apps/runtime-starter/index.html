@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>MapOS runtime starter</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">MapOS runtime starter</p>
+        <h1 id="layer-title">Portable data layers</h1>
+        <p id="layer-description">
+          A keyless, UI-independent application using the public MapOS contracts and map runtime.
+        </p>
+        <p id="runtime-status" role="status" aria-live="polite">Validating manifest…</p>
+      </header>
+      <section class="layout" aria-labelledby="layer-title">
+        <div class="map-surface">
+          <div id="map" role="img" aria-label="Map of clean-room fixture places"></div>
+          <p id="map-fallback" role="note" hidden>
+            Map rendering is not available on this device. All places remain available in the list.
+          </p>
+        </div>
+        <aside aria-label="Accessible map feature alternative">
+          <h2>Places from registered layers</h2>
+          <div id="layer-list"></div>
+          <button id="fit-features" type="button">Show every place</button>
+        </aside>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

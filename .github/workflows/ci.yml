@@ -21,8 +21,22 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run format:check
+      - name: Production and clean-room builds
+        run: npm run build
+      - name: Secret and built-artifact evidence
+        run: npm run test:secrets
+      - name: Keyless production Compose evidence
+        run: npm run test:compose:keyless
       - run: npm run typecheck
       - run: npm test
+      - name: Contract evidence
+        run: npm run test:contracts
+      - name: Migration evidence
+        run: npm run test:migrations
+      - name: Privacy evidence
+        run: npm run test:privacy
+      - name: Load evidence
+        run: npm run test:load
 
   e2e:
     runs-on: ubuntu-latest
@@ -34,13 +48,23 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Build shared packages for clean-checkout browser tests
+        run: npm run build -w @mapos/layer-sdk && npm run build -w @mapos/map-runtime
       # No secrets here on purpose: the e2e run boots the in-memory API, which is the same
       # keyless configuration a fresh clone gets. If a test needs an API key to pass, the
       # feature is missing its no-key fallback.
       - run: npm run test:e2e
+      - run: npm run test:e2e:offline
+      - run: npm run test:e2e:security
+      - run: npm run test:e2e:accessibility
+      - run: npm run test:e2e:visual
+      - run: npm run test:e2e:runtime
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            e2e/screenshots/baseline/
+          if-no-files-found: ignore
           retention-days: 7

@@ -1,10 +1,24 @@
-import type { FeatureCollection, Bbox, OsmPoiCategoryId } from "@mapos/layer-sdk";
+import type {
+  FeatureCollection,
+  Bbox,
+  OsmPoiCategoryId,
+  PlanDocumentV2,
+  TripPlan
+} from "@mapos/layer-sdk";
+import type {
+  StoredSavedPlace,
+  StoredSavedPlaceCollection
+} from "../services/savedPlaceService.js";
+import type { PlanDiscussionThread } from "../services/planDiscussionRepository.js";
+import type { PlanSharePermission } from "../services/planShareRepository.js";
 
 export interface MemoryUser {
   id: string;
   email: string;
   password: string;
   displayName: string;
+  isGuest: boolean;
+  xpTotal: number;
 }
 
 export interface MemoryUserLayer {
@@ -23,6 +37,9 @@ export interface MemoryPin {
   description?: string;
   lng: number;
   lat: number;
+  tags?: string[];
+  kind?: string;
+  properties?: Record<string, unknown>;
 }
 
 export interface MemoryZone {
@@ -32,6 +49,12 @@ export interface MemoryZone {
   lat: number;
   radiusM: number;
   description?: string;
+  category?: string;
+  lootTier?: string;
+  zoneKind?: "standard" | "event" | "staker_gate";
+  minStakeUsd?: number;
+  activeFrom?: Date;
+  activeUntil?: Date;
 }
 
 export interface MemoryQuest {
@@ -55,6 +78,41 @@ export const memoryDb = {
   caughtGhosts: new Set<string>(),
   resolvedEncounters: new Set<string>(),
   questCompletions: new Map<string, Set<string>>(),
+  collectedOrbs: new Map<string, Set<string>>(),
+  gameProfiles: new Map<string, Record<string, unknown>>(),
+  tripPlans: [] as Array<{ userId: string; plan: TripPlan }>,
+  planDocuments: [] as Array<{ userId: string; plan: PlanDocumentV2 }>,
+  planShareLinks: [] as Array<{
+    id: string;
+    ownerId: string;
+    planId: string;
+    tokenHash: string;
+    permission: PlanSharePermission;
+    createdAt: string;
+    revokedAt: string | null;
+  }>,
+  planDiscussionThreads: [] as Array<{ ownerId: string; thread: PlanDiscussionThread }>,
+  follows: [] as Array<{ userId: string; targetType: string; targetId: string }>,
+  reviews: [] as Array<{
+    id: string;
+    userId: string;
+    targetType: string;
+    targetId: string;
+    rating: number;
+    body: string | null;
+  }>,
+  comments: [] as Array<{
+    id: string;
+    userId: string;
+    targetType: string;
+    targetId: string;
+    body: string;
+    createdAt: string;
+  }>,
+  drafts: [] as Array<{ userId: string; payload: Record<string, unknown> & { id: string } }>,
+  savedPlaces: [] as StoredSavedPlace[],
+  savedPlaceCollections: [] as StoredSavedPlaceCollection[],
+  canonicalPlaceIds: new Set<string>(["00000000-0000-4000-8000-000000000001"]),
   overpassCache: new Map<string, FeatureCollection>()
 };
 
@@ -64,7 +122,9 @@ export function seedMemory() {
     id: "demo-user",
     email: "demo@mapos.test",
     password: "demo1234",
-    displayName: "MapOS Demo"
+    displayName: "MapOS Demo",
+    isGuest: false,
+    xpTotal: 0
   });
   memoryDb.userLayers.push({
     id: "layer-1",

@@ -1,0 +1,52 @@
+[
+  {
+    "id": "schema-major-v3",
+    "expectedCode": "UNSUPPORTED_SCHEMA_MAJOR",
+    "override": { "schemaVersion": "3.0.0" }
+  },
+  {
+    "id": "sdk-exact-v3",
+    "expectedCode": "UNSUPPORTED_SDK_RANGE",
+    "override": { "sdkRange": "v3" }
+  },
+  {
+    "id": "sdk-caret-v3",
+    "expectedCode": "UNSUPPORTED_SDK_RANGE",
+    "override": { "sdkRange": "^3" }
+  },
+  {
+    "id": "minimum-runtime-newer-than-host",
+    "expectedCode": "MINIMUM_RUNTIME_NOT_MET",
+    "override": { "minimumRuntime": "20.0.0" }
+  },
+  {
+    "id": "multiple-missing-host-capabilities",
+    "expectedCode": "MISSING_HOST_CAPABILITIES",
+    "override": { "requiresServerCapabilities": ["routing-pro", "weather-pro"] },
+    "host": { "availableCapabilities": ["public-data"] }
+  },
+  {
+    "id": "unknown-top-level-property",
+    "expectedCode": "SCHEMA_INVALID",
+    "override": { "executeInMainOrigin": true }
+  },
+  {
+    "id": "executable-declarative-source",
+    "expectedCode": "SCHEMA_INVALID",
+    "override": {
+      "source": {
+        "type": "declarative-http",
+        "endpoint": "https://data.example.test/points",
+        "method": "GET",
+        "requiresServerProxy": true,
+        "responseAdapter": "execute-partner-code",
+        "mapping": {
+          "idPath": "id",
+          "titlePath": "name",
+          "longitudePath": "lng",
+          "latitudePath": "lat"
+        }
+      }
+    }
+  }
+]

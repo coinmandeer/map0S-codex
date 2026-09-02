@@ -7,14 +7,6 @@ function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
 }
 
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-}
-
 export function OverviewPanel({ place }: InfoPanelProps) {
   const store = getMapStore();
   const view = useMapStoreSnapshot((s) => s.view);
@@ -43,44 +35,8 @@ export function OverviewPanel({ place }: InfoPanelProps) {
       {place.description && <p>{place.description}</p>}
 
       <dl className="info-facts">
-        {place.address && (
-          <>
-            <dt>Adresa</dt>
-            <dd>{place.address}</dd>
-          </>
-        )}
         <dt>Vzdálenost</dt>
         <dd>{formatDistance(distanceMeters(view, place))}</dd>
-        {place.openingHours && (
-          <>
-            <dt>Otevírací doba</dt>
-            <dd data-testid="fact-hours">{place.openingHours}</dd>
-          </>
-        )}
-        {place.phone && (
-          <>
-            <dt>Telefon</dt>
-            <dd>
-              <a href={`tel:${place.phone.replace(/\s+/g, "")}`}>{place.phone}</a>
-            </dd>
-          </>
-        )}
-        {place.website && (
-          <>
-            <dt>Web</dt>
-            <dd>
-              <a href={place.website} target="_blank" rel="noreferrer" data-testid="fact-website">
-                {hostOf(place.website)}
-              </a>
-            </dd>
-          </>
-        )}
-        {place.elevationM !== undefined && (
-          <>
-            <dt>Nadmořská výška</dt>
-            <dd>{Math.round(place.elevationM)} m n. m.</dd>
-          </>
-        )}
         <dt>GPS</dt>
         <dd className="info-gps">
           <span>{gps}</span>
@@ -89,17 +45,6 @@ export function OverviewPanel({ place }: InfoPanelProps) {
           </button>
         </dd>
       </dl>
-
-      {place.tags?.length ? (
-        <div className="tag-grid">
-          {place.tags.map((tag) => (
-            <span key={tag} className="tag">
-              {tag}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
       {/* Which sources vouch for this place. Shown rather than hidden: a place confirmed by
           three independent sources is a different thing from one scraped pin. */}
       <div className="info-provenance" data-testid="provenance">

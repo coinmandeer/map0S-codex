@@ -27,36 +27,54 @@ npm run test              # unit tests (node:test)
 npm run test:e2e          # Playwright, boots the in-memory API
 ```
 
-`npm run test` and `npm run test:e2e` must both pass before a pull request is reviewed. CI runs
-exactly these commands.
+`npm run test` and `npm run test:e2e` must both pass before a pull request is reviewed. CI also runs
+lint/format/type/build, contract, migration, privacy, load, offline, accessibility and clean-room
+runtime gates.
 
 ## Extension point 1: adding a map layer
 
-Layers are plugins. Create one file under `apps/web/src/layers/` that exports a `LayerPlugin`,
-then register it in `apps/web/src/layers/catalog.ts`.
+External/data-only layers should start with the public SDK scaffold in
+`docs/public-layer-sdk-v2.md`; they are installed through the validated package/import boundary and
+do not edit the mode UI. A reviewed first-party renderer lives under `apps/web/src/layers/` and
+registers itself with `registerLayer` or `registerLayerV2` from `layers/registry.ts`. Add its
+side-effect import to `layers/builtins.ts` (or to an existing plugin group such as
+`layers/plugins/tileLayers.ts`).
 
 For anything tile-shaped, the factory does the work and your file is pure configuration:
 
 ```ts
-import { createTileLayer } from "./factories/tileLayer";
-import type { LayerPlugin } from "@mapos/layer-sdk";
+import { registerLayer } from "../registry";
+import { createTileLayer } from "../tileLayer";
 
-export const cyclosmPlugin: LayerPlugin = {
-  manifest: { id: "cyclosm", name: "Cyklomapa", category: "outdoor", kind: "tiles" },
-  viewportCost: "cheap",
-  attribution: "© OpenStreetMap contributors, tiles CyclOSM",
-  create: async () =>
-    createTileLayer({
+registerLayer({
+  kind: "raster",
+  manifest: {
+    id: "cyclosm",
+    name: "Cyklomapa",
+    icon: "bike",
+    color: "#7c3aed",
+    description: "Cyklistické trasy",
+    category: "outdoor"
+  },
+  attribution: [
+    {
+      label: "CyclOSM / OpenStreetMap contributors",
+      url: "https://www.cyclosm.org/",
+      license: "ODbL-1.0"
+    }
+  ],
+  create: (context) =>
+    createTileLayer(context.map, context.layerId, {
       tiles: ["https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"],
-      maxzoom: 20
+      maxzoom: 20,
+      attribution: "© OpenStreetMap contributors, tiles CyclOSM"
     })
-};
+});
 ```
 
-`viewportCost` is the one field worth thinking about. Tiles are `cheap` and refresh on every map
-move. Anything that hits a rate-limited upstream (Overpass, and most third-party APIs) is
-`expensive` and only refetches when the user presses "Search here" — this is what keeps a panning
-user from firing sixty Overpass queries a minute.
+`viewportCost` belongs on query-backed plugins. Tiles use the default cheap lifecycle. Anything
+that hits a rate-limited upstream (Overpass and most third-party APIs) should be `expensive`, so it
+only refetches after a meaningful viewport action instead of firing continuously while panning.
 
 `attribution` is mandatory, and for ODbL, CC-BY-SA or CDLA sources it is a licence obligation
 rather than a courtesy. The engine aggregates every active layer's attribution into the map
@@ -64,30 +82,47 @@ control automatically.
 
 ## Extension point 2: adding a POI source
 
-POI sources are merged into one deduplicated set of places. Create an adapter under
-`apps/api/src/sources/` and register it:
+POI sources are merged into one deduplicated set of places. Create a `DataSource` under
+`apps/api/src/services/dataSources/` and add it to the appropriate exported source array
+(`natureSources`, `communitySources`, `mobilitySources`, `keyedSources` or `eventSources`):
 
 ```ts
-export const openTripMapAdapter: PlaceSourceAdapter = {
-  id: "opentripmap",
-  confidence: 0.6,
-  unavailableReason: () => (config.openTripMapKey ? null : "OPENTRIPMAP_API_KEY not set"),
-  async fetch({ bbox, signal }) {
-    /* ... return Place[] ... */
+import { fetchJson } from "../../utils/upstream.js";
+import { point, type DataSource } from "./types.js";
+
+export const partnerParks: DataSource = {
+  id: "partner-parks",
+  v2: {
+    providerId: "partner-parks",
+    attribution: "Example public parks dataset",
+    license: "CC0-1.0",
+    rights: "open",
+    confidence: 0.6
+  },
+  async load(bbox) {
+    const data = await fetchJson<{ features?: unknown[] }>("https://api.example.test/places", {
+      providerId: "partner-parks",
+      ttlMs: 15 * 60_000
+    });
+    return (data.features ?? []).flatMap((feature, index) =>
+      /* validate the provider record first */
+      feature ? [point(`partner-parks:${index}`, "Místo", bbox[0], bbox[1], "partner-parks")] : []
+    );
   }
 };
 ```
 
 Three rules that matter more than they look:
 
-- **Never throw.** A failing source must return `[]` and let the other sources answer. One dead
-  upstream should degrade the result, not blank the map.
-- **Return a `sourceRef`** on every place (`osm:12345`, `wikidata:Q42`). It is what deduplication
-  joins on and what the info engine deep-links with.
-- **Declare `unavailableReason()`** when the source needs a key, so it is skipped cleanly with a
-  visible explanation instead of failing at request time.
+- **Use the bounded shared upstream client.** Give it one stable lowercase `providerId`; raw fetch,
+  redirects and user-controlled hosts bypass SSRF, response-size and circuit-breaker controls.
+- **Return a stable source-prefixed id** on every place (`osm:12345`, `wikidata:Q42`). It is what
+  deduplication and deep links can preserve across refreshes.
+- **Fail closed on missing credentials.** Follow `dataSources/keyed.ts`: keep keys in server config,
+  expose a capability for the layer manifest and return an actionable `UpstreamError`. The wrapper
+  degrades only that source and preserves the rest of the result.
 
-`confidence` decides which source wins a field when two of them disagree about the same place.
+`v2.confidence` and source rights/provenance decide how records can be fused and redistributed.
 
 ## Extension point 3: adding an info panel
 
@@ -155,6 +190,34 @@ registerGuideSource({
 
 Sources are tried in order until one returns something, so a new adapter is a fallback rather
 than a replacement, and a fork can put a local tourist board ahead of Wikivoyage.
+
+## Extension point 6: adding a basemap
+
+Backgrounds are a catalogue entry, not code (`packages/layer-sdk/src/basemaps.ts`). A keyless
+source is the whole change:
+
+```ts
+{
+  id: "cuzk-ortofoto",
+  label: "ČÚZK Ortofoto",
+  group: "satellite",
+  hint: "Nejostřejší letecké snímky pro Česko",
+  kind: "raster",
+  tiles: ["https://ags.cuzk.cz/.../{z}/{y}/{x}"],
+  imagery: true,
+  attribution: [{ label: "© ČÚZK", url: "https://cuzk.cz/" }]
+}
+```
+
+`imagery: true` is what makes the label overlay and the "labels over imagery" toggle apply —
+without it an aerial photo shows up with no place names and no way to add them.
+
+If the upstream needs a key, add `proxy: { provider, mapset }` instead of `tiles`, register the
+provider in `apps/api/src/services/basemapService.ts`, and add its key to `config.tileKeys`. The
+capability flag that hides the background on a keyless deployment is derived from the key's name,
+so there is nothing to wire on the frontend. `docs/basemaps.md` is where the sign-up link and the
+free-tier terms go — including whether the provider asks for a credit card, which is the part
+people care about most.
 
 ## Code conventions
 

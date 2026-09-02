@@ -1,14 +1,30 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
+import { MapLibreDataLayerLifecycle } from "@mapos/map-runtime";
 import { MAP_STYLE_RASTER_FALLBACK, MAP_STYLE_RASTER_FALLBACK_DARK } from "./mapStyle";
-import type { DataProvider } from "@mapos/layer-sdk";
-import { applyMapStyle, MapyLogoControl, styleForProvider } from "./styleManager";
+import { usesMapyTiles } from "@mapos/layer-sdk";
+import { MapyLogoControl } from "./styleManager";
+import { overlayForBasemap, resolveBasemap, styleForBasemap } from "./basemapStyle";
+import { apply3dBuildings } from "./buildings3d";
 import { getMapStore, getMapBbox, type LayerMode } from "../store/mapStore";
 import { LayerEngine } from "../engine/LayerEngine";
 import { activeAttribution } from "../layers/attribution";
 import { API_BASE } from "../lib/api";
 import { emit, on, onAny } from "../lib/events";
 import { geolocation } from "../lib/geolocation";
+import { chooseMapClickTarget } from "./mapClickPriority";
+import { MAP_RUNTIME_V2_ENABLED } from "../lib/featureFlags";
+import { safeBrowserErrorFields } from "../lib/safeError";
+import { browserProviderHealth } from "../tasks/BrowserProviderHealth";
+import { directBrowserBasemapProviderId, isBasemapRuntimeError } from "./browserBasemapProvider";
+
+// The previous 18.2 zoom showed roughly one block and made a three-metre avatar feel enormous.
+// These views frame the kilometre orb sector: follow stays close enough to read the character,
+// while top view shows the board as a board.
+const GAME_FOLLOW_PITCH = 52;
+const GAME_FOLLOW_ZOOM = 17.2;
+const GAME_TOP_ZOOM = 15.8;
+const GAME_FOLLOW_UPDATE_MS = 100;
 
 export function MapCore() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -28,9 +44,39 @@ export function MapCore() {
     el.style.height = "100%";
     el.style.zIndex = "0";
 
+    const initialBasemap = resolveBasemap(store.basemapId, store.theme);
+    let activeBasemapProviderId = directBrowserBasemapProviderId(initialBasemap.id);
+    let pendingBasemapHealth = activeBasemapProviderId
+      ? { providerId: activeBasemapProviderId, startedAt: performance.now() }
+      : null;
+
+    const recordPendingBasemap = (outcome: "success" | "error" | "aborted") => {
+      const pending = pendingBasemapHealth;
+      if (!pending) return;
+      browserProviderHealth.record({
+        providerId: pending.providerId,
+        outcome,
+        durationMs: performance.now() - pending.startedAt
+      });
+      pendingBasemapHealth = null;
+    };
+
+    const beginBasemapHealth = (basemapId: string) => {
+      recordPendingBasemap("aborted");
+      activeBasemapProviderId = directBrowserBasemapProviderId(basemapId);
+      pendingBasemapHealth = activeBasemapProviderId
+        ? { providerId: activeBasemapProviderId, startedAt: performance.now() }
+        : null;
+    };
+
     const map = new maplibregl.Map({
       container: el,
-      style: styleForProvider(store.theme, store.dataProvider),
+      style: styleForBasemap(initialBasemap, {
+        theme: store.theme,
+        apiBase: API_BASE,
+        labels: store.basemapLabels,
+        capabilities: store.capabilities
+      }),
       center: [store.view.lng, store.view.lat],
       zoom: store.view.zoom,
       attributionControl: false,
@@ -42,17 +88,69 @@ export function MapCore() {
       touchPitch: false,
       fadeDuration: 0
     });
+    const dataLayerLifecycle = MAP_RUNTIME_V2_ENABLED ? new MapLibreDataLayerLifecycle(map) : null;
+    let pendingGameFollow: { lng: number; lat: number } | null = null;
+    let gameFollowTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastGameFollowAt = 0;
+    let pendingViewportRefresh = false;
+
+    const applyGameFollow = () => {
+      gameFollowTimer = null;
+      const target = pendingGameFollow;
+      pendingGameFollow = null;
+      if (!target || store.mode !== "game" || store.gameCameraMode !== "follow") return;
+      const center = map.getCenter();
+      if (Math.hypot(center.lng - target.lng, center.lat - target.lat) < 1e-8) return;
+      lastGameFollowAt = performance.now();
+      map.easeTo({
+        center: [target.lng, target.lat],
+        duration: 120,
+        essential: true
+      });
+      emit("map-bearing", { bearing: map.getBearing() });
+    };
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 
-    let fallbackApplied = false;
     map.on("error", (event) => {
-      console.warn("MapLibre error:", event.error?.message ?? event);
-      if (fallbackApplied) return;
-      fallbackApplied = true;
-      map.setStyle(
-        store.theme === "dark" ? MAP_STYLE_RASTER_FALLBACK_DARK : MAP_STYLE_RASTER_FALLBACK
+      console.warn("MapLibre error", safeBrowserErrorFields(event.error ?? event));
+      const sourceId = (event as maplibregl.ErrorEvent & { sourceId?: unknown }).sourceId;
+      const isBasemapError = isBasemapRuntimeError({
+        sourceId,
+        styleLoaded: map.isStyleLoaded() === true,
+        hasPendingBasemap: pendingBasemapHealth !== null
+      });
+      if (isBasemapError && activeBasemapProviderId) {
+        if (pendingBasemapHealth?.providerId === activeBasemapProviderId) {
+          recordPendingBasemap("error");
+        } else {
+          browserProviderHealth.record({
+            providerId: activeBasemapProviderId,
+            outcome: "error",
+            durationMs: 0
+          });
+        }
+      }
+      if (!isBasemapError) return;
+      const fallbackStyle =
+        store.theme === "dark" ? MAP_STYLE_RASTER_FALLBACK_DARK : MAP_STYLE_RASTER_FALLBACK;
+      // Once the emergency style owns the map, any error from its own provider must not recurse.
+      // Checking the actual drawn style is more robust than a sticky boolean: a later explicit
+      // basemap selection naturally becomes eligible for one fresh recovery attempt.
+      if (map.getStyle().name === fallbackStyle.name) return;
+      beginBasemapHealth(store.theme === "dark" ? "carto-dark" : "osm-carto");
+      store.showToast(
+        "Mapový podklad se nepodařilo načíst. Zobrazuji nouzovou mapu; tvoje vrstvy zůstaly zapnuté.",
+        8000
       );
+      map.setStyle(fallbackStyle);
+    });
+
+    map.on("idle", () => {
+      recordPendingBasemap("success");
+      if (!pendingViewportRefresh) return;
+      pendingViewportRefresh = false;
+      engineRef.current?.refresh(getMapBbox(map), false);
     });
 
     const resize = () => {
@@ -63,13 +161,29 @@ export function MapCore() {
     window.addEventListener("resize", resize);
     window.addEventListener("orientationchange", resize);
 
-    map.on("moveend", () => {
-      if (!map.isStyleLoaded()) return;
+    const emitDiscoverViewport = () => {
       const center = map.getCenter();
       const zoom = map.getZoom();
       if (!Number.isFinite(center.lng) || !Number.isFinite(center.lat) || zoom < 1) return;
+      emit("discover-viewport", { lng: center.lng, lat: center.lat, zoom, bbox: getMapBbox(map) });
+    };
+
+    map.on("moveend", () => {
+      const center = map.getCenter();
+      const zoom = map.getZoom();
+      if (!Number.isFinite(center.lng) || !Number.isFinite(center.lat) || zoom < 1) return;
+      // Camera state belongs to the shell, not to the basemap lifecycle. On a slow connection the
+      // style may still be loading when a user pans under the fixed map-picker pin; dropping that
+      // move strands the picker on stale coordinates. Only data refresh needs a ready style.
       store.setView({ lng: center.lng, lat: center.lat, zoom });
-      engineRef.current?.refresh(getMapBbox(map), false);
+      emit("map-view-changed", { lng: center.lng, lat: center.lat, zoom });
+      if (map.isStyleLoaded()) {
+        pendingViewportRefresh = false;
+        engineRef.current?.refresh(getMapBbox(map), false);
+      } else {
+        pendingViewportRefresh = true;
+      }
+      emitDiscoverViewport();
     });
 
     // Collected so teardown is one loop instead of a hand-maintained list of removeEventListener
@@ -78,11 +192,12 @@ export function MapCore() {
 
     offs.push(
       on("fly-to", (detail) => {
-        map.flyTo({
-          center: [detail.lng, detail.lat],
-          zoom: detail.zoom ?? 14,
-          essential: true
-        });
+        const camera = {
+          center: [detail.lng, detail.lat] as [number, number],
+          zoom: detail.zoom ?? 14
+        };
+        if (store.preferences.flyAnimations) map.flyTo({ ...camera, essential: true });
+        else map.jumpTo(camera);
       })
     );
 
@@ -95,11 +210,16 @@ export function MapCore() {
       const cameraMode = store.gameCameraMode;
       if (detail.mode === "game") {
         map.easeTo({
-          pitch: cameraMode === "follow" ? 60 : 0,
-          zoom: cameraMode === "follow" ? 18.2 : Math.max(map.getZoom(), 14),
+          pitch: cameraMode === "follow" ? GAME_FOLLOW_PITCH : 0,
+          zoom: cameraMode === "follow" ? GAME_FOLLOW_ZOOM : GAME_TOP_ZOOM,
           duration: 600
         });
       } else {
+        pendingGameFollow = null;
+        if (gameFollowTimer) {
+          clearTimeout(gameFollowTimer);
+          gameFollowTimer = null;
+        }
         map.easeTo({ pitch: 0, duration: 600 });
       }
     };
@@ -109,8 +229,8 @@ export function MapCore() {
       on("game-camera-changed", (detail) => {
         if (store.mode !== "game") return;
         map.easeTo({
-          pitch: detail.mode === "follow" ? 60 : 0,
-          zoom: detail.mode === "follow" ? 18.2 : Math.max(map.getZoom(), 14),
+          pitch: detail.mode === "follow" ? GAME_FOLLOW_PITCH : 0,
+          zoom: detail.mode === "follow" ? GAME_FOLLOW_ZOOM : GAME_TOP_ZOOM,
           duration: 500
         });
       })
@@ -119,12 +239,10 @@ export function MapCore() {
     offs.push(
       on("geolocation", (detail) => {
         if (store.mode !== "game" || store.gameCameraMode !== "follow") return;
-        map.easeTo({
-          center: [detail.lng, detail.lat],
-          duration: 200,
-          essential: true
-        });
-        emit("map-bearing", { bearing: map.getBearing() });
+        pendingGameFollow = detail;
+        const remaining = GAME_FOLLOW_UPDATE_MS - (performance.now() - lastGameFollowAt);
+        if (remaining <= 0) applyGameFollow();
+        else if (!gameFollowTimer) gameFollowTimer = setTimeout(applyGameFollow, remaining);
       })
     );
 
@@ -133,15 +251,22 @@ export function MapCore() {
     };
     offs.push(onAny(["country-changed", "tag-changed"], onCountryOrTag));
 
-    // The Mapy logo control is a licence condition, so its lifetime is bound to the provider
-    // rather than to the style: it goes on when Mapy tiles appear and off when they don't.
+    // The Mapy logo control is a licence condition, so its lifetime is bound to the tiles that
+    // are actually drawn — including the case where only the label overlay is theirs.
     const mapyLogo = new MapyLogoControl();
-    const syncProviderChrome = (provider: DataProvider) => {
-      const shouldShow = provider === "mapy";
+    const syncMapyChrome = (shouldShow: boolean) => {
       if (shouldShow && !map.hasControl(mapyLogo)) map.addControl(mapyLogo, "bottom-left");
       if (!shouldShow && map.hasControl(mapyLogo)) map.removeControl(mapyLogo);
     };
-    syncProviderChrome(store.dataProvider);
+    syncMapyChrome(
+      usesMapyTiles(
+        initialBasemap.id,
+        overlayForBasemap(initialBasemap, {
+          labels: store.basemapLabels,
+          capabilities: store.capabilities
+        })
+      )
+    );
 
     // Credits follow what is switched on: most of these licences ask to be named while the data
     // is on screen, not in general. The list is read from the plugins, so a layer added by a fork
@@ -177,16 +302,49 @@ export function MapCore() {
     syncAttribution();
     offs.push(store.subscribe(syncAttribution));
 
-    offs.push(
-      on("theme-changed", (detail) => {
-        applyMapStyle(map, detail.theme, store.dataProvider);
-      })
-    );
+    const applyBasemap = () => {
+      const basemap = resolveBasemap(store.basemapId, store.theme);
+      beginBasemapHealth(basemap.id);
+      syncMapyChrome(
+        usesMapyTiles(
+          basemap.id,
+          overlayForBasemap(basemap, {
+            labels: store.basemapLabels,
+            capabilities: store.capabilities
+          })
+        )
+      );
+      map.setStyle(
+        styleForBasemap(basemap, {
+          theme: store.theme,
+          apiBase: API_BASE,
+          labels: store.basemapLabels,
+          capabilities: store.capabilities
+        })
+      );
+      // A background with no building outlines leaves nothing standing up, and a tilted camera over
+      // a flat photo just distorts it. The setting itself is kept, so going back to a vector
+      // background restores the view the user chose.
+      if (!basemap.buildingSourceLayer && map.getPitch() > 0 && store.mode !== "game") {
+        map.easeTo({ pitch: 0, duration: 500 });
+      }
+    };
 
+    offs.push(on("theme-changed", applyBasemap));
+    offs.push(on("basemap-changed", applyBasemap));
     offs.push(
-      on("provider-changed", (detail) => {
-        syncProviderChrome(detail.provider);
-        applyMapStyle(map, store.theme, detail.provider);
+      on("buildings-3d-changed", (detail) => {
+        apply3dBuildings(map, detail.enabled);
+        // Extrusions are invisible from straight above, and the user cannot tilt by hand (drag
+        // rotation is off, so the map stays predictable). Switching them on therefore has to
+        // provide the viewpoint that makes them mean anything — and close enough to see it,
+        // since the layer only draws from z14. The game mode runs its own camera.
+        if (store.mode === "game") return;
+        map.easeTo({
+          pitch: detail.enabled ? 55 : 0,
+          zoom: detail.enabled ? Math.max(map.getZoom(), 15.5) : map.getZoom(),
+          duration: 700
+        });
       })
     );
 
@@ -216,10 +374,13 @@ export function MapCore() {
         return;
       }
 
-      if (store.mode === "discover" && map.getLayer("discover-fill")) {
-        const regionHits = map.queryRenderedFeatures(e.point, { layers: ["discover-fill"] });
-        if (regionHits[0]?.properties) {
-          emit("discover-click", regionHits[0].properties);
+      if (map.getLayer("route-preview-line")) {
+        const routeHit = map.queryRenderedFeatures(e.point, {
+          layers: ["route-preview-line"]
+        })[0];
+        const segmentId = routeHit?.properties?.segmentId;
+        if (typeof segmentId === "string") {
+          store.selectRouteSegment(segmentId);
           return;
         }
       }
@@ -230,11 +391,21 @@ export function MapCore() {
           .layers?.filter((l) => l.id.startsWith("pins-") && !l.id.includes("-cluster"))
           .map((l) => l.id) ?? [];
 
-      if (!pinLayers.length) return;
+      const pinHits = pinLayers.length
+        ? map.queryRenderedFeatures(e.point, { layers: pinLayers })
+        : [];
+      const weatherLayerId = "fill-weather-sectors";
+      const weatherHit = map.getLayer(weatherLayerId)
+        ? map.queryRenderedFeatures(e.point, { layers: [weatherLayerId] })[0]
+        : undefined;
+      const regionHits =
+        store.mode === "discover" && map.getLayer("discover-fill")
+          ? map.queryRenderedFeatures(e.point, { layers: ["discover-fill"] })
+          : [];
+      const target = chooseMapClickTarget(pinHits, regionHits);
 
-      const features = map.queryRenderedFeatures(e.point, { layers: pinLayers });
-      if (features.length > 0) {
-        const f = features[0]!;
+      if (target?.kind === "pin") {
+        const f = target.feature;
         const props = f.properties as Record<string, string>;
         const layerId = props.layerId ?? f.layer.id.replace("pins-", "").split("-")[0]!;
         engineRef.current?.handlePinClick(layerId, {
@@ -250,15 +421,56 @@ export function MapCore() {
             layerId
           }
         });
+        return;
+      }
+      if (weatherHit?.properties) {
+        const properties = weatherHit.properties as Record<string, unknown>;
+        const value = Number(properties.value);
+        if (Number.isFinite(value)) {
+          emit("weather-cell-selected", {
+            interaction: "tap",
+            variable: String(properties.variable ?? "weather"),
+            variableLabel: String(properties.variableLabel ?? "Počasí"),
+            value,
+            label: String(properties.label ?? `${value}`),
+            unit: String(properties.unit ?? ""),
+            validAt: String(properties.validAt ?? ""),
+            lng: e.lngLat.lng,
+            lat: e.lngLat.lat
+          });
+          return;
+        }
+      }
+      if (target?.kind === "region" && target.feature.properties) {
+        const properties = target.feature.properties as Record<string, unknown>;
+        emit("discover-click", {
+          ...properties,
+          lng: e.lngLat.lng,
+          lat: e.lngLat.lat
+        });
+        store.setSidebarOpen(true);
+        const name = typeof properties.name === "string" ? properties.name : null;
+        store.showToast(
+          properties.kind === "candidate"
+            ? name
+              ? `Přepínám na oblast: ${name}`
+              : "Přepínám na vybranou oblast"
+            : name
+              ? `Vybraná oblast: ${name}`
+              : "Vybraná oblast je otevřená"
+        );
       }
     });
 
     const initOverlays = () => {
       resize();
       if (!engineRef.current) {
-        engineRef.current = new LayerEngine(map, API_BASE, store);
+        engineRef.current = new LayerEngine(map, API_BASE, store, undefined, dataLayerLifecycle);
       }
       engineRef.current.refresh(getMapBbox(map), true);
+      // Extrusions live in the style, so they are gone after every background switch and have
+      // to be re-added here rather than only when the toggle is flipped.
+      apply3dBuildings(map, store.buildings3d);
 
       if (!map.getSource("route-preview")) {
         map.addSource("route-preview", {
@@ -266,14 +478,54 @@ export function MapCore() {
           data: { type: "FeatureCollection", features: [] }
         });
         map.addLayer({
+          id: "route-preview-casing",
+          type: "line",
+          source: "route-preview",
+          filter: ["==", ["get", "kind"], "route"],
+          paint: {
+            "line-color": "rgba(15, 23, 42, 0.78)",
+            "line-width": 8,
+            "line-opacity": 0.72
+          },
+          layout: { "line-cap": "round", "line-join": "round" }
+        });
+        map.addLayer({
           id: "route-preview-line",
           type: "line",
           source: "route-preview",
+          filter: ["==", ["get", "kind"], "route"],
           paint: {
-            "line-color": "#3b82f6",
-            "line-width": 4,
-            "line-opacity": 0.85
+            "line-color": ["case", ["boolean", ["get", "selected"], false], "#f97316", "#2563eb"],
+            "line-width": ["case", ["boolean", ["get", "selected"], false], 7, 5],
+            "line-opacity": 0.96
+          },
+          layout: { "line-cap": "round", "line-join": "round" }
+        });
+        map.addLayer({
+          id: "route-preview-stops",
+          type: "circle",
+          source: "route-preview",
+          filter: ["==", ["get", "kind"], "stop"],
+          paint: {
+            "circle-radius": 11,
+            "circle-color": "#ffffff",
+            "circle-stroke-color": "#1d4ed8",
+            "circle-stroke-width": 3
           }
+        });
+        map.addLayer({
+          id: "route-preview-stop-labels",
+          type: "symbol",
+          source: "route-preview",
+          filter: ["==", ["get", "kind"], "stop"],
+          layout: {
+            "text-field": ["to-string", ["get", "order"]],
+            "text-size": 11,
+            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+            "text-allow-overlap": true,
+            "text-ignore-placement": true
+          },
+          paint: { "text-color": "#1d4ed8" }
         });
       }
 
@@ -315,8 +567,8 @@ export function MapCore() {
           type: "fill",
           source: "discover-regions",
           paint: {
-            "fill-color": "#B7791F",
-            "fill-opacity": 0.14
+            "fill-color": ["case", ["==", ["get", "kind"], "selected"], "#B7791F", "#2563EB"],
+            "fill-opacity": ["case", ["==", ["get", "kind"], "selected"], 0.14, 0.07]
           }
         });
         map.addLayer({
@@ -324,9 +576,9 @@ export function MapCore() {
           type: "line",
           source: "discover-regions",
           paint: {
-            "line-color": "#B7791F",
-            "line-width": 2,
-            "line-opacity": 0.85
+            "line-color": ["case", ["==", ["get", "kind"], "selected"], "#B7791F", "#2563EB"],
+            "line-width": ["case", ["==", ["get", "kind"], "selected"], 2, 1.25],
+            "line-opacity": ["case", ["==", ["get", "kind"], "selected"], 0.85, 0.62]
           }
         });
       }
@@ -353,10 +605,11 @@ export function MapCore() {
 
     map.on("load", () => {
       initOverlays();
+      emitDiscoverViewport();
       if (store.mode === "game") {
         map.easeTo({
-          pitch: store.gameCameraMode === "follow" ? 60 : 0,
-          zoom: store.gameCameraMode === "follow" ? 18.2 : map.getZoom(),
+          pitch: store.gameCameraMode === "follow" ? GAME_FOLLOW_PITCH : 0,
+          zoom: store.gameCameraMode === "follow" ? GAME_FOLLOW_ZOOM : GAME_TOP_ZOOM,
           duration: 0
         });
       }
@@ -370,6 +623,7 @@ export function MapCore() {
     if (import.meta.env.DEV) window.__maposMap = map;
 
     return () => {
+      if (gameFollowTimer) clearTimeout(gameFollowTimer);
       window.removeEventListener("resize", resize);
       window.removeEventListener("orientationchange", resize);
       for (const off of offs) off();
@@ -377,11 +631,12 @@ export function MapCore() {
       geoWatchRef.current = null;
       engineRef.current?.destroy();
       engineRef.current = null;
+      dataLayerLifecycle?.destroy();
       map.remove();
       mapRef.current = null;
       if (import.meta.env.DEV) delete window.__maposMap;
     };
-  }, []);
+  }, [store]);
 
   useEffect(() => {
     const handler = () => {
@@ -394,30 +649,67 @@ export function MapCore() {
   }, [store.activeLayers]);
 
   useEffect(() => {
+    let lastFittedRoute: typeof store.routePreview = null;
     const updateRoute = () => {
       const map = mapRef.current;
       if (!map?.getSource("route-preview")) return;
       const route = store.routePreview;
       const src = map.getSource("route-preview") as maplibregl.GeoJSONSource;
-      if (!route?.coordinates.length) {
+      const stopCoordinates = route?.stops?.map((stop) => stop.coordinates) ?? [];
+      if (!route || (!route.coordinates.length && !stopCoordinates.length)) {
         src.setData({ type: "FeatureCollection", features: [] });
+        lastFittedRoute = null;
         return;
       }
+      const segmentFeatures = route.segments?.length
+        ? route.segments.map((segment) => ({
+            type: "Feature" as const,
+            geometry: { type: "LineString" as const, coordinates: segment.coordinates },
+            properties: {
+              kind: "route",
+              segmentId: segment.id,
+              order: segment.order,
+              selected: segment.id === store.selectedRouteSegmentId
+            }
+          }))
+        : route.coordinates.length >= 2
+          ? [
+              {
+                type: "Feature" as const,
+                geometry: { type: "LineString" as const, coordinates: route.coordinates },
+                properties: { kind: "route", selected: false }
+              }
+            ]
+          : [];
       src.setData({
         type: "FeatureCollection",
         features: [
-          {
-            type: "Feature",
-            geometry: { type: "LineString", coordinates: route.coordinates },
-            properties: {}
-          }
+          ...segmentFeatures,
+          ...(route.stops ?? []).map((stop) => ({
+            type: "Feature" as const,
+            geometry: { type: "Point" as const, coordinates: stop.coordinates },
+            properties: { kind: "stop", order: stop.order, name: stop.name }
+          }))
         ]
       });
-      const bounds = route.coordinates.reduce(
+      if (lastFittedRoute === route) return;
+      lastFittedRoute = route;
+      const fittedCoordinates = route.segments?.length
+        ? route.segments.flatMap((segment) => segment.coordinates)
+        : route.coordinates.length
+          ? route.coordinates
+          : stopCoordinates;
+      const bounds = fittedCoordinates.reduce(
         (b, coord) => b.extend(coord as [number, number]),
-        new maplibregl.LngLatBounds(route.coordinates[0]!, route.coordinates[0]!)
+        new maplibregl.LngLatBounds(fittedCoordinates[0]!, fittedCoordinates[0]!)
       );
-      map.fitBounds(bounds, { padding: 60, maxZoom: 15 });
+      const desktop = window.innerWidth >= 900;
+      map.fitBounds(bounds, {
+        padding: desktop
+          ? { top: 96, right: 76, bottom: 220, left: store.sidebarOpen ? 420 : 76 }
+          : { top: 88, right: 48, bottom: store.sidebarOpen ? 430 : 96, left: 48 },
+        maxZoom: 15
+      });
     };
     updateRoute();
     return store.subscribe(updateRoute);

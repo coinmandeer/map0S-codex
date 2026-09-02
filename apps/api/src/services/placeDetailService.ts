@@ -13,7 +13,7 @@ import type { Place, PlaceProvenance, PlaceSourceId } from "@mapos/layer-sdk";
 import { parseSourceRefs } from "@mapos/layer-sdk";
 import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { userPins } from "../db/schema.js";
+import { userLayers, userPins } from "../db/schema.js";
 import { fetchOsmElement } from "./layerService.js";
 import { enrichPlace } from "./placeEnrichmentService.js";
 import { adapterFor } from "./poiFusionService.js";
@@ -24,9 +24,13 @@ import { fetchJson } from "../utils/upstream.js";
  *  cannot place the record on the map has not resolved anything useful. */
 export type ResolvedPlace = Omit<Place, "id" | "sources">;
 
+export interface PlaceResolveContext {
+  viewerUserId: string | null;
+}
+
 export interface PlaceResolver {
   source: PlaceSourceId;
-  resolve(ref: string): Promise<ResolvedPlace | null>;
+  resolve(ref: string, context: PlaceResolveContext): Promise<ResolvedPlace | null>;
 }
 
 async function resolveOsm(ref: string): Promise<ResolvedPlace | null> {
@@ -66,7 +70,7 @@ async function resolveWikidata(qid: string): Promise<ResolvedPlace | null> {
     >;
   }>(
     `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=labels|claims&languages=cs|en|de&format=json&origin=*`,
-    { source: "wikidata", ttlMs: 24 * 3600_000 }
+    { providerId: "wikidata", ttlMs: 24 * 3600_000, minIntervalMs: 150, retries: 2 }
   );
 
   const entity = data.entities?.[qid];
@@ -84,9 +88,46 @@ async function resolveWikidata(qid: string): Promise<ResolvedPlace | null> {
   };
 }
 
-async function resolveUserPin(ref: string): Promise<ResolvedPlace | null> {
-  const [pin] = await db.select().from(userPins).where(eq(userPins.id, ref)).limit(1);
+interface UserPinAccessRecord {
+  name: string;
+  lng: number;
+  lat: number;
+  tags: string[] | null;
+  ownerUserId: string;
+  layerIsPublic: number;
+}
+
+type UserPinLoader = (ref: string) => Promise<UserPinAccessRecord | null>;
+
+async function loadUserPin(ref: string): Promise<UserPinAccessRecord | null> {
+  const [row] = await db
+    .select({
+      name: userPins.name,
+      lng: userPins.lng,
+      lat: userPins.lat,
+      tags: userPins.tags,
+      ownerUserId: userLayers.userId,
+      layerIsPublic: userLayers.isPublic
+    })
+    .from(userPins)
+    .innerJoin(userLayers, eq(userPins.layerId, userLayers.id))
+    .where(eq(userPins.id, ref))
+    .limit(1);
+  return row ?? null;
+}
+
+function canReadUserPin(pin: UserPinAccessRecord, viewerUserId: string | null): boolean {
+  return pin.layerIsPublic === 1 || (viewerUserId !== null && pin.ownerUserId === viewerUserId);
+}
+
+async function resolveUserPinForViewer(
+  ref: string,
+  viewerUserId: string | null,
+  load: UserPinLoader = loadUserPin
+): Promise<ResolvedPlace | null> {
+  const pin = await load(ref);
   if (!pin) return null;
+  if (!canReadUserPin(pin, viewerUserId)) return null;
   return {
     name: pin.name ?? "Pin",
     lng: pin.lng,
@@ -99,7 +140,10 @@ async function resolveUserPin(ref: string): Promise<ResolvedPlace | null> {
 export const PLACE_RESOLVERS: PlaceResolver[] = [
   { source: "osm", resolve: resolveOsm },
   { source: "wikidata", resolve: resolveWikidata },
-  { source: "user", resolve: resolveUserPin }
+  {
+    source: "user",
+    resolve: (ref, context) => resolveUserPinForViewer(ref, context.viewerUserId)
+  }
 ];
 
 const RESOLVER_BY_SOURCE = new Map(PLACE_RESOLVERS.map((r) => [r.source, r]));
@@ -139,6 +183,8 @@ function provenanceFor(refs: Array<{ source: PlaceSourceId; ref: string }>): Pla
 export interface PlaceDetailOptions {
   /** Substituted in tests so resolving a place never depends on Overpass being up. */
   resolvers?: PlaceResolver[];
+  /** Session identity used by resolvers whose records may be private. */
+  viewerUserId?: string | null;
 }
 
 /** Returns null only when nothing — neither a resolver nor the caller's hints — can say where
@@ -157,7 +203,7 @@ export async function getPlaceDetail(
     const resolver = bySource.get(source);
     if (!resolver) continue;
     try {
-      base = await resolver.resolve(ref);
+      base = await resolver.resolve(ref, { viewerUserId: options.viewerUserId ?? null });
     } catch {
       base = null;
     }
@@ -213,3 +259,5 @@ export async function getPlaceDetail(
 
   return place;
 }
+
+export const __testing = { canReadUserPin, resolveUserPinForViewer };

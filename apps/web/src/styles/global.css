@@ -8,4 +8,5 @@
 @import "./primitives.css";
 @import "./chrome.css";
 @import "./panels.css";
+@import "./error-boundary.css";
 @import "./game.css";

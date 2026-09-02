@@ -1,6 +1,11 @@
-import { registerLayer } from "../registry";
+import { registerLayer, registerLayerV2 } from "../registry";
 import { createDataLayer, type DataLayerSpec } from "../dataLayer";
-import type { FilterFacet, LayerAttribution, LayerCategory } from "@mapos/layer-sdk";
+import type {
+  FilterFacet,
+  LayerAttribution,
+  LayerCategory,
+  LayerManifestV2
+} from "@mapos/layer-sdk";
 
 /**
  * Keyless data layers.
@@ -43,45 +48,141 @@ function dataPlugin(args: {
   });
 }
 
-dataPlugin({
-  id: "earthquakes",
-  name: "Zemětřesení",
-  icon: "🌋",
-  description: "Otřesy z globální sítě USGS, velikost bodu podle magnitudy",
-  category: "environment",
+function dataPluginV2(args: {
+  manifest: LayerManifestV2;
+  spec: DataLayerSpec;
+  defaultFilters?: Record<string, unknown>;
+}) {
+  registerLayerV2({
+    manifest: args.manifest,
+    defaultFilters: args.defaultFilters,
+    create: (ctx) => createDataLayer(ctx.map, ctx.apiBaseUrl, ctx.layerId, args.spec)
+  });
+}
+
+dataPluginV2({
+  manifest: {
+    schema: "mapos.layer-manifest",
+    schemaVersion: "2.0.0",
+    sdkRange: "^2.0.0",
+    id: "earthquakes",
+    name: "Zemětřesení",
+    icon: "🌋",
+    color: "#ef4444",
+    description: "Otřesy z globální sítě USGS, velikost bodu podle magnitudy",
+    category: "environment",
+    modes: ["discover"],
+    geometryKinds: ["Point"],
+    renderer: {
+      type: "circles",
+      style: {
+        sizeProperty: "magnitude",
+        minValue: 1,
+        maxValue: 7,
+        minRadius: 3,
+        maxRadius: 26,
+        labelFromZoom: 7
+      }
+    },
+    source: {
+      type: "server-adapter",
+      adapterId: "usgs-earthquakes-v2",
+      endpoint: "/api/v2/layers/earthquakes/features",
+      method: "GET",
+      requiresServerProxy: true
+    },
+    queryPolicy: {
+      strategy: "viewport",
+      maxResultsPerViewport: 100,
+      debounceMs: 250,
+      minZoom: 0,
+      maxZoom: 24,
+      searchHere: "after-pan",
+      ranking: "time",
+      cacheTtlSeconds: 600,
+      staleWhileRevalidateSeconds: 600,
+      cursorPagination: false
+    },
+    filters: [
+      { id: "days", label: "Období", kind: "range", min: 1, max: 365, default: 30 },
+      {
+        id: "minMagnitude",
+        label: "Min. magnituda",
+        kind: "range",
+        min: 0,
+        max: 6,
+        default: 1
+      }
+    ],
+    detail: {
+      tabs: [{ id: "overview", label: "Přehled", source: "canonical" }],
+      fieldOrder: ["magnitude", "depthKm", "occurredAt", "urls"],
+      aiEnrichment: "disabled"
+    },
+    actions: [{ id: "source", label: "Otevřít zdroj", kind: "open-url" }],
+    attribution: [
+      {
+        label: "USGS Earthquake Hazards Program",
+        url: "https://earthquake.usgs.gov/",
+        license: "public domain",
+        requiredOnMap: true,
+        requiredOnExport: true
+      }
+    ],
+    capabilities: ["query", "filter", "detail", "temporal", "export"],
+    temporal: { enabled: true, cursorKinds: ["range"], timelinePriority: 10 },
+    legend: {
+      type: "numeric",
+      title: "Magnituda zemětřesení",
+      unit: "M",
+      min: 1,
+      max: 7,
+      stops: [
+        { value: 1, label: "1", color: "#fecaca" },
+        { value: 3, label: "3", color: "#f87171" },
+        { value: 5, label: "5", color: "#dc2626" },
+        { value: 7, label: "7", color: "#7f1d1d" }
+      ]
+    },
+    permissions: {
+      defaultVisibility: "public",
+      canCreate: false,
+      canEdit: false,
+      canComment: false,
+      canExport: true,
+      requiresAuth: false
+    },
+    ai: {
+      discoverable: true,
+      searchableFields: ["title", "magnitude"],
+      permissionProjection: "public-features"
+    },
+    commerce: { access: "free", previewPolicy: "none", tipsEnabled: false },
+    importExport: {
+      importFormats: [],
+      exportFormats: ["geojson", "json"],
+      includeProviderFields: false
+    },
+    health: {
+      checkEndpoint: "/api/health",
+      expectedLatencyMs: 1200,
+      failureMode: "empty-with-notice"
+    },
+    compatibility: {
+      legacyLayerId: "earthquakes",
+      legacyAdapter: "layerV2ToV1",
+      migrationNotes: "The current circles renderer remains active during the v2 rollout."
+    }
+  },
   spec: {
     color: "#ef4444",
+    contractVersion: 2,
     // Magnitude is logarithmic, so the radius range is wide on purpose: an M6 has to look
     // unmistakably different from the M2s around it.
     sizeBy: { property: "magnitude", min: 1, max: 7, minRadius: 3, maxRadius: 26 },
     labelFromZoom: 7
   },
-  filters: [
-    {
-      id: "days",
-      label: "Období",
-      kind: "range",
-      min: 1,
-      max: 365,
-      default: 30
-    },
-    {
-      id: "minMagnitude",
-      label: "Min. magnituda",
-      kind: "range",
-      min: 0,
-      max: 6,
-      default: 1
-    }
-  ],
-  defaultFilters: { days: 30, minMagnitude: 1 },
-  attribution: [
-    {
-      label: "USGS Earthquake Hazards Program",
-      url: "https://earthquake.usgs.gov/",
-      license: "public domain"
-    }
-  ]
+  defaultFilters: { days: 30, minMagnitude: 1 }
 });
 
 dataPlugin({
@@ -162,7 +263,13 @@ dataPlugin({
     { id: "accessible", label: "Bezbariérové", kind: "toggle" },
     { id: "unisex", label: "Genderově neutrální", kind: "toggle" }
   ],
-  attribution: [{ label: "Refuge Restrooms", url: "https://www.refugerestrooms.org/" }]
+  attribution: [
+    {
+      label: "Refuge Restrooms",
+      url: "https://www.refugerestrooms.org/",
+      license: "Refuge Restrooms open-data terms"
+    }
+  ]
 });
 
 // --- Layers that need a free API key. Hidden unless the server reports the capability. ---
@@ -234,21 +341,165 @@ dataPlugin({
   spec: { color: "#ca8a04", labelFromZoom: 13 },
   filters: [{ id: "days", label: "Posledních dní", kind: "range", min: 1, max: 30, default: 7 }],
   defaultFilters: { days: 7 },
-  attribution: [{ label: "eBird / Cornell Lab", url: "https://ebird.org/" }]
+  attribution: [
+    { label: "eBird / Cornell Lab", url: "https://ebird.org/", license: "eBird API Terms" }
+  ]
 });
 
-dataPlugin({
-  id: "events",
-  name: "Události",
-  icon: "🎫",
-  description: "Koncerty, divadlo a sport ve zvoleném období (Ticketmaster)",
-  category: "community",
-  requiresCapability: "ticketmaster",
-  spec: { color: "#e11d48", labelFromZoom: 12 },
-  // The from/to filters are written by the timeline above the map rather than by a menu, so
-  // they are declared without facets: the layer reads them, nothing else offers to set them.
-  defaultFilters: { from: null, to: null },
-  attribution: [{ label: "Ticketmaster Discovery", url: "https://developer.ticketmaster.com/" }]
+dataPluginV2({
+  manifest: {
+    schema: "mapos.layer-manifest",
+    schemaVersion: "2.0.0",
+    sdkRange: "^2.0.0",
+    id: "events",
+    name: "Události",
+    icon: "🎫",
+    color: "#e11d48",
+    description: "Časové události s kanonickým detailem a zachovanými zdroji",
+    category: "events",
+    modes: ["discover"],
+    geometryKinds: ["Point"],
+    renderer: {
+      type: "circles",
+      style: { colorProperty: "status", labelFromZoom: 12 }
+    },
+    source: {
+      type: "server-adapter",
+      adapterId: "canonical-events-v2",
+      endpoint: "/v2/layers/events/features",
+      method: "GET",
+      requiresServerProxy: true
+    },
+    queryPolicy: {
+      strategy: "viewport",
+      maxResultsPerViewport: 100,
+      debounceMs: 250,
+      minZoom: 0,
+      maxZoom: 24,
+      searchHere: "after-pan",
+      ranking: "time",
+      cacheTtlSeconds: 60,
+      staleWhileRevalidateSeconds: 300,
+      cursorPagination: true
+    },
+    filters: [
+      { id: "category", label: "Kategorie", kind: "single-select", providerField: "categories" },
+      {
+        id: "status",
+        label: "Stav",
+        kind: "single-select",
+        providerField: "status",
+        options: [
+          { id: "scheduled", label: "Naplánováno" },
+          { id: "rescheduled", label: "Přesunuto" },
+          { id: "postponed", label: "Odloženo" },
+          { id: "cancelled", label: "Zrušeno" },
+          { id: "completed", label: "Proběhlo" }
+        ]
+      },
+      { id: "free", label: "Zdarma", kind: "toggle", providerField: "price.free" },
+      { id: "venue", label: "Místo", kind: "text", providerField: "venue.name" },
+      { id: "source", label: "Zdroj", kind: "single-select", providerField: "sources.providerId" },
+      { id: "eventRange", label: "Období", kind: "date-range" }
+    ],
+    detail: {
+      tabs: [
+        { id: "overview", label: "Přehled", source: "canonical" },
+        { id: "tickets", label: "Vstupenky", source: "provider", providerId: "ticketmaster" }
+      ],
+      fieldOrder: [
+        "status",
+        "schedule.startsAt",
+        "schedule.endsAt",
+        "schedule.timezone",
+        "venue",
+        "performers",
+        "organizer",
+        "price",
+        "ticketOffers",
+        "sources"
+      ],
+      aiEnrichment: "disabled"
+    },
+    actions: [
+      { id: "save", label: "Uložit", kind: "save" },
+      { id: "share", label: "Sdílet", kind: "share" },
+      { id: "add-to-plan", label: "Přidat do plánu", kind: "custom" },
+      { id: "provider", label: "Otevřít poskytovatele", kind: "open-url" }
+    ],
+    attribution: [
+      {
+        label: "Ticketmaster Discovery",
+        url: "https://developer.ticketmaster.com/",
+        license: "Ticketmaster Developer Agreement",
+        requiredOnMap: true,
+        requiredOnExport: true
+      }
+    ],
+    capabilities: ["query", "filter", "detail", "temporal", "export", "routing"],
+    temporal: {
+      enabled: true,
+      cursorKinds: ["range"],
+      defaultRangeHours: 168,
+      timelinePriority: 40
+    },
+    legend: {
+      type: "categorical",
+      title: "Stav události",
+      items: [
+        { value: "scheduled", label: "Naplánováno", color: "#e11d48" },
+        { value: "rescheduled", label: "Přesunuto", color: "#7c3aed" },
+        { value: "postponed", label: "Odloženo", color: "#d97706" },
+        { value: "cancelled", label: "Zrušeno", color: "#57534e" },
+        { value: "completed", label: "Proběhlo", color: "#64748b" }
+      ]
+    },
+    permissions: {
+      defaultVisibility: "public",
+      canCreate: false,
+      canEdit: false,
+      canComment: false,
+      canExport: true,
+      requiresAuth: false
+    },
+    ai: {
+      discoverable: true,
+      searchableFields: ["title", "venue.name", "performers.name", "organizer.name"],
+      permissionProjection: "public-features"
+    },
+    commerce: { access: "free", previewPolicy: "none", tipsEnabled: false },
+    importExport: {
+      importFormats: [],
+      exportFormats: ["geojson", "json"],
+      includeProviderFields: true
+    },
+    health: {
+      checkEndpoint: "/health",
+      expectedLatencyMs: 1_500,
+      failureMode: "stale-cache"
+    },
+    compatibility: {
+      legacyLayerId: "events",
+      legacyAdapter: "layerV2ToV1",
+      migrationNotes: "The old events layer id and URL state remain compatible."
+    }
+  },
+  spec: {
+    color: "#e11d48",
+    contractVersion: 2,
+    labelFromZoom: 12,
+    colorBy: {
+      property: "status",
+      values: {
+        scheduled: "#e11d48",
+        rescheduled: "#7c3aed",
+        postponed: "#d97706",
+        cancelled: "#57534e",
+        completed: "#64748b",
+        unknown: "#78716c"
+      }
+    }
+  }
 });
 
 dataPlugin({
@@ -261,5 +512,11 @@ dataPlugin({
   // visit to a city can come back empty until the right operator has been seen once.
   experimental: true,
   spec: { color: "#22c55e", labelFromZoom: 14 },
-  attribution: [{ label: "GBFS operátoři", url: "https://github.com/MobilityData/gbfs" }]
+  attribution: [
+    {
+      label: "GBFS operátoři",
+      url: "https://github.com/MobilityData/gbfs",
+      license: "GBFS feed-specific operator terms"
+    }
+  ]
 });

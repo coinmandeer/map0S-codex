@@ -1,5 +1,5 @@
 import type { LayerAttribution } from "@mapos/layer-sdk";
-import { PLACE_SOURCES } from "@mapos/layer-sdk";
+import { BASEMAPS, LABEL_OVERLAYS, RELEASED_PLACE_SOURCES } from "@mapos/layer-sdk";
 import { allLayerPlugins, getLayerPlugin } from "./registry";
 
 /**
@@ -10,18 +10,6 @@ import { allLayerPlugins, getLayerPlugin } from "./registry";
  * the credit line is computed from what is actually switched on — which is also what most of
  * these licences require: credit when the data is shown, not in general.
  */
-
-/** Basemap credits. The map control picks these up from the style's own `attribution` fields, so
- *  they are repeated here only for the About list, which is read with the map switched off. */
-const BASE_ATTRIBUTION: LayerAttribution[] = [
-  {
-    label: "© OpenStreetMap přispěvatelé",
-    url: "https://www.openstreetmap.org/copyright",
-    license: "ODbL-1.0"
-  },
-  { label: "© CARTO", url: "https://carto.com/attributions" },
-  { label: "© Seznam.cz a.s.", url: "https://mapy.com/", license: "Mapy.com API ToS" }
-];
 
 function dedupe(entries: LayerAttribution[]): LayerAttribution[] {
   const byLabel = new Map<string, LayerAttribution>();
@@ -42,7 +30,7 @@ export function activeAttribution(
     state.visible ? (getLayerPlugin(layerId)?.attribution ?? []) : []
   );
 
-  const fromSources = PLACE_SOURCES.flatMap((source) =>
+  const fromSources = RELEASED_PLACE_SOURCES.flatMap((source) =>
     poiSources[source.id] && source.attribution
       ? [{ label: source.attribution, url: source.url, license: source.license }]
       : []
@@ -59,10 +47,16 @@ export interface AttributionEntry extends LayerAttribution {
 
 /** Every source the build can call, whether or not it is on — the About section's list. */
 export function allAttribution(): AttributionEntry[] {
-  const entries: AttributionEntry[] = BASE_ATTRIBUTION.map((a) => ({
-    ...a,
-    usedBy: "Podkladová mapa"
-  }));
+  // Backgrounds come from the catalogue rather than from a hand-kept list, so a basemap added
+  // to the SDK shows up here without anybody remembering to credit it.
+  const entries: AttributionEntry[] = BASEMAPS.flatMap((basemap) =>
+    basemap.attribution.map((a) => ({ ...a, usedBy: `Podklad: ${basemap.label}` }))
+  );
+  for (const overlay of LABEL_OVERLAYS) {
+    for (const attribution of overlay.attribution) {
+      entries.push({ ...attribution, usedBy: `Popisky: ${overlay.label}` });
+    }
+  }
 
   for (const plugin of allLayerPlugins()) {
     for (const attribution of plugin.attribution ?? []) {
@@ -70,7 +64,7 @@ export function allAttribution(): AttributionEntry[] {
     }
   }
 
-  for (const source of PLACE_SOURCES) {
+  for (const source of RELEASED_PLACE_SOURCES) {
     if (source.attribution) {
       entries.push({
         label: source.attribution,

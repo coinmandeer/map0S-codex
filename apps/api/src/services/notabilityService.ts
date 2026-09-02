@@ -48,10 +48,7 @@ const SITELINK_BATCH = 50;
 /** Two matches of the same place from different sources are within this distance of each other. */
 const SAME_PLACE_M = 200;
 
-function distanceM(
-  a: { lng: number; lat: number },
-  b: { lng: number; lat: number }
-): number {
+function distanceM(a: { lng: number; lat: number }, b: { lng: number; lat: number }): number {
   const dLat = (b.lat - a.lat) * 110_574;
   const dLng = (b.lng - a.lng) * 111_320 * Math.cos((a.lat * Math.PI) / 180);
   return Math.hypot(dLat, dLng);
@@ -85,7 +82,7 @@ async function wikipediaNearby(bbox: Bbox, lang: string): Promise<GeoSearchHit[]
   const data = await fetchJson<{ query?: { geosearch?: GeoSearchHit[] } }>(
     `https://${lang}.wikipedia.org/w/api.php?action=query&list=geosearch&format=json&formatversion=2` +
       `&gscoord=${lat}|${lng}&gsradius=${Math.round(radiusM)}&gslimit=50`,
-    { source: "Wikipedia", ttlMs: 60 * 60_000 }
+    { providerId: "wikipedia", ttlMs: 60 * 60_000 }
   );
   return data.query?.geosearch ?? [];
 }
@@ -103,7 +100,12 @@ async function sitelinkCounts(qids: string[], lang: string): Promise<Map<string,
       const data = await fetchJson<{ entities?: Record<string, EntitySitelinks> }>(
         `https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&formatversion=2` +
           `&props=sitelinks&ids=${batch.join("|")}&languages=${lang}`,
-        { source: "Wikidata", ttlMs: 24 * 60 * 60_000 }
+        {
+          providerId: "wikidata",
+          ttlMs: 24 * 60 * 60_000,
+          minIntervalMs: 150,
+          retries: 2
+        }
       );
       for (const [qid, entity] of Object.entries(data.entities ?? {})) {
         counts.set(qid, Object.keys(entity.sitelinks ?? {}).length);
@@ -128,7 +130,7 @@ async function monthlyPageviews(title: string, lang: string): Promise<number | u
     const data = await fetchJson<{ items?: Array<{ views?: number }> }>(
       `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/${lang}.wikipedia/all-access/user/` +
         `${encodeURIComponent(title.replace(/ /g, "_"))}/daily/${start}/${end}`,
-      { source: "Wikipedia Pageviews", ttlMs: 24 * 60 * 60_000 }
+      { providerId: "wikipedia-pageviews", ttlMs: 24 * 60 * 60_000 }
     );
     return (data.items ?? []).reduce((sum, item) => sum + (item.views ?? 0), 0);
   } catch {
@@ -150,10 +152,12 @@ async function openTripMapRates(bbox: Bbox): Promise<OtmFeature[]> {
   if (!key) return [];
   const [west, south, east, north] = bbox;
   try {
-    const data = await fetchJson<{ features?: Array<{ properties?: OtmFeature; geometry?: { coordinates?: [number, number] } }> }>(
+    const data = await fetchJson<{
+      features?: Array<{ properties?: OtmFeature; geometry?: { coordinates?: [number, number] } }>;
+    }>(
       `https://api.opentripmap.com/0.1/en/places/bbox?lon_min=${west}&lon_max=${east}` +
         `&lat_min=${south}&lat_max=${north}&rate=2&format=geojson&limit=200&apikey=${encodeURIComponent(key)}`,
-      { source: "OpenTripMap", ttlMs: 6 * 60 * 60_000 }
+      { providerId: "opentripmap", ttlMs: 6 * 60 * 60_000 }
     );
     return (data.features ?? []).flatMap((f) => {
       const coords = f.geometry?.coordinates;

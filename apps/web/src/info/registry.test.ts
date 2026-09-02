@@ -107,6 +107,12 @@ test("the built-in panels cover a bare place and grow with what it knows", async
   assert.ok(rich.includes("foursquare"));
   assert.ok(rich.indexOf("odkazy") === rich.length - 1, "external links sort last");
 
+  const byId = new Map(allInfoPanels().map((item) => [item.id, item]));
+  assert.equal(byId.get("prehled")?.surface, "overview");
+  assert.equal(byId.get("prakticke")?.surface, "practical");
+  assert.equal(byId.get("foursquare")?.surface, "social");
+  assert.equal(byId.get("foursquare")?.contentOwner, "provider");
+
   for (const p of allInfoPanels()) {
     assert.ok(p.attribution, `panel ${p.id} must credit its source`);
   }

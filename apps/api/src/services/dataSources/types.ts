@@ -1,4 +1,19 @@
-import type { Bbox, FeatureCollection, GeoFeature } from "@mapos/layer-sdk";
+import type {
+  Bbox,
+  FeatureCollection,
+  GeoFeature,
+  MapOSFeatureKind,
+  SourceRights
+} from "@mapos/layer-sdk";
+
+export interface DataSourceV2Descriptor {
+  providerId: string;
+  attribution: string;
+  license?: string | null;
+  rights: SourceRights;
+  confidence?: number;
+  kind?: MapOSFeatureKind;
+}
 
 /**
  * A bbox-in, points-out data source.
@@ -9,6 +24,8 @@ import type { Bbox, FeatureCollection, GeoFeature } from "@mapos/layer-sdk";
  */
 export interface DataSource {
   id: string;
+  /** Present only after this source has a reviewed v2 mapping and contract fixture. */
+  v2?: DataSourceV2Descriptor;
   /** Rejects viewports the upstream cannot serve — Commons caps its radius at 10 km, and
    *  asking for a continent just wastes a request. Returning a string explains it to the user
    *  instead of showing an empty layer. */

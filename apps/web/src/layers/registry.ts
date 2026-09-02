@@ -3,10 +3,13 @@ import type {
   FilterValues,
   LayerCatalogEntry,
   LayerHandle,
+  LayerManifestV2,
   LayerMode,
   LayerPlugin,
   ServerCapabilities
 } from "@mapos/layer-sdk";
+import { assertLayerManifestV2, layerV1ToV2, layerV2ToV1 } from "@mapos/layer-sdk";
+import { LayerRuntimeRegistry } from "@mapos/map-runtime";
 
 /**
  * The web-side plugin shape.
@@ -20,36 +23,73 @@ export interface MapLayerPlugin extends LayerPlugin<maplibregl.Map> {
   infoPanelIds?: string[];
 }
 
-const plugins = new Map<string, MapLayerPlugin>();
+/** V2 owns discovery/query metadata while the existing lifecycle keeps rendering unchanged. */
+export interface MapLayerPluginV2 extends Omit<
+  MapLayerPlugin,
+  "manifest" | "filters" | "attribution" | "kind"
+> {
+  manifest: LayerManifestV2;
+  /** The V1 shell still asks for one primary layer per mode. This bridge is removed once the
+   *  shell consumes the V2 experience manifest directly. */
+  primaryForModes?: LayerMode[];
+}
+
+const runtimeRegistry = new LayerRuntimeRegistry<MapLayerPlugin>();
+
+function storePlugin(plugin: MapLayerPlugin, manifestV2: LayerManifestV2): void {
+  runtimeRegistry.register({ manifest: manifestV2, value: plugin });
+}
 
 /** Registration is a plain function rather than a static array so a plugin can live next to the
  *  code it renders, and a fork can add one without editing a central list. */
 export function registerLayer(plugin: MapLayerPlugin): void {
-  if (plugins.has(plugin.manifest.id)) {
-    throw new Error(
-      `Layer "${plugin.manifest.id}" is already registered. Layer ids must be unique — ` +
-        `they key the map sources, the URL state and the feature cache.`
-    );
-  }
-  plugins.set(plugin.manifest.id, plugin);
+  storePlugin(
+    plugin,
+    layerV1ToV2(plugin.manifest, {
+      kind: plugin.kind,
+      filters: plugin.filters,
+      attribution: plugin.attribution,
+      viewportCost: plugin.viewportCost
+    })
+  );
+}
+
+/** Registers a canonical v2 manifest and adapts it into the current visual host. */
+export function registerLayerV2(plugin: MapLayerPluginV2): void {
+  assertLayerManifestV2(plugin.manifest);
+  const legacy = layerV2ToV1(plugin.manifest);
+  const { primaryForModes, ...runtime } = plugin;
+  storePlugin(
+    {
+      ...runtime,
+      kind: legacy.kind,
+      manifest: {
+        ...legacy.manifest,
+        ...(primaryForModes?.length ? { primaryForModes } : {})
+      },
+      filters: legacy.filters,
+      attribution: legacy.attribution
+    },
+    plugin.manifest
+  );
 }
 
 export function getLayerPlugin(id: string): MapLayerPlugin | undefined {
-  return plugins.get(id);
+  return runtimeRegistry.get(id)?.value;
 }
 
 export function allLayerPlugins(): MapLayerPlugin[] {
-  return [...plugins.values()];
+  return runtimeRegistry.all().map(({ value }) => value);
+}
+
+export function getLayerManifestV2(id: string): LayerManifestV2 | undefined {
+  return runtimeRegistry.get(id)?.manifest;
 }
 
 /** Layers the server can actually serve. A layer gated behind a key the deployment doesn't hold
  *  is hidden rather than shown broken. */
 export function availableLayerPlugins(caps: ServerCapabilities | null): MapLayerPlugin[] {
-  return allLayerPlugins().filter((p) => {
-    const need = p.manifest.requiresCapability;
-    if (!need) return true;
-    return Boolean(caps?.[need as keyof ServerCapabilities]);
-  });
+  return runtimeRegistry.available({ server: caps ?? {} }).map(({ value }) => value);
 }
 
 export function layerCatalog(caps: ServerCapabilities | null = null): LayerCatalogEntry[] {
@@ -90,7 +130,7 @@ export function initialLayerState(layerId: string): {
   opacity: number;
   filters: FilterValues;
 } {
-  const plugin = plugins.get(layerId);
+  const plugin = runtimeRegistry.get(layerId)?.value;
   return {
     visible: true,
     opacity: plugin?.defaultOpacity ?? 1,
@@ -113,5 +153,5 @@ export function createLayerHandle(
 
 /** Test seam: the registry is module-level state, so specs need a way back to empty. */
 export function resetLayerRegistry(): void {
-  plugins.clear();
+  runtimeRegistry.clear();
 }

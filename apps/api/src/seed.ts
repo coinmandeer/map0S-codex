@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { initDb, db } from "./db/index.js";
 import { users, userLayers, userPins, gameZones, gameQuests } from "./db/schema.js";
+import { safeErrorLogFields } from "./utils/clientError.js";
 
 async function seed() {
   await initDb();
@@ -168,6 +169,6 @@ async function seed() {
 }
 
 seed().catch((err) => {
-  console.error(err);
+  console.error("MapOS seed failed", safeErrorLogFields(err));
   process.exit(1);
 });

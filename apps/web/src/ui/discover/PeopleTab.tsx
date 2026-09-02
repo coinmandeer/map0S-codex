@@ -15,6 +15,7 @@ interface DiscoverPost {
   authorName: string | null;
   layerName: string;
   layerColor: string;
+  reason?: string;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -35,20 +36,23 @@ export function PeopleTab({
   const store = getMapStore();
   const [posts, setPosts] = useState<DiscoverPost[]>([]);
   const [loading, setLoading] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   useEffect(() => {
     const bbox = countryCode === "ALL" ? undefined : countryBbox(countryCode);
-    const params = new URLSearchParams({ country: countryCode });
+    const params = new URLSearchParams({ country: countryCode, limit: "20" });
     if (activeTag) params.set("tag", activeTag);
     if (bbox) {
-      params.set("west", String(bbox[0]));
-      params.set("south", String(bbox[1]));
-      params.set("east", String(bbox[2]));
-      params.set("north", String(bbox[3]));
+      params.set("bbox", bbox.join(","));
     }
     setLoading(true);
-    void apiGetSafe<{ posts?: DiscoverPost[] }>(`/discover?${params}`)
-      .then((data) => setPosts(data?.posts ?? []))
+    void apiGetSafe<{ items?: DiscoverPost[]; nextCursor?: string | null }>(`/feed?${params}`, {
+      auth: true
+    })
+      .then((data) => {
+        setPosts(data?.items ?? []);
+        setNextCursor(data?.nextCursor ?? null);
+      })
       .finally(() => setLoading(false));
   }, [countryCode, activeTag]);
 
@@ -56,6 +60,23 @@ export function PeopleTab({
     emit("fly-to", { lng, lat, zoom: 14 });
     store.setView({ lng, lat, zoom: 14 });
     if (window.innerWidth < 900) store.setSidebarOpen(false);
+  };
+
+  const loadMore = () => {
+    if (!nextCursor || loading) return;
+    const bbox = countryCode === "ALL" ? undefined : countryBbox(countryCode);
+    const params = new URLSearchParams({ country: countryCode, limit: "20", cursor: nextCursor });
+    if (activeTag) params.set("tag", activeTag);
+    if (bbox) params.set("bbox", bbox.join(","));
+    setLoading(true);
+    void apiGetSafe<{ items?: DiscoverPost[]; nextCursor?: string | null }>(`/feed?${params}`, {
+      auth: true
+    })
+      .then((data) => {
+        setPosts((current) => [...current, ...(data?.items ?? [])]);
+        setNextCursor(data?.nextCursor ?? null);
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
@@ -73,6 +94,7 @@ export function PeopleTab({
               {KIND_LABEL[p.kind] ?? p.kind}
               {p.authorName ? ` · ${p.authorName}` : ""}
             </span>
+            {p.reason && <span className="discover-reason">Proto: {p.reason}</span>}
             {p.tags && p.tags.length > 0 && (
               <div className="tag-row">
                 {p.tags.slice(0, 4).map((t) => (
@@ -92,6 +114,11 @@ export function PeopleTab({
           </button>
         ))}
       </div>
+      {nextCursor && (
+        <button className="btn block" type="button" disabled={loading} onClick={loadMore}>
+          Načíst další
+        </button>
+      )}
     </section>
   );
 }

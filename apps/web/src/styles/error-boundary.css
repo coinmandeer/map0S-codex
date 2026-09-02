@@ -1,0 +1,51 @@
+@layer panels {
+  .module-error-boundary {
+    position: relative;
+    z-index: 2;
+    width: min(420px, calc(100% - var(--space-8) * 2));
+    margin: var(--space-8);
+    padding: var(--space-7);
+    border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
+    border-radius: var(--radius);
+    color: var(--text);
+    background: var(--surface-solid);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .module-error-boundary p {
+    margin: var(--space-4) 0 var(--space-6);
+    color: var(--text-muted);
+  }
+
+  .module-error-boundary.is-compact {
+    width: auto;
+    margin: var(--space-4);
+    padding: var(--space-6);
+  }
+
+  .module-error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+  }
+
+  .module-error-boundary.is-panel,
+  .module-error-boundary.is-drawer,
+  .module-error-boundary.is-modal {
+    width: min(420px, calc(100% - var(--space-8) * 2));
+    max-height: calc(100dvh - var(--modebar-h, 64px) - var(--space-8));
+    overflow: auto;
+  }
+
+  .module-error-boundary.is-drawer,
+  .module-error-boundary.is-modal {
+    position: fixed;
+    z-index: 45;
+    top: calc(var(--modebar-h, 64px) + var(--space-4));
+    right: var(--space-4);
+  }
+
+  .module-error-boundary.is-overlay {
+    pointer-events: auto;
+  }
+}

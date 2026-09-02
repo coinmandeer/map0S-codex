@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mapos.dev/v2/layer-package.schema.json",
+  "title": "MapOS LayerPackage v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schemaVersion", "id", "exportedAt", "manifest", "data"],
+  "properties": {
+    "schema": { "const": "mapos.layer-package" },
+    "schemaVersion": { "type": "string", "pattern": "^2\\.\\d+\\.\\d+$" },
+    "id": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "exportedAt": { "type": "string", "format": "date-time" },
+    "manifest": { "$ref": "https://schemas.mapos.dev/v2/layer-manifest.schema.json" },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "features"],
+      "properties": {
+        "type": { "const": "FeatureCollection" },
+        "features": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": { "$ref": "https://schemas.mapos.dev/v2/mapos-feature.schema.json" }
+        }
+      }
+    },
+    "sources": { "type": "array", "maxItems": 1000, "items": { "type": "object" } },
+    "media": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "mediaType"],
+        "properties": {
+          "id": { "type": "string" },
+          "path": { "type": "string" },
+          "mediaType": { "type": "string" }
+        }
+      }
+    },
+    "styles": { "type": "object" },
+    "readme": { "type": "string", "maxLength": 65536 }
+  }
+}

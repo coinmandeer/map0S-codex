@@ -1,0 +1,501 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mapos.dev/v2/mapos-feature.schema.json",
+  "title": "MapOSFeature v2",
+  "description": "Kanonická, provider-neutral reprezentace mapového objektu. Rozšiřuje dnešní point-only GeoFeature bez zavedení paralelního runtime modelu.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "id",
+    "revision",
+    "geometry",
+    "properties",
+    "sources",
+    "access",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schema": {
+      "const": "mapos.feature"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^2\\.\\d+\\.\\d+$"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 240
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "geometry": {
+      "$ref": "#/$defs/geometry"
+    },
+    "bbox": {
+      "$ref": "#/$defs/bbox"
+    },
+    "properties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "kind", "category", "layerIds"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "kind": {
+          "enum": [
+            "place",
+            "event",
+            "route-stop",
+            "route-segment",
+            "user-place",
+            "suggestion",
+            "game-object",
+            "region",
+            "moving-object"
+          ]
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "subcategory": {
+          "type": ["string", "null"],
+          "maxLength": 120
+        },
+        "layerIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "summary": {
+          "type": ["string", "null"],
+          "maxLength": 1200
+        },
+        "description": {
+          "type": ["string", "null"],
+          "maxLength": 20000
+        },
+        "address": {
+          "type": ["string", "null"],
+          "maxLength": 1000
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "uniqueItems": true
+        },
+        "urls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "url"],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "kind": {
+                "enum": ["official", "booking", "source", "social", "map", "other"]
+              }
+            }
+          }
+        },
+        "media": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "type", "url"],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "type": {
+                "enum": ["image", "video", "audio"]
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "thumbnailUrl": {
+                "type": "string",
+                "format": "uri"
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "credit": {
+                "type": "string"
+              },
+              "license": {
+                "type": "string"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rating": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sourceId": {
+              "type": "string"
+            }
+          },
+          "required": ["value", "count"]
+        },
+        "openingHours": {
+          "type": ["string", "null"],
+          "maxLength": 2000
+        },
+        "contact": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "phone": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "website": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        },
+        "temporal": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "startsAt": {
+              "type": ["string", "null"],
+              "format": "date-time"
+            },
+            "endsAt": {
+              "type": ["string", "null"],
+              "format": "date-time"
+            },
+            "timezone": {
+              "type": "string"
+            },
+            "live": {
+              "type": "boolean"
+            }
+          }
+        },
+        "providerFields": {
+          "type": "object",
+          "description": "Provider-specific payload namespaced by provider ID; never interpreted as canonical fields without an adapter.",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "extensions": {
+          "type": "object",
+          "description": "Namespaced MapOS or partner extensions. Keys should follow reverse-DNS or stable package naming.",
+          "additionalProperties": true
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["providerId", "sourceId", "retrievedAt", "confidence"],
+        "properties": {
+          "providerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "originalUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "retrievedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "attribution": {
+            "type": "string"
+          },
+          "license": {
+            "type": ["string", "null"]
+          },
+          "rights": {
+            "enum": ["open", "restricted-display", "restricted-export", "private", "unknown"]
+          },
+          "fieldPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "rawRef": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "access": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["visibility"],
+      "properties": {
+        "visibility": {
+          "enum": ["public", "unlisted", "private", "entitled"]
+        },
+        "ownerId": {
+          "type": ["string", "null"]
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "enum": ["view", "comment", "review", "edit", "share", "export", "moderate"]
+          },
+          "uniqueItems": true
+        },
+        "entitlementId": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "position": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": {
+          "const": "Point"
+        },
+        "coordinates": {
+          "$ref": "#/$defs/position"
+        }
+      }
+    },
+    "multiPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": {
+          "const": "MultiPoint"
+        },
+        "coordinates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/position"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "lineString": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": {
+          "const": "LineString"
+        },
+        "coordinates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/position"
+          },
+          "minItems": 2
+        }
+      }
+    },
+    "multiLineString": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": {
+          "const": "MultiLineString"
+        },
+        "coordinates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/position"
+            },
+            "minItems": 2
+          }
+        }
+      }
+    },
+    "linearRing": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/position"
+      },
+      "minItems": 4
+    },
+    "polygon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": {
+          "const": "Polygon"
+        },
+        "coordinates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/linearRing"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "multiPolygon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": {
+          "const": "MultiPolygon"
+        },
+        "coordinates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/linearRing"
+            },
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "geometry": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/point"
+        },
+        {
+          "$ref": "#/$defs/multiPoint"
+        },
+        {
+          "$ref": "#/$defs/lineString"
+        },
+        {
+          "$ref": "#/$defs/multiLineString"
+        },
+        {
+          "$ref": "#/$defs/polygon"
+        },
+        {
+          "$ref": "#/$defs/multiPolygon"
+        }
+      ]
+    },
+    "bbox": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        }
+      ],
+      "items": false,
+      "minItems": 4,
+      "maxItems": 4
+    }
+  }
+}

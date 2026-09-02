@@ -3,6 +3,8 @@ import path from "node:path";
 import { lt } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { weatherFrames } from "../db/schema.js";
+import { safeErrorLogFields } from "../utils/clientError.js";
+import { fetchBytes, fetchJson } from "../utils/upstream.js";
 
 const RADAR_DIR = process.env.RADAR_DIR ?? "/data/radar";
 const RAINVIEWER_API = "https://api.rainviewer.com/public/weather-maps.json";
@@ -36,11 +38,14 @@ async function runWithConcurrency<T>(items: T[], limit: number, fn: (item: T) =>
 
 async function fetchLatestPath(): Promise<{ ts: number; path: string } | null> {
   try {
-    const res = await fetch(RAINVIEWER_API);
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
+    const data = await fetchJson<{
       radar?: { past?: Array<{ time: number; path: string }> };
-    };
+    }>(RAINVIEWER_API, {
+      providerId: "weather-rainviewer-index",
+      ttlMs: 10 * 60_000,
+      timeoutMs: 8_000,
+      maxResponseBytes: 512 * 1024
+    });
     const past = data.radar?.past;
     if (!past?.length) return null;
     const last = past[past.length - 1]!;
@@ -62,9 +67,14 @@ async function downloadFrame(ts: number, radarPath: string) {
 
   await runWithConcurrency(tasks, TILE_CONCURRENCY, async ({ z, x, y }) => {
     const url = `https://tilecache.rainviewer.com${radarPath}/256/${z}/${x}/${y}/2/1_1.png`;
-    const res = await fetch(url);
-    if (!res.ok) return;
-    const buf = Buffer.from(await res.arrayBuffer());
+    const tile = await fetchBytes(url, {
+      providerId: "weather-rainviewer-tiles",
+      ttlMs: 0,
+      timeoutMs: 8_000,
+      maxResponseBytes: 1024 * 1024,
+      acceptedContentTypes: ["image/*"]
+    });
+    const buf = Buffer.from(tile.body);
     const dir = path.join(frameDir, String(z), String(x));
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, `${y}.png`), buf);
@@ -109,9 +119,11 @@ let archiverTimer: ReturnType<typeof setInterval> | null = null;
  * calls needed when a user scrubs the timeline). */
 export function startRadarArchiver() {
   if (archiverTimer) return;
-  void archiveOnce().catch((err) => console.warn("Radar archive failed:", err));
+  void archiveOnce().catch((err) => console.warn("Radar archive failed", safeErrorLogFields(err)));
   archiverTimer = setInterval(() => {
-    void archiveOnce().catch((err) => console.warn("Radar archive failed:", err));
+    void archiveOnce().catch((err) =>
+      console.warn("Radar archive failed", safeErrorLogFields(err))
+    );
   }, ARCHIVE_INTERVAL_MS);
 }
 
@@ -141,9 +153,20 @@ export async function fetchOwmTile(
   if (cached && Date.now() - cached.ts < OWM_CACHE_TTL_MS) return cached.buf;
 
   const url = `https://tile.openweathermap.org/map/${layer}/${z}/${x}/${y}.png?appid=${apiKey}`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const buf = Buffer.from(await res.arrayBuffer());
+  let tile: { body: ArrayBuffer; contentType: string };
+  try {
+    tile = await fetchBytes(url, {
+      providerId: "weather-openweathermap-tiles",
+      // `owmTileCache` below is the one bounded owner of these binary buffers.
+      ttlMs: 0,
+      timeoutMs: 8_000,
+      maxResponseBytes: 1024 * 1024,
+      acceptedContentTypes: ["image/*"]
+    });
+  } catch {
+    return null;
+  }
+  const buf = Buffer.from(tile.body);
   owmTileCache.set(key, { buf, ts: Date.now() });
   if (owmTileCache.size > 2000) {
     const oldest = owmTileCache.keys().next().value;

@@ -44,7 +44,9 @@ function okapiAnchor(instanceCode: string, cache: OkapiCache): QuestAnchor | nul
     kind: "cache",
     // The Opencaching licence requires a clickable link to the individual cache, so this is a
     // condition of use rather than a nicety.
-    externalUrl: cache.url ?? `https://${instanceCode === "uk" ? "opencache.uk" : `opencaching.${instanceCode}`}/viewcache.php?wp=${cache.code}`,
+    externalUrl:
+      cache.url ??
+      `https://${instanceCode === "uk" ? "opencache.uk" : `opencaching.${instanceCode}`}/viewcache.php?wp=${cache.code}`,
     weight: 2 + (cache.difficulty ?? 1) / 2 + (cache.terrain ?? 1) / 2,
     // A cache is hidden, so "there" has to be tighter than for a castle.
     radiusM: 60,
@@ -60,7 +62,9 @@ export const opencaching: QuestSourceAdapter = {
   label: "Opencaching",
   attribution: "Opencaching (CC-BY-SA / CC-BY-NC-ND dle instance)",
   unavailableReason: () =>
-    config.okapiInstances.length ? null : "Chybí OKAPI klíč — zaregistruj se na opencaching.de nebo .pl",
+    config.okapiInstances.length
+      ? null
+      : "Chybí OKAPI klíč — zaregistruj se na opencaching.de nebo .pl",
 
   async anchors(bbox, limit) {
     const [west, south, east, north] = bbox;
@@ -73,7 +77,7 @@ export const opencaching: QuestSourceAdapter = {
             `https://${host}/okapi/services/caches/search/bbox` +
               `?bbox=${south}|${west}|${north}|${east}&status=Available&limit=${limit}` +
               `&consumer_key=${encodeURIComponent(key)}`,
-            { source: `Opencaching ${code.toUpperCase()}`, ttlMs: 30 * 60_000 }
+            { providerId: "opencaching", ttlMs: 30 * 60_000 }
           );
           const codes = (search.results ?? []).slice(0, limit);
           if (!codes.length) return [];
@@ -82,7 +86,7 @@ export const opencaching: QuestSourceAdapter = {
             `https://${host}/okapi/services/caches/geocaches` +
               `?cache_codes=${codes.join("|")}&fields=${encodeURIComponent(OKAPI_FIELDS)}` +
               `&consumer_key=${encodeURIComponent(key)}`,
-            { source: `Opencaching ${code.toUpperCase()}`, ttlMs: 30 * 60_000 }
+            { providerId: "opencaching", ttlMs: 30 * 60_000 }
           );
 
           return Object.values(details).flatMap((cache) => {
@@ -108,7 +112,7 @@ export const opencaching: QuestSourceAdapter = {
       `https://${instance.host}/okapi/services/caches/geocaches` +
         `?cache_codes=${encodeURIComponent(cacheCode)}&fields=${encodeURIComponent(OKAPI_FIELDS)}` +
         `&consumer_key=${encodeURIComponent(instance.key)}`,
-      { source: `Opencaching ${instanceCode.toUpperCase()}`, ttlMs: 30 * 60_000 }
+      { providerId: "opencaching", ttlMs: 30 * 60_000 }
     );
     const cache = details[cacheCode];
     return cache ? okapiAnchor(instanceCode, cache) : null;
@@ -156,7 +160,7 @@ export const monumentsWithoutPhoto: QuestSourceAdapter = {
     const data = await fetchJson<{ monuments?: WlmMonument[] }>(
       `https://heritage.toolforge.org/api/api.php?action=search&format=json` +
         `&bbox=${west}|${south}|${east}|${north}&limit=${limit * 3}&props=id|name|lat|lon|image|country|source`,
-      { source: "Wiki Loves Monuments", ttlMs: 60 * 60_000 }
+      { providerId: "wikilovesmonuments", ttlMs: 60 * 60_000 }
     );
 
     return (data.monuments ?? [])
@@ -175,7 +179,7 @@ export const monumentsWithoutPhoto: QuestSourceAdapter = {
       `https://heritage.toolforge.org/api/api.php?action=search&format=json` +
         `&srcountry=${encodeURIComponent(country)}&id=${encodeURIComponent(id)}&limit=1` +
         `&props=id|name|lat|lon|image|country|source`,
-      { source: "Wiki Loves Monuments", ttlMs: 60 * 60_000 }
+      { providerId: "wikilovesmonuments", ttlMs: 60 * 60_000 }
     );
     const monument = data.monuments?.[0];
     return monument ? wlmAnchor(monument) : null;
@@ -221,7 +225,7 @@ export const osmNotes: QuestSourceAdapter = {
   async anchors(bbox, limit) {
     const data = await fetchJson<{ features?: OsmNote[] }>(
       `https://api.openstreetmap.org/api/0.6/notes.json?bbox=${bbox.join(",")}&limit=${Math.min(limit * 2, 100)}&closed=0`,
-      { source: "OSM Notes", ttlMs: 15 * 60_000 }
+      { providerId: "osm-notes", ttlMs: 15 * 60_000 }
     );
     return (data.features ?? [])
       .flatMap((n) => {
@@ -236,7 +240,7 @@ export const osmNotes: QuestSourceAdapter = {
     if (!id) return null;
     const note = await fetchJson<OsmNote>(
       `https://api.openstreetmap.org/api/0.6/notes/${encodeURIComponent(id)}.json`,
-      { source: "OSM Notes", ttlMs: 15 * 60_000 }
+      { providerId: "osm-notes", ttlMs: 15 * 60_000 }
     );
     // A closed note has been answered by somebody else; the quest is gone with it.
     if (note.properties?.status === "closed") return null;
@@ -274,8 +278,8 @@ function turfAnchor(zone: TurfZone): QuestAnchor | null {
 /**
  * Turf Game zones — a real territory-capture game with a public, keyless API.
  *
- * Its bbox endpoint takes a POST body, which is why this doesn't go through the shared GET
- * client. Rate limits are strict enough that the response is cached for an hour.
+ * Its bbox endpoint takes a POST body. The shared transport supports bounded JSON POSTs, and the
+ * coarse viewport cache below prevents camera movement from multiplying requests.
  */
 export const turfZones: QuestSourceAdapter = {
   id: "turf-zones",
@@ -284,10 +288,12 @@ export const turfZones: QuestSourceAdapter = {
 
   async anchors(bbox, limit) {
     const zones = await turfZonesForBbox(bbox);
-    return zones.flatMap((z) => {
-      const anchor = turfAnchor(z);
-      return anchor ? [anchor] : [];
-    }).slice(0, limit);
+    return zones
+      .flatMap((z) => {
+        const anchor = turfAnchor(z);
+        return anchor ? [anchor] : [];
+      })
+      .slice(0, limit);
   },
 
   async resolve(ref) {
@@ -321,18 +327,17 @@ async function turfZonesForBbox(bbox: Bbox): Promise<TurfZone[]> {
 }
 
 async function turfRequest<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`https://api.turfgame.com${path}`, {
+  return fetchJson<T>(`https://api.turfgame.com${path}`, {
+    providerId: "turf",
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      "User-Agent": config.userAgent
+      "Content-Type": "application/json"
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(12_000)
+    ttlMs: 60 * 60_000,
+    timeoutMs: 12_000,
+    maxResponseBytes: 2 * 1024 * 1024
   });
-  if (!res.ok) throw new Error(`Turf odpověděl ${res.status}`);
-  return (await res.json()) as T;
 }
 
 export const externalQuestSources: QuestSourceAdapter[] = [

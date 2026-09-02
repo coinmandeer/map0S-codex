@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-09-02",
+  "inventory": {
+    "productionComposition": "apps/api/src/index.ts",
+    "memoryComposition": "apps/api/src/memory-server.ts",
+    "machineVerifier": "apps/api/src/routeParity.test.ts",
+    "expectedProductionRouteCount": 138,
+    "expectedMemoryRouteCount": 133,
+    "expectedSharedRouteCount": 132,
+    "productionOnly": [
+      {
+        "method": "GET",
+        "path": "/places",
+        "auth": "public",
+        "schemaIntent": "Legacy place-search response backed by production repositories and discovery providers.",
+        "reason": "The memory composition currently exposes deterministic layer and discover fixtures instead of the legacy aggregate search.",
+        "status": "temporary",
+        "target": "Move search behind a repository/provider adapter during shared createApp extraction."
+      },
+      {
+        "method": "GET",
+        "path": "/tags/top",
+        "auth": "public",
+        "schemaIntent": "Ranked production tag statistics.",
+        "reason": "Memory data has no representative aggregate statistics; fabricating rankings would make behavioral assertions misleading.",
+        "status": "temporary",
+        "target": "Add a TagRepository fixture adapter when this route moves into shared registration."
+      },
+      {
+        "method": "GET",
+        "path": "/weather/radar/:ts/:z/:x/:yfile",
+        "auth": "public",
+        "schemaIntent": "Cached historical radar tile bytes for a timestamp and tile coordinate.",
+        "reason": "The memory composition has no historical tile archive; its current weather endpoints are synthetic or return no tile.",
+        "status": "intentional-fixture-gap",
+        "target": "Keep absent until a small deterministic recorded or synthetic radar fixture is added."
+      },
+      {
+        "method": "GET",
+        "path": "/wikipedia-pois",
+        "auth": "public",
+        "schemaIntent": "Legacy Wikipedia POI feature collection.",
+        "reason": "Memory exercises Wikipedia through the provider/layer contracts and intentionally does not duplicate the legacy convenience endpoint.",
+        "status": "temporary",
+        "target": "Retire the legacy endpoint or register it through the shared Wikipedia fixture adapter."
+      },
+      {
+        "method": "POST",
+        "path": "/game/staking/stake",
+        "auth": "session-required",
+        "schemaIntent": "Validated staking mutation with persisted balance and position effects.",
+        "reason": "A synthetic server must not present an in-memory monetary mutation as equivalent to production staking semantics.",
+        "status": "intentional-fixture-gap",
+        "target": "Add only with an explicitly fake ledger adapter and contract tests."
+      },
+      {
+        "method": "POST",
+        "path": "/game/staking/unstake",
+        "auth": "session-required",
+        "schemaIntent": "Validated unstaking mutation with persisted balance and position effects.",
+        "reason": "A synthetic server must not present an in-memory monetary mutation as equivalent to production staking semantics.",
+        "status": "intentional-fixture-gap",
+        "target": "Add only with an explicitly fake ledger adapter and contract tests."
+      }
+    ],
+    "memoryOnly": [
+      {
+        "method": "GET",
+        "path": "/layers/park4night/features",
+        "auth": "public",
+        "schemaIntent": "Legacy E2E alias returning a deterministic feature collection.",
+        "reason": "Older browser tests used a dedicated Park4Night path while production resolves the same layer through /layers/:layerId/features.",
+        "status": "temporary",
+        "target": "Remove after every consumer uses the generic layer endpoint."
+      }
+    ]
+  },
+  "intentionalBehaviorDifferences": [
+    {
+      "routes": ["POST /v2/ai/plan-discuss"],
+      "production": "The shared authenticated route sends only an explicitly consented, bounded projection of the caller's PlanDocument to the configured external AI gateway; owner identity, notes, conversations, annotations and arbitrary metadata are excluded.",
+      "memory": "The same route, consent and ownership contract returns a deterministic labelled offline answer without contacting an external model.",
+      "verification": "AI route, plan-projection and browser tests cover explicit consent, owner isolation, private no-store responses, excluded fields and no automatic PlanDocument revision change; route parity proves the method/path is shared."
+    },
+    {
+      "routes": ["GET /internal/metrics", "GET /internal/status"],
+      "production": "Both endpoints are hidden as 404 without the server-only operations bearer token. Authenticated responses expose redacted OpenMetrics and a bounded provider/circuit status view without request URLs, query values, prompts, email, wallet or coordinates.",
+      "memory": "The same registrar and hidden-by-default behavior are used; test composition can inject a token and exercise deterministic in-process telemetry without an external backend.",
+      "verification": "Operational route, telemetry, correlation and privacy tests cover authentication, no-store headers, bounded status records and forbidden sensitive labels; route parity proves both paths are shared."
+    },
+    {
+      "routes": [
+        "GET /v2/commerce/catalog",
+        "GET /v2/me/entitlements",
+        "GET /v2/commerce/access/:productType/:productId",
+        "POST /v2/commerce/checkout",
+        "POST /v2/commerce/referrals",
+        "POST /v2/commerce/tips",
+        "POST /v2/commerce/webhooks/:provider"
+      ],
+      "production": "The shared provider-neutral service uses durable PostgreSQL orders, subscriptions, entitlements, referrals, tips, verified payment events and an immutable ledger. No live provider or catalog seed is enabled.",
+      "memory": "The same registrar uses process-local atomic storage and a visibly labelled synthetic catalog fixture. Checkout remains disabled unless the explicit non-production synthetic HMAC adapter is configured.",
+      "verification": "Commerce SDK, migration, state-machine, resolver and shared-route tests cover locked metadata, server-side denial-before-fetch, signed webhook idempotency, refund/cancel/expiry and providerless behavior; route parity proves all seven paths are shared."
+    },
+    {
+      "routes": ["GET /v2/layer-sources/:layerId/features", "POST /v2/layer-imports/*"],
+      "production": "The shared registrar uses a durable transactional repository. Declarative HTTP remains fail-closed until exact public hosts are reviewed in the server registry.",
+      "memory": "The same contracts use an atomic process-local repository; the declarative source registry is empty so fixture/offline execution cannot contact the network.",
+      "verification": "SDK contract/import suites, SSRF boundary tests, atomic route tests and route parity cover the public extension boundary."
+    },
+    {
+      "routes": ["GET /config"],
+      "production": "Configured capabilities are combined with active database/upstream readiness.",
+      "memory": "Normal memory mode reports configured-only readiness; offline mode forces every keyed capability off and identifies fixtureMode=offline.",
+      "verification": "The offline smoke asserts fixtureMode and the route-parity test keeps the path shared."
+    },
+    {
+      "routes": ["GET /layers/:layerId/features", "GET /v2/layers/:layerId/features"],
+      "production": "Registry-backed providers can query databases and public upstreams.",
+      "memory": "Only deterministic OSM/user fixtures and the earthquake v2 fixture are implemented; unsupported providers return 404.",
+      "verification": "Layer/provider unit tests own payload compatibility; route parity owns method/path presence."
+    },
+    {
+      "routes": ["GET /routing", "POST /routing/plan"],
+      "production": "Provider routing, optional waypoints, restrictions and fallback behavior.",
+      "memory": "Synthetic straight-line calculations; offline mode also replaces the legacy GET route so OSRM is never contacted.",
+      "verification": "Planning E2E checks response UX; offline network guard proves no provider call escapes."
+    },
+    {
+      "routes": ["POST /v2/routing/plan", "POST /v2/routing/temporal-context", "/v2/plans*"],
+      "production": "Shared v2 contracts use owner-scoped PostgreSQL persistence and live adjacent routing providers.",
+      "memory": "The same registrar uses an owner-scoped in-memory repository and deterministic two-endpoint segment routing without fetch.",
+      "verification": "Shared route tests cover auth, revisions, partial failures and exports; route parity proves identical registration."
+    },
+    {
+      "routes": ["GET /v2/layers/events/features", "GET /v2/events*"],
+      "production": "The shared event registrar uses PostgreSQL and refreshes from Ticketmaster only when its official adapter is explicitly configured.",
+      "memory": "The same registrar uses labelled synthetic fixtures and no upstream adapters, including in offline mode.",
+      "verification": "Event service and route tests own filtering, pagination and contract behavior; route parity proves all four paths are shared."
+    },
+    {
+      "routes": [
+        "/v2/auth/siwe/*",
+        "/v2/auth/simulation/link",
+        "/v2/me/identities*",
+        "/v2/me/aavegotchi-inventory"
+      ],
+      "production": "The shared registrar uses durable linked-identity, nonce and audit tables; SIWE is disabled unless its public origin is explicitly configured, and live Aavegotchi inventory fails closed behind its current official-indexer gate.",
+      "memory": "The same registrar uses a process-local repository, local EIP-191 verification and an explicitly labeled simulation inventory fixture.",
+      "verification": "Identity route/service tests cover origin and session binding, exact-message verification, nonce replay, global wallet uniqueness, revocation, simulation labels and inventory gating; route parity proves all six paths are shared."
+    },
+    {
+      "routes": ["GET /places/:id"],
+      "production": "ACL-aware source resolution plus canonical enrichment.",
+      "memory": "Echoes validated coordinate/source hints so the detail UI can render without provider or database access.",
+      "verification": "Production ACL is unit-tested separately; route parity owns the shared public route shape."
+    },
+    {
+      "routes": ["/v2/me/saved-places*", "/v2/me/saved-place-collections*"],
+      "production": "The shared authenticated service uses the owner-scoped PostgreSQL repository.",
+      "memory": "The same route registrar and domain service use a process-local owner-scoped repository.",
+      "verification": "Shared route contract tests cover validation, ACL, round trips, filters and cursors; route parity proves both compositions register every endpoint."
+    },
+    {
+      "routes": [
+        "/auth/*",
+        "/user-layers/*",
+        "/plans/*",
+        "/follows",
+        "/reviews",
+        "/comments",
+        "/drafts/*",
+        "/game/*"
+      ],
+      "production": "Persistent repositories, production validation and world state.",
+      "memory": "Process-local repositories and deterministic world fixtures with the same client-facing route intent.",
+      "verification": "Domain and E2E tests cover representative contracts; extraction to shared route modules remains planned."
+    },
+    {
+      "routes": [
+        "/mapy/*",
+        "/basemap/*",
+        "/weather/grid",
+        "/info/*",
+        "/discover/guide",
+        "/v2/discover/context"
+      ],
+      "production": "Shared provider routes retain live/cached upstream behavior.",
+      "memory": "Normal memory mode retains the shared behavior; explicit offline mode registers recorded/synthetic replacements and blocks any unlisted outbound fetch.",
+      "verification": "offlineFixtureRoutes tests validate deterministic responses and offline-smoke blocks unexpected browser traffic."
+    }
+  ],
+  "sharedCreateAppPlan": {
+    "goal": "One route-registration graph with injected production or memory repositories/providers.",
+    "steps": [
+      "Extract auth, user content, planning, social and game route registrars without changing their handlers.",
+      "Define repository/provider ports at the composition boundary and supply production and memory adapters.",
+      "Build createApp(dependencies) from the shared registrars, leaving only startup and adapter construction in each entrypoint.",
+      "Reduce this divergence list as legacy routes are retired or fixtures become contract-faithful."
+    ],
+    "exitCriterion": "Only explicitly fixture-inappropriate routes remain different, and every remaining entry has auth/schema intent plus a tested reason."
+  }
+}

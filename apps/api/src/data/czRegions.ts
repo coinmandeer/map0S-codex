@@ -5,6 +5,7 @@ export interface RegionDef {
   name: string;
   level: RegionLevel;
   parent: string | null;
+  /** Navigation and query extent only. It must never be presented as the region boundary. */
   bbox: [number, number, number, number];
 }
 
@@ -218,24 +219,4 @@ export function regionById(id: string): RegionDef | undefined {
 
 export function childrenOf(parentId: string): RegionDef[] {
   return CZ_REGIONS.filter((r) => r.parent === parentId);
-}
-
-export function regionPolygon(region: RegionDef) {
-  const [w, s, e, n] = region.bbox;
-  return {
-    type: "Feature" as const,
-    properties: { id: region.id, name: region.name, level: region.level, parent: region.parent },
-    geometry: {
-      type: "Polygon" as const,
-      coordinates: [
-        [
-          [w, s],
-          [e, s],
-          [e, n],
-          [w, n],
-          [w, s]
-        ]
-      ]
-    }
-  };
 }

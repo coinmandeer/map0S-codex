@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-/** Downloads the game's GLB props into `apps/web/public/models/`.
+/** Downloads operator-reviewed development GLB props into `apps/web/public/models/`.
  *
- *  The models live outside git (they are third-party CC0 assets, ~3 MB) but the game layer needs
- *  them locally, otherwise every prop silently falls back to a coloured cube. Run once after a
- *  fresh clone, or in CI before a build.
+ *  The files live outside git and are optional; missing props use a procedural fallback. This
+ *  utility preserves optional source metadata but does not make it a runtime gate. Production
+ *  still validates local paths and performance budgets before rendering an avatar asset.
  *
- *  Usage: node scripts/fetch-models.mjs [--force] [--base https://host]
+ *  It is deliberately not an install hook, so `npm ci` never downloads these binaries.
+ *  Usage: node scripts/fetch-models.mjs [--force] [--base https://reviewed-host]
  */
 
 import { mkdir, stat, writeFile } from "node:fs/promises";

@@ -1,4 +1,5 @@
 import { EmptyState, Skeleton } from "../../ui/primitives";
+import { safeExternalUrl } from "../detailModel";
 import { useInfoData } from "../useInfoData";
 import type { InfoPanelProps } from "../registry";
 
@@ -28,6 +29,10 @@ export function FoursquarePanel({ place }: InfoPanelProps) {
   }
 
   const { data } = state;
+  const photos = data.photos.flatMap((photo) => {
+    const url = safeExternalUrl(photo);
+    return url ? [url] : [];
+  });
   return (
     <div className="info-panel" data-testid="panel-foursquare">
       {(data.rating !== null || data.price !== null) && (
@@ -47,10 +52,10 @@ export function FoursquarePanel({ place }: InfoPanelProps) {
           ))}
         </div>
       )}
-      {data.photos.length > 0 && (
-        <div className="info-photos">
-          {data.photos.map((url) => (
-            <img key={url} src={url} alt="" loading="lazy" />
+      {photos.length > 0 && (
+        <div className="info-photos" data-testid="foursquare-photos">
+          {photos.slice(0, 6).map((photo) => (
+            <img key={photo} src={photo} alt="" loading="lazy" referrerPolicy="no-referrer" />
           ))}
         </div>
       )}

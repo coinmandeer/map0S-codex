@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { photoCache } from "../db/schema.js";
+import { fetchJson } from "../utils/upstream.js";
 
 const TTL_MS = 30 * 24 * 3600_000;
 
@@ -20,24 +20,34 @@ export async function resolvePhoto(wikidataId: string): Promise<string | null> {
 
   let url: string | null = null;
   try {
-    const res = await fetch(
+    const data = await fetchJson<{
+      claims?: { P18?: Array<{ mainsnak?: { datavalue?: { value?: string } } }> };
+    }>(
       `https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${encodeURIComponent(wikidataId)}&property=P18&format=json`,
-      { headers: { "User-Agent": config.userAgent }, signal: AbortSignal.timeout(6000) }
-    );
-    if (res.ok) {
-      const data = (await res.json()) as {
-        claims?: { P18?: Array<{ mainsnak?: { datavalue?: { value?: string } } }> };
-      };
-      const filename = data.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
-      if (filename) {
-        url = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=320`;
+      {
+        providerId: "wikidata",
+        ttlMs: TTL_MS,
+        timeoutMs: 6_000,
+        minIntervalMs: 150,
+        retries: 2
       }
+    );
+    const filename = data.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+    if (filename) {
+      url = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=320`;
     }
   } catch {
-    // network/timeout failure — cache the miss below so it's not retried on every card render
+    // A rate limit or timeout is not proof that the entity has no image. Reuse an expired value
+    // when there is one, but never turn a transient failure into a 30-day negative cache entry.
+    return cached?.url ?? null;
   }
 
-  await db.delete(photoCache).where(eq(photoCache.wikidataId, wikidataId));
-  await db.insert(photoCache).values({ wikidataId, url });
+  await db
+    .insert(photoCache)
+    .values({ wikidataId, url })
+    .onConflictDoUpdate({
+      target: photoCache.wikidataId,
+      set: { url, fetchedAt: new Date() }
+    });
   return url;
 }

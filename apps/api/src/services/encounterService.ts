@@ -3,6 +3,7 @@ import type { Bbox } from "@mapos/layer-sdk";
 import { db } from "../db/index.js";
 import { gameEncounters, gameZones } from "../db/schema.js";
 import { encounterById, encountersForBbox, REWARD_BY_TIER, type LootTier } from "../game/spawn.js";
+import { ClientError } from "../utils/clientError.js";
 import { registerReward } from "./stakingService.js";
 
 const MAX_VISIBLE = 3;
@@ -73,7 +74,7 @@ export async function resolveEncounter(id: string, userId: string) {
     .from(gameEncounters)
     .where(eq(gameEncounters.id, id))
     .limit(1);
-  if (alreadyResolved) throw new Error("Already resolved");
+  if (alreadyResolved) throw new ClientError("Already resolved");
 
   const zoneId = id.startsWith("enc-zone-") ? id.slice("enc-zone-".length) : null;
   let lootTier: LootTier;
@@ -83,12 +84,12 @@ export async function resolveEncounter(id: string, userId: string) {
 
   if (zoneId) {
     const [zone] = await db.select().from(gameZones).where(eq(gameZones.id, zoneId)).limit(1);
-    if (!zone) throw new Error("Encounter not found");
+    if (!zone) throw new ClientError("Encounter not found", 404);
     if (zone.zoneKind === "staker_gate" && zone.minStakeUsd > 0) {
       const { getStakingOverview } = await import("./stakingService.js");
       const staking = await getStakingOverview(userId);
       if (!staking || staking.stakedUsd < zone.minStakeUsd) {
-        throw new Error(`Requires stake of $${zone.minStakeUsd}`);
+        throw new ClientError(`Requires stake of $${zone.minStakeUsd}`);
       }
     }
     lootTier = (zone.lootTier as LootTier) ?? "low";
@@ -97,7 +98,7 @@ export async function resolveEncounter(id: string, userId: string) {
     loot = (zone.lootTable as string[] | null)?.[0] ?? loot;
   } else {
     const spawn = encounterById(id);
-    if (!spawn) throw new Error("Encounter not found");
+    if (!spawn) throw new ClientError("Encounter not found", 404);
     lootTier = spawn.lootTier;
     lng = spawn.lng;
     lat = spawn.lat;

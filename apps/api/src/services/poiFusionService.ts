@@ -29,6 +29,8 @@ import { getMapyPois } from "./mapyPoiService.js";
 import { getPark4nightFeatures } from "./park4nightService.js";
 import { loadWikipediaPois } from "./discoverService.js";
 import { config } from "../config.js";
+import { safeErrorLogFields } from "../utils/clientError.js";
+import { fetchJson } from "../utils/upstream.js";
 
 /** Two entries closer than this with a similar name are treated as the same place. Chosen to
  *  absorb the offset between an OSM building centroid and a Mapy entrance pin without merging
@@ -39,7 +41,6 @@ export interface FusionQuery {
   bbox: Bbox;
   categories: OsmPoiCategoryId[];
   sources: PlaceSourceId[];
-  userId?: string;
 }
 
 /**
@@ -164,13 +165,14 @@ async function timed<T>(
       meta: { source, state: "ready", count: places.length, tookMs: Date.now() - started }
     };
   } catch (err) {
+    console.warn(`Place source ${source} failed`, safeErrorLogFields(err));
     return {
       places: [],
       meta: {
         source,
         state: "error",
         count: 0,
-        message: err instanceof Error ? err.message : "chyba zdroje",
+        message: `Zdroj ${PLACE_SOURCE_BY_ID[source].label} je dočasně nedostupný`,
         tookMs: Date.now() - started
       }
     };
@@ -211,8 +213,10 @@ async function fetchMapy(bbox: Bbox, categories: OsmPoiCategoryId[]): Promise<Pl
   }));
 }
 
-async function fetchUser(bbox: Bbox, userId: string | undefined): Promise<Place[]> {
-  const fc = await getUserLayerFeatures(bbox, userId);
+async function fetchUser(bbox: Bbox): Promise<Place[]> {
+  // The fused `user` source is the public community catalogue. A signed-in visitor must see the
+  // same catalogue as everyone else; their private/editable pins belong to `user-layers`.
+  const fc = await getUserLayerFeatures(bbox);
   return fc.features.map((f) => {
     const props = f.properties as Record<string, unknown>;
     const [lng, lat] = f.geometry.coordinates as [number, number];
@@ -276,19 +280,7 @@ async function fetchWikidata(bbox: Bbox): Promise<Place[]> {
     SERVICE wikibase:label { bd:serviceParam wikibase:language "cs,en,de" }
   } LIMIT 200`;
 
-  const res = await fetch("https://query.wikidata.org/sparql", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/sparql-results+json",
-      "User-Agent": config.userAgent
-    },
-    body: `query=${encodeURIComponent(query)}`,
-    signal: AbortSignal.timeout(15_000)
-  });
-  if (!res.ok) throw new Error(`wikidata ${res.status}`);
-
-  const data = (await res.json()) as {
+  const data = await fetchJson<{
     results?: {
       bindings?: Array<{
         item?: { value: string };
@@ -296,7 +288,19 @@ async function fetchWikidata(bbox: Bbox): Promise<Place[]> {
         coord?: { value: string };
       }>;
     };
-  };
+  }>("https://query.wikidata.org/sparql", {
+    providerId: "wikidata",
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/sparql-results+json"
+    },
+    body: `query=${encodeURIComponent(query)}`,
+    timeoutMs: 15_000,
+    ttlMs: 6 * 60 * 60_000,
+    minIntervalMs: 250,
+    retries: 2
+  });
 
   return (data.results?.bindings ?? [])
     .map((row): Place | null => {
@@ -322,7 +326,7 @@ export const PLACE_SOURCE_ADAPTERS: PlaceSourceAdapter[] = [
   {
     id: "user",
     confidence: 0.95,
-    fetch: ({ bbox, userId }) => fetchUser(bbox, userId)
+    fetch: ({ bbox }) => fetchUser(bbox)
   },
   {
     id: "mapy",
@@ -343,6 +347,8 @@ export const PLACE_SOURCE_ADAPTERS: PlaceSourceAdapter[] = [
   {
     id: "park4night",
     confidence: 0.6,
+    unavailableReason: () =>
+      config.park4nightEnabled ? null : "vypnuto operátorem (PARK4NIGHT_ENABLED=1 jej zapne)",
     fetch: ({ bbox }) => fetchPark4night(bbox)
   },
   {

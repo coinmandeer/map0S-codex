@@ -1,0 +1,154 @@
+:root {
+  color: #17211a;
+  background: #f4f7f3;
+  font:
+    16px/1.5 system-ui,
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  width: min(1120px, 100% - 2rem);
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
+.eyebrow {
+  margin-bottom: 0;
+  color: #35714b;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0.15rem 0;
+  font-size: clamp(2rem, 6vw, 4rem);
+}
+
+#runtime-status {
+  min-height: 1.5em;
+  color: #486151;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(18rem, 1fr);
+  min-height: 34rem;
+  overflow: hidden;
+  border: 1px solid #b8c8bb;
+  border-radius: 1.25rem;
+  background: white;
+  box-shadow: 0 1rem 3rem rgb(21 52 31 / 10%);
+}
+
+.map-surface {
+  position: relative;
+  min-height: 34rem;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+}
+
+#map-fallback {
+  position: absolute;
+  inset: 1rem;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 1rem;
+  border: 2px dashed #7c9382;
+  border-radius: 1rem;
+  background: #edf3ed;
+  text-align: center;
+}
+
+#map-fallback[hidden] {
+  display: none;
+}
+
+aside {
+  padding: 1.25rem;
+  overflow: auto;
+}
+
+.fixture-layer + .fixture-layer {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #d9e2da;
+}
+
+.fixture-layer h3,
+.fixture-layer p {
+  margin-block: 0 0.5rem;
+}
+
+ol {
+  margin-top: 0.5rem;
+  padding-left: 1.4rem;
+}
+
+li {
+  margin: 0 0 0.75rem;
+}
+
+button,
+.maplibregl-ctrl button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
+button {
+  border: 1px solid #347047;
+  border-radius: 0.65rem;
+  color: #15371f;
+  background: #edf8ef;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+li button,
+#fit-features {
+  padding: 0.5rem 0.75rem;
+}
+
+button:focus-visible {
+  outline: 3px solid #e06f2f;
+  outline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  main {
+    width: min(100% - 1rem, 42rem);
+    padding: 1rem 0;
+  }
+
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .map-surface {
+    min-height: 23rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

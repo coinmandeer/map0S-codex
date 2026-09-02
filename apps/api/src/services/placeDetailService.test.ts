@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { encodeSourceRefs, parseSourceRefs, sourceRef } from "@mapos/layer-sdk";
 import { placesToFeatureCollection } from "./placesPresentation.js";
-import { getPlaceDetail } from "./placeDetailService.js";
+import { __testing, getPlaceDetail } from "./placeDetailService.js";
 
 const now = new Date().toISOString();
 
@@ -114,4 +114,38 @@ test("a resolver that throws degrades to the hints instead of failing the reques
     }
   );
   assert.equal(place?.name, "Hrad");
+});
+
+test("a private user pin resolves only for its owning session", async () => {
+  const privatePin = {
+    name: "Soukromé místo",
+    lng: 14.2,
+    lat: 50.1,
+    tags: ["private"],
+    ownerUserId: "owner-id",
+    layerIsPublic: 0
+  };
+  const load = async () => privatePin;
+
+  assert.equal(await __testing.resolveUserPinForViewer("pin-id", null, load), null);
+  assert.equal(await __testing.resolveUserPinForViewer("pin-id", "other-id", load), null);
+  assert.equal(
+    (await __testing.resolveUserPinForViewer("pin-id", "owner-id", load))?.name,
+    "Soukromé místo"
+  );
+});
+
+test("a pin in a public layer resolves without a session", async () => {
+  const load = async () => ({
+    name: "Veřejné místo",
+    lng: 14.2,
+    lat: 50.1,
+    tags: [],
+    ownerUserId: "owner-id",
+    layerIsPublic: 1
+  });
+
+  const place = await __testing.resolveUserPinForViewer("pin-id", null, load);
+  assert.equal(place?.name, "Veřejné místo");
+  assert.equal(place?.category, "user-pin");
 });

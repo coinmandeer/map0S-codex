@@ -1,4 +1,4 @@
-import type { Bbox } from "@mapos/layer-sdk";
+import type { Bbox, ExperienceId, TemporalState } from "@mapos/layer-sdk";
 import type {
   DataProvider,
   GameCameraMode,
@@ -27,23 +27,93 @@ export interface MapOsEvents {
   "layers-changed": undefined;
   "mode-changed": { mode: LayerMode };
   "provider-changed": { provider: DataProvider };
+  /** The map background, or whether labels sit over it, changed. */
+  "basemap-changed": { basemapId: string };
+  "buildings-3d-changed": { enabled: boolean };
   "country-changed": { countryCode: string };
   "tag-changed": { tag: string | null };
   "theme-changed": { theme: ThemeMode };
+  "experience-changed": { id: ExperienceId };
+  "time-changed": { temporal: TemporalState };
+  "plan-changed": { planId: string | null };
+  "games-changed": { activeGameIds: string[]; focusedGameId: string };
+  "weather-grid-updated": {
+    variable: string;
+    unit: string;
+    median: number;
+    min: number;
+    max: number;
+    sampleCount: number;
+    validAt: string;
+    representation: "continuous-grid" | "cells" | "numeric-sectors";
+    renderedCount: number;
+    targetCellAreaKm2: 50 | 20 | 10;
+  };
+  "weather-cell-selected": {
+    interaction: "hover" | "tap";
+    variable: string;
+    variableLabel: string;
+    value: number;
+    label: string;
+    unit: string;
+    validAt: string;
+    lng: number;
+    lat: number;
+  };
   "game-tracking-changed": { mode: GameTrackingMode };
   "game-camera-changed": { mode: GameCameraMode };
   "avatar-changed": { style: "cube" | "aavegotchi"; tokenId: string };
+  "avatar-inventory-selected": {
+    selection: {
+      inventoryItemId: string;
+      displayName: string;
+      source: "neutral-placeholder" | "fixture" | "verified-inventory";
+      tokenReference?: string;
+      assetId?: string;
+    };
+  };
+  "game-performance-changed": { tier: "low" | "balanced" };
+  "game-movement-vector": {
+    source: "touch" | "accessible";
+    x: number;
+    y: number;
+    active: boolean;
+  };
+  "game-tap-mode": { enabled: boolean };
+  "game-tap-target": { lng: number; lat: number };
+  "game-movement-cancel": undefined;
+  "game-controller-status": {
+    anchorMode: "locked-to-gps" | "free-roam" | "prototype-center";
+    activeInput: "keyboard" | "touch" | "accessible" | "tap" | "gps" | null;
+    moving: boolean;
+    tapToMoveEnabled: boolean;
+    hasTapTarget: boolean;
+    gpsAccuracyM: number | null;
+  };
+  "session-changed": { userId: string | null; xpTotal: number };
   /** The player's position in the game layer. Owned by useSimulationController — it is the
    *  single source of continuous position for the game, so nothing else may emit it. */
   geolocation: { lng: number; lat: number };
+  /** Settled camera centre, emitted even while the basemap style is still loading. */
+  "map-view-changed": { lng: number; lat: number; zoom: number };
   "map-bearing": { bearing: number };
   /** A map click while an edit layer is armed. */
   "edit-tap": { lng: number; lat: number };
   "discover-geojson": { geojson: GeoJSON.FeatureCollection };
+  "discover-viewport": { lng: number; lat: number; zoom: number; bbox: Bbox };
   "discover-click": Record<string, unknown>;
   "ghost-caught": { id: string };
   "encounter-resolved": { id: string };
   "orbs-collected": { count: number; xp: number };
+  "orb-field-updated": {
+    dayKey: string;
+    fieldKey: string;
+    total: number;
+    remaining: number;
+    collected: number;
+    roadOnly: true;
+  };
+  "game-progress-synced": { collectedCount: number; xpTotal: number };
 }
 
 type EventName = keyof MapOsEvents;

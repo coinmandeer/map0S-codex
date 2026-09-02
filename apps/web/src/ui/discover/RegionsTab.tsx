@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { countryBbox } from "../../lib/countries";
+import { countryBbox, getCountryNameCs } from "../../lib/countries";
 import { emit, on } from "../../lib/events";
 import { apiGetSafe } from "../../lib/api";
 import { getMapStore } from "../../store/mapStore";
@@ -39,29 +39,36 @@ function notabilityNote(place: NotablePlace): string | null {
   return parts.length ? parts.join(" · ") : null;
 }
 
-export function RegionsTab({ countryCode, activeTag }: { countryCode: string; activeTag: string | null }) {
+export function RegionsTab({
+  countryCode,
+  activeTag
+}: {
+  countryCode: string;
+  activeTag: string | null;
+}) {
   const store = getMapStore();
   const [regions, setRegions] = useState<RegionCard[]>([]);
-  const [crumbs, setCrumbs] = useState<Crumb[]>([{ id: "CZ", name: "Česko" }]);
+  const [crumbs, setCrumbs] = useState<Crumb[]>([
+    { id: countryCode, name: getCountryNameCs(countryCode) }
+  ]);
   const [summary, setSummary] = useState("");
   const [places, setPlaces] = useState<NotablePlace[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const isCz = countryCode === "CZ";
-  const currentRegionId = crumbs[crumbs.length - 1]?.id ?? "CZ";
+  const currentRegionId = crumbs[crumbs.length - 1]?.id ?? countryCode;
 
   useEffect(() => {
-    if (countryCode === "CZ") setCrumbs([{ id: "CZ", name: "Česko" }]);
+    setCrumbs([{ id: countryCode, name: getCountryNameCs(countryCode) }]);
   }, [countryCode]);
 
   useEffect(() => {
-    if (!isCz) {
+    if (countryCode === "ALL") {
       setRegions([]);
       emit("discover-geojson", { geojson: { type: "FeatureCollection", features: [] } });
       return;
     }
-    const qs = new URLSearchParams({ country: "CZ" });
-    if (currentRegionId !== "CZ" && crumbs.length === 2) qs.set("parent", currentRegionId);
+    const qs = new URLSearchParams({ country: countryCode });
+    if (currentRegionId !== countryCode) qs.set("parent", currentRegionId);
     void apiGetSafe<{ regions?: RegionCard[]; geojson?: GeoJSON.FeatureCollection }>(
       `/discover/regions?${qs}`
     ).then((data) => {
@@ -70,17 +77,17 @@ export function RegionsTab({ countryCode, activeTag }: { countryCode: string; ac
         geojson: data?.geojson ?? { type: "FeatureCollection", features: [] }
       });
     });
-  }, [isCz, currentRegionId, crumbs.length]);
+  }, [countryCode, currentRegionId]);
 
   useEffect(() => {
-    if (!isCz) {
+    if (countryCode === "ALL") {
       setSummary("");
       return;
     }
     void apiGetSafe<{ text?: string }>(
       `/discover/summary?region=${encodeURIComponent(currentRegionId)}`
     ).then((data) => setSummary(data?.text ?? ""));
-  }, [isCz, currentRegionId]);
+  }, [countryCode, currentRegionId]);
 
   useEffect(() => {
     const bbox = countryCode === "ALL" ? undefined : countryBbox(countryCode);
@@ -108,19 +115,10 @@ export function RegionsTab({ countryCode, activeTag }: { countryCode: string; ac
 
   const openRegion = (region: RegionCard) => {
     emit("fit-bounds", { bbox: region.bbox });
-    if (region.level === "kraj") {
-      setCrumbs([{ id: "CZ", name: "Česko" }, { id: region.id, name: region.name }]);
-    } else if (region.level === "okres") {
-      const kraj = crumbs.find((c) => c.id !== "CZ") ?? {
-        id: region.parent ?? "CZ",
-        name: region.parent ?? "Kraj"
-      };
-      setCrumbs([
-        { id: "CZ", name: "Česko" },
-        kraj.id === region.id ? { id: region.parent ?? "CZ", name: "Kraj" } : kraj,
-        { id: region.id, name: region.name }
-      ]);
-    }
+    setCrumbs((current) => [
+      ...current.filter((crumb) => crumb.id !== region.id),
+      { id: region.id, name: region.name }
+    ]);
   };
 
   const flyTo = (lng: number, lat: number) => {
@@ -131,7 +129,7 @@ export function RegionsTab({ countryCode, activeTag }: { countryCode: string; ac
 
   return (
     <>
-      {isCz && (
+      {countryCode !== "ALL" && (
         <>
           <nav className="discover-crumb" data-testid="discover-breadcrumb">
             {crumbs.map((c, i) => (
@@ -141,7 +139,8 @@ export function RegionsTab({ countryCode, activeTag }: { countryCode: string; ac
                   type="button"
                   onClick={() => {
                     setCrumbs(crumbs.slice(0, i + 1));
-                    if (c.id === "CZ") emit("fit-bounds", { bbox: [12.09, 48.55, 18.86, 51.06] });
+                    if (c.id === countryCode)
+                      emit("fit-bounds", { bbox: countryBbox(countryCode) });
                   }}
                 >
                   {c.name}
@@ -154,9 +153,9 @@ export function RegionsTab({ countryCode, activeTag }: { countryCode: string; ac
               {summary}
             </div>
           )}
-          {crumbs.length < 3 && (
+          {regions.length > 0 && (
             <section className="discover-section">
-              <h4>{crumbs.length === 1 ? "Kraje" : "Okresy"}</h4>
+              <h4>{crumbs.length === 1 ? "Regiony" : `Uvnitř ${crumbs.at(-1)?.name}`}</h4>
               <div className="discover-cards">
                 {regions.map((r) => (
                   <button
@@ -173,6 +172,11 @@ export function RegionsTab({ countryCode, activeTag }: { countryCode: string; ac
                 ))}
               </div>
             </section>
+          )}
+          {regions.length === 0 && crumbs.length > 1 && (
+            <p className="meta">
+              Další administrativní úroveň zde OSM nemá; pokračuj místy a komunitním obsahem.
+            </p>
           )}
         </>
       )}
@@ -193,9 +197,7 @@ export function RegionsTab({ countryCode, activeTag }: { countryCode: string; ac
             >
               <strong>{p.name ?? "Bez názvu"}</strong>
               <span className="discover-card-kind">{p.category}</span>
-              {notabilityNote(p) && (
-                <span className="discover-card-kind">{notabilityNote(p)}</span>
-              )}
+              {notabilityNote(p) && <span className="discover-card-kind">{notabilityNote(p)}</span>}
             </button>
           ))}
         </div>

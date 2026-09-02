@@ -6,20 +6,11 @@ import {
   OSM_POI_CATEGORIES
 } from "@mapos/layer-sdk";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { osmCells, osmPois, userPins, userLayers } from "../db/schema.js";
+import { ClientError, safeErrorLogFields } from "../utils/clientError.js";
+import { fetchOverpass } from "../utils/overpass.js";
 import { cellBounds, cellId, cellsForBbox, type Cell } from "../utils/tileGrid.js";
-
-// overpass-api.de is listed last: from this VPS's network it's only reachable over IPv6
-// (IPv4 gets ECONNREFUSED — likely an upstream anti-abuse block on this hosting network's
-// IPv4 range), and Docker containers here have no IPv6 route, so it always fails in prod.
-// openstreetmap.fr is confirmed fast and reachable over IPv4 from this host.
-const OVERPASS_URLS = [
-  "https://overpass.openstreetmap.fr/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass-api.de/api/interpreter"
-];
 const CELL_TTL_MS = 7 * 24 * 3600_000;
 const MAX_FEATURES = 8000;
 const MAX_CELLS_PER_REQUEST = 48;
@@ -56,7 +47,7 @@ async function runWithConcurrency<T>(items: T[], limit: number, fn: (item: T) =>
       try {
         await fn(item);
       } catch (err) {
-        console.warn("Cell fetch failed:", err);
+        console.warn("OSM cell fetch failed", safeErrorLogFields(err));
       }
     }
   });
@@ -87,26 +78,12 @@ async function ensureCellFetched(cell: Cell, categories: OsmPoiCategoryId[]) {
     tags?: Record<string, string>;
   }> = [];
   let ok = false;
-
-  for (const url of OVERPASS_URLS) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": config.userAgent
-        },
-        body: `data=${encodeURIComponent(query)}`,
-        signal: AbortSignal.timeout(45_000)
-      });
-      if (!res.ok) continue;
-      const data = (await res.json()) as { elements?: typeof elements };
-      elements = data.elements ?? [];
-      ok = true;
-      break;
-    } catch {
-      continue;
-    }
+  try {
+    const data = await fetchOverpass<{ elements?: typeof elements }>(query, { timeoutMs: 30_000 });
+    elements = data.elements ?? [];
+    ok = true;
+  } catch {
+    // Leave the cell unmarked so the next request retries after the provider circuit cools down.
   }
 
   // Leave the cell unmarked on total failure so the next request retries instead of
@@ -166,38 +143,25 @@ export async function fetchOsmElement(osmId: string): Promise<OsmElement | null>
   if (!/^\d+$/.test(id)) return null;
   const query = `[out:json][timeout:20];(node(${id});way(${id});relation(${id}););out center tags 1;`;
 
-  for (const url of OVERPASS_URLS) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": config.userAgent
-        },
-        body: `data=${encodeURIComponent(query)}`,
-        signal: AbortSignal.timeout(20_000)
-      });
-      if (!res.ok) continue;
-      const data = (await res.json()) as {
-        elements?: Array<{
-          id: number;
-          type: string;
-          lat?: number;
-          lon?: number;
-          center?: { lat: number; lon: number };
-          tags?: Record<string, string>;
-        }>;
-      };
-      const el = data.elements?.[0];
-      const lat = el?.lat ?? el?.center?.lat;
-      const lng = el?.lon ?? el?.center?.lon;
-      if (!el || lat == null || lng == null) return null;
-      return { id: el.id, type: el.type, lat, lng, tags: el.tags ?? {} };
-    } catch {
-      continue;
-    }
+  try {
+    const data = await fetchOverpass<{
+      elements?: Array<{
+        id: number;
+        type: string;
+        lat?: number;
+        lon?: number;
+        center?: { lat: number; lon: number };
+        tags?: Record<string, string>;
+      }>;
+    }>(query, { timeoutMs: 20_000 });
+    const el = data.elements?.[0];
+    const lat = el?.lat ?? el?.center?.lat;
+    const lng = el?.lon ?? el?.center?.lon;
+    if (!el || lat == null || lng == null) return null;
+    return { id: el.id, type: el.type, lat, lng, tags: el.tags ?? {} };
+  } catch {
+    return null;
   }
-  return null;
 }
 
 export async function getOsmPoiFeatures(
@@ -298,8 +262,8 @@ export async function getUserLayerFeatures(
 }
 
 export function parseBbox(raw: string | undefined): Bbox {
-  if (!raw) throw new Error("bbox required");
+  if (!raw) throw new ClientError("bbox required");
   const parts = raw.split(",").map(Number);
-  if (parts.length !== 4 || parts.some(Number.isNaN)) throw new Error("invalid bbox");
+  if (parts.length !== 4 || parts.some(Number.isNaN)) throw new ClientError("invalid bbox");
   return parts as Bbox;
 }

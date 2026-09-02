@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures/offlineTest";
 
 /** A 1x1 transparent PNG, so the spec never depends on the real tile servers being up. */
 const PNG = Buffer.from(
@@ -16,7 +16,8 @@ test.describe("attribution", () => {
     const attribution = page.locator(".maplibregl-ctrl-attrib-inner");
     await expect(attribution).not.toContainText("OpenTopoMap");
 
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("basemap-btn").click();
+    await expect(page.getByTestId("tiles-sheet")).toBeVisible();
     await page.getByTestId("overflow-opentopomap").click();
     await expect(attribution).toContainText("OpenTopoMap", { timeout: 15_000 });
 

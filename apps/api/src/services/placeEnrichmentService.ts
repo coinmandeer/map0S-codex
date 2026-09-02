@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { placeEnrichment } from "../db/schema.js";
+import { fetchJson } from "../utils/upstream.js";
 
 export interface PlaceEnrichment {
   fsqId: string | null;
@@ -47,12 +48,13 @@ function photoUrl(prefix: string, suffix: string): string {
 
 async function fsqGet(path: string, key: string): Promise<unknown | null> {
   try {
-    const res = await fetch(`https://api.foursquare.com/v3${path}`, {
-      headers: { Authorization: key, Accept: "application/json" },
-      signal: AbortSignal.timeout(8000)
+    return await fetchJson<unknown>(`https://api.foursquare.com/v3${path}`, {
+      providerId: "foursquare-legacy-enrichment",
+      headers: { Authorization: key },
+      ttlMs: 6 * 60 * 60_000,
+      timeoutMs: 8_000,
+      maxResponseBytes: 2 * 1024 * 1024
     });
-    if (!res.ok) return null;
-    return res.json();
   } catch {
     return null;
   }

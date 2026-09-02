@@ -1,0 +1,151 @@
+{
+  "schema": "mapos.operational-dashboard",
+  "schemaVersion": "1.0.0",
+  "release": "19.0.0",
+  "mode": "baseline-only",
+  "targetPolicy": "No availability or latency target is assigned until a representative production baseline has been reviewed.",
+  "views": [
+    {
+      "id": "core-http",
+      "domain": "core",
+      "ownership": "mapos",
+      "source": "GET /internal/metrics",
+      "exportMode": "server-aggregate",
+      "signals": ["latency", "errors"],
+      "fields": [
+        "mapos_http_requests_total",
+        "mapos_http_request_duration_milliseconds_sum",
+        "mapos_http_request_duration_milliseconds_max"
+      ]
+    },
+    {
+      "id": "provider-health",
+      "domain": "provider",
+      "ownership": "external-provider",
+      "source": "GET /internal/metrics and GET /internal/status",
+      "exportMode": "server-aggregate",
+      "signals": ["latency", "errors", "aborts"],
+      "fields": [
+        "mapos_provider_calls_total",
+        "mapos_provider_duration_milliseconds_sum",
+        "mapos_provider_circuit_open",
+        "providers[].outcome",
+        "circuits[].state"
+      ]
+    },
+    {
+      "id": "client-provider-health",
+      "domain": "provider-client",
+      "ownership": "external-provider",
+      "source": "BrowserProviderHealth and BrowserProviderBackoff in-memory snapshots",
+      "exportMode": "local-diagnostic",
+      "signals": ["latency", "errors", "aborts"],
+      "fields": [
+        "providerId",
+        "outcome",
+        "count",
+        "durationMsSum",
+        "durationMsMax",
+        "lastAt",
+        "circuits[].state",
+        "circuits[].consecutiveFailures",
+        "circuits[].retryAt"
+      ]
+    },
+    {
+      "id": "map-layer-runtime",
+      "domain": "map",
+      "ownership": "mapos",
+      "source": "TaskRegistry snapshot (map task types)",
+      "exportMode": "local-diagnostic",
+      "signals": ["task-duration", "errors", "cache", "aborts"],
+      "fields": [
+        "TaskRecordV2.status",
+        "TaskRecordV2.startedAt",
+        "TaskRecordV2.finishedAt",
+        "TaskRecordV2.error.code",
+        "TaskRecordV2.telemetry.durationMs",
+        "TaskRecordV2.telemetry.aborted",
+        "TaskRecordV2.telemetry.cache",
+        "TaskRecordV2.telemetry.received"
+      ]
+    },
+    {
+      "id": "ai-gateway",
+      "domain": "ai",
+      "ownership": "mapos",
+      "source": "GET /internal/metrics and GET /internal/status via the production AiGateway observer",
+      "exportMode": "server-aggregate",
+      "signals": ["latency", "errors", "cache", "aborts", "task-duration"],
+      "fields": [
+        "mapos_ai_runs_total",
+        "mapos_ai_run_duration_milliseconds_sum",
+        "mapos_ai_run_duration_milliseconds_max",
+        "aiRuns[].status",
+        "aiRuns[].cached"
+      ]
+    },
+    {
+      "id": "adjacent-segment-routing",
+      "domain": "routing",
+      "ownership": "mapos",
+      "source": "SegmentRoutingResult.stats copied into the terminal routing TaskRecordV2",
+      "exportMode": "local-diagnostic",
+      "signals": ["latency", "errors", "cache", "aborts", "task-duration"],
+      "fields": [
+        "stats.eligibleSegments",
+        "stats.providerCalls",
+        "stats.cacheHits",
+        "stats.maxConcurrency",
+        "segments[].status",
+        "TaskRecordV2.status",
+        "TaskRecordV2.error.code",
+        "TaskRecordV2.startedAt",
+        "TaskRecordV2.finishedAt",
+        "TaskRecordV2.telemetry.durationMs",
+        "TaskRecordV2.telemetry.aborted",
+        "TaskRecordV2.telemetry.cache",
+        "TaskRecordV2.telemetry.eligibleSegments",
+        "TaskRecordV2.telemetry.providerCalls",
+        "TaskRecordV2.telemetry.cacheHits",
+        "TaskRecordV2.telemetry.maxConcurrency",
+        "TaskRecordV2.telemetry.failedSegments",
+        "TaskRecordV2.correlation.requestId",
+        "TaskRecordV2.correlation.providerId"
+      ]
+    },
+    {
+      "id": "game-3d-runtime",
+      "domain": "3d",
+      "ownership": "mapos",
+      "source": "GamePerformanceSnapshot",
+      "exportMode": "local-diagnostic",
+      "signals": ["frame", "errors"],
+      "fields": [
+        "sampleCount",
+        "frameMsP50",
+        "frameMsP95",
+        "drawCalls",
+        "triangles",
+        "estimatedGpuBytes",
+        "visibleEntities",
+        "withinBudget",
+        "violations"
+      ]
+    }
+  ],
+  "forbiddenDimensions": [
+    "rawUrl",
+    "query",
+    "bbox",
+    "coordinates",
+    "prompt",
+    "privateNote",
+    "email",
+    "wallet",
+    "cookie",
+    "signature",
+    "apiKey",
+    "sessionId"
+  ]
+}

@@ -6,7 +6,14 @@ import { activeAttribution, allAttribution } from "./attribution";
 function layer(id: string, attribution: { label: string; url?: string; license?: string }[]) {
   registerLayer({
     kind: "pins",
-    manifest: { id, name: id, icon: "•", color: "#000", description: id, category: "community" },
+    manifest: {
+      id,
+      name: id,
+      icon: "•",
+      color: "#000000",
+      description: id,
+      category: "community"
+    },
     create: () => ({ setVisible: () => {}, setOpacity: () => {}, destroy: () => {} }) as never,
     attribution
   });
@@ -43,10 +50,13 @@ test("enabled place sources are credited alongside layers", () => {
 });
 
 test("a source used by two layers is named once, keeping the fuller entry", () => {
-  layer("a", [{ label: "OpenStreetMap", url: "https://osm.org", license: "ODbL-1.0" }]);
-  layer("b", [{ label: "OpenStreetMap" }]);
+  layer("layer-a", [{ label: "OpenStreetMap", url: "https://osm.org", license: "ODbL-1.0" }]);
+  layer("layer-b", [{ label: "OpenStreetMap" }]);
 
-  const credits = activeAttribution({ a: { visible: true }, b: { visible: true } }, {});
+  const credits = activeAttribution(
+    { "layer-a": { visible: true }, "layer-b": { visible: true } },
+    {}
+  );
 
   assert.equal(credits.length, 1);
   assert.equal(credits[0]?.license, "ODbL-1.0");
@@ -59,7 +69,9 @@ test("the About list names what uses each source, on or off", () => {
   const mapillary = entries.find((e) => e.label === "Mapillary");
 
   assert.equal(mapillary?.usedBy, "mapillary");
-  // Basemap and place sources are in the list even though no layer declared them.
-  assert.ok(entries.some((e) => e.usedBy === "Podkladová mapa"));
+  // Backgrounds and place sources are in the list even though no layer declared them, and each
+  // background is named — the list is what tells you whose imagery you were looking at.
+  assert.ok(entries.some((e) => e.usedBy === "Podklad: Mapy.com Letecká"));
+  assert.ok(entries.some((e) => e.usedBy.startsWith("Popisky:")));
   assert.ok(entries.some((e) => e.usedBy === "Wikidata"));
 });

@@ -1,9 +1,20 @@
 import Fastify from "fastify";
+import { pathToFileURL } from "node:url";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import { nanoid } from "nanoid";
-import { parseSourceRefs } from "@mapos/layer-sdk";
+import {
+  parseSourceRefs,
+  type Bbox,
+  type ContentDraft,
+  type DataProvider,
+  type OsmPoiCategoryId,
+  type TripPlan,
+  type TripPlanResult
+} from "@mapos/layer-sdk";
 import { fetchRoute } from "./services/routingService.js";
+import { normalizeTripPlan } from "./services/routingPlanService.js";
+import { memoryGameRoads } from "./services/gameRoadService.js";
 import {
   memoryDb,
   seedMemory,
@@ -12,12 +23,32 @@ import {
   memoryPoiFixtures,
   type MemoryUser
 } from "./db/memory.js";
-import { capabilities } from "./config.js";
+import { capabilities, config } from "./config.js";
 import { layerListing } from "./services/featureProviders.js";
+import { earthquakeFixtureResult } from "./services/dataSources/earthquakeFixture.js";
 import { registerMapyRoutes } from "./routes/mapyRoutes.js";
+import { registerBasemapRoutes } from "./routes/basemapRoutes.js";
 import { registerWeatherGridRoutes } from "./routes/weatherGridRoutes.js";
 import { registerInfoRoutes } from "./routes/infoRoutes.js";
+import { registerSavedPlaceRoutes } from "./routes/savedPlaceRoutes.js";
+import { registerPlanV2Routes } from "./routes/planV2Routes.js";
+import { buildPlanTemporalContext } from "./services/planTemporalContextService.js";
+import { registerIdentityRoutes } from "./routes/identityRoutes.js";
+import { registerEventRoutes } from "./routes/eventRoutes.js";
+import { registerLayerExtensionRoutes } from "./routes/layerExtensionRoutes.js";
+import { registerCommerceRoutes } from "./routes/commerceRoutes.js";
+import { registerOperationalRoutes } from "./routes/operationalRoutes.js";
+import { registerDataRightsRoutes } from "./routes/dataRightsRoutes.js";
+import { registerAiRoutes } from "./routes/aiRoutes.js";
 import { registerGuideRoutes } from "./routes/guideRoutes.js";
+import { registerDiscoverContextRoutes } from "./routes/discoverContextRoutes.js";
+import { registerOfflineFixtureRoutes } from "./routes/offlineFixtureRoutes.js";
+import { installOfflineFetchGuard, isOfflineFixtureMode } from "./offlineFixtureMode.js";
+import {
+  createDraftPayload,
+  reviseDraftPayload,
+  submitDraftPayload
+} from "./services/contentDraftWorkflow.js";
 import {
   encounterById,
   encountersForBbox,
@@ -33,13 +64,62 @@ import {
   COMPLETION_RADIUS_M,
   type QuestAnchor
 } from "./game/anchors.js";
-import type { Bbox, OsmPoiCategoryId } from "@mapos/layer-sdk";
+import { composeGameZones } from "./game/worldZones.js";
 import { OSM_POI_CATEGORIES } from "@mapos/layer-sdk";
+import {
+  ClientError,
+  messageForClient,
+  registerClientSafeErrorHandler,
+  safeErrorLogFields,
+  statusForClient
+} from "./utils/clientError.js";
+import { sessionCookieOptions } from "./utils/sessionCookie.js";
+import { SavedPlaceService } from "./services/savedPlaceService.js";
+import { memorySavedPlaceRepository } from "./services/savedPlaceMemoryRepository.js";
+import { memoryPlanDocumentRepository } from "./services/planDocumentMemoryRepository.js";
+import { memoryPlanShareRepository } from "./services/planShareMemoryRepository.js";
+import { memoryPlanDiscussionRepository } from "./services/planDiscussionMemoryRepository.js";
+import { createMemoryAdjacentRouteProvider } from "./services/adjacentRouteProvider.js";
+import { EventService } from "./services/events/eventService.js";
+import { MemoryEventRepository } from "./services/events/eventMemoryRepository.js";
+import { buildMemoryEventFixtures } from "./services/events/eventFixtures.js";
+import {
+  createOfflineDiscoverContextService,
+  discoverContextService
+} from "./services/discoverService.js";
+import {
+  LinkedIdentityService,
+  MemoryIdentityRepository
+} from "./services/identity/identityService.js";
+import { ViemEoaSiweVerifier } from "./services/identity/viemSiweVerifier.js";
+import { TtlWalletDisplayMetadataResolver } from "./services/identity/ensDisplayResolver.js";
+import { DeclarativeHttpLayerService } from "./services/declarativeHttpLayerService.js";
+import { LayerImportService } from "./services/layerImportService.js";
+import { MemoryLayerImportRepository } from "./services/layerImportMemoryRepository.js";
+import { CommerceService } from "./services/commerce/commerceService.js";
+import { syntheticCommerceCatalog } from "./services/commerce/commerceFixtures.js";
+import { MemoryCommerceRepository } from "./services/commerce/commerceMemoryRepository.js";
+import { SyntheticPaymentProvider } from "./services/commerce/paymentProvider.js";
+import {
+  GatedAavegotchiInventoryAdapter,
+  SimulatedAavegotchiInventoryAdapter
+} from "./services/identity/aavegotchiInventory.js";
+import { operationalTelemetry } from "./observability/operationalTelemetry.js";
+import { registerRequestTelemetry } from "./observability/requestTelemetry.js";
+import { providerCircuitBreaker } from "./utils/upstream.js";
+import { FixedWindowRateLimiter, rateLimitAllRequests } from "./security/publicApiHardening.js";
+import { registerCspReporting } from "./security/cspReporting.js";
+import { DataRightsService } from "./services/dataRightsService.js";
+import { MemoryDataRightsRepository } from "./services/dataRightsMemoryRepository.js";
+import { createProviderNeutralAiRuntime } from "./services/ai/runtime.js";
+import { createMemoryNearestPoiSource } from "./services/ai/nearestPoiSources.js";
+
+const savedPlaceService = new SavedPlaceService(memorySavedPlaceRepository);
 
 function parseBbox(raw: string | undefined): Bbox {
-  if (!raw) throw new Error("bbox required");
+  if (!raw) throw new ClientError("bbox required");
   const parts = raw.split(",").map(Number);
-  if (parts.length !== 4 || parts.some(Number.isNaN)) throw new Error("invalid bbox");
+  if (parts.length !== 4 || parts.some(Number.isNaN)) throw new ClientError("invalid bbox");
   return parts as Bbox;
 }
 
@@ -84,21 +164,309 @@ function getSessionUser(sessionId: string | undefined) {
   return memoryDb.users.find((u) => u.id === session.userId) ?? null;
 }
 
-export async function buildMemoryApp() {
+function publicMemoryUser(user: MemoryUser) {
+  return {
+    id: user.id,
+    email: user.isGuest ? "" : user.email,
+    displayName: user.displayName,
+    isGuest: user.isGuest,
+    xpTotal: user.xpTotal
+  };
+}
+
+function memoryTripPlanResult(input: Partial<TripPlan>, _provider: DataProvider): TripPlanResult {
+  const plan = normalizeTripPlan(input);
+  const speedKmh = plan.vehicle.profile === "foot" ? 5 : plan.vehicle.profile === "bike" ? 18 : 70;
+  const radians = (value: number) => (value * Math.PI) / 180;
+  const distance = (a: TripPlan["stops"][number], b: TripPlan["stops"][number]) => {
+    const dLat = radians(b.lat - a.lat);
+    const dLng = radians(b.lng - a.lng);
+    const h =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(radians(a.lat)) * Math.cos(radians(b.lat)) * Math.sin(dLng / 2) ** 2;
+    return 6371_000 * 2 * Math.asin(Math.min(1, Math.sqrt(h)));
+  };
+  let cursor = new Date(plan.departureAt).getTime();
+  const legs = plan.stops.slice(1).map((stop, index) => {
+    const from = plan.stops[index]!;
+    const distanceM = Math.round(distance(from, stop));
+    const durationS = Math.max(60, Math.round((distanceM / 1000 / speedKmh) * 3600));
+    const departureAt = new Date(cursor).toISOString();
+    cursor += durationS * 1000;
+    const arrivalAt = new Date(cursor).toISOString();
+    cursor += stop.dwellMinutes * 60_000;
+    return {
+      index,
+      fromStopId: from.id,
+      toStopId: stop.id,
+      coordinates: [
+        [from.lng, from.lat],
+        [stop.lng, stop.lat]
+      ] as [number, number][],
+      distanceM,
+      durationS,
+      departureAt,
+      arrivalAt
+    };
+  });
+  const coordinates = plan.stops.map((stop) => [stop.lng, stop.lat] as [number, number]);
+  const distanceM = legs.reduce((sum, leg) => sum + leg.distanceM, 0);
+  const durationS = legs.reduce((sum, leg) => sum + leg.durationS, 0);
+  const variants = (["fast", "short", "nohwy"] as const).map((variant) => ({
+    variant,
+    provider: "osm" as const,
+    profile: plan.vehicle.profile,
+    coordinates,
+    distanceM,
+    durationS,
+    legs,
+    toll: {
+      estimatedCzk: null,
+      items: [],
+      disclaimer: "Deterministický offline testovací server nepočítá mýto."
+    },
+    restrictions: [],
+    restrictionCheck: ["camper", "truck"].includes(plan.vehicle.profile)
+      ? ("unavailable" as const)
+      : ("not-applicable" as const),
+    warnings: ["Omezení vozidla jsou orientační kontrola, nikoliv garantovaný truck routing."]
+  }));
+  return {
+    plan,
+    selectedVariant: plan.variant,
+    variants,
+    weather: plan.stops.map((stop, index) => ({
+      stopId: stop.id,
+      at: index === 0 ? plan.departureAt : legs[index - 1]!.arrivalAt,
+      temperature: 17,
+      precipitation: 0,
+      weatherCode: 1
+    })),
+    generatedAt: new Date().toISOString()
+  };
+}
+
+function memoryRouteResult(fromRaw: string, toRaw: string, profile: "foot" | "bike" | "car") {
+  const parse = (raw: string): [number, number] => {
+    const [lng, lat] = raw.split(",").map(Number);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+      throw new ClientError(`invalid point: ${raw}`);
+    }
+    return [lng!, lat!];
+  };
+  const from = parse(fromRaw);
+  const to = parse(toRaw);
+  const radians = (value: number) => (value * Math.PI) / 180;
+  const dLat = radians(to[1] - from[1]);
+  const dLng = radians(to[0] - from[0]);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(radians(from[1])) * Math.cos(radians(to[1])) * Math.sin(dLng / 2) ** 2;
+  const distanceM = Math.round(6371_000 * 2 * Math.asin(Math.min(1, Math.sqrt(h))));
+  const speedKmh = profile === "foot" ? 5 : profile === "bike" ? 18 : 70;
+  return {
+    coordinates: [from, to],
+    distanceM,
+    durationS: Math.max(60, Math.round((distanceM / 1000 / speedKmh) * 3600)),
+    provider: "osm" as const,
+    profile
+  };
+}
+
+interface MemoryAppOptions {
+  offlineFixture?: boolean;
+  rateLimitMultiplier?: number;
+}
+
+export async function buildMemoryApp(options: MemoryAppOptions = {}) {
+  const offlineFixture = options.offlineFixture ?? isOfflineFixtureMode();
   seedMemory();
   registerMemoryQuestSource();
   const app = Fastify({ logger: false });
-  await app.register(cors, { origin: true, credentials: true });
+  registerRequestTelemetry(app, operationalTelemetry);
+  await app.register(cors, {
+    origin: true,
+    credentials: true,
+    exposedHeaders: ["X-Request-ID"]
+  });
   await app.register(cookie);
+  app.addHook(
+    "preHandler",
+    rateLimitAllRequests(new FixedWindowRateLimiter(), {
+      limitMultiplier: options.rateLimitMultiplier
+    })
+  );
+  registerClientSafeErrorHandler(app);
+  registerCspReporting(app);
+  registerSavedPlaceRoutes(app, {
+    service: savedPlaceService,
+    resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null
+  });
+  const aiRuntime = createProviderNeutralAiRuntime({
+    nearestPoiSource: createMemoryNearestPoiSource(memoryPoiFixtures),
+    onToolTrace: (trace) =>
+      operationalTelemetry.recordAiRun({
+        status: trace.status,
+        cached: false,
+        durationMs: trace.durationMs
+      })
+  });
+  registerAiRoutes(app, {
+    orchestrator: aiRuntime.orchestrator,
+    resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null,
+    allowedLayerIds: new Set(["osm-poi"]),
+    discussPlan: async ({ plan, history }) => ({
+      text: `Plán „${plan.name}“ má ${plan.stops.length} zastávky. Toto je offline kontrolní odpověď; žádná změna nebyla provedena.`,
+      model: "offline-fixture",
+      cached: false,
+      disclosure: `Offline fixture obdržela pouze omezený přehled plánu${history?.length ? " a historii konverzace" : ""}; žádná externí služba nebyla volána.`
+    }),
+    planRepository: memoryPlanDocumentRepository,
+    planDiscussionRepository: memoryPlanDiscussionRepository
+  });
+  registerPlanV2Routes(app, {
+    repository: memoryPlanDocumentRepository,
+    shareRepository: memoryPlanShareRepository,
+    resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null,
+    providerFor: () => createMemoryAdjacentRouteProvider(),
+    temporalContextForPlan: (plan, provider) =>
+      buildPlanTemporalContext(plan, provider, async (stops, arrivalTimes) =>
+        stops.map((stop, index) => ({
+          stopId: stop.id,
+          at: arrivalTimes[index]!,
+          temperature: null,
+          precipitation: null,
+          weatherCode: null
+        }))
+      )
+  });
+  registerEventRoutes(app, {
+    service: new EventService(new MemoryEventRepository(buildMemoryEventFixtures()), []),
+    refreshProvider: false
+  });
+  const commerceProvider =
+    !offlineFixture && config.commerceProvider === "synthetic"
+      ? new SyntheticPaymentProvider(config.commerceSyntheticSecret!)
+      : null;
+  registerCommerceRoutes(app, {
+    service: new CommerceService(
+      new MemoryCommerceRepository({ catalog: syntheticCommerceCatalog() }),
+      commerceProvider
+    ),
+    resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null
+  });
+  registerLayerExtensionRoutes(app, {
+    importService: new LayerImportService(new MemoryLayerImportRepository()),
+    // Explicitly empty: memory/offline profiles never make a declarative upstream request.
+    sourceService: new DeclarativeHttpLayerService([]),
+    resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null
+  });
+  const identityOrigin = new URL(config.siweOrigin);
+  const memoryIdentityRepository = new MemoryIdentityRepository();
+  const identityService = new LinkedIdentityService(
+    memoryIdentityRepository,
+    new ViemEoaSiweVerifier(),
+    {
+      domain: identityOrigin.host,
+      uri: new URL("/api/v2/auth/siwe/verify", identityOrigin).toString(),
+      allowedChainIds: config.siweChainIds,
+      siweEnabled: true,
+      simulationEnabled: true
+    }
+  );
+  const gatedInventory = new GatedAavegotchiInventoryAdapter();
+  const simulatedInventory = new SimulatedAavegotchiInventoryAdapter(
+    [{ tokenId: "42", name: "MapOS fixture Gotchi", wearableIds: [], metadataSourceUrl: null }],
+    true
+  );
+  registerIdentityRoutes(app, {
+    service: identityService,
+    async resolveSession(request) {
+      const sessionId = request.cookies.session;
+      const user = getSessionUser(sessionId);
+      return user && sessionId ? { userId: user.id, sessionId } : null;
+    },
+    async rotateSession(userId, previousSessionId) {
+      const current = memoryDb.sessions.get(previousSessionId);
+      if (!current || current.userId !== userId || current.expiresAt <= new Date()) {
+        throw new ClientError("Session is no longer valid", 401);
+      }
+      memoryDb.sessions.delete(previousSessionId);
+      const sessionId = nanoid(32);
+      const expiresAt = new Date(Date.now() + 30 * 86400000);
+      memoryDb.sessions.set(sessionId, { userId, expiresAt });
+      return { sessionId, expiresAt };
+    },
+    applySession(reply, session) {
+      reply.setCookie("session", session.sessionId, sessionCookieOptions(session.expiresAt));
+    },
+    inventoryFor(identity) {
+      return identity.simulated ? simulatedInventory : gatedInventory;
+    },
+    // Offline fixtures never probe a public RPC and never hardcode an ENS ownership claim.
+    displayMetadata: new TtlWalletDisplayMetadataResolver(null)
+  });
+  registerDataRightsRoutes(app, {
+    service: new DataRightsService(new MemoryDataRightsRepository(memoryIdentityRepository)),
+    resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null,
+    clearSession(reply) {
+      reply.clearCookie("session", sessionCookieOptions());
+    }
+  });
+  registerOperationalRoutes(app, {
+    telemetry: operationalTelemetry,
+    circuits: () => providerCircuitBreaker.snapshots()
+  });
 
-  app.get("/health", async () => ({ status: "ok", service: "mapos-v3-memory" }));
+  app.get("/health", async () => ({
+    status: "ok",
+    service: "mapos-v3-memory",
+    ...(offlineFixture ? { fixtureMode: "offline" } : {})
+  }));
 
-  app.get("/config", async () => ({ capabilities: capabilities() }));
+  app.get("/config", async () => {
+    const configured = capabilities();
+    const base = offlineFixture
+      ? Object.fromEntries(
+          Object.entries(configured).map(([name, value]) => [
+            name,
+            name === "cmlProvider"
+              ? "none"
+              : name === "commerceCore"
+                ? true
+                : typeof value === "boolean"
+                  ? false
+                  : value
+          ])
+        )
+      : configured;
+    return {
+      capabilities: { ...base, siwe: true, identitySimulation: true },
+      // The deterministic e2e server never probes third parties. Production replaces this
+      // configured-only state with an active database + upstream readiness result.
+      providers: {
+        mapy: {
+          status: base.mapy ? "unknown" : "unconfigured",
+          checkedAt: new Date().toISOString(),
+          tookMs: 0
+        }
+      },
+      ...(offlineFixture ? { fixtureMode: "offline" } : {})
+    };
+  });
 
-  registerMapyRoutes(app);
-  registerWeatherGridRoutes(app);
-  registerInfoRoutes(app);
-  registerGuideRoutes(app);
+  if (offlineFixture) {
+    registerOfflineFixtureRoutes(app);
+  } else {
+    registerMapyRoutes(app);
+    registerBasemapRoutes(app);
+    registerWeatherGridRoutes(app);
+    registerInfoRoutes(app);
+    registerGuideRoutes(app);
+  }
+  registerDiscoverContextRoutes(app, {
+    service: offlineFixture ? createOfflineDiscoverContextService() : discoverContextService
+  });
 
   // Shared with the real server so a new provider can't show up in one and not the other. The
   // feature route below still answers from memory — the point of this server is not touching
@@ -120,10 +488,29 @@ export async function buildMemoryApp() {
         if (layerId === "user-layers") return memoryUserFeatures(bbox);
         return reply.code(404).send({ message: "Layer not found" });
       } catch (err) {
-        return reply.code(400).send({ message: err instanceof Error ? err.message : "Error" });
+        return reply
+          .code(statusForClient(err))
+          .send({ message: messageForClient(err, "Vrstva je dočasně nedostupná") });
       }
     }
   );
+
+  app.get<{
+    Params: { layerId: string };
+    Querystring: { bbox?: string; limit?: string; days?: string; minMagnitude?: string };
+  }>("/v2/layers/:layerId/features", async (request, reply) => {
+    try {
+      const bbox = parseBbox(request.query.bbox);
+      if (request.params.layerId !== "earthquakes") {
+        return reply.code(404).send({ message: "Layer has no compatible v2 feature contract" });
+      }
+      return earthquakeFixtureResult(bbox, request.query);
+    } catch (err) {
+      return reply
+        .code(statusForClient(err))
+        .send({ message: messageForClient(err, "Vrstva je dočasně nedostupná") });
+    }
+  });
 
   app.post<{ Body: { email: string; password: string; displayName?: string } }>(
     "/auth/register",
@@ -136,7 +523,9 @@ export async function buildMemoryApp() {
         id: nanoid(),
         email,
         password,
-        displayName: displayName ?? email.split("@")[0]!
+        displayName: displayName ?? email.split("@")[0]!,
+        isGuest: false,
+        xpTotal: 0
       };
       memoryDb.users.push(user);
       const sessionId = nanoid(32);
@@ -144,8 +533,12 @@ export async function buildMemoryApp() {
         userId: user.id,
         expiresAt: new Date(Date.now() + 30 * 86400000)
       });
-      reply.setCookie("session", sessionId, { path: "/", httpOnly: true, sameSite: "lax" });
-      return { user: { id: user.id, email: user.email, displayName: user.displayName } };
+      reply.setCookie(
+        "session",
+        sessionId,
+        sessionCookieOptions(memoryDb.sessions.get(sessionId)!.expiresAt)
+      );
+      return { user: publicMemoryUser(user) };
     }
   );
 
@@ -159,37 +552,34 @@ export async function buildMemoryApp() {
       userId: user.id,
       expiresAt: new Date(Date.now() + 30 * 86400000)
     });
-    reply.setCookie("session", sessionId, { path: "/", httpOnly: true, sameSite: "lax" });
-    return { user: { id: user.id, email: user.email, displayName: user.displayName } };
+    reply.setCookie(
+      "session",
+      sessionId,
+      sessionCookieOptions(memoryDb.sessions.get(sessionId)!.expiresAt)
+    );
+    return { user: publicMemoryUser(user) };
   });
 
   app.post("/auth/logout", async (request, reply) => {
     const sid = request.cookies.session;
     if (sid) memoryDb.sessions.delete(sid);
-    reply.clearCookie("session", { path: "/" });
+    reply.clearCookie("session", sessionCookieOptions());
     return { ok: true };
   });
 
   app.post("/auth/guest", async (request, reply) => {
     const existing = getSessionUser(request.cookies.session);
     if (existing) {
-      return {
-        user: {
-          id: existing.id,
-          email: "",
-          displayName: existing.displayName,
-          isGuest: true,
-          xpTotal: 0
-        },
-        created: false
-      };
+      return { user: publicMemoryUser(existing), created: false };
     }
     const suffix = nanoid(12);
     const user: MemoryUser = {
       id: nanoid(),
       email: `guest-${suffix}@guest.mapos.local`,
       password: `!guest-${nanoid(12)}`,
-      displayName: `Poutník ${suffix.slice(0, 4).toUpperCase()}`
+      displayName: `Poutník ${suffix.slice(0, 4).toUpperCase()}`,
+      isGuest: true,
+      xpTotal: 0
     };
     memoryDb.users.push(user);
     const sessionId = nanoid(32);
@@ -197,17 +587,47 @@ export async function buildMemoryApp() {
       userId: user.id,
       expiresAt: new Date(Date.now() + 365 * 86400000)
     });
-    reply.setCookie("session", sessionId, { path: "/", httpOnly: true, sameSite: "lax" });
-    return {
-      user: { id: user.id, email: "", displayName: user.displayName, isGuest: true, xpTotal: 0 },
-      created: true
-    };
+    reply.setCookie(
+      "session",
+      sessionId,
+      sessionCookieOptions(memoryDb.sessions.get(sessionId)!.expiresAt)
+    );
+    return { user: publicMemoryUser(user), created: true };
   });
+
+  app.post<{ Body: { email: string; password: string; displayName?: string } }>(
+    "/auth/upgrade",
+    async (request, reply) => {
+      const user = getSessionUser(request.cookies.session);
+      if (!user) return reply.code(401).send({ message: "Unauthorized" });
+      if (!user.isGuest) return reply.code(400).send({ message: "Účet už je registrovaný" });
+      if (memoryDb.users.some((candidate) => candidate.email === request.body.email)) {
+        return reply.code(400).send({ message: "Email already registered" });
+      }
+      user.email = request.body.email;
+      user.password = request.body.password;
+      user.displayName = request.body.displayName ?? request.body.email.split("@")[0]!;
+      user.isGuest = false;
+      return { user: publicMemoryUser(user) };
+    }
+  );
 
   app.get("/auth/me", async (request) => {
     const user = getSessionUser(request.cookies.session);
+    return { user: user ? publicMemoryUser(user) : null };
+  });
+
+  app.get("/me/personal-summary", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const layerIds = new Set(
+      memoryDb.userLayers.filter((layer) => layer.userId === user.id).map((layer) => layer.id)
+    );
+    reply.header("cache-control", "private, no-store");
     return {
-      user: user ? { id: user.id, email: user.email, displayName: user.displayName } : null
+      plans: memoryDb.tripPlans.filter((row) => row.userId === user.id).length,
+      places: memoryDb.savedPlaces.filter((place) => place.userId === user.id).length,
+      layers: layerIds.size
     };
   });
 
@@ -235,35 +655,437 @@ export async function buildMemoryApp() {
     return { layer: { ...layer, pinCount: 0 } };
   });
 
-  app.post<{ Params: { layerId: string }; Body: { name: string; lng: number; lat: number } }>(
-    "/user-layers/:layerId/pins",
+  app.patch<{
+    Params: { layerId: string };
+    Body: { name?: string; color?: string; isPublic?: boolean };
+  }>("/user-layers/:layerId", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const layer = memoryDb.userLayers.find(
+      (candidate) => candidate.id === request.params.layerId && candidate.userId === user.id
+    );
+    if (!layer) return reply.code(404).send({ message: "Layer not found" });
+    if (request.body.name !== undefined) layer.name = request.body.name.trim();
+    if (request.body.color !== undefined) layer.color = request.body.color;
+    if (request.body.isPublic !== undefined) layer.isPublic = request.body.isPublic ? 1 : 0;
+    return {
+      layer: {
+        ...layer,
+        pinCount: memoryDb.pins.filter((pin) => pin.layerId === layer.id).length
+      }
+    };
+  });
+
+  app.delete<{ Params: { layerId: string } }>("/user-layers/:layerId", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const index = memoryDb.userLayers.findIndex(
+      (layer) => layer.id === request.params.layerId && layer.userId === user.id
+    );
+    if (index < 0) return reply.code(404).send({ message: "Layer not found" });
+    memoryDb.userLayers.splice(index, 1);
+    for (let pinIndex = memoryDb.pins.length - 1; pinIndex >= 0; pinIndex -= 1) {
+      if (memoryDb.pins[pinIndex]?.layerId === request.params.layerId) {
+        memoryDb.pins.splice(pinIndex, 1);
+      }
+    }
+    return reply.code(204).send();
+  });
+
+  app.get<{ Params: { layerId: string } }>("/user-layers/:layerId/pins", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const layer = memoryDb.userLayers.find(
+      (candidate) => candidate.id === request.params.layerId && candidate.userId === user.id
+    );
+    if (!layer) return reply.code(404).send({ message: "Layer not found" });
+    return { pins: memoryDb.pins.filter((pin) => pin.layerId === layer.id) };
+  });
+
+  app.post<{
+    Params: { layerId: string };
+    Body: {
+      name: string;
+      lng: number;
+      lat: number;
+      description?: string;
+      tags?: string[];
+      kind?: string;
+      properties?: Record<string, unknown>;
+    };
+  }>("/user-layers/:layerId/pins", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const layer = memoryDb.userLayers.find(
+      (l) => l.id === request.params.layerId && l.userId === user.id
+    );
+    if (!layer) return reply.code(404).send({ message: "Layer not found" });
+    const pin = { id: nanoid(), layerId: layer.id, ...request.body };
+    memoryDb.pins.push(pin);
+    return { pin };
+  });
+
+  app.patch<{
+    Params: { layerId: string; pinId: string };
+    Body: {
+      name?: string;
+      description?: string;
+      lng?: number;
+      lat?: number;
+      tags?: string[];
+      kind?: string;
+    };
+  }>("/user-layers/:layerId/pins/:pinId", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const layer = memoryDb.userLayers.find(
+      (candidate) => candidate.id === request.params.layerId && candidate.userId === user.id
+    );
+    const pin = memoryDb.pins.find(
+      (candidate) =>
+        candidate.id === request.params.pinId && candidate.layerId === request.params.layerId
+    );
+    if (!layer || !pin) return reply.code(404).send({ message: "Pin not found" });
+    Object.assign(pin, request.body);
+    return { pin };
+  });
+
+  app.delete<{ Params: { layerId: string; pinId: string } }>(
+    "/user-layers/:layerId/pins/:pinId",
     async (request, reply) => {
       const user = getSessionUser(request.cookies.session);
       if (!user) return reply.code(401).send({ message: "Unauthorized" });
       const layer = memoryDb.userLayers.find(
-        (l) => l.id === request.params.layerId && l.userId === user.id
+        (candidate) => candidate.id === request.params.layerId && candidate.userId === user.id
       );
-      if (!layer) return reply.code(404).send({ message: "Layer not found" });
-      const pin = { id: nanoid(), layerId: layer.id, ...request.body };
-      memoryDb.pins.push(pin);
-      return { pin };
+      const index = memoryDb.pins.findIndex(
+        (pin) => pin.id === request.params.pinId && pin.layerId === request.params.layerId
+      );
+      if (!layer || index < 0) return reply.code(404).send({ message: "Pin not found" });
+      memoryDb.pins.splice(index, 1);
+      return reply.code(204).send();
     }
   );
+
+  app.get<{ Params: { slug: string } }>("/l/:slug", async (request, reply) => {
+    const layer = memoryDb.userLayers.find(
+      (candidate) => candidate.slug === request.params.slug && candidate.isPublic === 1
+    );
+    if (!layer) return reply.code(404).send({ message: "Not found" });
+    return { layer, pins: memoryDb.pins.filter((pin) => pin.layerId === layer.id) };
+  });
 
   app.get<{ Querystring: { from: string; to: string; profile?: "foot" | "bike" | "car" } }>(
     "/routing",
     async (request, reply) => {
       try {
+        if (offlineFixture) {
+          return memoryRouteResult(
+            request.query.from,
+            request.query.to,
+            request.query.profile ?? "foot"
+          );
+        }
         return await fetchRoute(
           request.query.from,
           request.query.to,
           request.query.profile ?? "foot"
         );
       } catch (err) {
-        return reply.code(400).send({ message: err instanceof Error ? err.message : "Error" });
+        return reply
+          .code(statusForClient(err))
+          .send({ message: messageForClient(err, "Trasování je dočasně nedostupné") });
       }
     }
   );
+
+  app.post<{ Body: { plan?: Partial<TripPlan>; provider?: DataProvider } }>(
+    "/routing/plan",
+    async (request, reply) => {
+      try {
+        return memoryTripPlanResult(
+          request.body?.plan ?? {},
+          request.body?.provider === "mapy" ? "mapy" : "osm"
+        );
+      } catch (err) {
+        return reply
+          .code(statusForClient(err))
+          .send({ message: messageForClient(err, "Plánování trasy je dočasně nedostupné") });
+      }
+    }
+  );
+
+  app.get("/plans", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    return {
+      plans: memoryDb.tripPlans.filter((row) => row.userId === user.id).map((row) => row.plan)
+    };
+  });
+
+  app.post<{ Body: Partial<TripPlan> }>("/plans", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const plan = {
+      ...normalizeTripPlan(request.body ?? {}),
+      id: nanoid(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    memoryDb.tripPlans.push({ userId: user.id, plan });
+    return { plan };
+  });
+
+  app.patch<{ Params: { id: string }; Body: Partial<TripPlan> }>(
+    "/plans/:id",
+    async (request, reply) => {
+      const user = getSessionUser(request.cookies.session);
+      if (!user) return reply.code(401).send({ message: "Unauthorized" });
+      const row = memoryDb.tripPlans.find(
+        (candidate) => candidate.userId === user.id && candidate.plan.id === request.params.id
+      );
+      if (!row) return reply.code(404).send({ message: "Plán nebyl nalezen" });
+      row.plan = {
+        ...normalizeTripPlan({ ...request.body, id: request.params.id }),
+        id: request.params.id,
+        createdAt: row.plan.createdAt,
+        updatedAt: new Date().toISOString()
+      };
+      return { plan: row.plan };
+    }
+  );
+
+  app.delete<{ Params: { id: string } }>("/plans/:id", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const index = memoryDb.tripPlans.findIndex(
+      (candidate) => candidate.userId === user.id && candidate.plan.id === request.params.id
+    );
+    if (index < 0) return reply.code(404).send({ message: "Plán nebyl nalezen" });
+    memoryDb.tripPlans.splice(index, 1);
+    return reply.code(204).send();
+  });
+
+  app.post<{
+    Body: {
+      name?: string;
+      lng?: number;
+      lat?: number;
+      category?: string;
+      sources?: Array<{ source?: string; sourceRef?: string }>;
+    };
+  }>("/places/canonicalize", async (request, reply) => {
+    const lng = Number(request.body?.lng);
+    const lat = Number(request.body?.lat);
+    if (!request.body?.name || !Number.isFinite(lng) || !Number.isFinite(lat)) {
+      return reply.code(400).send({ message: "Místo potřebuje název a platné souřadnice" });
+    }
+    const key = request.body.sources?.[0]?.sourceRef ?? `${lng.toFixed(5)}:${lat.toFixed(5)}`;
+    return {
+      place: {
+        placeId: `memory-place-${encodeURIComponent(key)}`,
+        name: request.body.name,
+        lng,
+        lat,
+        category: request.body.category ?? null,
+        sources: (request.body.sources ?? []).map((source) => ({
+          source: source.source ?? "unknown",
+          sourceRef: source.sourceRef ?? "unknown"
+        })),
+        social: { followers: 0, reviews: 0, rating: null, comments: 0 }
+      }
+    };
+  });
+
+  app.get("/follows", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    return { follows: memoryDb.follows.filter((follow) => follow.userId === user.id) };
+  });
+
+  app.post<{ Body: { targetType?: string; targetId?: string } }>(
+    "/follows",
+    async (request, reply) => {
+      const user = getSessionUser(request.cookies.session);
+      if (!user) return reply.code(401).send({ message: "Unauthorized" });
+      if (!request.body?.targetType || !request.body?.targetId)
+        return reply.code(400).send({ message: "Neplatný sociální cíl" });
+      const follow = {
+        userId: user.id,
+        targetType: request.body.targetType,
+        targetId: request.body.targetId
+      };
+      if (
+        !memoryDb.follows.some(
+          (item) =>
+            item.userId === follow.userId &&
+            item.targetType === follow.targetType &&
+            item.targetId === follow.targetId
+        )
+      )
+        memoryDb.follows.push(follow);
+      return { follow };
+    }
+  );
+
+  app.delete<{ Querystring: { targetType?: string; targetId?: string } }>(
+    "/follows",
+    async (request, reply) => {
+      const user = getSessionUser(request.cookies.session);
+      if (!user) return reply.code(401).send({ message: "Unauthorized" });
+      const index = memoryDb.follows.findIndex(
+        (item) =>
+          item.userId === user.id &&
+          item.targetType === request.query.targetType &&
+          item.targetId === request.query.targetId
+      );
+      if (index >= 0) memoryDb.follows.splice(index, 1);
+      return reply.code(204).send();
+    }
+  );
+
+  app.get<{ Querystring: { targetType?: string; targetId?: string } }>(
+    "/reviews",
+    async (request) => ({
+      reviews: memoryDb.reviews.filter(
+        (item) =>
+          item.targetType === request.query.targetType && item.targetId === request.query.targetId
+      )
+    })
+  );
+
+  app.post<{ Body: { targetType?: string; targetId?: string; rating?: number; body?: string } }>(
+    "/reviews",
+    async (request, reply) => {
+      const user = getSessionUser(request.cookies.session);
+      if (!user) return reply.code(401).send({ message: "Unauthorized" });
+      const rating = Math.round(Number(request.body?.rating));
+      if (!request.body?.targetType || !request.body?.targetId || rating < 1 || rating > 5)
+        return reply.code(400).send({ message: "Hodnocení musí být 1–5" });
+      let review = memoryDb.reviews.find(
+        (item) =>
+          item.userId === user.id &&
+          item.targetType === request.body.targetType &&
+          item.targetId === request.body.targetId
+      );
+      if (review) Object.assign(review, { rating, body: request.body.body ?? null });
+      else {
+        review = {
+          id: nanoid(),
+          userId: user.id,
+          targetType: request.body.targetType,
+          targetId: request.body.targetId,
+          rating,
+          body: request.body.body ?? null
+        };
+        memoryDb.reviews.push(review);
+      }
+      return { review };
+    }
+  );
+
+  app.get<{ Querystring: { targetType?: string; targetId?: string } }>(
+    "/comments",
+    async (request) => ({
+      comments: memoryDb.comments.filter(
+        (item) =>
+          item.targetType === request.query.targetType && item.targetId === request.query.targetId
+      )
+    })
+  );
+
+  app.post<{ Body: { targetType?: string; targetId?: string; body?: string } }>(
+    "/comments",
+    async (request, reply) => {
+      const user = getSessionUser(request.cookies.session);
+      if (!user) return reply.code(401).send({ message: "Unauthorized" });
+      const body = String(request.body?.body ?? "")
+        .replace(/<[^>]*>/g, "")
+        .trim()
+        .slice(0, 1600);
+      if (!request.body?.targetType || !request.body?.targetId || !body)
+        return reply.code(400).send({ message: "Komentář je prázdný" });
+      const comment = {
+        id: nanoid(),
+        userId: user.id,
+        targetType: request.body.targetType,
+        targetId: request.body.targetId,
+        body,
+        createdAt: new Date().toISOString()
+      };
+      memoryDb.comments.push(comment);
+      return { comment };
+    }
+  );
+
+  app.get("/drafts", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    return {
+      drafts: memoryDb.drafts.filter((item) => item.userId === user.id).map((item) => item.payload)
+    };
+  });
+
+  app.post<{ Body: Partial<ContentDraft> }>("/drafts", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const draft = {
+      ...createDraftPayload(user.id, request.body ?? {}),
+      id: nanoid(),
+      updatedAt: new Date().toISOString()
+    } as Record<string, unknown> & { id: string };
+    memoryDb.drafts.push({ userId: user.id, payload: draft });
+    return { draft };
+  });
+
+  app.patch<{ Params: { id: string }; Body: Partial<ContentDraft> }>(
+    "/drafts/:id",
+    async (request, reply) => {
+      const user = getSessionUser(request.cookies.session);
+      if (!user) return reply.code(401).send({ message: "Unauthorized" });
+      const row = memoryDb.drafts.find(
+        (item) => item.userId === user.id && item.payload.id === request.params.id
+      );
+      if (!row) return reply.code(404).send({ message: "Koncept nebyl nalezen" });
+      Object.assign(
+        row.payload,
+        reviseDraftPayload(user.id, row.payload as unknown as ContentDraft, request.body ?? {}),
+        {
+          id: request.params.id,
+          updatedAt: new Date().toISOString()
+        }
+      );
+      return { draft: row.payload };
+    }
+  );
+
+  app.post<{ Params: { id: string } }>("/drafts/:id/submit", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const row = memoryDb.drafts.find(
+      (item) => item.userId === user.id && item.payload.id === request.params.id
+    );
+    if (!row) return reply.code(404).send({ message: "Koncept nebyl nalezen" });
+    Object.assign(
+      row.payload,
+      submitDraftPayload(user.id, row.payload as unknown as ContentDraft),
+      { id: request.params.id, updatedAt: new Date().toISOString() }
+    );
+    return { draft: row.payload };
+  });
+
+  app.delete<{ Params: { id: string } }>("/drafts/:id", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const index = memoryDb.drafts.findIndex(
+      (item) => item.userId === user.id && item.payload.id === request.params.id
+    );
+    if (index < 0) return reply.code(404).send({ message: "Koncept nebyl nalezen" });
+    memoryDb.drafts.splice(index, 1);
+    return reply.code(204).send();
+  });
+
+  app.get("/feed", async () => ({ items: [], nextCursor: null }));
 
   // The game endpoints below run the *same* deterministic spawner as production (game/spawn.ts)
   // rather than returning empty stubs. That parity is the point: e2e runs and local dev
@@ -273,15 +1095,17 @@ export async function buildMemoryApp() {
     const user = getSessionUser(request.cookies.session);
     const completed = user ? (memoryDb.questCompletions.get(user.id) ?? new Set<string>()) : null;
     let anchored: Awaited<ReturnType<typeof anchoredQuestsForBbox>> = [];
+    let bbox: Bbox | undefined;
     if (request.query.bbox) {
       try {
-        anchored = await anchoredQuestsForBbox(parseBbox(request.query.bbox));
+        bbox = parseBbox(request.query.bbox);
+        anchored = await anchoredQuestsForBbox(bbox);
       } catch {
         anchored = [];
       }
     }
     return {
-      zones: memoryDb.zones,
+      zones: composeGameZones(memoryDb.zones, anchored, bbox),
       quests: [
         ...memoryDb.quests.map((q) => ({ ...q, anchored: false })),
         ...anchored
@@ -303,6 +1127,86 @@ export async function buildMemoryApp() {
     };
   });
 
+  app.get<{ Querystring: { bbox?: string } }>("/game/roads", async (request, reply) => {
+    try {
+      return {
+        roads: memoryGameRoads(parseBbox(request.query.bbox)),
+        source: "deterministic test roads"
+      };
+    } catch (err) {
+      return reply
+        .code(statusForClient(err))
+        .send({ message: messageForClient(err, "Silniční pole je dočasně nedostupné") });
+    }
+  });
+
+  app.get("/game/progress", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const collected = memoryDb.collectedOrbs.get(user.id) ?? new Set<string>();
+    return {
+      progress: {
+        xpTotal: user.xpTotal,
+        collectedOrbIds: [...collected],
+        collectedCount: collected.size
+      }
+    };
+  });
+
+  app.get<{ Querystring: { gameId?: string } }>("/games/state", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const gameId = request.query.gameId ?? "aavegotchi";
+    if (!["aavegotchi", "trail-signals"].includes(gameId))
+      return reply.code(400).send({ message: "Neznámá hra" });
+    const key = `${user.id}:${gameId}`;
+    const state =
+      memoryDb.gameProfiles.get(key) ?? (gameId === "aavegotchi" ? { xpTotal: user.xpTotal } : {});
+    memoryDb.gameProfiles.set(key, state);
+    return { gameId, state, updatedAt: new Date().toISOString() };
+  });
+
+  app.patch<{ Body: { gameId?: string; state?: Record<string, unknown> } }>(
+    "/games/state",
+    async (request, reply) => {
+      const user = getSessionUser(request.cookies.session);
+      if (!user) return reply.code(401).send({ message: "Unauthorized" });
+      const gameId = request.body?.gameId ?? "aavegotchi";
+      if (!["aavegotchi", "trail-signals"].includes(gameId))
+        return reply.code(400).send({ message: "Neznámá hra" });
+      const key = `${user.id}:${gameId}`;
+      const state = { ...(memoryDb.gameProfiles.get(key) ?? {}), ...(request.body?.state ?? {}) };
+      memoryDb.gameProfiles.set(key, state);
+      return { gameId, state, updatedAt: new Date().toISOString() };
+    }
+  );
+
+  app.post<{ Body: { orbIds?: string[] } }>("/game/orbs/collect", async (request, reply) => {
+    const user = getSessionUser(request.cookies.session);
+    if (!user) return reply.code(401).send({ message: "Unauthorized" });
+    const raw = request.body?.orbIds;
+    if (!Array.isArray(raw) || raw.length > 4000) {
+      return reply.code(400).send({ message: "Invalid orb ids" });
+    }
+    const prefix = `orb:${user.id}:`;
+    if (raw.some((id) => typeof id !== "string" || !id.startsWith(prefix))) {
+      return reply.code(400).send({ message: "Invalid orb id" });
+    }
+    const collected = memoryDb.collectedOrbs.get(user.id) ?? new Set<string>();
+    const before = collected.size;
+    for (const id of raw) collected.add(id);
+    const acceptedCount = collected.size - before;
+    user.xpTotal += acceptedCount * 10;
+    memoryDb.collectedOrbs.set(user.id, collected);
+    return {
+      progress: {
+        xpTotal: user.xpTotal,
+        collectedCount: collected.size,
+        acceptedCount
+      }
+    };
+  });
+
   app.get<{ Querystring: { bbox?: string } }>("/game/ghosts", async (request, reply) => {
     try {
       const bbox = parseBbox(request.query.bbox);
@@ -311,7 +1215,9 @@ export async function buildMemoryApp() {
         .map((g) => ({ id: g.id, lng: g.lng, lat: g.lat, gotchiId: g.gotchiId }));
       return { ghosts };
     } catch (err) {
-      return reply.code(400).send({ message: err instanceof Error ? err.message : "Error" });
+      return reply
+        .code(statusForClient(err))
+        .send({ message: messageForClient(err, "Duchové jsou dočasně nedostupní") });
     }
   });
 
@@ -343,7 +1249,9 @@ export async function buildMemoryApp() {
         }));
       return { encounters };
     } catch (err) {
-      return reply.code(400).send({ message: err instanceof Error ? err.message : "Error" });
+      return reply
+        .code(statusForClient(err))
+        .send({ message: messageForClient(err, "Encountery jsou dočasně nedostupné") });
     }
   });
 
@@ -390,7 +1298,8 @@ export async function buildMemoryApp() {
       if (done.has(questId)) return reply.code(400).send({ message: "Quest already completed" });
       done.add(questId);
       memoryDb.questCompletions.set(user.id, done);
-      return { ok: true, rewardPoints, rewardUsd: rewardPoints * 0.05 };
+      user.xpTotal += rewardPoints;
+      return { ok: true, rewardPoints, rewardUsd: rewardPoints * 0.05, xpTotal: user.xpTotal };
     }
   );
 
@@ -419,7 +1328,17 @@ export async function buildMemoryApp() {
   app.get("/photos/resolve", async () => ({ url: null }));
 
   app.get("/geocode", async () => ({
-    results: [{ display_name: "Plzeň, Česko", lat: "49.7475", lon: "13.3775" }]
+    results: [
+      {
+        display_name: "Plzeň, Česko",
+        lat: "49.7475",
+        lon: "13.3775",
+        type: "city",
+        hierarchy: ["Plzeňský kraj", "Česko"],
+        source: { id: "fixture", label: "MapOS offline geokodér" },
+        confidence: { level: "high", label: "vysoká", basis: "provider-order" }
+      }
+    ]
   }));
 
   app.get("/geocode/reverse", async () => ({ country: "CZ" }));
@@ -507,10 +1426,25 @@ export async function buildMemoryApp() {
 }
 
 async function main() {
-  const app = await buildMemoryApp();
+  if (isOfflineFixtureMode()) installOfflineFetchGuard();
+  const rawRateLimitMultiplier = process.env.MAPOS_E2E_RATE_LIMIT_MULTIPLIER;
+  if (rawRateLimitMultiplier && process.env.NODE_ENV === "production") {
+    throw new Error("MAPOS_E2E_RATE_LIMIT_MULTIPLIER is forbidden in production");
+  }
+  const rateLimitMultiplier = rawRateLimitMultiplier ? Number(rawRateLimitMultiplier) : undefined;
+  const app = await buildMemoryApp({ rateLimitMultiplier });
   const port = Number(process.env.PORT ?? 4033);
   await app.listen({ port, host: "0.0.0.0" });
   console.log(`MapOS API (memory) listening on :${port}`);
 }
 
-main().catch(console.error);
+const isEntrypoint = process.argv[1]
+  ? import.meta.url === pathToFileURL(process.argv[1]).href
+  : false;
+
+if (isEntrypoint) {
+  main().catch((error) => {
+    console.error("MapOS memory API startup failed", safeErrorLogFields(error));
+    process.exitCode = 1;
+  });
+}

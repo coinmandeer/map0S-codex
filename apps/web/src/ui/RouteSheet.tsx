@@ -1,10 +1,7 @@
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { getMapStore } from "../store/mapStore";
 import { saveUserPlace } from "./saveUserContent";
-
-function formatDistance(m: number): string {
-  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
-}
+import { formatDistance } from "../lib/units";
 
 function formatDuration(s: number): string {
   const min = Math.round(s / 60);
@@ -14,21 +11,32 @@ function formatDuration(s: number): string {
 export function RouteSheet() {
   const store = getMapStore();
   const route = useMapStoreSnapshot((s) => s.routePreview);
+  const units = useMapStoreSnapshot((s) => s.preferences.units);
   if (!route) return null;
 
   const profileLabel =
-    route.profile === "foot" ? "Pěšky" : route.profile === "bike" ? "Kolo" : "Auto";
+    route.profile === "foot"
+      ? "Pěšky"
+      : route.profile === "bike"
+        ? "Kolo"
+        : route.profile === "moto"
+          ? "Motorka"
+          : route.profile === "camper"
+            ? "Karavan"
+            : route.profile === "truck"
+              ? "Nákladní"
+              : "Auto";
   const desktop = typeof window !== "undefined" && window.innerWidth >= 900;
   const dest = route.coordinates[route.coordinates.length - 1];
 
   const saveRoute = async () => {
     if (!dest) return;
     const result = await saveUserPlace({
-      name: `Trasa ${profileLabel} · ${formatDistance(route.distanceM)}`,
+      name: `Trasa ${profileLabel} · ${formatDistance(route.distanceM, units)}`,
       lng: dest[0],
       lat: dest[1],
       kind: "route",
-      description: `${profileLabel}, ${formatDistance(route.distanceM)}`,
+      description: `${profileLabel}, ${formatDistance(route.distanceM, units)}`,
       properties: {
         profile: route.profile,
         distanceM: route.distanceM,
@@ -57,7 +65,7 @@ export function RouteSheet() {
         </div>
         <div className="panel-body">
           <p style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 8 }}>
-            {formatDistance(route.distanceM)} · {formatDuration(route.durationS)}
+            {formatDistance(route.distanceM, units)} · {formatDuration(route.durationS)}
           </p>
           <p className="meta">
             Trasa je na mapě. Pro turn-by-turn navigaci otevři Google Maps z detailu místa.

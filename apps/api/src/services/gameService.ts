@@ -10,6 +10,8 @@ import {
   COMPLETION_RADIUS_M
 } from "../game/anchors.js";
 import { registerDbQuestSources } from "../game/anchorSources.js";
+import { composeGameZones } from "../game/worldZones.js";
+import { ClientError } from "../utils/clientError.js";
 import { registerReward } from "./stakingService.js";
 
 registerDbQuestSources();
@@ -23,7 +25,7 @@ export async function listGameQuests() {
 }
 
 export async function getGameState(userId?: string, bbox?: Bbox) {
-  const zones = await listGameZones();
+  const curatedZones = await listGameZones();
   const seeded = await listGameQuests();
   // Anchored quests only exist relative to a viewport, so they join the list when the client
   // says where it is looking; without a bbox the state is just the curated set.
@@ -35,7 +37,7 @@ export async function getGameState(userId?: string, bbox?: Bbox) {
     : [];
   const completedSet = new Set(completed);
   return {
-    zones,
+    zones: composeGameZones(curatedZones, anchored, bbox),
     quests: [
       ...seeded.map((q) => ({ ...q, anchored: false as const })),
       ...anchored
@@ -83,18 +85,19 @@ export async function completeQuest(
       rewardPoints
     });
   } catch {
-    throw new Error("Quest already completed");
+    throw new ClientError("Quest already completed");
   }
 
-  await db
+  const [updatedUser] = await db
     .update(users)
     .set({ xpTotal: sql`${users.xpTotal} + ${rewardPoints}` })
-    .where(eq(users.id, userId));
+    .where(eq(users.id, userId))
+    .returning({ xpTotal: users.xpTotal });
 
   const rewardUsd = Number((rewardPoints * QUEST_POINT_USD).toFixed(4));
   await registerReward(userId, "quest_complete", rewardUsd, questId);
 
-  return { ok: true, rewardPoints, rewardUsd };
+  return { ok: true, rewardPoints, rewardUsd, xpTotal: updatedUser?.xpTotal ?? rewardPoints };
 }
 
 /** Decides what a claim is worth, and whether it is legitimate at all. The reward comes from
@@ -103,17 +106,17 @@ async function resolveReward(questId: string, at?: { lng: number; lat: number })
   if (!parseAnchoredQuestId(questId)) {
     // Postgres rejects a malformed uuid with an error rather than an empty result, so anything
     // that isn't one is "not found" before it reaches the query.
-    if (!UUID_RE.test(questId)) throw new Error("Quest not found");
+    if (!UUID_RE.test(questId)) throw new ClientError("Quest not found", 404);
     const [quest] = await db.select().from(gameQuests).where(eq(gameQuests.id, questId)).limit(1);
-    if (!quest) throw new Error("Quest not found");
+    if (!quest) throw new ClientError("Quest not found", 404);
     return quest.rewardPoints;
   }
 
-  if (!at) throw new Error("Poloha je potřeba k potvrzení questu");
+  if (!at) throw new ClientError("Poloha je potřeba k potvrzení questu");
   const verified = await verifyAnchoredQuest(questId, at);
-  if (!verified) throw new Error("Quest not found");
+  if (!verified) throw new ClientError("Quest not found", 404);
   if (!verified.withinRange) {
-    throw new Error(
+    throw new ClientError(
       `Jsi ${Math.round(verified.distanceM)} m daleko, potřebuješ být do ${COMPLETION_RADIUS_M} m`
     );
   }
@@ -145,7 +148,7 @@ export async function getGhostsForBbox(bbox: Bbox) {
 
 export async function catchGhost(id: string, userId: string) {
   const spawn = ghostById(id);
-  if (!spawn) throw new Error("Ghost not found");
+  if (!spawn) throw new ClientError("Ghost not found", 404);
 
   // The insert doubles as the claim: a unique primary key means two players racing for the
   // same ghost can't both win it, without needing a transaction or a lock.
@@ -160,7 +163,7 @@ export async function catchGhost(id: string, userId: string) {
       caughtAt: new Date()
     });
   } catch {
-    throw new Error("Ghost already caught");
+    throw new ClientError("Ghost already caught");
   }
   return { ok: true, gotchiId: spawn.gotchiId };
 }

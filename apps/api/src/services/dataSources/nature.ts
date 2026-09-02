@@ -6,6 +6,14 @@ import { bboxSpanKm, point, withinBbox, type DataSource } from "./types.js";
  *  that is already in our shape. */
 export const earthquakes: DataSource = {
   id: "earthquakes",
+  v2: {
+    providerId: "usgs",
+    attribution: "USGS Earthquake Hazards Program",
+    license: "public domain",
+    rights: "open",
+    confidence: 1,
+    kind: "event"
+  },
   async load(bbox, query) {
     const [west, south, east, north] = bbox;
     const days = Number(query.days) > 0 ? Math.min(Number(query.days), 365) : 30;
@@ -22,7 +30,7 @@ export const earthquakes: DataSource = {
       `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson` +
         `&minlatitude=${south}&maxlatitude=${north}&minlongitude=${west}&maxlongitude=${east}` +
         `&starttime=${start}&minmagnitude=${minMagnitude}&limit=500&orderby=time`,
-      { source: "USGS", ttlMs: 10 * 60_000 }
+      { providerId: "usgs", ttlMs: 10 * 60_000 }
     );
 
     return (data.features ?? []).flatMap((f): GeoFeature[] => {
@@ -80,7 +88,7 @@ export const inaturalist: DataSource = {
         photos?: Array<{ url?: string }>;
       }>;
     }>(`https://api.inaturalist.org/v1/observations?${params}`, {
-      source: "iNaturalist",
+      providerId: "inaturalist",
       ttlMs: 15 * 60_000
     });
 
@@ -127,7 +135,7 @@ export const gbif: DataSource = {
     }>(
       `https://api.gbif.org/v1/occurrence/search?decimalLatitude=${south},${north}` +
         `&decimalLongitude=${west},${east}&hasCoordinate=true&limit=300`,
-      { source: "GBIF", ttlMs: 30 * 60_000 }
+      { providerId: "gbif", ttlMs: 30 * 60_000 }
     );
 
     return (data.results ?? []).flatMap((r): GeoFeature[] => {
@@ -174,7 +182,7 @@ export const airQuality: DataSource = {
       }>
     >(
       `https://data.sensor.community/airrohr/v1/filter/area=${lat.toFixed(4)},${lng.toFixed(4)},${radiusKm.toFixed(1)}`,
-      { source: "Sensor.Community", ttlMs: 5 * 60_000 }
+      { providerId: "sensor-community", ttlMs: 5 * 60_000 }
     );
 
     // One sensor reports repeatedly within the window; only its newest reading is interesting.

@@ -1,0 +1,21 @@
+{
+  "name": "@mapos/runtime-starter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && vite build",
+    "predev": "npm run build -w @mapos/layer-sdk && npm run build -w @mapos/map-runtime",
+    "dev": "vite",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@mapos/layer-sdk": "*",
+    "@mapos/map-runtime": "*",
+    "maplibre-gl": "^5.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}

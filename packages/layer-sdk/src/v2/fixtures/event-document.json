@@ -1,0 +1,65 @@
+{
+  "schema": "mapos.event",
+  "schemaVersion": "2.0.0",
+  "id": "event:demo:open-map-day",
+  "revision": 2,
+  "title": "Open Map Day — ukázková událost",
+  "description": "Syntetická událost demonstrující cílový multisource a dedupe kontrakt.",
+  "categories": ["technology", "community"],
+  "status": "rescheduled",
+  "schedule": {
+    "startsAt": "2026-10-17T10:00:00+02:00",
+    "endsAt": "2026-10-17T18:00:00+02:00",
+    "doorsAt": "2026-10-17T09:30:00+02:00",
+    "timezone": "Europe/Madrid",
+    "allDay": false,
+    "recurrence": null,
+    "occurrenceId": "open-map-day-2026"
+  },
+  "venue": {
+    "name": "Demo venue",
+    "address": "Valencie, Španělsko",
+    "location": { "type": "Point", "coordinates": [-0.3763, 39.4699] },
+    "featureId": null,
+    "externalId": "venue-demo-1"
+  },
+  "performers": [{ "name": "MapOS Community", "role": "host" }],
+  "organizer": { "name": "MapOS Community", "url": null },
+  "price": { "currency": "EUR", "min": 0, "max": 0, "free": true, "note": "Ukázka" },
+  "ticketUrl": null,
+  "officialUrl": null,
+  "ticketOffers": [],
+  "accessibility": ["wheelchair-accessible"],
+  "notes": null,
+  "media": [],
+  "sources": [
+    {
+      "providerId": "demo-events-a",
+      "sourceId": "evt-100",
+      "url": "https://events.example.invalid/evt-100",
+      "retrievedAt": "2026-09-01T08:15:00Z",
+      "attribution": "Demo events source",
+      "license": null,
+      "confidence": 0.8
+    },
+    {
+      "providerId": "demo-events-b",
+      "sourceId": "x-77",
+      "url": "https://calendar.example.invalid/x-77",
+      "retrievedAt": "2026-09-01T08:16:00Z",
+      "attribution": "Demo calendar source",
+      "license": null,
+      "confidence": 0.75
+    }
+  ],
+  "dedupe": {
+    "fingerprint": "open-map-day|2026-10-17|valencia",
+    "mergedEventIds": ["demo-events-a:evt-100", "demo-events-b:x-77"]
+  },
+  "relations": {
+    "rescheduledFromEventId": "event:demo:open-map-day-original",
+    "rescheduledToEventId": null
+  },
+  "createdAt": "2026-09-01T08:15:00Z",
+  "updatedAt": "2026-09-01T08:16:00Z"
+}

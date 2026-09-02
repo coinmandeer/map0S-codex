@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mapos.dev/v2/event-document.schema.json",
+  "title": "MapOS EventDocument v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "id",
+    "revision",
+    "title",
+    "categories",
+    "schedule",
+    "venue",
+    "sources",
+    "status"
+  ],
+  "properties": {
+    "schema": { "const": "mapos.event" },
+    "schemaVersion": { "type": "string", "pattern": "^2\\.\\d+\\.\\d+$" },
+    "id": { "type": "string", "minLength": 1 },
+    "revision": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "description": { "type": ["string", "null"] },
+    "categories": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "status": {
+      "enum": ["scheduled", "postponed", "cancelled", "rescheduled", "completed", "unknown"]
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startsAt", "timezone"],
+      "properties": {
+        "startsAt": { "type": "string", "format": "date-time" },
+        "endsAt": { "type": ["string", "null"], "format": "date-time" },
+        "doorsAt": { "type": ["string", "null"], "format": "date-time" },
+        "timezone": { "type": "string", "minLength": 1 },
+        "allDay": { "type": "boolean" },
+        "recurrence": { "type": ["string", "null"] },
+        "occurrenceId": { "type": ["string", "null"] },
+        "seriesId": { "type": ["string", "null"] }
+      }
+    },
+    "venue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "location"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "address": { "type": ["string", "null"] },
+        "location": { "$ref": "#/$defs/point" },
+        "featureId": { "type": ["string", "null"] },
+        "externalId": { "type": ["string", "null"] }
+      }
+    },
+    "performers": { "type": "array", "items": { "$ref": "#/$defs/performer" }, "maxItems": 100 },
+    "organizer": { "anyOf": [{ "$ref": "#/$defs/organizer" }, { "type": "null" }] },
+    "price": { "anyOf": [{ "$ref": "#/$defs/price" }, { "type": "null" }] },
+    "ticketUrl": { "type": ["string", "null"], "format": "uri" },
+    "officialUrl": { "type": ["string", "null"], "format": "uri" },
+    "ticketOffers": { "type": "array", "items": { "$ref": "#/$defs/ticketOffer" }, "maxItems": 50 },
+    "ageRestriction": { "type": ["string", "null"] },
+    "accessibility": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "maxItems": 50
+    },
+    "notes": { "type": ["string", "null"] },
+    "media": { "type": "array", "items": { "$ref": "#/$defs/media" }, "maxItems": 50 },
+    "sources": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/source" } },
+    "dedupe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": { "type": "string" },
+        "mergedEventIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    },
+    "relations": {
+      "type": "object",
+      "properties": {
+        "rescheduledFromEventId": { "type": ["string", "null"] },
+        "rescheduledToEventId": { "type": ["string", "null"] }
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "position": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number", "minimum": -180, "maximum": 180 },
+        { "type": "number", "minimum": -90, "maximum": 90 }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "coordinates"],
+      "properties": { "type": { "const": "Point" }, "coordinates": { "$ref": "#/$defs/position" } }
+    },
+    "performer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "role": { "type": ["string", "null"] },
+        "url": { "type": "string", "format": "uri" }
+      }
+    },
+    "organizer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": ["string", "null"], "format": "uri" }
+      }
+    },
+    "price": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "min": { "type": ["number", "null"], "minimum": 0 },
+        "max": { "type": ["number", "null"], "minimum": 0 },
+        "free": { "type": "boolean" },
+        "note": { "type": ["string", "null"] }
+      }
+    },
+    "ticketOffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "url"],
+      "properties": {
+        "sourceId": { "type": "string", "minLength": 1 },
+        "label": { "type": ["string", "null"] },
+        "url": { "type": "string", "format": "uri" },
+        "currency": { "type": ["string", "null"], "pattern": "^[A-Z]{3}$" },
+        "min": { "type": ["number", "null"], "minimum": 0 },
+        "max": { "type": ["number", "null"], "minimum": 0 },
+        "availability": { "enum": ["available", "limited", "sold-out", "cancelled", "unknown"] }
+      }
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "type": { "enum": ["image", "video"] },
+        "credit": { "type": ["string", "null"] },
+        "license": { "type": ["string", "null"] },
+        "sourceId": { "type": ["string", "null"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "sourceId", "retrievedAt"],
+      "properties": {
+        "providerId": { "type": "string", "minLength": 1 },
+        "sourceId": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "retrievedAt": { "type": "string", "format": "date-time" },
+        "attribution": { "type": "string" },
+        "license": { "type": ["string", "null"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

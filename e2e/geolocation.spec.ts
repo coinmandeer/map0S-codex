@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures/offlineTest";
 
 const PRAGUE = { longitude: 14.4213, latitude: 50.0874 };
 
@@ -31,6 +31,11 @@ test.describe("my location button", () => {
     await page.goto("/");
     await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
 
+    const safeStart = new URL(page.url()).searchParams;
+    expect(Number(safeStart.get("lng"))).toBeCloseTo(10.2, 1);
+    expect(Number(safeStart.get("lat"))).toBeCloseTo(51, 1);
+    expect(Number(safeStart.get("z"))).toBeCloseTo(4, 0);
+
     // Denial is stubbed rather than left to the browser: headless Chromium with no permission
     // granted sometimes drops the request instead of rejecting it, which turns this into a test
     // of the timeout path under load. The mapping from code 1 to the message is the point here.
@@ -53,6 +58,9 @@ test.describe("my location button", () => {
     await expect(page.getByTestId("toast")).toContainText(/zakázaný|nastavení/i, {
       timeout: 20_000
     });
+    const afterDenial = new URL(page.url()).searchParams;
+    expect(Number(afterDenial.get("lng"))).toBeCloseTo(10.2, 1);
+    expect(Number(afterDenial.get("lat"))).toBeCloseTo(51, 1);
   });
 
   test("reports a timeout rather than hanging forever", async ({ page, context }) => {

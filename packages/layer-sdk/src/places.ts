@@ -22,6 +22,50 @@ export type SourceFetchKind =
   /** Never queried by bbox — only ever asked about one already-known place. */
   | "enrich";
 
+/** Advisory rights decision for one concrete use of place-source data.
+ *
+ * `conditional` means the governing licence/terms permit the use only while their obligations
+ * are met; it is deliberately distinct from an unconditional permission. In prototype mode this
+ * record is displayed and audited but never changes runtime availability. */
+export type PlaceSourcePermissionDecision =
+  "permitted" | "conditional" | "owner-controlled" | "not-approved";
+
+export interface PlaceSourcePermissions {
+  display: PlaceSourcePermissionDecision;
+  cache: PlaceSourcePermissionDecision;
+  export: PlaceSourcePermissionDecision;
+  redistribute: PlaceSourcePermissionDecision;
+  aiUse: PlaceSourcePermissionDecision;
+}
+
+export type PlaceSourceReleaseState =
+  "released" | "capability-gated" | "owner-controlled" | "blocked";
+
+export type PlaceSourceRightsBasis =
+  "open-license" | "service-terms" | "owner-controlled" | "provider-restriction";
+
+/** Machine-readable advisory rights record.
+ *
+ * `governingTermsId` is also shown in attribution UI via `license`, so a human-visible vague
+ * label cannot disagree with the decision CI validates. Provider entries use an HTTPS evidence
+ * page. The sole exception is owner-controlled data, whose permission is attached per record and
+ * governed by the local publication policy rather than a third-party licence page. */
+export interface PlaceSourceReleaseRights {
+  state: PlaceSourceReleaseState;
+  basis: PlaceSourceRightsBasis;
+  governingTermsId: string;
+  evidenceUrl: string | null;
+  permissions: PlaceSourcePermissions;
+  attributionRequired: boolean;
+  /** Independent server capability needed for technical runtime access. */
+  capability?: "mapy" | "fsq" | "park4night";
+  ownerControl?: {
+    policyId: "MAPOS-OWNER-CONTROLLED-PLACE-DATA-v1";
+    scope: "per-record";
+    publicReleaseRequiresOwnerGrant: true;
+  };
+}
+
 export interface PlaceSourceDefinition {
   id: PlaceSourceId;
   label: string;
@@ -37,6 +81,8 @@ export interface PlaceSourceDefinition {
    *  attribution registry; a source without them is credited by name only. */
   url?: string;
   license?: string;
+  /** Advisory source-rights record; never a prototype runtime or release switch. */
+  releaseRights: PlaceSourceReleaseRights;
   hint: string;
   /** Shown next to the data, not in settings: a warning the reader needs in order to judge what
    *  they are looking at (unverified scrape, crowdsourced, delayed). */
@@ -54,6 +100,20 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     attribution: "© OpenStreetMap přispěvatelé",
     url: "https://www.openstreetmap.org/copyright",
     license: "ODbL-1.0",
+    releaseRights: {
+      state: "released",
+      basis: "open-license",
+      governingTermsId: "ODbL-1.0",
+      evidenceUrl: "https://www.openstreetmap.org/copyright",
+      permissions: {
+        display: "conditional",
+        cache: "conditional",
+        export: "conditional",
+        redistribute: "conditional",
+        aiUse: "conditional"
+      },
+      attributionRequired: true
+    },
     hint: "Hlavní zdroj. Umí i bezejmenné amenity (parkoviště, WC, voda)."
   },
   {
@@ -64,8 +124,23 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: true,
     needsKey: true,
     attribution: "© Seznam.cz a.s.",
-    url: "https://api.mapy.com/",
-    license: "Mapy.com API ToS",
+    url: "https://developer.mapy.com/terms/",
+    license: "MAPY.COM-DEVELOPER-TERMS",
+    releaseRights: {
+      state: "capability-gated",
+      basis: "service-terms",
+      governingTermsId: "MAPY.COM-DEVELOPER-TERMS",
+      evidenceUrl: "https://developer.mapy.com/terms/",
+      permissions: {
+        display: "conditional",
+        cache: "conditional",
+        export: "not-approved",
+        redistribute: "not-approved",
+        aiUse: "not-approved"
+      },
+      attributionRequired: true,
+      capability: "mapy"
+    },
     hint: "Pojmenovaná místa přes lokalizovaná klíčová slova. Skvělé na hrady, rozhledny, vyhlídky."
   },
   {
@@ -76,8 +151,22 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: true,
     needsKey: false,
     attribution: "Wikidata (CC0)",
-    url: "https://www.wikidata.org/",
+    url: "https://www.wikidata.org/wiki/Wikidata:Copyright",
     license: "CC0-1.0",
+    releaseRights: {
+      state: "released",
+      basis: "open-license",
+      governingTermsId: "CC0-1.0",
+      evidenceUrl: "https://www.wikidata.org/wiki/Wikidata:Copyright",
+      permissions: {
+        display: "permitted",
+        cache: "permitted",
+        export: "permitted",
+        redistribute: "permitted",
+        aiUse: "permitted"
+      },
+      attributionRequired: false
+    },
     hint: "Významná místa napříč Evropou, plus QID jako klíč pro spojování zdrojů."
   },
   {
@@ -85,11 +174,25 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     label: "Wikipedia",
     glyph: "P",
     kind: "bulk",
-    defaultEnabled: false,
+    defaultEnabled: true,
     needsKey: false,
     attribution: "Wikipedia (CC BY-SA)",
-    url: "https://www.wikipedia.org/",
+    url: "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use",
     license: "CC-BY-SA-4.0",
+    releaseRights: {
+      state: "released",
+      basis: "open-license",
+      governingTermsId: "CC-BY-SA-4.0",
+      evidenceUrl: "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use",
+      permissions: {
+        display: "conditional",
+        cache: "conditional",
+        export: "conditional",
+        redistribute: "conditional",
+        aiUse: "conditional"
+      },
+      attributionRequired: true
+    },
     hint: "Články s geolokací — kontext a popisky, ne samostatná POI vrstva."
   },
   {
@@ -100,8 +203,22 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: false,
     needsKey: false,
     attribution: "Overture Maps Foundation (CDLA-Permissive 2.0)",
-    url: "https://overturemaps.org/",
+    url: "https://docs.overturemaps.org/attribution/",
     license: "CDLA-Permissive-2.0",
+    releaseRights: {
+      state: "released",
+      basis: "open-license",
+      governingTermsId: "CDLA-Permissive-2.0",
+      evidenceUrl: "https://docs.overturemaps.org/attribution/",
+      permissions: {
+        display: "conditional",
+        cache: "conditional",
+        export: "conditional",
+        redistribute: "conditional",
+        aiUse: "conditional"
+      },
+      attributionRequired: true
+    },
     hint: "Evropská POI základna importovaná lokálně. Bez rate limitů, ale vyžaduje import."
   },
   {
@@ -109,13 +226,28 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     label: "Park4Night",
     glyph: "4",
     kind: "bulk",
-    defaultEnabled: false,
+    defaultEnabled: true,
     needsKey: false,
     attribution: "Park4Night",
-    url: "https://park4night.com/",
-    license: "neoficiální",
-    hint: "Vanlife spoty a přespání.",
-    caveat: "Neoficiální zdroj dat (park4night.com), údaje nejsou ověřené."
+    url: "https://plus.park4night.com/en/cgu",
+    license: "PARK4NIGHT-GTCU-ARTICLE-5-PRIOR-AUTHORIZATION-REQUIRED",
+    releaseRights: {
+      state: "blocked",
+      basis: "provider-restriction",
+      governingTermsId: "PARK4NIGHT-GTCU-ARTICLE-5-PRIOR-AUTHORIZATION-REQUIRED",
+      evidenceUrl: "https://plus.park4night.com/en/cgu",
+      permissions: {
+        display: "not-approved",
+        cache: "not-approved",
+        export: "not-approved",
+        redistribute: "not-approved",
+        aiUse: "not-approved"
+      },
+      attributionRequired: true,
+      capability: "park4night"
+    },
+    hint: "Prototypově dostupné po zapnutí serverového přepínače; zdroj může být nestabilní.",
+    caveat: "Neoficiální upstream bez garantovaného API; údaje ověřte před cestou."
   },
   {
     id: "fsq",
@@ -125,8 +257,23 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: true,
     needsKey: true,
     attribution: "Foursquare",
-    url: "https://foursquare.com/",
-    license: "Foursquare API ToS",
+    url: "https://foursquare.com/legal/terms",
+    license: "FOURSQUARE-DEVELOPER-TERMS",
+    releaseRights: {
+      state: "capability-gated",
+      basis: "service-terms",
+      governingTermsId: "FOURSQUARE-DEVELOPER-TERMS",
+      evidenceUrl: "https://foursquare.com/legal/terms",
+      permissions: {
+        display: "conditional",
+        cache: "conditional",
+        export: "not-approved",
+        redistribute: "not-approved",
+        aiUse: "not-approved"
+      },
+      attributionRequired: true,
+      capability: "fsq"
+    },
     hint: "Doplňuje hodnocení, fotky a tipy k už nalezenému místu."
   },
   {
@@ -137,6 +284,26 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
     defaultEnabled: true,
     needsKey: false,
     attribution: "MapOS uživatelé",
+    license: "MAPOS-OWNER-CONTROLLED-PLACE-DATA-v1",
+    releaseRights: {
+      state: "owner-controlled",
+      basis: "owner-controlled",
+      governingTermsId: "MAPOS-OWNER-CONTROLLED-PLACE-DATA-v1",
+      evidenceUrl: null,
+      permissions: {
+        display: "owner-controlled",
+        cache: "owner-controlled",
+        export: "owner-controlled",
+        redistribute: "owner-controlled",
+        aiUse: "owner-controlled"
+      },
+      attributionRequired: false,
+      ownerControl: {
+        policyId: "MAPOS-OWNER-CONTROLLED-PLACE-DATA-v1",
+        scope: "per-record",
+        publicReleaseRequiresOwnerGrant: true
+      }
+    },
     hint: "Veřejné piny z uživatelských vrstev.",
     caveat: "Přidali uživatelé MapOS, bez redakční kontroly."
   }
@@ -145,6 +312,17 @@ export const PLACE_SOURCES: PlaceSourceDefinition[] = [
 export const PLACE_SOURCE_BY_ID: Record<PlaceSourceId, PlaceSourceDefinition> = Object.fromEntries(
   PLACE_SOURCES.map((s) => [s.id, s])
 ) as Record<PlaceSourceId, PlaceSourceDefinition>;
+
+/**
+ * Prototype policy: rights records are advisory metadata and never remove data from the picker.
+ * Technical availability (credentials, provider health and server capability) remains separate.
+ */
+export function placeSourceRuntimeAllowed(_source: PlaceSourceDefinition): boolean {
+  return true;
+}
+
+/** Backward-compatible name used by the UI; in prototype mode it contains the complete catalog. */
+export const RELEASED_PLACE_SOURCES = [...PLACE_SOURCES];
 
 export function defaultPlaceSources(): Record<PlaceSourceId, boolean> {
   return Object.fromEntries(PLACE_SOURCES.map((s) => [s.id, s.defaultEnabled])) as Record<

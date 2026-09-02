@@ -16,7 +16,212 @@ export type LayerCategory =
 
 /** The bottom-nav sections. A layer declares which ones it belongs to, so adding a layer to a
  *  section is a property of the layer rather than a list the shell has to be taught about. */
-export type LayerMode = "poi" | "weather" | "game" | "mine" | "discover";
+/** The five persistent work contexts shown by the application shell. */
+export type ModeId = "planning" | "discover" | "mine" | "game" | "weather";
+
+/** Kept as an alias for plugin authors compiled against the original SDK name. */
+export type LayerMode = ModeId;
+
+export type ExperienceId = "default" | "aavegotchi" | (string & {});
+
+export interface ExperienceManifest {
+  id: ExperienceId;
+  name: string;
+  description: string;
+  icon: string;
+  accent: string;
+  recommendedIntegrationIds: string[];
+  gameIds: string[];
+  avatarProviderId?: string;
+}
+
+export type SurfaceKind = "basemap" | "labels" | "terrain" | "weather" | "data";
+
+export interface SurfaceManifest {
+  id: string;
+  name: string;
+  kind: SurfaceKind;
+  description: string;
+  temporal?: boolean;
+  exclusiveGroup?: string;
+}
+
+export interface TemporalState {
+  cursor: string;
+  mode: "live" | "preview";
+  timezone: string;
+  rangeStart: string;
+  rangeEnd: string;
+}
+
+export interface GameManifest {
+  id: string;
+  name: string;
+  experienceIds: ExperienceId[];
+  maxEntities: number;
+  refreshIntervalMs: number;
+  temporal: boolean;
+}
+
+export type TripTravelProfile = "foot" | "bike" | "car" | "moto" | "camper" | "truck";
+export type TripRouteVariant = "fast" | "short" | "nohwy";
+
+export interface TripStop {
+  id: string;
+  name: string;
+  lng: number;
+  lat: number;
+  dwellMinutes: number;
+}
+
+export interface TripVehicle {
+  profile: TripTravelProfile;
+  heightM?: number | null;
+  widthM?: number | null;
+  weightT?: number | null;
+  fuel?: "petrol" | "diesel" | "cng" | "lng" | "phev" | "bev" | "h2" | null;
+  euroClass?: string | null;
+  evRangeKm?: number | null;
+}
+
+export interface TripPlanSummary {
+  variant: TripRouteVariant;
+  distanceM: number;
+  durationS: number;
+  tollEstimatedCzk: number | null;
+  weatherStops: number;
+  totalWeatherStops: number;
+  restrictionCheck: "checked" | "unavailable" | "not-applicable";
+  restrictionWarnings: number;
+  generatedAt: string;
+}
+
+export interface TripPlan {
+  id: string;
+  name: string;
+  departureAt: string;
+  variant: TripRouteVariant;
+  stops: TripStop[];
+  vehicle: TripVehicle;
+  visibility: "private" | "unlisted" | "public";
+  lastResult?: TripPlanSummary;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TripLeg {
+  index: number;
+  fromStopId: string;
+  toStopId: string;
+  coordinates: [number, number][];
+  distanceM: number;
+  durationS: number;
+  departureAt: string;
+  arrivalAt: string;
+}
+
+export interface TripWeatherSample {
+  stopId: string;
+  at: string;
+  temperature: number | null;
+  precipitation: number | null;
+  weatherCode: number | null;
+}
+
+export interface TripRestriction {
+  kind: "maxheight" | "maxweight" | "maxwidth" | "maxlength" | "hgv";
+  lng: number;
+  lat: number;
+  limit: number | null;
+  raw: string;
+  name: string | null;
+  exceedsVehicle: boolean;
+}
+
+export interface TripTollItem {
+  countryCode: string;
+  label: string;
+  estimatedCzk: number | null;
+  officialUrl: string | null;
+}
+
+export interface TripPlanVariantResult {
+  variant: TripRouteVariant;
+  provider: "osm" | "mapy";
+  profile: string;
+  coordinates: [number, number][];
+  distanceM: number;
+  durationS: number;
+  legs: TripLeg[];
+  toll: { estimatedCzk: number | null; items: TripTollItem[]; disclaimer: string };
+  restrictions: TripRestriction[];
+  restrictionCheck: "checked" | "unavailable" | "not-applicable";
+  warnings: string[];
+}
+
+export interface TripPlanResult {
+  plan: TripPlan;
+  selectedVariant: TripRouteVariant;
+  variants: TripPlanVariantResult[];
+  weather: TripWeatherSample[];
+  generatedAt: string;
+}
+
+export type SocialTargetType = "user" | "place" | "layer" | "region" | "route" | "quest" | "game";
+
+export interface CanonicalPlace {
+  placeId: string;
+  name: string;
+  lng: number;
+  lat: number;
+  category: string | null;
+  sources: Array<{ source: string; sourceRef: string }>;
+  social: { followers: number; reviews: number; rating: number | null; comments: number };
+}
+
+export type WizardContentType = "place" | "layer" | "route" | "task" | "quest" | "event" | "post";
+
+export type ContentReviewStatus =
+  "draft" | "in-review" | "changes-requested" | "approved" | "rejected";
+
+/** Public, portable provenance attached to a contribution. Authentication-derived authorship
+ * lives in `workflow.authorId`; the client is never trusted to choose it. */
+export interface ContentDraftProvenance {
+  kind: "user-contribution";
+  source: "create" | "discover";
+  sourceLabel: string;
+  regionId?: string;
+  regionName?: string;
+  capturedAt: string;
+}
+
+/** Minimal open review contract. It deliberately models moderation without coupling the SDK to
+ * one moderation vendor or UI. */
+export interface ContentDraftWorkflow {
+  revision: number;
+  status: ContentReviewStatus;
+  authorId: string;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  reviewerId: string | null;
+  moderationNote: string | null;
+}
+
+export interface ContentDraft {
+  id: string;
+  type: WizardContentType;
+  name: string;
+  description: string;
+  geometry:
+    | { type: "Point"; coordinates: [number, number] }
+    | { type: "LineString"; coordinates: [number, number][] };
+  startsAt: string | null;
+  endsAt: string | null;
+  visibility: "private" | "unlisted" | "public";
+  provenance?: ContentDraftProvenance;
+  workflow?: ContentDraftWorkflow;
+  updatedAt?: string;
+}
 
 export interface LayerManifest {
   id: string;
@@ -34,6 +239,14 @@ export interface LayerManifest {
   /** Server capability that must be present for this layer to be offered, e.g. a provider key
    *  the backend holds. Layers without one are always available. */
   requiresCapability?: string;
+  /** Experiences in which this integration is meaningful. Missing means universally available. */
+  experienceIds?: ExperienceId[];
+  /** Stable grouping in the integrations drawer. */
+  uiGroup?: "places" | "community" | "travel" | "game" | "environment";
+  /** Whether the layer consumes the shared map time cursor. */
+  temporal?: boolean;
+  /** Soft lifecycle budget used by the host and diagnostics. */
+  performance?: { maxEntities?: number; refreshIntervalMs?: number };
 }
 
 /** Who the data belongs to. Aggregated into the map's attribution control and the About sheet;
@@ -182,11 +395,13 @@ export interface LayerCatalogEntry {
 }
 
 /**
- * Which optional providers this deployment holds keys for, as served by `GET /config`.
+ * Which optional providers this deployment can currently serve, as returned by `GET /config`.
  *
- * The browser only ever learns the booleans — keys stay on the API. The index signature is what
- * lets a new keyed layer ship without editing this type, the store and the API in lockstep:
- * a layer names its capability in `requiresCapability` and the API adds the flag.
+ * The browser only ever learns the booleans — keys and readiness details stay on the API. Most
+ * flags are configuration gates; providers with a readiness probe (currently Mapy.com) also go
+ * false when their upstream or required local schema is unavailable. The index signature lets a
+ * new keyed layer ship without editing this type, the store and the API in lockstep: a layer names
+ * its capability in `requiresCapability` and the API adds the flag.
  */
 export interface ServerCapabilities {
   mapy: boolean;
@@ -244,6 +459,16 @@ export const OSM_POI_CATEGORIES = {
   waterfall: { label: "Vodopády", group: "nature", overpass: 'node["waterway"="waterfall"]' },
   lake: { label: "Jezera / přehrady", group: "nature", overpass: 'node["natural"="water"]' },
   peak: { label: "Vrcholy", group: "nature", overpass: 'node["natural"="peak"]' },
+  observation_tower: {
+    label: "Rozhledny",
+    group: "nature",
+    overpass: 'node["man_made"="tower"]["tower:type"="observation"]'
+  },
+  nature_park: {
+    label: "Přírodní parky",
+    group: "nature",
+    overpass: 'node["boundary"="protected_area"]'
+  },
   cave: { label: "Jeskyně", group: "nature", overpass: 'node["natural"="cave_entrance"]' },
   castle: { label: "Hrady", group: "culture", overpass: 'node["historic"="castle"]' },
   palace: { label: "Zámky", group: "culture", overpass: 'node["historic"="palace"]' },
@@ -254,6 +479,7 @@ export const OSM_POI_CATEGORIES = {
   cafe: { label: "Kavárny", group: "food", overpass: 'node["amenity"="cafe"]' },
   restaurant: { label: "Restaurace", group: "food", overpass: 'node["amenity"="restaurant"]' },
   brewery: { label: "Pivovary", group: "food", overpass: 'node["craft"="brewery"]' },
+  shop: { label: "Obchody", group: "services", overpass: 'node["shop"]' },
   parking: { label: "Parkoviště", group: "services", overpass: 'node["amenity"="parking"]' },
   fuel: { label: "Palivo", group: "services", overpass: 'node["amenity"="fuel"]' },
   charging: {
@@ -269,6 +495,16 @@ export const OSM_POI_CATEGORIES = {
   toilets: { label: "WC", group: "services", overpass: 'node["amenity"="toilets"]' },
   shower: { label: "Sprchy", group: "services", overpass: 'node["amenity"="shower"]' },
   camp_site: { label: "Kempy", group: "stay", overpass: 'node["tourism"="camp_site"]' },
+  caravan_site: {
+    label: "Stání pro karavany",
+    group: "stay",
+    overpass: 'node["tourism"="caravan_site"]'
+  },
+  dump_station: {
+    label: "Výlevky",
+    group: "services",
+    overpass: 'node["amenity"="sanitary_dump_station"]'
+  },
   alpine_hut: { label: "Horské chaty", group: "stay", overpass: 'node["tourism"="alpine_hut"]' },
   shelter: { label: "Přístřešky", group: "stay", overpass: 'node["amenity"="shelter"]' },
   via_ferrata: {
@@ -285,6 +521,11 @@ export const OSM_POI_CATEGORIES = {
     label: "Fitness stezky",
     group: "sport",
     overpass: 'node["leisure"="fitness_station"]'
+  },
+  fitness_centre: {
+    label: "Posilovny",
+    group: "sport",
+    overpass: 'node["leisure"="fitness_centre"]'
   },
   disc_golf: {
     label: "Disc golf",
@@ -309,6 +550,17 @@ export const OSM_POI_CATEGORIES = {
 } as const;
 
 export type OsmPoiCategoryId = keyof typeof OSM_POI_CATEGORIES;
+
+/** What someone sleeping in a van looks for — the openly licensed answer to Park4Night. */
+export const VANLIFE_CATEGORIES = [
+  "caravan_site",
+  "camp_site",
+  "dump_station",
+  "drinking_water",
+  "toilets",
+  "shower",
+  "parking"
+] as const satisfies readonly OsmPoiCategoryId[];
 
 /**
  * Builds an Overpass QL query for the given categories.

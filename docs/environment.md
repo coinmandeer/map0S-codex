@@ -21,6 +21,22 @@ require a `User-Agent` that identifies the deployment and offers a way to make c
 one your traffic is indistinguishable from every other MapOS clone and gets rate-limited as a
 group.
 
+## Commerce
+
+The provider-neutral catalog, entitlement checks and ledger domain do not require a payment
+provider. Checkout is disabled by default and no real provider adapter exists in this release.
+
+| Variable                           | Required                  | Default | Used by                                                     |
+| ---------------------------------- | ------------------------- | ------- | ----------------------------------------------------------- |
+| `MAPOS_COMMERCE_ENABLED`           | no                        | off     | First checkout gate; `1` is required for any adapter.       |
+| `MAPOS_COMMERCE_PROVIDER`          | no                        | `none`  | `none` or `synthetic`; unknown/real values fail startup.    |
+| `MAPOS_SYNTHETIC_COMMERCE_ENABLED` | local fixture only        | off     | Second explicit gate for the offline synthetic adapter.     |
+| `MAPOS_SYNTHETIC_COMMERCE_SECRET`  | when synthetic is enabled | —       | 32+ character HMAC secret for deterministic local webhooks. |
+
+The synthetic adapter is rejected when `NODE_ENV=production`, even if all flags are present. It
+never opens a payment page, moves money or contacts a network. See [`commerce.md`](./commerce.md)
+for the provider/use-case gates that remain closed.
+
 ## Testing geolocation on a phone
 
 Geolocation only works in a secure context. Opening the dev server on a phone via
@@ -70,6 +86,7 @@ error) it returns a deterministic, non-AI answer built from local data rather th
 
 ## Frontend build args
 
-| Variable            | Required | Default | Used by                                                                                          |
-| ------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------ |
-| `VITE_API_BASE_URL` | no       | `/api`  | Baked into the web bundle at build time; the single source of truth is `apps/web/src/lib/api.ts` |
+| Variable              | Required | Default | Used by                                                                                                      |
+| --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------ |
+| `VITE_API_BASE_URL`   | no       | `/api`  | Baked into the web bundle at build time; the single source of truth is `apps/web/src/lib/api.ts`             |
+| `VITE_MAP_RUNTIME_V2` | no       | enabled | Set to `0`/`false` to roll MapOS back to direct layer handles while retaining the same registry data and UI. |

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mapos.dev/v2/task-record.schema.json",
+  "title": "MapOS TaskRecord v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "id",
+    "type",
+    "label",
+    "status",
+    "startedAt",
+    "cancellable"
+  ],
+  "properties": {
+    "schema": { "const": "mapos.task" },
+    "schemaVersion": { "type": "string", "pattern": "^2\\.\\d+\\.\\d+$" },
+    "id": { "type": "string" },
+    "type": {
+      "enum": [
+        "layer-query",
+        "tile-load",
+        "geocode",
+        "reverse-geocode",
+        "routing",
+        "weather",
+        "event-search",
+        "ai",
+        "poi-enrichment",
+        "import",
+        "export",
+        "sync",
+        "game-asset",
+        "commerce"
+      ]
+    },
+    "label": { "type": "string" },
+    "status": {
+      "enum": ["queued", "running", "succeeded", "failed", "cancelled", "stale"]
+    },
+    "progress": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "message": { "type": ["string", "null"] },
+    "layerId": { "type": ["string", "null"] },
+    "parentId": { "type": ["string", "null"] },
+    "requestKey": { "type": ["string", "null"], "pattern": "^rk_[a-f0-9]{16,64}$" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": ["string", "null"], "format": "date-time" },
+    "cancellable": { "type": "boolean" },
+    "error": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "retryable": { "type": "boolean" }
+      },
+      "required": ["code", "message", "retryable"]
+    },
+    "telemetry": {
+      "type": "object",
+      "properties": {
+        "durationMs": { "type": "number", "minimum": 0 },
+        "aborted": { "type": "boolean" },
+        "cache": { "enum": ["unknown", "none", "hit", "miss", "mixed"] },
+        "providerId": {
+          "type": ["string", "null"],
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,79}$"
+        },
+        "source": {
+          "type": ["string", "null"],
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,79}$"
+        },
+        "budget": { "type": "integer", "minimum": 0 },
+        "received": { "type": "integer", "minimum": 0 },
+        "eligibleSegments": { "type": "integer", "minimum": 0 },
+        "providerCalls": { "type": "integer", "minimum": 0 },
+        "cacheHits": { "type": "integer", "minimum": 0 },
+        "maxConcurrency": { "type": "integer", "minimum": 0 },
+        "failedSegments": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "correlation": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["requestId", "providerId"],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-4[A-Fa-f0-9]{3}-[89AaBb][A-Fa-f0-9]{3}-[A-Fa-f0-9]{12}$"
+        },
+        "providerId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,79}$" }
+      }
+    }
+  }
+}

@@ -9,7 +9,13 @@
  * thirty a day, and its display requirements would bake mandatory branding into every fork.
  */
 
-import type { Guide, GuideArea, GuideSection, GuideSectionId, GuideSourceAdapter } from "@mapos/layer-sdk";
+import type {
+  Guide,
+  GuideArea,
+  GuideSection,
+  GuideSectionId,
+  GuideSourceAdapter
+} from "@mapos/layer-sdk";
 import { GUIDE_SECTION_TITLES } from "@mapos/layer-sdk";
 import { fetchJson } from "../../utils/upstream.js";
 import { leadParagraph, parseTemplates, splitSections, stripMarkup } from "./wikitext.js";
@@ -52,7 +58,7 @@ async function nearestArticle(
   const data = await fetchJson<{ query?: { geosearch?: GeoSearchResult[] } }>(
     `https://${lang}.wikivoyage.org/w/api.php?action=query&list=geosearch&format=json&formatversion=2` +
       `&gscoord=${lat}|${lng}&gsradius=${Math.round(radiusM)}&gslimit=5`,
-    { source: "Wikivoyage", ttlMs: 6 * 60 * 60_000 }
+    { providerId: "wikivoyage", ttlMs: 6 * 60 * 60_000 }
   );
   // The nearest article to a viewport centre is the settlement it is in; district and hotel
   // articles sort after it because MediaWiki returns geosearch by distance.
@@ -63,7 +69,7 @@ async function articleWikitext(lang: string, title: string): Promise<string | nu
   const data = await fetchJson<{ parse?: { wikitext?: string } }>(
     `https://${lang}.wikivoyage.org/w/api.php?action=parse&format=json&formatversion=2` +
       `&prop=wikitext&page=${encodeURIComponent(title)}`,
-    { source: "Wikivoyage", ttlMs: 24 * 60 * 60_000 }
+    { providerId: "wikivoyage", ttlMs: 24 * 60 * 60_000 }
   );
   return data.parse?.wikitext ?? null;
 }

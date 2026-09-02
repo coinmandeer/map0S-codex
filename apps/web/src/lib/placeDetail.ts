@@ -1,6 +1,6 @@
 import type { GeoFeature, Place, PlaceSourceId } from "@mapos/layer-sdk";
-import { parseSourceRefs } from "@mapos/layer-sdk";
-import { apiGetSafe } from "./api";
+import { PLACE_SOURCE_BY_ID, parseSourceRefs } from "@mapos/layer-sdk";
+import { apiGet, apiGetSafe } from "./api";
 
 /** The identity of a clicked pin, in the terms every info panel needs.
  *
@@ -30,6 +30,12 @@ export function placeRefsFromFeature(feature: GeoFeature, layerId: string): Plac
   for (const { source, ref } of parseSourceRefs(p.sourceRefs)) refs[source] = ref;
   // Layers that never went through fusion still carry their own OSM id.
   refs.osm ??= str(p.osmId) ?? undefined;
+  // A provider-owned legacy layer may not carry the fused `sourceRefs` string yet. Its stable
+  // layer id and feature id are still an honest native reference when that id names a known
+  // source (Park4Night/user layers are the current examples).
+  if (layerId in PLACE_SOURCE_BY_ID && !refs[layerId as PlaceSourceId]) {
+    refs[layerId as PlaceSourceId] = id;
+  }
 
   return {
     id,
@@ -54,6 +60,21 @@ export function encodeRefs(refs: PlaceRefs["refs"]): string {
  *  already enough to open the panel, and this only fills in what the map never carried. */
 export function fetchPlaceDetail(place: PlaceRefs, signal?: AbortSignal): Promise<Place | null> {
   return apiGetSafe<Place>(`/places/${encodeURIComponent(place.id)}`, {
+    signal,
+    query: {
+      sourceRefs: encodeRefs(place.refs),
+      lng: place.lng,
+      lat: place.lat,
+      name: place.name,
+      category: place.category
+    }
+  });
+}
+
+/** Strict variant for a detail surface that needs to distinguish offline/failure from a genuine
+ * empty optional enrichment. The local pin remains renderable while this request fails. */
+export function fetchPlaceDetailStrict(place: PlaceRefs, signal?: AbortSignal): Promise<Place> {
+  return apiGet<Place>(`/places/${encodeURIComponent(place.id)}`, {
     signal,
     query: {
       sourceRefs: encodeRefs(place.refs),

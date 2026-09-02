@@ -1,0 +1,166 @@
+{
+  "schema": "mapos.layer-manifest",
+  "schemaVersion": "2.0.0",
+  "sdkRange": "^2.0.0",
+  "minimumRuntime": "19.0.0",
+  "id": "user-layer-favorite-water",
+  "name": "Moje místa u vody",
+  "description": "Soukromá uživatelská vrstva vytvořená wizardem nad dnešními user_layers a user_pins.",
+  "icon": "water",
+  "color": "#2F6FED",
+  "category": "user",
+  "presetIds": ["trip"],
+  "modes": ["personal", "planning"],
+  "worldIds": ["default"],
+  "geometryKinds": ["Point"],
+  "renderer": {
+    "type": "symbols",
+    "cluster": true,
+    "clusterMaxZoom": 13,
+    "clusterRadiusPx": 52,
+    "style": {
+      "iconByCategory": true
+    },
+    "zIndex": 500
+  },
+  "source": {
+    "type": "user-data",
+    "adapterId": "user-layer-v2",
+    "endpoint": "/api/v2/user-layers/:id/features",
+    "method": "GET",
+    "requiresServerProxy": true
+  },
+  "queryPolicy": {
+    "strategy": "viewport",
+    "maxResultsPerViewport": 100,
+    "debounceMs": 250,
+    "minZoom": 2,
+    "maxZoom": 24,
+    "searchHere": "after-pan",
+    "ranking": "distance",
+    "cacheTtlSeconds": 60,
+    "staleWhileRevalidateSeconds": 300,
+    "cursorPagination": true
+  },
+  "filters": [
+    {
+      "id": "category",
+      "label": "Kategorie",
+      "kind": "multi-select",
+      "options": [
+        {
+          "id": "lake",
+          "label": "Jezero"
+        },
+        {
+          "id": "reservoir",
+          "label": "Přehrada"
+        },
+        {
+          "id": "beach",
+          "label": "Pláž"
+        }
+      ],
+      "default": [],
+      "providerField": "category"
+    }
+  ],
+  "detail": {
+    "tabs": [
+      {
+        "id": "overview",
+        "label": "Přehled",
+        "source": "canonical"
+      },
+      {
+        "id": "notes",
+        "label": "Moje poznámky",
+        "source": "custom"
+      },
+      {
+        "id": "mapos-comments",
+        "label": "MapOS komentáře",
+        "source": "mapos-social"
+      }
+    ],
+    "fieldOrder": ["summary", "description", "media", "urls"],
+    "aiEnrichment": "on-demand"
+  },
+  "actions": [
+    {
+      "id": "save",
+      "label": "Uložit",
+      "kind": "save"
+    },
+    {
+      "id": "share",
+      "label": "Sdílet",
+      "kind": "share"
+    },
+    {
+      "id": "route",
+      "label": "Přidat do trasy",
+      "kind": "route-to"
+    }
+  ],
+  "attribution": [
+    {
+      "label": "Uživatel MapOS",
+      "requiredOnMap": false,
+      "requiredOnExport": true
+    }
+  ],
+  "capabilities": [
+    "query",
+    "filter",
+    "detail",
+    "comments",
+    "media",
+    "export",
+    "import",
+    "collaboration",
+    "ai-search",
+    "ai-enrich"
+  ],
+  "requiresServerCapabilities": ["auth", "user-layers-v2"],
+  "temporal": {
+    "enabled": false,
+    "cursorKinds": [],
+    "defaultRangeHours": 0,
+    "timelinePriority": 0
+  },
+  "permissions": {
+    "defaultVisibility": "private",
+    "canCreate": true,
+    "canEdit": true,
+    "canComment": true,
+    "canExport": true,
+    "requiresAuth": true
+  },
+  "ai": {
+    "discoverable": true,
+    "searchableFields": ["title", "description", "tags", "notes"],
+    "tools": ["queryLayer", "summarizeFeatures"],
+    "permissionProjection": "owner-private"
+  },
+  "commerce": {
+    "access": "free",
+    "previewPolicy": "none",
+    "tipsEnabled": false
+  },
+  "importExport": {
+    "importFormats": ["geojson", "gpx", "kml", "csv", "json"],
+    "exportFormats": ["geojson", "gpx", "kml", "csv", "json", "mapos-package"],
+    "includeProviderFields": false
+  },
+  "health": {
+    "checkEndpoint": "/api/v2/health/user-layers",
+    "expectedLatencyMs": 500,
+    "failureMode": "stale-cache"
+  },
+  "compatibility": {
+    "legacyLayerId": "user-layers",
+    "legacyAdapter": "adaptLegacyUserLayer",
+    "migrationNotes": "V1 zůstává čitelná během strangler migrace."
+  }
+}

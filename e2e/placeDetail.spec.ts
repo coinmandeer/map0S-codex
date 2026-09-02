@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures/offlineTest";
+import { openAccessibleMapFeature, stubDiscoverContext } from "./fixtures/discoverContext";
 
 /** A POI carrying everything the panels key off: an OSM ref, a QID, contact details and a
  *  Foursquare id. Placed inside the requested bbox so it actually reaches the places list. */
@@ -35,11 +36,12 @@ function poisWithin(requestUrl: string) {
 }
 
 async function openDetail(page: Page) {
+  await stubDiscoverContext(page);
   await page.route("**/layers/osm-poi/features**", (route) =>
     route.fulfill({ json: poisWithin(route.request().url()) })
   );
-  await page.goto("/?layers=osm-poi&mode=poi");
-  await page.getByTestId("place-card").first().click();
+  await page.goto("/?layers=osm-poi&mode=discover");
+  await openAccessibleMapFeature(page, "Hrad Okoř");
   await expect(page.getByTestId("pin-detail")).toBeVisible({ timeout: 20_000 });
 }
 
@@ -48,16 +50,23 @@ test.describe("place detail", () => {
     await openDetail(page);
 
     await expect(page.getByTestId("panel-prehled")).toBeVisible();
-    await expect(page.getByTestId("fact-hours")).toHaveText("Út-Ne 09:00-17:00");
-    await expect(page.getByTestId("fact-website")).toHaveText("example.org");
     await expect(page.getByTestId("provenance")).toContainText("OpenStreetMap");
     await expect(page.getByTestId("provenance")).toContainText("Wikidata");
+    await page.getByTestId("detail-section-practical").click();
+    await expect(page.getByTestId("fact-hours")).toHaveText("Út-Ne 09:00-17:00");
+    await expect(page.getByTestId("fact-website")).toHaveText("example.org");
   });
 
-  test("offers a tab per source the place can be looked up in", async ({ page }) => {
+  test("offers stable sections, then source tabs only inside their section", async ({ page }) => {
     await openDetail(page);
 
-    for (const id of ["prehled", "wikipedia", "wikidata", "pocasi", "foursquare"]) {
+    for (const id of ["overview", "practical", "social", "more"]) {
+      await expect(page.getByTestId(`detail-section-${id}`)).toBeVisible();
+    }
+    await expect(page.getByTestId("detail-section-media")).toHaveCount(0);
+
+    await page.getByTestId("detail-section-more").click();
+    for (const id of ["souhrn", "wikipedia", "wikidata", "pocasi"]) {
       await expect(page.getByTestId(`info-tab-${id}`)).toBeVisible();
     }
   });
@@ -76,6 +85,7 @@ test.describe("place detail", () => {
     );
     await openDetail(page);
 
+    await page.getByTestId("detail-section-more").click();
     await page.getByTestId("info-tab-wikipedia").click();
     await expect(page.getByTestId("panel-wikipedia")).toContainText("Zřícenina hradu");
     await expect(page.getByTestId("panel-prehled")).toBeHidden();
@@ -87,6 +97,7 @@ test.describe("place detail", () => {
     );
     await openDetail(page);
 
+    await page.getByTestId("detail-section-more").click();
     await page.getByTestId("info-tab-wikipedia").click();
     await expect(page.getByTestId("info-panel-body")).toContainText("žádný článek");
   });
@@ -101,6 +112,7 @@ test.describe("place detail", () => {
     );
     await openDetail(page);
 
+    await page.getByTestId("detail-section-more").click();
     await page.getByTestId("info-tab-mapy-okoli").click();
     await expect(page.getByTestId("panel-osm")).toContainText("nedovoluje vložení");
     await expect(page.locator("iframe.info-frame")).toHaveCount(0);
@@ -123,6 +135,7 @@ test.describe("place detail", () => {
     );
     await openDetail(page);
 
+    await page.getByTestId("detail-section-more").click();
     await page.getByTestId("info-tab-mapy-okoli").click();
     const frame = page.locator("iframe.info-frame");
     await expect(frame).toHaveAttribute("sandbox", "allow-scripts allow-same-origin allow-popups");
@@ -130,6 +143,7 @@ test.describe("place detail", () => {
   });
 
   test("a place with no extra sources still opens with the basics", async ({ page }) => {
+    await stubDiscoverContext(page);
     await page.route("**/layers/osm-poi/features**", (route) => {
       const [west, south, east, north] = new URL(route.request().url()).searchParams
         .get("bbox")!
@@ -157,13 +171,16 @@ test.describe("place detail", () => {
       });
     });
 
-    await page.goto("/?layers=osm-poi&mode=poi");
-    await page.getByTestId("place-card").first().click();
+    await page.goto("/?layers=osm-poi&mode=discover");
+    await openAccessibleMapFeature(page, "Bezejmenná lavička");
     await expect(page.getByTestId("pin-detail")).toBeVisible({ timeout: 20_000 });
 
-    await expect(page.getByTestId("info-tab-prehled")).toBeVisible();
+    await expect(page.getByTestId("detail-section-overview")).toBeVisible();
+    await expect(page.getByTestId("detail-section-media")).toHaveCount(0);
+    await expect(page.getByTestId("detail-section-practical")).toHaveCount(0);
+    await expect(page.getByTestId("copy-gps")).toBeVisible();
+    await page.getByTestId("detail-section-more").click();
     await expect(page.getByTestId("info-tab-wikidata")).toHaveCount(0);
     await expect(page.getByTestId("info-tab-foursquare")).toHaveCount(0);
-    await expect(page.getByTestId("copy-gps")).toBeVisible();
   });
 });

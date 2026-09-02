@@ -1,5 +1,6 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { captureFocusedElement, restoreFocus } from "../shell/focusRestore";
 import { Icon } from "./Icon";
 
 /** Full-width bottom sheet on mobile, centred dialog on desktop. Renders through a portal so
@@ -20,6 +21,25 @@ export function Sheet({
   testId?: string;
   children: ReactNode;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    restoreFocusRef.current = captureFocusedElement();
+    const frame = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const first = panel.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      (first ?? panel).focus({ preventScroll: true });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      restoreFocus(restoreFocusRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -36,9 +56,12 @@ export function Sheet({
     <>
       <div className="overlay" onClick={onClose} data-testid="sheet-overlay" />
       <div
+        ref={panelRef}
         className={`panel ${isSheet ? "sheet" : "dialog"}`}
         role="dialog"
+        aria-modal="true"
         aria-label={title}
+        tabIndex={-1}
         data-testid={testId}
       >
         {isSheet && <div className="panel-handle" />}
