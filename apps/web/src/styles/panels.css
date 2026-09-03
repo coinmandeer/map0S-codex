@@ -3665,6 +3665,45 @@
     color: var(--text-muted);
   }
 
+  /* One header line (§4.11): context on the left, cursor in the middle, Live + play on the
+     right. */
+  .timeline-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    min-height: 32px;
+  }
+
+  .timeline-head-label {
+    font: var(--type-label-md);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .timeline-head-cursor {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    margin-left: auto;
+    font: var(--type-title-sm);
+    white-space: nowrap;
+  }
+
+  .timeline-head-cursor small {
+    color: var(--text-muted);
+    font: var(--type-label-sm);
+  }
+
+  .timeline-head-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
   .timeline-summary {
     display: flex;
     align-items: stretch;
@@ -3792,14 +3831,29 @@
     color: var(--text-muted);
   }
 
+  /* Full-width scrubber with the day names underneath it. */
   .timeline-controls {
-    display: flex;
-    align-items: center;
-    gap: var(--space-5);
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .timeline-days {
+    position: relative;
+    display: block;
+    height: 14px;
+    font: var(--type-label-sm);
+    color: var(--text-faint);
+  }
+
+  .timeline-days span {
+    position: absolute;
+    left: var(--tick);
+    transform: translateX(-50%);
+    white-space: nowrap;
   }
 
   .timeline-scrubber {
-    flex: 1;
+    width: 100%;
     appearance: none;
     height: 4px;
     border-radius: 2px;
@@ -4281,6 +4335,36 @@
 
   .legend-more {
     font-weight: var(--weight-strong);
+  }
+
+  /* Compact row visuals (§4.11): a continuous scale reads as a ramp with its bounds, a
+     magnitude as three circles. Both keep the row at one line. */
+  .legend-gradient {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .legend-gradient-bar {
+    width: 160px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-radius: var(--radius-pill);
+    background: var(--legend-ramp);
+  }
+
+  .legend-gradient-bounds {
+    color: var(--text-muted);
+    font-size: var(--text-3xs);
+    white-space: nowrap;
+  }
+
+  .legend-size-dot {
+    width: var(--legend-size, 10px);
+    height: var(--legend-size, 10px);
+    flex: 0 0 auto;
+    border-radius: var(--radius-pill);
+    background: var(--legend-color, var(--text-muted));
   }
 
   @media (min-width: 900px) {

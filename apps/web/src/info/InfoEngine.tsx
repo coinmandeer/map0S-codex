@@ -8,6 +8,8 @@ import {
   type PlaceSourceId
 } from "@mapos/layer-sdk";
 import { DETAIL_SURFACE_V2_ENABLED } from "../lib/featureFlags";
+import { Tabs } from "../ui/kit";
+import type { IconName } from "../ui/kit/icons";
 import { TabBar } from "../ui/primitives";
 import { ModuleErrorBoundary } from "../ui/primitives/ModuleErrorBoundary";
 import { PIN_STYLES } from "../ui/presets";
@@ -26,16 +28,14 @@ interface InfoEngineProps {
   social?: ReactNode;
   /** Owner-only/device-only content, rendered in its own labelled bucket. */
   privateContent?: ReactNode;
-  /** Rendered under the hero — routing, saving and other things only the caller can do. */
-  actions?: ReactNode;
 }
 
-const SURFACES: Record<DetailSurfaceId, { label: string; icon: string }> = {
-  overview: { label: "Přehled", icon: "📋" },
-  media: { label: "Média", icon: "▧" },
-  practical: { label: "Praktické", icon: "ℹ️" },
-  social: { label: "Sociální", icon: "◎" },
-  more: { label: "Více", icon: "•••" }
+const SURFACES: Record<DetailSurfaceId, { label: string; icon: IconName }> = {
+  overview: { label: "Přehled", icon: "description" },
+  media: { label: "Fotky", icon: "photo_library" },
+  practical: { label: "Praktické", icon: "schedule" },
+  social: { label: "Komentáře", icon: "forum" },
+  more: { label: "Více", icon: "more_horiz" }
 };
 
 function groupBy<T>(values: T[], keyFor: (value: T) => string): Map<string, T[]> {
@@ -137,19 +137,8 @@ function PanelGroup({
   const Panel = active?.render;
   if (!Panel || !active) return null;
 
-  return (
-    <div className="detail-panel-group">
-      {panels.length > 1 && (
-        <TabBar
-          tabs={panels.map((panel) => ({ id: panel.id, label: panel.label, icon: panel.icon }))}
-          active={active.id}
-          onChange={setRequested}
-          testId="info-tab"
-        />
-      )}
-      {panels.length === 1 && (
-        <span className="legacy-info-tab-marker" data-testid={`info-tab-${active.id}`} />
-      )}
+  const body = (
+    <>
       {sourceLabels && (
         <div className="detail-source-label">
           <strong>{active.label}</strong>
@@ -164,6 +153,32 @@ function PanelGroup({
       >
         <Panel place={place} refs={refs} />
       </ModuleErrorBoundary>
+    </>
+  );
+
+  if (panels.length === 1) {
+    return (
+      <div className="detail-panel-group">
+        <span className="legacy-info-tab-marker" data-testid={`info-tab-${active.id}`} />
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <div className="detail-panel-group">
+      <Tabs
+        testId="info-tab"
+        value={active.id}
+        onValueChange={setRequested}
+        tabs={panels.map((panel) => ({
+          id: panel.id,
+          label: panel.label,
+          // Only the selected source is mounted: every panel fetches on mount, and opening a
+          // place must not fire one request per integration.
+          children: panel.id === active.id ? body : null
+        }))}
+      />
     </div>
   );
 }
@@ -252,7 +267,7 @@ function MediaGallery({ media }: { media: DetailMediaAsset[] }) {
   );
 }
 
-function LegacyInfoEngine({ place, refs, photos = [], actions, social }: InfoEngineProps) {
+function LegacyInfoEngine({ place, refs, photos = [], social }: InfoEngineProps) {
   const panels = useMemo(() => infoPanelsFor({ place, refs }), [place, refs]);
   const [requested, setRequested] = useState<string | null>(null);
   const [photoIndex, setPhotoIndex] = useState(0);
@@ -278,7 +293,6 @@ function LegacyInfoEngine({ place, refs, photos = [], actions, social }: InfoEng
         photoIndex={photoIndex}
         setPhotoIndex={setPhotoIndex}
       />
-      {actions && <div className="actions">{actions}</div>}
       <TabBar
         tabs={panels.map((panel) => ({ id: panel.id, label: panel.label, icon: panel.icon }))}
         active={active?.id ?? ""}
@@ -303,19 +317,10 @@ function LegacyInfoEngine({ place, refs, photos = [], actions, social }: InfoEng
 }
 
 function UnifiedInfoEngine(props: InfoEngineProps) {
-  const {
-    place,
-    refs,
-    providerFields = [],
-    social,
-    privateContent,
-    actions,
-    media: rawMedia = []
-  } = props;
+  const { place, refs, providerFields = [], social, privateContent, media: rawMedia = [] } = props;
   const panels = useMemo(() => infoPanelsFor({ place, refs }), [place, refs]);
   const media = useMemo(() => rawMedia.filter(isDisplayableDetailMedia), [rawMedia]);
   const [requestedSurface, setRequestedSurface] = useState<DetailSurfaceId>("overview");
-  const [photoIndex, setPhotoIndex] = useState(0);
 
   const grouped = useMemo(() => groupBy(panels, (panel) => panel.surface ?? "more"), [panels]);
   const available = useMemo(() => {
@@ -329,60 +334,58 @@ function UnifiedInfoEngine(props: InfoEngineProps) {
   const activeSurface = available.includes(requestedSurface) ? requestedSurface : available[0]!;
   const surfacePanels = grouped.get(activeSurface) ?? [];
 
+  const body = (
+    <div className="info-body" data-testid="info-panel-body">
+      {activeSurface === "media" && <MediaGallery media={media} />}
+      {activeSurface === "practical" && (
+        <>
+          {surfacePanels.length > 0 && (
+            <PanelGroup panels={surfacePanels} place={place} refs={refs} />
+          )}
+          <ProviderFields fields={providerFields} />
+        </>
+      )}
+      {activeSurface === "social" && (
+        <div className="detail-social-groups">
+          {surfacePanels.length > 0 && (
+            <section className="detail-source-group" data-content-owner="provider">
+              <PanelGroup panels={surfacePanels} place={place} refs={refs} sourceLabels />
+            </section>
+          )}
+          {social && (
+            <section className="detail-source-group" data-content-owner="mapos">
+              {social}
+            </section>
+          )}
+          {privateContent && (
+            <section className="detail-source-group" data-content-owner="private">
+              <div className="detail-source-label">
+                <strong>Soukromé</strong>
+                <span>Jen toto zařízení</span>
+              </div>
+              {privateContent}
+            </section>
+          )}
+        </div>
+      )}
+      {(activeSurface === "overview" || activeSurface === "more") && (
+        <PanelGroup panels={surfacePanels} place={place} refs={refs} />
+      )}
+    </div>
+  );
+
   return (
     <div className="info-engine" data-detail-surface="v2">
-      <PlaceHero
-        place={place}
-        media={media}
-        photoIndex={photoIndex}
-        setPhotoIndex={setPhotoIndex}
-      />
-      {actions && <div className="actions detail-sticky-actions">{actions}</div>}
-
-      <TabBar
-        tabs={available.map((id) => ({ id, ...SURFACES[id] }))}
-        active={activeSurface}
-        onChange={(id) => setRequestedSurface(id as DetailSurfaceId)}
+      <Tabs
         testId="detail-section"
+        value={activeSurface}
+        onValueChange={(id) => setRequestedSurface(id as DetailSurfaceId)}
+        tabs={available.map((id) => ({
+          id,
+          ...SURFACES[id],
+          children: id === activeSurface ? body : null
+        }))}
       />
-
-      <div className="info-body" role="tabpanel" data-testid="info-panel-body">
-        {activeSurface === "media" && <MediaGallery media={media} />}
-        {activeSurface === "practical" && (
-          <>
-            {surfacePanels.length > 0 && (
-              <PanelGroup panels={surfacePanels} place={place} refs={refs} />
-            )}
-            <ProviderFields fields={providerFields} />
-          </>
-        )}
-        {activeSurface === "social" && (
-          <div className="detail-social-groups">
-            {surfacePanels.length > 0 && (
-              <section className="detail-source-group" data-content-owner="provider">
-                <PanelGroup panels={surfacePanels} place={place} refs={refs} sourceLabels />
-              </section>
-            )}
-            {social && (
-              <section className="detail-source-group" data-content-owner="mapos">
-                {social}
-              </section>
-            )}
-            {privateContent && (
-              <section className="detail-source-group" data-content-owner="private">
-                <div className="detail-source-label">
-                  <strong>Soukromé</strong>
-                  <span>Jen toto zařízení</span>
-                </div>
-                {privateContent}
-              </section>
-            )}
-          </div>
-        )}
-        {(activeSurface === "overview" || activeSurface === "more") && (
-          <PanelGroup panels={surfacePanels} place={place} refs={refs} />
-        )}
-      </div>
     </div>
   );
 }

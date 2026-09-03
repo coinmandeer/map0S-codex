@@ -5,6 +5,9 @@ import type { SheetType } from "./mapStore";
 export type LeftContext =
   | { type: "closed" }
   | { type: "mode"; mode: AppMode }
+  /** The map-wide AI conversation (§4.13). Its own context rather than a mode, because it can
+   *  be opened from search or a panel and returns there when closed. */
+  | { type: "ai"; prompt?: string }
   | {
       type: "feature";
       featureRef: { layerId: string; featureId: string };
@@ -70,13 +73,8 @@ export function rightUtilityForLegacySheet(sheet: SheetType): RightUtility | nul
 }
 
 export function modalForLegacySheet(sheet: SheetType): ModalState | null {
-  if (
-    sheet === "pin" ||
-    sheet === "auth" ||
-    sheet === "edit" ||
-    sheet === "route" ||
-    sheet === "wizard"
-  )
+  // "pin" is deliberately absent: a place detail is a left context (§4.10), not a modal.
+  if (sheet === "auth" || sheet === "edit" || sheet === "route" || sheet === "wizard")
     return { type: "legacy", sheet };
   return null;
 }
@@ -179,10 +177,19 @@ function sourceSyncedState(
     }
   }
 
+  // A place detail (§4.10) and the AI conversation (§4.13) live in the left slot but are not
+  // derived from `sidebarOpen`. Any unrelated map change would otherwise recompute the slot back
+  // to the mode panel and close them mid-read; a mode switch or a closed panel still replaces
+  // them.
+  const keepsOverlay =
+    (state.leftContext.type === "feature" || state.leftContext.type === "ai") &&
+    action.leftContext.type === "mode" &&
+    action.leftContext.mode === state.mode;
+
   return {
     ...state,
     mode: action.mode,
-    leftContext: action.leftContext,
+    leftContext: keepsOverlay ? state.leftContext : action.leftContext,
     rightUtility,
     modal,
     legacySheet: action.legacySheet

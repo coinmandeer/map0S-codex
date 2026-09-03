@@ -6,7 +6,7 @@ import {
   windowShellHistoryPort
 } from "../../store/shellBrowserHistory";
 import { getShellStore } from "../../store/shellStore";
-import type { ToastState } from "../../store/mapStore";
+import { getMapStore, type ToastState } from "../../store/mapStore";
 import { useMapStoreSnapshot } from "../../store/useMapStoreSnapshot";
 import { useShellStoreSnapshot } from "../../store/useShellStoreSnapshot";
 import { BottomNav } from "../BottomNav";
@@ -66,6 +66,7 @@ const GameSimulationBridge = lazy(() =>
 const CreateWizard = lazy(() =>
   import("../CreateWizard").then((module) => ({ default: module.CreateWizard }))
 );
+const AiPanel = lazy(() => import("../AiPanel").then((module) => ({ default: module.AiPanel })));
 
 export interface AppChromeProps {
   onFlyToMe: () => Promise<Fix | null>;
@@ -115,6 +116,7 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
   const toast = useMapStoreSnapshot((state) => state.toast);
   const activeLayers = useMapStoreSnapshot((state) => state.activeLayers);
   const activePlan = useMapStoreSnapshot((state) => state.activePlan);
+  const selectedPin = useMapStoreSnapshot((state) => state.selectedPin);
 
   useEffect(() => {
     const port = windowShellHistoryPort();
@@ -122,6 +124,30 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
     const binding = new ShellBrowserHistoryBinding(shell, port);
     return () => binding.dispose();
   }, [shell]);
+
+  // §4.10: the map, the panels and search all select pins through MapStore. Translating that one
+  // signal into the left feature context here keeps every caller free of shell knowledge.
+  const selectedRef = useMemo(() => {
+    if (!selectedPin) return null;
+    const featureId = String(selectedPin.feature.properties?.id ?? selectedPin.layerId);
+    return { layerId: selectedPin.layerId, featureId };
+  }, [selectedPin]);
+
+  useEffect(() => {
+    if (selectedRef) {
+      shell.openFeatureContext(selectedRef);
+      return;
+    }
+    shell.closeFeatureContext();
+  }, [selectedRef, shell]);
+
+  // Closing the detail through the panel chrome, Escape or browser-back has to release the pin,
+  // otherwise the map keeps its highlight and the same pin cannot be reopened. The live snapshot
+  // is what matters here: `leftContext` from this render is one commit behind the effect above.
+  useEffect(() => {
+    if (!selectedRef || shell.snapshot.leftContext.type === "feature") return;
+    getMapStore().selectPin(null);
+  }, [leftContext, selectedRef, shell]);
 
   const footerEntries = useMemo(() => {
     const timeline = timelineContributions(activeLayers, activePlan, getLayerManifestV2);
@@ -237,6 +263,17 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
             <GameHud />
           </AsyncSurface>
         )}
+        {leftContext.type === "ai" && (
+          <AsyncSurface
+            id="ai-panel"
+            title="Asistent"
+            resetKey={leftContext.prompt ?? "ai"}
+            onDismiss={() => shell.closeLeftContext()}
+            placement="panel"
+          >
+            <AiPanel />
+          </AsyncSurface>
+        )}
         {leftContext.type === "feature" && (
           <AsyncSurface
             id="place-detail-extensions"
@@ -319,6 +356,7 @@ export function LegacyAppShell({ onFlyToMe }: AppChromeProps) {
   const sheet = useMapStoreSnapshot((state) => state.sheet);
   const toast = useMapStoreSnapshot((state) => state.toast);
   const mode = useMapStoreSnapshot((state) => state.mode);
+  const legacySelectedPin = useMapStoreSnapshot((state) => state.selectedPin);
 
   return (
     <>
@@ -364,7 +402,7 @@ export function LegacyAppShell({ onFlyToMe }: AppChromeProps) {
       </AsyncSurface>
 
       <AsyncSurface id="legacy-modal" title="Dialog" compact>
-        {sheet === "pin" && <PinDetail />}
+        {legacySelectedPin && <PinDetail />}
         {sheet === "auth" && <AuthSheet />}
         {sheet === "edit" && <EditLayerSheet />}
         {sheet === "route" && <RouteSheet />}

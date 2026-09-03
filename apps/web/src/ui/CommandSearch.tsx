@@ -781,6 +781,24 @@ export function CommandSearch({
                           >
                             Vytvořit editovatelný plán
                           </button>
+                          {/* One answer in a popover is a lookup; a conversation belongs in the
+                              left panel, where the cards have room (§4.13). */}
+                          <button
+                            type="button"
+                            className="btn small"
+                            data-testid="search-ai-open-panel"
+                            onClick={() => {
+                              const prompt = intent.kind === "ai" ? intent.query : query.trim();
+                              setFocused(false);
+                              // The conversation owns the question from here; leaving it in the
+                              // field invites asking the same thing twice.
+                              setQuery("");
+                              setAiPreviewOpen(false);
+                              shell.openAiContext(prompt || undefined);
+                            }}
+                          >
+                            Pokračovat v konverzaci
+                          </button>
                         </div>
                       )}
                       {aiSelection && (

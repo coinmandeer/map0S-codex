@@ -214,6 +214,13 @@
     pointer-events: auto;
   }
 
+  /* The top bar is its own stacking context, so a popover inside it cannot escape upwards on its
+     own — on a phone the search results ended up behind the place-detail sheet. While the search
+     is focused the whole bar is lifted above panels instead. */
+  .chrome-top:has(.topbar-search[data-focused]) {
+    z-index: var(--z-popover);
+  }
+
   /* The slot is the strip the pill may use: it starts after the open panel (plus the hamburger
      when one is showing) and ends before the utility rail and the open drawer. The pill centres
      inside it, so it can never slide underneath the Podklady button, and TopBar.tsx measures the
@@ -1256,9 +1263,13 @@
     left: calc(var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2);
   }
 
+  /* Bottom centre, above the footer stack and the bottom nav (§4.14). One line: a toast is a
+     receipt for something that already happened, not a place to read a paragraph. */
   .toast {
     position: fixed;
-    top: calc(var(--modebar-h) + var(--space-6));
+    bottom: calc(
+      var(--footer-stack-h, 0px) + var(--bottom-nav-h) + var(--safe-bottom) + var(--space-8)
+    );
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -1274,7 +1285,13 @@
     box-shadow: var(--shadow);
     animation: fadeIn var(--dur) var(--ease-out);
     max-width: min(420px, calc(100vw - 32px));
-    text-align: center;
+  }
+
+  .toast-message {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* The action inherits the inverted surface, so it cannot use the kit's accent colour. */

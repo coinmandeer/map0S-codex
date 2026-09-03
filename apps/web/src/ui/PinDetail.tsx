@@ -24,7 +24,14 @@ import { createSavedPlaceFromFeature, SAVED_PLACES_LAYER_ID } from "../lib/saved
 import { getLayerManifestV2 } from "../layers/registry";
 import { EventPinDetail } from "../events/EventPinDetail";
 import { getMapStore } from "../store/mapStore";
+import { getShellStore } from "../store/shellStore";
+import { useShellStoreSnapshot } from "../store/useShellStoreSnapshot";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
+import { PanelShell } from "./PanelShell";
+import { Button, IconButton, InlineNotice, type MenuAction } from "./kit";
+import { PlaceAction, PlaceActionOverflow, PlaceActionRow } from "./place/PlaceActionRow";
+import { PlaceAiBrief } from "./place/PlaceAiBrief";
+import { PlaceHero } from "./place/PlaceHero";
 import { PlaceSocial } from "./PlaceSocial";
 import { PrivatePlaceNote } from "./PrivatePlaceNote";
 
@@ -40,26 +47,14 @@ function localId(prefix: string): string {
   return `${prefix}-${suffix}`;
 }
 
-function useIsDesktop() {
-  const [desktop, setDesktop] = useState(
-    typeof window !== "undefined" ? window.innerWidth >= 900 : false
-  );
-  useEffect(() => {
-    const onResize = () => setDesktop(window.innerWidth >= 900);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-  return desktop;
-}
-
 /** The place as the map already knows it. Rendered immediately, then filled by the server — the
  * detail opens at click speed and remains useful if the network is unavailable. */
 const SERVICE_LABELS: Record<string, string> = {
-  water: "💧 Voda",
-  electricity: "⚡ Elektřina",
-  wifi: "📶 Wifi",
-  shower: "🚿 Sprcha",
-  toilets: "🚻 WC"
+  water: "Voda",
+  electricity: "Elektřina",
+  wifi: "Wifi",
+  shower: "Sprcha",
+  toilets: "WC"
 };
 
 function placeFromPin(refs: PlaceRefs, feature: GeoFeature): Place {
@@ -113,13 +108,51 @@ function sourceLabel(place: Place): string {
   return (primary && PLACE_SOURCE_BY_ID[primary]?.label) || "zdroje";
 }
 
+/** Prev/next through the pins the map is currently showing, so a wrong guess costs one click
+ *  rather than a close, a squint and another click. */
+function PlaceStepper({
+  index,
+  total,
+  onStep
+}: {
+  index: number;
+  total: number;
+  onStep: (delta: number) => void;
+}) {
+  if (index < 0 || total < 2) return null;
+  return (
+    <span className="place-stepper">
+      <IconButton
+        icon="chevron_left"
+        label="Předchozí místo"
+        size="sm"
+        disabled={index <= 0}
+        testId="pin-prev"
+        onClick={() => onStep(-1)}
+      />
+      <span className="place-stepper-count">
+        {index + 1} / {total}
+      </span>
+      <IconButton
+        icon="chevron_right"
+        label="Další místo"
+        size="sm"
+        disabled={index >= total - 1}
+        testId="pin-next"
+        onClick={() => onStep(1)}
+      />
+    </span>
+  );
+}
+
 function PlacePinDetail() {
   const store = getMapStore();
+  const shell = getShellStore();
+  const leftContext = useShellStoreSnapshot((state) => state.leftContext);
   const pin = useMapStoreSnapshot((state) => state.selectedPin);
   const active = useMapStoreSnapshot((state) => state.activeLayers);
   const visibleFeatures = useMapStoreSnapshot((state) => state.visibleFeatures);
   const view = useMapStoreSnapshot((state) => state.view);
-  const desktop = useIsDesktop();
 
   const nearby = useMemo(() => {
     const all: { feature: GeoFeature; layerId: string; distance: number }[] = [];
@@ -183,6 +216,7 @@ function PlacePinDetail() {
   );
   const [place, setPlace] = useState<Place | null>(null);
   const [legacyPhotos, setLegacyPhotos] = useState<string[]>([]);
+  const [photoIndex, setPhotoIndex] = useState(0);
   const [loadState, setLoadState] = useState<DetailLoadState>({ status: "loading" });
   const [retry, setRetry] = useState(0);
 
@@ -192,6 +226,7 @@ function PlacePinDetail() {
     const local = placeFromPin(refs, pin.feature);
     setPlace(local);
     setLegacyPhotos(local.photo ? [local.photo] : []);
+    setPhotoIndex(0);
     setLoadState({ status: "loading" });
 
     void fetchPlaceDetailStrict(refs, controller.signal)
@@ -206,8 +241,8 @@ function PlacePinDetail() {
         } as Place);
         setLegacyPhotos(
           [local.photo, detail.photo].filter(
-            (url, photoIndex, values): url is string =>
-              Boolean(url) && values.indexOf(url) === photoIndex
+            (url, photoPosition, values): url is string =>
+              Boolean(url) && values.indexOf(url) === photoPosition
           )
         );
         setLoadState({ status: "ready" });
@@ -300,7 +335,7 @@ function PlacePinDetail() {
     if (result === "ok") emit("layers-changed");
     store.showToast(
       result === "ok"
-        ? "Místo je uložené v Personal"
+        ? "Místo je uložené v Osobní"
         : result === "exists"
           ? "Místo už máš uložené"
           : "Uložení se nepovedlo"
@@ -310,7 +345,7 @@ function PlacePinDetail() {
   const addToPlan = () => {
     const document = store.activePlanDocument;
     if (!document) {
-      store.closeSheet();
+      store.selectPin(null);
       store.setMode("planning");
       store.showToast("Nejdřív vytvoř plán; místo pak přidej znovu");
       return;
@@ -342,141 +377,114 @@ function PlacePinDetail() {
     }
   };
 
+  const openExternal = (url: string) => {
+    window.open(url, "_blank", "noreferrer");
+  };
+
+  const overflowActions: MenuAction[] = [
+    ...providerActions.map((action) => ({
+      id: action.id,
+      label: action.label,
+      icon: (action.kind === "report" ? "flag" : "open_in_new") as MenuAction["icon"],
+      onSelect: () => openExternal(action.url!)
+    })),
+    {
+      id: "google",
+      label: "Otevřít v Google Maps",
+      icon: "open_in_new" as const,
+      onSelect: () => openExternal(googleMapsLink(lat, lng))
+    },
+    ...(correctionUrl
+      ? [
+          {
+            id: "osm",
+            label: "Opravit v OpenStreetMap",
+            icon: "edit" as const,
+            onSelect: () => openExternal(correctionUrl)
+          }
+        ]
+      : [])
+  ];
+
+  const returnTo = leftContext.type === "feature" ? leftContext.returnTo : undefined;
+
   return (
-    <>
-      <div className="overlay" onClick={() => store.closeSheet()} />
-      <div className={`panel ${desktop ? "dialog" : "sheet"}`} data-testid="pin-detail">
-        {!desktop && <div className="panel-handle" />}
-        <div className="panel-header">
-          <h2>Detail místa</h2>
-          <div className="pin-nav">
-            {index >= 0 && nearby.length > 1 && (
-              <>
-                <button
-                  className="btn btn-ghost pin-nav-btn"
-                  data-testid="pin-prev"
-                  disabled={index <= 0}
-                  onClick={() => goTo(-1)}
-                  title="Předchozí místo"
-                >
-                  ‹
-                </button>
-                <span className="meta pin-nav-count">
-                  {index + 1}/{nearby.length}
-                </span>
-                <button
-                  className="btn btn-ghost pin-nav-btn"
-                  data-testid="pin-next"
-                  disabled={index >= nearby.length - 1}
-                  onClick={() => goTo(1)}
-                  title="Další místo"
-                >
-                  ›
-                </button>
-              </>
-            )}
-            <button className="btn btn-ghost" onClick={() => store.closeSheet()}>
-              ✕
-            </button>
-          </div>
-        </div>
-        <div className="panel-body">
-          {loadState.status === "loading" && (
-            <p className="detail-load-state meta" aria-live="polite">
-              Doplňuji detail ze zdroje…
-            </p>
-          )}
-          {loadState.status === "error" && (
-            <div className="detail-load-state error" role="status">
-              <span>{loadState.message}</span>
-              <button
-                className="btn small"
-                type="button"
-                onClick={() => setRetry((value) => value + 1)}
-              >
-                Zkusit znovu
-              </button>
-            </div>
-          )}
-          <InfoEngine
-            place={place}
-            refs={refs.refs}
-            media={media}
-            photos={legacyPhotos}
-            providerFields={providerFields}
-            social={<PlaceSocial place={place} />}
-            privateContent={<PrivatePlaceNote place={place} />}
-            actions={
-              <>
-                {providerActions.map((action) => (
-                  <a
-                    className="btn"
-                    href={action.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    data-testid={
-                      action.id === "provider" ? "p4n-link" : `detail-action-${action.id}`
-                    }
-                    data-provider-action={action.kind}
-                    key={`${action.kind}:${action.id}:${action.url}`}
-                  >
-                    {action.label}
-                  </a>
-                ))}
-                <a
-                  className="btn"
-                  href={googleMapsLink(lat, lng)}
-                  target="_blank"
-                  rel="noreferrer"
-                  data-testid="nav-google"
-                >
-                  Otevřít mapu
-                </a>
-                <button
-                  className="btn btn-accent"
-                  data-testid="route-car"
-                  onClick={() => void planRoute("car")}
-                >
-                  Trasa
-                </button>
-                {pin.layerId !== SAVED_PLACES_LAYER_ID && (
-                  <button className="btn" data-testid="save-place" onClick={() => void savePlace()}>
-                    Uložit místo
-                  </button>
-                )}
-                <button
-                  className="btn"
-                  data-testid="add-place-to-plan"
-                  type="button"
-                  onClick={addToPlan}
-                >
-                  Přidat do plánu
-                </button>
-                <button
-                  className="btn"
-                  data-testid="share-place"
-                  type="button"
-                  onClick={() => void sharePlace()}
-                >
-                  Sdílet
-                </button>
-                {correctionUrl && (
-                  <a
-                    className="btn btn-ghost"
-                    href={correctionUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    data-testid="report-place"
-                  >
-                    Nahlásit / opravit v OSM
-                  </a>
-                )}
-              </>
-            }
+    <PanelShell
+      title="Detail místa"
+      testId="pin-detail"
+      className="panel-place-detail"
+      dismissible
+      busy={loadState.status === "loading"}
+      busyLabel="Doplňuji detail ze zdroje"
+      onBack={
+        returnTo && returnTo.type !== "closed" ? () => shell.closeFeatureContext() : undefined
+      }
+      headerExtra={<PlaceStepper index={index} total={nearby.length} onStep={goTo} />}
+    >
+      <PlaceHero
+        place={place}
+        media={media}
+        photoIndex={photoIndex}
+        onPhotoIndexChange={setPhotoIndex}
+      />
+
+      <PlaceActionRow>
+        <PlaceAction
+          icon="directions"
+          label="Trasa"
+          primary
+          testId="route-car"
+          onClick={() => void planRoute("car")}
+        />
+        <PlaceAction
+          icon="add_location"
+          label="Do plánu"
+          testId="add-place-to-plan"
+          onClick={addToPlan}
+        />
+        {pin.layerId !== SAVED_PLACES_LAYER_ID && (
+          <PlaceAction
+            icon="bookmark"
+            label="Uložit"
+            testId="save-place"
+            onClick={() => void savePlace()}
           />
-        </div>
-      </div>
-    </>
+        )}
+        <PlaceAction
+          icon="share"
+          label="Sdílet"
+          testId="share-place"
+          onClick={() => void sharePlace()}
+        />
+        <PlaceActionOverflow actions={overflowActions} />
+      </PlaceActionRow>
+
+      <PlaceAiBrief place={place} />
+
+      {loadState.status === "error" && (
+        <InlineNotice
+          tone="warning"
+          testId="detail-load-error"
+          action={
+            <Button variant="text" size="sm" onClick={() => setRetry((value) => value + 1)}>
+              Zkusit znovu
+            </Button>
+          }
+        >
+          {loadState.message}
+        </InlineNotice>
+      )}
+
+      <InfoEngine
+        place={place}
+        refs={refs.refs}
+        media={media}
+        photos={legacyPhotos}
+        providerFields={providerFields}
+        social={<PlaceSocial place={place} />}
+        privateContent={<PrivatePlaceNote place={place} />}
+      />
+    </PanelShell>
   );
 }
 

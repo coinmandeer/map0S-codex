@@ -70,6 +70,8 @@ export const ICON_NAMES = [
   "keyboard_arrow_up",
   "keyboard_return",
   "history",
+  "play_arrow",
+  "pause",
   "star",
   "star_border",
   "favorite",
@@ -120,6 +122,7 @@ export const ICON_NAMES = [
   "date_range",
   "event",
   "today",
+  "confirmation_number",
 
   // Layers and data domains
   "terrain",

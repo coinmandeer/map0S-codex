@@ -62,6 +62,8 @@ export function PanelShell({
   footer,
   dismissible = false,
   hasContent = true,
+  onBack,
+  backLabel,
   onSnapChange,
   children
 }: {
@@ -80,6 +82,10 @@ export function PanelShell({
   dismissible?: boolean;
   /** Drives the opening snap: a panel showing a list opens full, an empty form opens half. */
   hasContent?: boolean;
+  /** Renders `arrow_back` before the title. Set by a panel that covered another one — a place
+   *  detail opened from Objevuj returns there instead of dropping the user on the map (§4.10). */
+  onBack?: () => void;
+  backLabel?: string;
   onSnapChange?: (snap: PanelSnap) => void;
   children: ReactNode;
 }) {
@@ -335,6 +341,15 @@ export function PanelShell({
           </div>
         )}
         <div className="panel-left-header">
+          {onBack && (
+            <IconButton
+              icon="arrow_back"
+              label={backLabel ?? t("panel.back")}
+              size="sm"
+              testId={`${testId}-back`}
+              onClick={onBack}
+            />
+          )}
           <h2>{title}</h2>
           {headerExtra}
           <IconButton

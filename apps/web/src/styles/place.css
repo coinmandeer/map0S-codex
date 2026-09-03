@@ -1,0 +1,280 @@
+/* Place detail in the left panel (§4.10): hero, the five Google-Maps-style actions, the AI
+   summary card and the registry tabs. */
+@layer place {
+  .panel-place-detail .panel-left-body {
+    padding-top: 0;
+    display: grid;
+    /* Explicit minmax(0, …): an auto track takes the widest child's min-content, and one long
+       GPS string or URL inside the fact table would otherwise widen every row above it. */
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-7);
+    align-content: start;
+  }
+
+  /* ---- Hero ------------------------------------------------------------ */
+
+  /* Without a photo there is no hero band at all — a gradient with a placeholder glyph reads
+     as a broken image. The name simply sits beside its category icon. */
+  .place-hero-plain {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    padding-top: var(--space-7);
+  }
+
+  .place-hero-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: var(--radius-pill);
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+  }
+
+  .place-hero-copy {
+    min-width: 0;
+  }
+
+  .place-hero h3 {
+    font: var(--type-title-lg);
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .place-hero-meta {
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+    margin: var(--space-1) 0 0;
+  }
+
+  .place-hero-photo {
+    position: relative;
+    /* Bleeds to the panel edges: the body's padding would leave two white columns beside a
+       16:9 image. */
+    margin-inline: calc(var(--space-7) * -1);
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: var(--surface-sunken);
+  }
+
+  .place-hero-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .place-hero-overlay {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    padding: var(--space-9) var(--space-7) var(--space-5);
+    display: grid;
+    gap: var(--space-4);
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
+    color: #fff;
+  }
+
+  .place-hero-overlay h3 {
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  }
+
+  .place-hero-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .place-hero-credit {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-4);
+    margin: 0;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-xs);
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font: var(--type-label-sm);
+  }
+
+  .place-hero-gallery {
+    position: absolute;
+    bottom: var(--space-3);
+    right: var(--space-4);
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  /* ---- Action row ------------------------------------------------------ */
+
+  .place-actions {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: var(--space-3);
+    align-items: start;
+  }
+
+  .place-action {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .place-action-label {
+    font: var(--type-label-md);
+    color: var(--text-muted);
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+
+  .place-action[data-primary] .place-action-label {
+    color: var(--accent);
+  }
+
+  /* ---- AI summary ------------------------------------------------------ */
+
+  .place-brief {
+    background: var(--surface-sunken);
+    border-radius: var(--radius);
+    padding: var(--space-6);
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .place-brief-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0;
+    font: var(--type-label-md);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .place-brief-head .kit-button {
+    margin-left: auto;
+  }
+
+  .place-brief-skeleton {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .place-brief-text {
+    margin: 0;
+    font: var(--type-body-md);
+  }
+
+  .place-brief-empty {
+    margin: 0;
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+  }
+
+  .place-brief-nearby {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .place-brief-sources {
+    margin: 0;
+    font: var(--type-label-sm);
+    color: var(--text-faint);
+  }
+
+  /* ---- Tabs and fact rows --------------------------------------------- */
+
+  /* 120 px label column (§4.10). Wide enough for "Otevírací doba" and narrow enough that the
+     value column still holds a URL, which wraps rather than pushing the panel sideways. */
+  .panel-place-detail .info-facts {
+    grid-template-columns: minmax(0, 120px) minmax(0, 1fr);
+    gap: var(--space-4) var(--space-6);
+    font: var(--type-body-md);
+  }
+
+  .panel-place-detail .info-facts dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .panel-place-detail .info-facts dt {
+    color: var(--text-muted);
+  }
+
+  .panel-place-detail .info-gps {
+    gap: var(--space-2);
+  }
+
+  .panel-place-detail .info-provenance .tag-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+  }
+
+  /* ---- AI conversation panel (§4.13) ---------------------------------- */
+
+  .ai-panel-thread {
+    display: grid;
+    gap: var(--space-7);
+  }
+
+  .ai-turn {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  /* The question right in accent-soft, the answer left without a bubble: two speakers are
+     legible from the alignment alone. */
+  .ai-turn-question {
+    margin: 0;
+    margin-left: auto;
+    max-width: 85%;
+    padding: var(--space-4) var(--space-6);
+    border-radius: var(--radius) var(--radius) var(--radius-xs) var(--radius);
+    background: var(--accent-soft);
+    font: var(--type-body-md);
+  }
+
+  .ai-turn-answer {
+    margin: 0;
+    font: var(--type-body-md);
+  }
+
+  .ai-turn-places {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .ai-turn-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .ai-panel-composer {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  /* ---- Header stepper -------------------------------------------------- */
+
+  .place-stepper {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .place-stepper-count {
+    font: var(--type-label-md);
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+}

@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures/offlineTest";
 import { mkdir } from "node:fs/promises";
-import { stubDiscoverContext } from "./fixtures/discoverContext";
+import { openAccessibleMapFeature, stubDiscoverContext } from "./fixtures/discoverContext";
 import { stubEvents } from "./fixtures/events";
 
 const DIR = "e2e/screenshots";
@@ -315,6 +315,103 @@ test.describe("visual snapshots", () => {
       await panel.getByRole("button", { name: "Zavřít" }).click();
       await expect(panel).toHaveCount(0);
       await page.screenshot({ path: `${DIR}/${width}-discover-boundary-map.png`, fullPage: true });
+    }
+  });
+
+  test("capture the place detail and the assistant in the left panel", async ({ page }) => {
+    await mkdir(DIR, { recursive: true });
+    await stubDiscoverContext(page);
+    await page.route("**/layers/osm-poi/features**", (route) => {
+      const [west, south, east, north] = new URL(route.request().url()).searchParams
+        .get("bbox")!
+        .split(",")
+        .map(Number) as [number, number, number, number];
+      route.fulfill({
+        json: {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [(west + east) / 2, (south + north) / 2] },
+              properties: {
+                id: "osm:240",
+                name: "Hrad Okoř",
+                category: "castle",
+                layerId: "osm-poi",
+                sourceRefs: "osm:240|wikidata:Q1132187",
+                wikidata: "Q1132187",
+                website: "https://example.org/okor",
+                opening_hours: "Út-Ne 09:00-17:00"
+              }
+            }
+          ]
+        }
+      });
+    });
+    await page.route("**/info/brief**", (route) =>
+      route.fulfill({
+        json: {
+          text: "Zřícenina gotického hradu v zaříznutém údolí, přístupná po značené cestě od parkoviště.",
+          model: "fixture",
+          nearby: [
+            { name: "Parkoviště", category: "parking", categoryLabel: "Parkoviště", distanceM: 320 }
+          ],
+          attribution: "OpenStreetMap, Wikidata"
+        }
+      })
+    );
+    await page.route("**/v2/ai/orchestrate", (route) =>
+      route.fulfill({
+        json: {
+          status: "succeeded",
+          conversation: { id: "conv-1", revision: 1, scope: { type: "global" } },
+          answer: {
+            text: "V okolí jsou dva klidné kempy u vody, oba do 15 minut jízdy.",
+            results: [
+              {
+                id: "osm:41",
+                layerId: "osm-poi",
+                title: "Kemp U Řeky",
+                longitude: 13.3785,
+                latitude: 49.7485,
+                distanceMeters: 1240,
+                source: { sourceId: "osm", label: "OpenStreetMap" }
+              }
+            ]
+          }
+        }
+      })
+    );
+
+    for (const width of [1440, 390] as const) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.goto("/?layers=osm-poi&mode=discover&lng=13.3775&lat=49.7475&z=14");
+      await openAccessibleMapFeature(page, "Hrad Okoř");
+      await expect(page.getByTestId("pin-detail")).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId("brief-text")).toBeVisible({ timeout: 20_000 });
+      await page.screenshot({ path: `${DIR}/${width}-place-detail.png`, fullPage: true });
+
+      await page.getByTestId("place-search").fill("kde najdu klidný kemp u vody?");
+      await page.getByTestId("search-offer-ai").click();
+      await page.getByTestId("search-ai-open-panel").click();
+      await expect(page.getByTestId("ai-panel-thread")).toContainText("klidné kempy", {
+        timeout: 20_000
+      });
+      // The top bar re-centres over the narrowed map; photographing mid-slide shows it in two
+      // places at once.
+      let previousBarX = Number.NaN;
+      await expect
+        .poll(
+          async () => {
+            const box = await page.locator(".chrome-bar").boundingBox();
+            const settled = box?.x === previousBarX;
+            previousBarX = box?.x ?? Number.NaN;
+            return settled;
+          },
+          { intervals: [150, 150, 150, 150] }
+        )
+        .toBe(true);
+      await page.screenshot({ path: `${DIR}/${width}-ai-panel.png`, fullPage: true });
     }
   });
 

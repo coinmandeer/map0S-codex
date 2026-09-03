@@ -28,7 +28,7 @@ export const DEFAULT_USER_PREFERENCES: Readonly<UserPreferences> = {
   flyAnimations: true,
   showSearchHere: true,
   aiEnabled: true,
-  aiAutoSummary: false
+  aiAutoSummary: true
 };
 
 interface StorageReader {

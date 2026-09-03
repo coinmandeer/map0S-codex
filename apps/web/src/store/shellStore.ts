@@ -151,6 +151,28 @@ export class ShellStore {
     this.dispatch({ type: "close-left" }, true);
   }
 
+  /** Opens a place detail in the left slot, remembering the panel it covered so `arrow_back`
+   *  returns to it (§4.10). */
+  openFeatureContext(featureRef: { layerId: string; featureId: string }): void {
+    const current = this.current.leftContext;
+    const returnTo = current.type === "feature" ? current.returnTo : current;
+    this.openLeftContext({ type: "feature", featureRef, returnTo });
+  }
+
+  /** Leaves a place detail: back to the panel it covered, or closed if it opened over the map. */
+  closeFeatureContext(): void {
+    const current = this.current.leftContext;
+    if (current.type !== "feature") return;
+    const returnTo = current.returnTo;
+    if (returnTo && returnTo.type !== "closed") this.openLeftContext(returnTo);
+    else this.closeLeftContext();
+  }
+
+  /** Opens the map-wide AI conversation, optionally seeded with a question (§4.13). */
+  openAiContext(prompt?: string): void {
+    this.openLeftContext(prompt ? { type: "ai", prompt } : { type: "ai" });
+  }
+
   toggleLeftContext(): void {
     if (this.current.leftContext.type === "closed") this.openLeftContext();
     else this.closeLeftContext();

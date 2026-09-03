@@ -429,7 +429,7 @@ export function parseUrlState(
 type Listener = () => void;
 
 /** How long a toast stays up. Long enough to read a sentence, short enough not to sit over the map. */
-export const TOAST_MS = 3000;
+export const TOAST_MS = 4000;
 
 export class MapStore {
   private listeners = new Set<Listener>();
@@ -1056,8 +1056,10 @@ export class MapStore {
     emit("search-here");
   }
 
+  /** §4.10: a selected pin is a left-panel context, not a modal, so selecting one no longer
+   *  claims the single sheet slot — the shell opens the detail panel from `selectedPin`. */
   selectPin(pin: SelectedPin | null) {
-    this.patch({ selectedPin: pin, sheet: pin ? "pin" : null });
+    this.patch({ selectedPin: pin, sheet: this.state.sheet === "pin" ? null : this.state.sheet });
   }
 
   openSheet(sheet: SheetType) {

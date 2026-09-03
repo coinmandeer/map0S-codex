@@ -67,7 +67,9 @@ test.describe("annual events UI", () => {
     await explorer.getByRole("button", { name: /Hudba pod širým nebem/ }).click();
     await expect(page.getByTestId("event-pin-detail")).toContainText("Hudba pod širým nebem");
     await expect(page.getByTestId("event-pin-detail")).toContainText("Event E2E fixture");
-    await page.getByTestId("event-pin-detail").getByRole("button", { name: "✕" }).click();
+    // The detail covers the explorer in the left slot; `arrow_back` is what brings it back.
+    await page.getByTestId("event-pin-detail-back").click();
+    await expect(explorer).toBeVisible();
 
     await explorer.getByLabel("Kategorie událostí").selectOption("");
     await explorer.getByLabel("Cena událostí").selectOption("false");

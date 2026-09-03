@@ -274,7 +274,7 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     render: ({ store, preferences }) => (
       <Row
         label="Automatický souhrn u míst"
-        info="Výchozí stav je vypnuto, aby se na mobilních datech nic neposílalo bez vyžádání."
+        info="Souhrn se načte při otevření detailu místa. Vypni ho, když nechceš posílat dotazy na mobilních datech."
         testId="settings-ai-auto-summary"
         control={
           <Switch

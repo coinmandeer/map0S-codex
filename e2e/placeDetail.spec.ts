@@ -46,6 +46,62 @@ async function openDetail(page: Page) {
 }
 
 test.describe("place detail", () => {
+  test("opens in the left panel with the hero, the action row and a loaded summary", async ({
+    page
+  }) => {
+    await page.route("**/info/brief**", (route) =>
+      route.fulfill({
+        json: {
+          text: "Zřícenina nad soutokem, přístupná po značené cestě.",
+          model: "test-model",
+          nearby: [
+            { name: "Parkoviště", category: "parking", categoryLabel: "Parkoviště", distanceM: 320 }
+          ],
+          attribution: "OpenStreetMap, Wikidata"
+        }
+      })
+    );
+    await openDetail(page);
+
+    // §4.10: the detail is a left-docked panel, not a modal over the map.
+    await expect(page.getByTestId("pin-detail")).toHaveClass(/panel-place-detail/);
+    await expect(page.getByTestId("place-hero")).toContainText("Hrad Okoř");
+
+    const actions = page.getByRole("group", { name: "Akce místa" });
+    for (const name of ["Trasa", "Do plánu", "Uložit", "Sdílet", "Více"]) {
+      await expect(actions.getByRole("button", { name })).toBeVisible();
+    }
+
+    // The summary loads by itself; a summary behind a click is a tab nobody opens.
+    await expect(page.getByTestId("brief-text")).toContainText("Zřícenina nad soutokem");
+    await expect(page.getByTestId("place-brief")).toContainText("OpenStreetMap, Wikidata");
+  });
+
+  test("the summary can be turned off from the card and put back from the toast", async ({
+    page
+  }) => {
+    await page.route("**/info/brief**", (route) =>
+      route.fulfill({ json: { text: "Souhrn.", model: null, nearby: [], attribution: "OSM" } })
+    );
+    await openDetail(page);
+    await expect(page.getByTestId("brief-text")).toBeVisible();
+
+    await page.getByTestId("place-brief-off").click();
+    await expect(page.getByTestId("place-brief-load")).toBeVisible();
+    await page.getByTestId("toast").getByRole("button", { name: "Vrátit" }).click();
+    await expect(page.getByTestId("brief-text")).toBeVisible();
+  });
+
+  test("closing the detail returns to the panel it covered", async ({ page }) => {
+    await openDetail(page);
+
+    // Discover was open under the detail, so the header offers a way back to it rather than
+    // dropping the user on a bare map.
+    await page.getByTestId("pin-detail-back").click();
+    await expect(page.getByTestId("pin-detail")).toHaveCount(0);
+    await expect(page.getByTestId("discover-panel")).toBeVisible();
+  });
+
   test("opens on the overview, showing fields the map carried", async ({ page }) => {
     await openDetail(page);
 

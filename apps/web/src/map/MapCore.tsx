@@ -530,6 +530,27 @@ export function MapCore() {
         });
       }
 
+      // Highlight for the pin whose detail is open (§4.10). Its own layer rather than a filter
+      // on the data layers: the selection has to survive a layer refresh and a style switch.
+      if (!map.getSource("selected-pin")) {
+        map.addSource("selected-pin", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] }
+        });
+        map.addLayer({
+          id: "selected-pin-pulse",
+          type: "circle",
+          source: "selected-pin",
+          paint: {
+            "circle-radius": 14,
+            "circle-color": "transparent",
+            "circle-stroke-color": "#1e4fd8",
+            "circle-stroke-width": 2,
+            "circle-stroke-opacity": 0.9
+          }
+        });
+      }
+
       if (!map.getSource("my-location")) {
         map.addSource("my-location", {
           type: "geojson",
@@ -695,6 +716,77 @@ export function MapCore() {
       window.removeEventListener("resize", schedule);
     };
   }, []);
+
+  // The selected pin keeps its place: opening a detail must not re-frame the map under the
+  // user's hands. The camera only moves when the pin itself would end up behind the panel.
+  useEffect(() => {
+    let animation = 0;
+    let shownId: string | null = null;
+    const reducedMotion =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const stopPulse = () => {
+      if (!animation) return;
+      cancelAnimationFrame(animation);
+      animation = 0;
+    };
+
+    const pulse = (map: maplibregl.Map, startedAt: number) => {
+      if (!map.getLayer("selected-pin-pulse")) return;
+      const phase = ((performance.now() - startedAt) % 1600) / 1600;
+      map.setPaintProperty("selected-pin-pulse", "circle-radius", 12 + phase * 14);
+      map.setPaintProperty("selected-pin-pulse", "circle-stroke-opacity", 0.9 * (1 - phase));
+      animation = requestAnimationFrame(() => pulse(map, startedAt));
+    };
+
+    const revealBehindPanel = (map: maplibregl.Map, coordinates: [number, number]) => {
+      const { sidebarWidth, sheetHeight } = readChromeInsets();
+      const point = map.project(coordinates);
+      const hiddenByPanel = sidebarWidth ? sidebarWidth + 24 - point.x : 0;
+      const sheetTop = window.innerHeight - sheetHeight - 24;
+      const hiddenBySheet = sheetHeight ? point.y - sheetTop : 0;
+      if (hiddenByPanel > 0 || hiddenBySheet > 0) {
+        map.panBy([-Math.max(hiddenByPanel, 0), Math.max(hiddenBySheet, 0)], { duration: 300 });
+      }
+    };
+
+    const update = () => {
+      const map = mapRef.current;
+      const source = map?.getSource("selected-pin") as maplibregl.GeoJSONSource | undefined;
+      if (!map || !source) return;
+      const pin = store.selectedPin;
+      if (!pin) {
+        stopPulse();
+        shownId = null;
+        source.setData({ type: "FeatureCollection", features: [] });
+        return;
+      }
+      const id = `${pin.layerId}:${String(pin.feature.properties.id ?? "")}`;
+      if (id === shownId) return;
+      shownId = id;
+      const coordinates = pin.feature.geometry.coordinates as [number, number];
+      map.setPaintProperty(
+        "selected-pin-pulse",
+        "circle-stroke-color",
+        store.theme === "dark" ? "#8ab4f8" : "#1e4fd8"
+      );
+      source.setData({
+        type: "FeatureCollection",
+        features: [{ type: "Feature", geometry: { type: "Point", coordinates }, properties: {} }]
+      });
+      revealBehindPanel(map, coordinates);
+      stopPulse();
+      if (!reducedMotion) pulse(map, performance.now());
+    };
+
+    update();
+    const unsubscribe = store.subscribe(update);
+    return () => {
+      stopPulse();
+      unsubscribe();
+    };
+  }, [store]);
 
   useEffect(() => {
     let lastFittedRoute: typeof store.routePreview = null;
