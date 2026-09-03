@@ -94,14 +94,14 @@ Recorded here rather than in the plan document, which is frozen during implement
 
 ## AI-1 (§30.3, §30.4, §30.6)
 
-- [ ] `OLLAMA_API_KEY` + `MAPOS_AI_GATEWAY_ENABLED=1` in `.env` (done in preserve-inputs)
-- [ ] adapter with tool calling + tool-as-schema
-- [ ] model slots fast=`glm-5.3-flash`, strong=`deepseek-v4-pro:0813`
-- [ ] `POST /v2/ai/chat` SSE
-- [ ] real handlers: `query_layer`, `search_places`, `list_available_layers`,
+- [x] `OLLAMA_API_KEY` + `MAPOS_AI_GATEWAY_ENABLED=1` in `.env` (done in preserve-inputs)
+- [x] adapter with tool calling + tool-as-schema
+- [x] model slots fast=`glm-5.3-flash`, strong=`deepseek-v4-pro:0813` (`ai/modelRuntime.ts`)
+- [x] `POST /v2/ai/chat` SSE
+- [x] real handlers: `query_layer`, `search_places`, `list_available_layers`,
       `get_current_map_context`, `find_nearest_poi`, `web_search`, `web_fetch`
-- [ ] AI panel, search bar routes into it
-- [ ] `briefService` `verifiedPublic` fix so briefs actually reach the model
+- [x] AI panel, search bar routes into it
+- [x] `briefService` `verifiedPublic` fix so briefs actually reach the model
 
 ## AI-2 (§30.5)
 

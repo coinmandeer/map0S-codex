@@ -41,6 +41,29 @@ export interface AiModelProfile {
   costPolicy: "economy" | "balanced" | "quality";
 }
 
+/** One tool as the model sees it: a name, a sentence of purpose and a JSON schema for the
+ *  arguments. The same schema the registry validates against, so a model that follows it lands
+ *  on a call the server can actually execute. */
+export interface AiToolSpec {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+export interface AiToolCall {
+  id: string;
+  name: string;
+  /** Parsed arguments. A call whose arguments are not valid JSON never reaches a caller. */
+  arguments: Record<string, unknown>;
+}
+
+/** A turn carried back to the model so a tool loop has memory: what it asked for and what the
+ *  server answered. */
+export type AiChatTurn =
+  | { role: "user" | "assistant"; content: string }
+  | { role: "assistant"; content: string; toolCalls: readonly AiToolCall[] }
+  | { role: "tool"; toolCallId: string; name: string; content: string };
+
 export interface AiAdapterRequest {
   runId: string;
   taskId: string;
@@ -48,6 +71,12 @@ export interface AiAdapterRequest {
   system: string;
   prompt: string;
   outputSchema?: Record<string, unknown>;
+  /** Earlier turns of this conversation, sent between the system prompt and `prompt`. */
+  history?: readonly AiChatTurn[];
+  tools?: readonly AiToolSpec[];
+  /** `"auto"` lets the model answer in text; a name forces exactly that call, which is how a
+   *  structured result is obtained from providers that ignore JSON-schema output (§30.2). */
+  toolChoice?: "auto" | { name: string };
   maxOutputTokens: number;
   maxResponseBytes: number;
   temperature: number;
@@ -56,6 +85,7 @@ export interface AiAdapterRequest {
 export interface AiAdapterResult {
   text: string;
   finishReason: "stop" | "length" | "content-filter" | "tool-call" | "unknown";
+  toolCalls?: readonly AiToolCall[];
   providerRequestId?: string;
   usage?: { inputTokens?: number; outputTokens?: number };
 }
@@ -108,6 +138,34 @@ export interface AiGatewayRequest<T> {
   ttlMs?: number;
   signal?: AbortSignal;
 }
+
+/** A single round of a tool loop. Unlike {@link AiGatewayRequest} it is neither cached nor
+ *  parsed: the caller owns the loop, and a round that repeats verbatim still has to run because
+ *  the tools it drives have side effects on the conversation. */
+export interface AiTurnRequest {
+  taskId: string;
+  templateVersion: string;
+  system: string;
+  prompt: string;
+  profile: AiModelProfile;
+  permissionPartition: string;
+  sourceBlocks: AiSourceBlock[];
+  history?: readonly AiChatTurn[];
+  tools?: readonly AiToolSpec[];
+  toolChoice?: "auto" | { name: string };
+  temperature?: number;
+  signal?: AbortSignal;
+}
+
+export type AiTurnOutcome =
+  | {
+      status: "succeeded";
+      text: string;
+      toolCalls: readonly AiToolCall[];
+      citations: AiCitation[];
+      meta: AiRunMeta;
+    }
+  | { status: AiRunStatus; meta: AiRunMeta };
 
 /** Metadata-only audit record. Prompts, source contents, permission partitions and parsed output
  * are intentionally absent so the default observer cannot become a private-data store. */

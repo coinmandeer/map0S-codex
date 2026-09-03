@@ -7,10 +7,7 @@ test.describe("transparent global search", () => {
     let aiRequests = 0;
     let geocodeFixtures = 0;
     page.on("request", (request) => {
-      if (
-        request.method() === "POST" &&
-        new URL(request.url()).pathname === "/api/v2/ai/orchestrate"
-      ) {
+      if (request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/ai/chat") {
         aiRequests += 1;
       }
     });
@@ -58,7 +55,7 @@ test.describe("transparent global search", () => {
 
     const aiRequest = page.waitForRequest(
       (request) =>
-        request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/ai/orchestrate"
+        request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/ai/chat"
     );
     await page
       .getByTestId("search-ai-layer-preview")
@@ -66,10 +63,9 @@ test.describe("transparent global search", () => {
       .click();
     const request = await aiRequest;
     expect(request.postDataJSON()).toMatchObject({
-      conversation: { mode: "new", scope: { type: "global" } },
-      reference: { source: "map-center" },
-      activeLayerIds: ["osm-poi"],
-      preciseLocationConsent: false
+      message: "najdi mi nejbližší bar",
+      context: { activeLayerIds: ["osm-poi"] },
+      consent: { preciseLocation: false }
     });
     await expect(page.getByTestId("search-ai-results")).toContainText("Irish Pub");
     expect(aiRequests).toBe(1);

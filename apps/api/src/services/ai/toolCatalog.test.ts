@@ -19,6 +19,7 @@ const permissions = new Set([
   "route:read",
   "weather:read",
   "events:read",
+  "web:read",
   "plans:draft"
 ]);
 
@@ -53,6 +54,13 @@ const inputs: Record<MapAiToolName, Record<string, unknown>> = {
     layerId: "public-poi",
     bbox: [14.3, 50, 14.6, 50.2],
     filters: { openNow: true, minRating: 4, tags: ["outdoor"] },
+    limit: 10
+  },
+  search_places: {
+    query: "kemp",
+    categories: ["stay.camp_site"],
+    near: { longitude: 14.42, latitude: 50.08 },
+    radiusMeters: 10_000,
     limit: 10
   },
   set_layer_selection_draft: { layerIds: ["public-poi"] },
@@ -90,6 +98,8 @@ const inputs: Record<MapAiToolName, Record<string, unknown>> = {
     to: "2026-09-02T00:00:00.000Z",
     limit: 10
   },
+  web_search: { query: "festivaly Plzeň září 2026", maxResults: 3 },
+  web_fetch: { url: "https://fixture.test/festivaly" },
   create_plan_draft: {
     planId: "plan-1",
     goal: "Přidej dvě zdrojované zastávky.",
@@ -147,6 +157,30 @@ function fixtureHandlers(onCall: (name: string) => void = () => undefined): MapA
       ],
       sources: [source("osm:near"), source("private:hidden")]
     }),
+    search_places: handler("search_places", {
+      places: [
+        {
+          id: "camp-1",
+          layerId: "public-poi",
+          title: "Kemp U Řeky",
+          category: "stay.camp_site",
+          longitude: 14.42,
+          latitude: 50.081,
+          distanceMeters: 120,
+          sourceId: "osm:near"
+        },
+        {
+          id: "camp-hidden",
+          layerId: "private-other",
+          title: "Cizí kemp",
+          category: "stay.camp_site",
+          longitude: 14.43,
+          latitude: 50.082,
+          sourceId: "private:hidden"
+        }
+      ],
+      sources: [source("osm:near"), source("private:hidden")]
+    }),
     set_layer_selection_draft: handler("set_layer_selection_draft", {
       draftId: "layers-draft-1",
       layerIds: ["public-poi", "private-other"]
@@ -195,6 +229,20 @@ function fixtureHandlers(onCall: (name: string) => void = () => undefined): MapA
         }
       ],
       sources: [source("events:fixture"), source("events:hidden")]
+    }),
+    web_search: handler("web_search", {
+      results: [
+        {
+          title: "Festivaly v Plzni",
+          url: "https://fixture.test/festivaly",
+          excerpt: "Přehled festivalů na září."
+        }
+      ]
+    }),
+    web_fetch: handler("web_fetch", {
+      url: "https://fixture.test/festivaly",
+      title: "Festivaly v Plzni",
+      text: "Program festivalu začíná 12. září."
     }),
     create_plan_draft: handler("create_plan_draft", {
       draftId: "plan-draft-1",
@@ -287,14 +335,23 @@ function fixtureRegistry(
   return { registry, nearestCalls: () => nearestCalls };
 }
 
-test("all seven source-grounded domains have complete audited contracts", () => {
+test("all eight source-grounded domains have complete audited contracts", () => {
   const { registry } = fixtureRegistry();
   const descriptors = registry.describe();
   assert.deepEqual(descriptors.map(({ name }) => name).sort(), [...MAP_AI_TOOL_NAMES].sort());
   assert.deepEqual(
     [...new Set(descriptors.map(({ domain }) => domain))].sort(),
     (
-      ["map", "layers", "poi", "route", "weather", "events", "plans"] satisfies AiToolDomain[]
+      [
+        "map",
+        "layers",
+        "poi",
+        "route",
+        "weather",
+        "events",
+        "web",
+        "plans"
+      ] satisfies AiToolDomain[]
     ).sort()
   );
   for (const descriptor of descriptors) {

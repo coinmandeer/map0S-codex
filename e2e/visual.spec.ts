@@ -195,9 +195,10 @@ test.describe("visual snapshots", () => {
       await page.getByTestId("plan-name").fill(`Víkendový plán ${width}`);
       await page.getByTestId("save-plan").click();
       await expect(page.getByTestId("toast")).toContainText("uložený v Moje");
+      // §29.3: share, export and hand-off are one dialog with tabs, not three footer surfaces.
       await page.getByRole("button", { name: "Sdílet", exact: true }).click();
-      const shareTools = page.getByTestId("plan-share-tools");
-      await expect(shareTools.getByTestId("plan-share-manager")).toBeVisible();
+      const shareDialog = page.getByTestId("plan-share-dialog");
+      await expect(shareDialog.getByTestId("plan-share-manager")).toBeVisible();
       await expect(page.getByTestId("create-plan-share")).toBeEnabled();
       await page.getByTestId("create-plan-share").click();
       await expect(page.getByTestId("plan-share-url")).toBeVisible();
@@ -205,8 +206,8 @@ test.describe("visual snapshots", () => {
         path: `${DIR}/${width}-planning-share.png`,
         fullPage: true
       });
-      await shareTools.getByRole("button", { name: "Zavřít" }).click();
-      await expect(shareTools).toHaveCount(0);
+      await shareDialog.getByRole("button", { name: "Zavřít" }).click();
+      await expect(shareDialog).toHaveCount(0);
       await page.getByTestId("plan-ai-toggle").click();
       await page
         .getByLabel("Co chceš s plánem probrat?")
@@ -360,26 +361,44 @@ test.describe("visual snapshots", () => {
         }
       })
     );
-    await page.route("**/v2/ai/orchestrate", (route) =>
+    const aiPlace = {
+      id: "osm:41",
+      layerId: "osm-poi",
+      title: "Kemp U Řeky",
+      category: "stay.camp_site",
+      longitude: 13.3785,
+      latitude: 49.7485,
+      distanceMeters: 1240,
+      sourceId: "osm-poi"
+    };
+    await page.route("**/v2/ai/chat", (route) =>
       route.fulfill({
-        json: {
-          status: "succeeded",
-          conversation: { id: "conv-1", revision: 1, scope: { type: "global" } },
-          answer: {
-            text: "V okolí jsou dva klidné kempy u vody, oba do 15 minut jízdy.",
-            results: [
-              {
-                id: "osm:41",
-                layerId: "osm-poi",
-                title: "Kemp U Řeky",
-                longitude: 13.3785,
-                latitude: 49.7485,
-                distanceMeters: 1240,
-                source: { sourceId: "osm", label: "OpenStreetMap" }
-              }
-            ]
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body: [
+          { type: "tool_start", tool: "search_places", title: "Hledám místa v okolí" },
+          {
+            type: "done",
+            conversation: { id: "conv-1", revision: 1 },
+            answer: {
+              execution: "deterministic",
+              intent: "question",
+              text: "V okolí jsou dva klidné kempy u vody, oba do 15 minut jízdy.",
+              cards: [
+                {
+                  type: "places",
+                  title: "Nejbližší místa",
+                  places: [aiPlace],
+                  layerIds: ["osm-poi"]
+                }
+              ],
+              sources: [{ sourceId: "osm-poi", label: "OpenStreetMap" }],
+              followUps: ["Kde se dá dolít voda?", "Naplánuj mi tu dva dny"]
+            }
           }
-        }
+        ]
+          .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+          .join("")
       })
     );
 

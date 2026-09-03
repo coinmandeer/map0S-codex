@@ -113,6 +113,58 @@ export function apiPostWithMetadata<T>(
   return apiSendWithMetadata<T>("POST", path, body, options);
 }
 
+/**
+ * POST that reads a `text/event-stream` back.
+ *
+ * `EventSource` cannot POST, and the assistant has to send the map context with the question, so
+ * the stream is parsed here. Events are delivered as they arrive: the tool steps are the useful
+ * part of the wait, and a stream buffered to the end would be no better than a plain request.
+ */
+export async function apiPostEventStream<T>(
+  path: string,
+  body: unknown,
+  onEvent: (event: T) => void,
+  options: ApiRequestOptions = {}
+): Promise<void> {
+  const res = await fetch(`${API_BASE}${path}${buildQuery(options.query)}`, {
+    method: "POST",
+    signal: options.signal,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", accept: "text/event-stream" },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseError(res), responseRequestId(res));
+  if (!res.body) throw new ApiError(502, "Stream odpovědi není dostupný", null);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // Events are separated by a blank line; the last chunk may be a partial event.
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      const block = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const data = block
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim())
+        .join("");
+      if (data) {
+        try {
+          onEvent(JSON.parse(data) as T);
+        } catch {
+          // A malformed frame is dropped rather than aborting a stream that is still useful.
+        }
+      }
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+}
+
 /** Resolves to `null` instead of throwing — for optional/degradable data sources. */
 export async function apiGetSafe<T>(
   path: string,

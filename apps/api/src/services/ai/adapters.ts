@@ -1,8 +1,10 @@
 import type {
   AiAdapterRequest,
   AiAdapterResult,
+  AiChatTurn,
   AiModelAdapter,
-  AiModelProfile
+  AiModelProfile,
+  AiToolCall
 } from "./contracts.js";
 import { assertProviderId } from "../../observability/providerCircuitBreaker.js";
 import { fetchJson } from "../../utils/upstream.js";
@@ -50,9 +52,73 @@ interface ChatCompletionEnvelope {
   id?: string;
   choices?: Array<{
     finish_reason?: string;
-    message?: { content?: string };
+    message?: {
+      content?: string;
+      tool_calls?: Array<{
+        id?: string;
+        type?: string;
+        function?: { name?: string; arguments?: string };
+      }>;
+    };
   }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number };
+}
+
+/** Tool calls the server can act on. A call with a missing name or unparseable arguments is
+ *  dropped rather than repaired: guessing what the model meant is how a read tool turns into the
+ *  wrong write. */
+function normaliseToolCalls(
+  raw: NonNullable<NonNullable<ChatCompletionEnvelope["choices"]>[number]["message"]>["tool_calls"]
+): AiToolCall[] {
+  if (!Array.isArray(raw)) return [];
+  const calls: AiToolCall[] = [];
+  for (const [index, entry] of raw.entries()) {
+    const name = entry?.function?.name?.trim();
+    if (!name) continue;
+    const rawArguments = entry.function?.arguments?.trim();
+    let parsed: unknown = {};
+    if (rawArguments) {
+      try {
+        parsed = JSON.parse(rawArguments);
+      } catch {
+        continue;
+      }
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) continue;
+    calls.push({
+      id: entry.id?.trim() || `call-${index}`,
+      name,
+      arguments: parsed as Record<string, unknown>
+    });
+  }
+  return calls;
+}
+
+function chatMessages(request: AiAdapterRequest): unknown[] {
+  const messages: unknown[] = [{ role: "system", content: request.system }];
+  for (const turn of request.history ?? []) {
+    messages.push(providerMessage(turn));
+  }
+  messages.push({ role: "user", content: request.prompt });
+  return messages;
+}
+
+function providerMessage(turn: AiChatTurn): unknown {
+  if (turn.role === "tool") {
+    return { role: "tool", tool_call_id: turn.toolCallId, name: turn.name, content: turn.content };
+  }
+  if ("toolCalls" in turn) {
+    return {
+      role: "assistant",
+      content: turn.content,
+      tool_calls: turn.toolCalls.map((call) => ({
+        id: call.id,
+        type: "function",
+        function: { name: call.name, arguments: JSON.stringify(call.arguments) }
+      }))
+    };
+  }
+  return { role: turn.role, content: turn.content };
 }
 
 async function readBoundedJson(response: Response, maxBytes: number): Promise<unknown> {
@@ -100,7 +166,7 @@ export class OpenAiCompatibleAdapter implements AiModelAdapter {
   readonly capabilities: AiModelProfile["capabilities"] = {
     text: true,
     jsonSchema: true,
-    tools: false,
+    tools: true,
     streaming: false,
     vision: false
   };
@@ -125,15 +191,31 @@ export class OpenAiCompatibleAdapter implements AiModelAdapter {
   }
 
   async run(request: AiAdapterRequest, signal: AbortSignal): Promise<AiAdapterResult> {
+    const tools = request.tools ?? [];
     const body = JSON.stringify({
       model: this.model,
       temperature: request.temperature,
       max_tokens: request.maxOutputTokens,
-      messages: [
-        { role: "system", content: request.system },
-        { role: "user", content: request.prompt }
-      ],
-      ...(request.outputSchema
+      messages: chatMessages(request),
+      ...(tools.length
+        ? {
+            tools: tools.map((tool) => ({
+              type: "function",
+              function: {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters
+              }
+            })),
+            tool_choice:
+              request.toolChoice && request.toolChoice !== "auto"
+                ? { type: "function", function: { name: request.toolChoice.name } }
+                : "auto"
+          }
+        : {}),
+      // Only sent when no tool carries the schema. Ollama Cloud ignores both `format` and
+      // `response_format` (verified 2 Sep 2026), which is why the gateway prefers a tool.
+      ...(request.outputSchema && !tools.length
         ? {
             response_format: {
               type: "json_schema",
@@ -172,11 +254,16 @@ export class OpenAiCompatibleAdapter implements AiModelAdapter {
       });
     }
     const choice = envelope?.choices?.[0];
-    const text = choice?.message?.content?.trim();
-    if (!text) throw new AiAdapterResponseError("AI provider returned no answer");
+    const text = choice?.message?.content?.trim() ?? "";
+    const toolCalls = normaliseToolCalls(choice?.message?.tool_calls);
+    // A tool call is an answer: models routinely call a tool with no prose alongside it.
+    if (!text && !toolCalls.length) {
+      throw new AiAdapterResponseError("AI provider returned no answer");
+    }
     return {
       text,
-      finishReason: finishReason(choice?.finish_reason),
+      finishReason: toolCalls.length ? "tool-call" : finishReason(choice?.finish_reason),
+      ...(toolCalls.length ? { toolCalls } : {}),
       providerRequestId: envelope?.id,
       usage: {
         inputTokens: envelope?.usage?.prompt_tokens,

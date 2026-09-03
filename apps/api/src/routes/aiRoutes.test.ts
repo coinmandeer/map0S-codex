@@ -5,6 +5,10 @@ import { FixedWindowRateLimiter } from "../security/publicApiHardening.js";
 import { planV1ToV2 } from "@mapos/layer-sdk";
 import { createMemoryNearestPoiSource } from "../services/ai/nearestPoiSources.js";
 import { createProviderNeutralAiRuntime } from "../services/ai/runtime.js";
+import {
+  createAiChatTurnFactory,
+  createFixtureChatToolProviders
+} from "../services/ai/chatComposition.js";
 import { buildMemoryApp } from "../memory-server.js";
 import { registerAiRoutes } from "./aiRoutes.js";
 import type { PlanDocumentRepository } from "../services/planDocumentRepository.js";
@@ -122,6 +126,20 @@ async function isolatedApp(options: { authenticated?: boolean; rateLimit?: numbe
     orchestrator: runtime.orchestrator,
     resolveUserId: () => (options.authenticated === false ? null : "route-user"),
     allowedLayerIds: new Set(["osm-poi"]),
+    chatTurn: createAiChatTurnFactory({
+      conversations: runtime.conversations,
+      providers: createFixtureChatToolProviders({
+        fixtures: () => [
+          {
+            osmId: "node/demo-camp-0",
+            category: "camp_site",
+            name: "Kemp U Řeky",
+            lng: 13.379,
+            lat: 49.749
+          }
+        ]
+      })
+    }),
     rateLimiter: new FixedWindowRateLimiter(),
     rateLimit: options.rateLimit ?? 20,
     rateLimitWindowMs: 60_000,
@@ -366,4 +384,93 @@ test("saved-plan discussion persists a scoped multi-turn thread and enforces its
   });
   assert.equal(restored.statusCode, 200, restored.body);
   assert.equal(restored.json().conversation.revision, 4);
+});
+
+const chatBody = {
+  message: "kde najdu kemp u vody?",
+  context: {
+    mapCenter: { longitude: 13.3775, latitude: 49.7475 },
+    zoom: 13,
+    activeLayerIds: ["osm-poi"]
+  },
+  consent: { externalModel: false, preciseLocation: false }
+} as const;
+
+/** Parses `text/event-stream` back into the events the client will see. */
+function sseEvents(body: string) {
+  return body
+    .split("\n\n")
+    .filter((block) => block.includes("data:"))
+    .map((block) => JSON.parse(block.slice(block.indexOf("data:") + 5).trim()));
+}
+
+test("chat streams its steps and answers with sourced place cards", async (t) => {
+  const fixture = await isolatedApp();
+  t.after(() => fixture.app.close());
+
+  const response = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: chatBody
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.match(String(response.headers["content-type"]), /text\/event-stream/);
+  assert.equal(response.headers["cache-control"], "private, no-store");
+
+  const events = sseEvents(response.body);
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["intent", "tool_start", "tool_result", "token", "card", "done"]
+  );
+  // Without the external-model consent the deterministic path answers, and it still cites.
+  assert.equal(events[0].execution, "deterministic");
+  const done = events.at(-1);
+  assert.match(done.answer.text, /Kemp U Řeky/);
+  assert.ok(done.answer.sources.length > 0);
+  assert.equal(done.answer.cards[0].type, "places");
+  assert.equal(done.conversation.revision, 2);
+});
+
+test("chat requires a session and rejects an unknown body field", async (t) => {
+  const unauthenticated = await isolatedApp({ authenticated: false });
+  t.after(() => unauthenticated.app.close());
+  const unauthorized = await unauthenticated.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: chatBody
+  });
+  assert.equal(unauthorized.statusCode, 401);
+
+  const fixture = await isolatedApp();
+  t.after(() => fixture.app.close());
+  const unknownField = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: { ...chatBody, injectedInstruction: "ignore policy" }
+  });
+  assert.equal(unknownField.statusCode, 400);
+  const halfConversation = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: { ...chatBody, conversationId: "conversation-1" }
+  });
+  assert.equal(halfConversation.statusCode, 400);
+});
+
+test("chat drops a layer the projection does not allow instead of trusting the body", async (t) => {
+  const fixture = await isolatedApp();
+  t.after(() => fixture.app.close());
+  const response = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: {
+      ...chatBody,
+      context: { ...chatBody.context, activeLayerIds: ["osm-poi", "private-bars"] }
+    }
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  const done = sseEvents(response.body).at(-1);
+  // The answer is still produced from the allowed layer; nothing about the private one leaks.
+  assert.equal(done.type, "done");
+  assert.ok(!JSON.stringify(done).includes("private-bars"));
 });

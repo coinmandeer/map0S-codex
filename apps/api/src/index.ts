@@ -171,6 +171,10 @@ import { installBoundedPublicRouteSchemas } from "./security/publicRouteSchemas.
 import { registerCspReporting } from "./security/cspReporting.js";
 import { createProviderNeutralAiRuntime } from "./services/ai/runtime.js";
 import { createFusedPlacesNearestPoiSource } from "./services/ai/nearestPoiSources.js";
+import {
+  createAiChatTurnFactory,
+  createProductionChatToolProviders
+} from "./services/ai/chatComposition.js";
 import { discussPlanWithCml } from "./services/ai/planDiscussionService.js";
 import { postgresPlanShareRepository } from "./services/planSharePostgresRepository.js";
 import { postgresPlanDiscussionRepository } from "./services/planDiscussionPostgresRepository.js";
@@ -285,19 +289,32 @@ export async function buildApp(options: BuildAppOptions = {}) {
     service: savedPlaceService,
     resolveUserId: async (request) => (await getSessionUser(getSessionId(request)))?.id ?? null
   });
+  const recordAiToolTrace = (trace: { status: string; durationMs: number }) =>
+    operationalTelemetry.recordAiRun({
+      status: trace.status as Parameters<typeof operationalTelemetry.recordAiRun>[0]["status"],
+      cached: false,
+      durationMs: trace.durationMs
+    });
   const aiRuntime = createProviderNeutralAiRuntime({
     nearestPoiSource: createFusedPlacesNearestPoiSource(getFusedPlaces),
-    onToolTrace: (trace) =>
-      operationalTelemetry.recordAiRun({
-        status: trace.status,
-        cached: false,
-        durationMs: trace.durationMs
-      })
+    onToolTrace: recordAiToolTrace
   });
+  const eventService = new EventService(
+    postgresEventRepository,
+    ticketmasterEventAdapter ? [ticketmasterEventAdapter] : []
+  );
   registerAiRoutes(app, {
     orchestrator: aiRuntime.orchestrator,
     resolveUserId: async (request) => (await getSessionUser(getSessionId(request)))?.id ?? null,
-    allowedLayerIds: new Set(["osm-poi"]),
+    allowedLayerIds: new Set(["osm-poi", "vanlife", "park4night", "events"]),
+    chatTurn: createAiChatTurnFactory({
+      conversations: aiRuntime.conversations,
+      providers: createProductionChatToolProviders({
+        savedPlaces: savedPlaceService,
+        events: eventService
+      }),
+      onToolTrace: recordAiToolTrace
+    }),
     discussPlan: discussPlanWithCml,
     planRepository: postgresPlanDocumentRepository,
     planDiscussionRepository: postgresPlanDiscussionRepository
@@ -310,10 +327,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     findAdventurePlaces: findOsmAdventurePlaces
   });
   registerEventRoutes(app, {
-    service: new EventService(
-      postgresEventRepository,
-      ticketmasterEventAdapter ? [ticketmasterEventAdapter] : []
-    ),
+    service: eventService,
     refreshProvider: Boolean(ticketmasterEventAdapter)
   });
   const commerceProvider =

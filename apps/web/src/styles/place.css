@@ -259,6 +259,51 @@
     gap: var(--space-3);
   }
 
+  /* Naming the running tool instead of an anonymous spinner: the wait is the only place the
+     assistant can say what it is doing. */
+  .ai-turn-step {
+    margin: 0;
+    font: var(--type-label-md);
+    color: var(--text-muted);
+  }
+
+  .ai-turn-card {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+    justify-items: start;
+  }
+
+  .ai-turn-card-head {
+    margin: 0;
+    font: var(--type-label-md);
+    color: var(--text-muted);
+  }
+
+  .ai-turn-link {
+    font: var(--type-body-md);
+    color: var(--accent);
+    overflow-wrap: anywhere;
+  }
+
+  .ai-panel-context-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding-left: var(--space-6);
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+  }
+
+  .ai-panel-followups {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
   .ai-panel-composer {
     display: grid;
     gap: var(--space-4);

@@ -14,8 +14,7 @@ import {
 import { getMapStore } from "../store/mapStore";
 import { getShellStore } from "../store/shellStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
-import { API_BASE } from "../lib/api";
-import { apiPost } from "../lib/api";
+import { API_BASE, apiPostEventStream } from "../lib/api";
 import { emit } from "../lib/events";
 import { geolocation, type Fix } from "../lib/geolocation";
 import { formatDistance } from "../lib/units";
@@ -62,6 +61,49 @@ interface AiSearchAnswer {
   status: "succeeded";
   conversation: { id: string; revision: number; scope: { type: "global" } };
   answer: { text: string; results: AiSearchResult[] };
+}
+
+/** The one frame of `/v2/ai/chat` this popover needs; the panel reads the whole stream. */
+interface AiChatAnswerEvent {
+  type: "done";
+  conversation: { id: string; revision: number };
+  answer: {
+    text: string;
+    cards: {
+      type: string;
+      places?: {
+        id: string;
+        layerId: string;
+        title: string;
+        longitude: number;
+        latitude: number;
+        distanceMeters?: number;
+        sourceId: string;
+      }[];
+    }[];
+    sources: { sourceId: string; label: string; url?: string }[];
+  };
+}
+
+function searchAnswerFromChat(answer: AiChatAnswerEvent["answer"]): AiSearchAnswer {
+  const labels = new Map(answer.sources.map((source) => [source.sourceId, source]));
+  const places = answer.cards.find((card) => card.type === "places")?.places ?? [];
+  return {
+    status: "succeeded",
+    conversation: { id: "chat", revision: 1, scope: { type: "global" } },
+    answer: {
+      text: answer.text,
+      results: places.slice(0, 4).map((place) => ({
+        id: place.id,
+        layerId: place.layerId,
+        title: place.title,
+        longitude: place.longitude,
+        latitude: place.latitude,
+        distanceMeters: place.distanceMeters ?? 0,
+        source: labels.get(place.sourceId) ?? { sourceId: place.sourceId, label: place.sourceId }
+      }))
+    }
+  };
 }
 
 function geocodeTypeLabel(value: string | undefined): string {
@@ -362,17 +404,29 @@ export function CommandSearch({
     setAiSelection(null);
     setAiPlanPreviewed(false);
     try {
-      const response = await apiPost<AiSearchAnswer>("/v2/ai/orchestrate", {
-        prompt,
-        conversation: { mode: "new", scope: { type: "global" } },
-        reference: { source: "map-center", longitude: view.lng, latitude: view.lat },
-        activeLayerIds: ["osm-poi"],
-        activeFilters: {},
-        radiusMeters: 10_000,
-        limit: 4,
-        preciseLocationConsent: false
-      });
-      setAiAnswer(response);
+      // The same assistant as the panel, read to its end here: the popover shows one answer, so
+      // there is nothing to stream into. Anything the router does not treat as a place lookup
+      // still answers — the popover then offers to continue in the panel.
+      let answer: AiChatAnswerEvent["answer"] | null = null;
+      await apiPostEventStream<AiChatAnswerEvent>(
+        "/v2/ai/chat",
+        {
+          message: prompt,
+          context: {
+            mapCenter: { longitude: view.lng, latitude: view.lat },
+            zoom: view.zoom,
+            activeLayerIds: ["osm-poi"],
+            mode: "discover"
+          },
+          consent: { externalModel: true, preciseLocation: false }
+        },
+        (event) => {
+          if (event.type === "done") answer = event.answer;
+        },
+        { auth: true }
+      );
+      if (!answer) throw new Error("Odpověď dorazila prázdná. Zkus dotaz zopakovat.");
+      setAiAnswer(searchAnswerFromChat(answer));
     } catch (cause) {
       setAiError(
         cause instanceof Error

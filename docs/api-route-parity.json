@@ -5,9 +5,9 @@
     "productionComposition": "apps/api/src/index.ts",
     "memoryComposition": "apps/api/src/memory-server.ts",
     "machineVerifier": "apps/api/src/routeParity.test.ts",
-    "expectedProductionRouteCount": 138,
-    "expectedMemoryRouteCount": 133,
-    "expectedSharedRouteCount": 132,
+    "expectedProductionRouteCount": 139,
+    "expectedMemoryRouteCount": 134,
+    "expectedSharedRouteCount": 133,
     "productionOnly": [
       {
         "method": "GET",

@@ -16,12 +16,15 @@ const nearestPoiPathHandlers: MapAiToolHandlers = {
   get_current_map_context: unavailableOnNearestPoiPath,
   list_available_layers: unavailableOnNearestPoiPath,
   query_layer: unavailableOnNearestPoiPath,
+  search_places: unavailableOnNearestPoiPath,
   set_layer_selection_draft: unavailableOnNearestPoiPath,
   query_saved_places: unavailableOnNearestPoiPath,
   get_feature_detail: unavailableOnNearestPoiPath,
   route_segment: unavailableOnNearestPoiPath,
   get_weather: unavailableOnNearestPoiPath,
   search_events: unavailableOnNearestPoiPath,
+  web_search: unavailableOnNearestPoiPath,
+  web_fetch: unavailableOnNearestPoiPath,
   create_plan_draft: unavailableOnNearestPoiPath
 };
 

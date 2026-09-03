@@ -277,6 +277,20 @@ export const config = {
     // call started answering 410. `GET /v1/models` lists what the account can currently reach.
     return env("OLLAMA_MODEL") ?? "deepseek-v4-flash:0731";
   },
+  /** Two slots rather than one model (§30.2): the intent router and the tool loop run dozens of
+   *  short calls where latency is the whole experience, while a multi-day plan is one slow call
+   *  that has to be right. `OLLAMA_MODEL` stays the alias for the fast slot. */
+  get ollamaModelFast() {
+    return env("OLLAMA_MODEL_FAST") ?? env("OLLAMA_MODEL") ?? "glm-5.3-flash";
+  },
+  get ollamaModelStrong() {
+    return env("OLLAMA_MODEL_STRONG") ?? "deepseek-v4-pro:0813";
+  },
+  /** Web search and fetch are our tools, not a model feature: the same Ollama key reaches
+   *  `ollama.com/api/web_search`, and without a key the tools are simply not offered. */
+  get ollamaWebToolsEnabled() {
+    return this.aiGatewayEnabled && Boolean(this.ollamaKey);
+  },
   /** The provider CML should use, downgraded to "none" when its key is missing so callers
    *  never have to re-check the key alongside the provider name. */
   get cmlProvider(): CmlProvider {

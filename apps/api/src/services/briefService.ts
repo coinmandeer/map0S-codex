@@ -206,7 +206,10 @@ export async function getPlaceBrief(query: BriefQuery): Promise<PlaceBrief> {
     // Low: the job is to restate the facts it was handed, not to find a nicer way to say them.
     temperature: 0.2,
     // Neighbourhoods change slowly, but not never — a new café should show up within the week.
-    ttlMs: 7 * 24 * 3600_000
+    ttlMs: 7 * 24 * 3600_000,
+    // Everything in the prompt is public: fused POI fields, a Wikipedia extract and a reverse
+    // geocode. Without saying so the gateway refuses the run and the summary is never generated.
+    verifiedPublic: true
   }).catch(() => null);
 
   return {

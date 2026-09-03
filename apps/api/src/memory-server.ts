@@ -113,6 +113,10 @@ import { DataRightsService } from "./services/dataRightsService.js";
 import { MemoryDataRightsRepository } from "./services/dataRightsMemoryRepository.js";
 import { createProviderNeutralAiRuntime } from "./services/ai/runtime.js";
 import { createMemoryNearestPoiSource } from "./services/ai/nearestPoiSources.js";
+import {
+  createAiChatTurnFactory,
+  createFixtureChatToolProviders
+} from "./services/ai/chatComposition.js";
 
 const savedPlaceService = new SavedPlaceService(memorySavedPlaceRepository);
 
@@ -302,19 +306,27 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
     service: savedPlaceService,
     resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null
   });
+  const recordAiToolTrace = (trace: { status: string; durationMs: number }) =>
+    operationalTelemetry.recordAiRun({
+      status: trace.status as Parameters<typeof operationalTelemetry.recordAiRun>[0]["status"],
+      cached: false,
+      durationMs: trace.durationMs
+    });
   const aiRuntime = createProviderNeutralAiRuntime({
     nearestPoiSource: createMemoryNearestPoiSource(memoryPoiFixtures),
-    onToolTrace: (trace) =>
-      operationalTelemetry.recordAiRun({
-        status: trace.status,
-        cached: false,
-        durationMs: trace.durationMs
-      })
+    onToolTrace: recordAiToolTrace
   });
   registerAiRoutes(app, {
     orchestrator: aiRuntime.orchestrator,
     resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null,
     allowedLayerIds: new Set(["osm-poi"]),
+    // Offline the assistant runs its deterministic path over the demo fixtures, which is what the
+    // e2e profile exercises: same catalog, same tool, no network.
+    chatTurn: createAiChatTurnFactory({
+      conversations: aiRuntime.conversations,
+      providers: createFixtureChatToolProviders({ fixtures: memoryPoiFixtures }),
+      onToolTrace: recordAiToolTrace
+    }),
     discussPlan: async ({ plan, history }) => ({
       text: `Plán „${plan.name}“ má ${plan.stops.length} zastávky. Toto je offline kontrolní odpověď; žádná změna nebyla provedena.`,
       model: "offline-fixture",

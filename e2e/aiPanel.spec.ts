@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "./fixtures/offlineTest";
 
-/** One orchestrator answer with a single place, so the thread has something to render and the
- *  card has coordinates to fly to. */
-function answer(text: string) {
+/** One orchestrator answer with a single place, so the search popover has something to offer
+ *  before the conversation moves into the panel. */
+function searchAnswer(text: string) {
   return {
     status: "succeeded",
     conversation: { id: "conv-1", revision: 1, scope: { type: "global" } },
@@ -23,6 +23,42 @@ function answer(text: string) {
   };
 }
 
+const PLACE = {
+  id: "osm:41",
+  layerId: "osm-poi",
+  title: "Kemp U Řeky",
+  category: "stay.camp_site",
+  longitude: 13.3785,
+  latitude: 49.7485,
+  distanceMeters: 1240,
+  sourceId: "osm-poi"
+};
+
+/** The chat endpoint answers with `text/event-stream`, so a stubbed turn is the frames the panel
+ *  would have read off the wire: a named tool step first, then the answer with its cards. */
+function chatStream(text: string): string {
+  const events = [
+    { type: "intent", intent: "question", execution: "deterministic" },
+    { type: "tool_start", tool: "search_places", title: "Hledám místa v okolí" },
+    { type: "tool_result", tool: "search_places", status: "ok" },
+    {
+      type: "done",
+      conversation: { id: "conv-1", revision: 1 },
+      answer: {
+        execution: "deterministic",
+        intent: "question",
+        text,
+        cards: [
+          { type: "places", title: "Nejbližší místa", places: [PLACE], layerIds: ["osm-poi"] }
+        ],
+        sources: [{ sourceId: "osm-poi", label: "OpenStreetMap", url: "https://osm.org" }],
+        followUps: ["Kde se dá dolít voda?"]
+      }
+    }
+  ];
+  return events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
+}
+
 const QUESTION = "kde najdu klidný kemp u vody?";
 
 /** The assistant is reached from search: one answer in the popover is a lookup, a conversation
@@ -30,9 +66,16 @@ const QUESTION = "kde najdu klidný kemp u vody?";
 async function openPanel(page: Page) {
   const state = { failing: false };
   await page.route("**/v2/ai/orchestrate", (route) =>
+    route.fulfill({ json: searchAnswer("Nejblíž je kemp u řeky.") })
+  );
+  await page.route("**/v2/ai/chat", (route) =>
     state.failing
-      ? route.fulfill({ status: 503, json: { message: "model unavailable" } })
-      : route.fulfill({ json: answer("Nejblíž je kemp u řeky.") })
+      ? route.fulfill({ status: 503, json: { message: "Asistent teď není dostupný." } })
+      : route.fulfill({
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+          body: chatStream("Nejblíž je kemp u řeky.")
+        })
   );
   await page.goto("/?layers=osm-poi&lng=13.3775&lat=49.7475&z=13");
   await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
@@ -58,15 +101,23 @@ test.describe("AI panel", () => {
     // Places are cards with a distance and their source, not names buried in the paragraph.
     await expect(thread).toContainText("OpenStreetMap");
     await expect(thread.getByRole("button", { name: /Kemp U Řeky/ })).toBeVisible();
+    // A card is a proposal: the map only moves when its own action is taken.
+    await expect(page.getByTestId("ai-card-places-show")).toBeVisible();
   });
 
-  test("says once what leaves the browser and stays dismissed", async ({ page }) => {
+  test("says once what leaves the browser, and the context chip lists it in full", async ({
+    page
+  }) => {
     await openPanel(page);
 
     const privacy = page.getByTestId("ai-panel-privacy");
     await expect(privacy).toContainText("střed mapy");
     await privacy.getByRole("button", { name: "Rozumím" }).click();
     await expect(privacy).toHaveCount(0);
+
+    // Dismissing the one-time line does not hide what the assistant can see.
+    await page.getByTestId("ai-panel-context").click();
+    await expect(page.getByText("Aktivní vrstvy: osm-poi")).toBeVisible();
 
     await openPanel(page);
     await expect(page.getByTestId("ai-panel-privacy")).toHaveCount(0);
@@ -87,7 +138,19 @@ test.describe("AI panel", () => {
     await expect(page.getByTestId("ai-panel")).toBeVisible();
   });
 
-  test("a cleared thread offers the empty state, and a follow-up asks again", async ({ page }) => {
+  test("a suggested follow-up asks the next question without typing", async ({ page }) => {
+    await openPanel(page);
+    await expect(page.getByTestId("ai-panel-thread")).toContainText("Nejblíž je kemp u řeky.", {
+      timeout: 20_000
+    });
+
+    await page.getByTestId("ai-panel-followup").first().click();
+    await expect(page.getByTestId("ai-panel-thread")).toContainText("Kde se dá dolít voda?");
+  });
+
+  test("a cleared thread offers the empty state, and a new question asks again", async ({
+    page
+  }) => {
     await openPanel(page);
     await expect(page.getByTestId("ai-panel-thread")).toContainText("Nejblíž je kemp u řeky.", {
       timeout: 20_000
