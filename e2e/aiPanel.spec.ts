@@ -183,6 +183,12 @@ async function openPanel(page: Page) {
   await expect(page.getByTestId("search-ai-results")).toBeVisible({ timeout: 20_000 });
   await page.getByTestId("search-ai-open-panel").click();
   await expect(page.getByTestId("ai-panel")).toBeVisible({ timeout: 20_000 });
+  // The panel asks the carried-over question as it opens. Waiting for that answer keeps a
+  // caller's later `state.stream` from being served to this first turn as well, which showed
+  // up as two identical cards in the thread.
+  await expect(page.getByTestId("ai-panel-thread")).toContainText("Nejblíž je kemp u řeky.", {
+    timeout: 20_000
+  });
   return state;
 }
 

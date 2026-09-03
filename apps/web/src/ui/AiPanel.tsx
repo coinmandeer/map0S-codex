@@ -7,6 +7,7 @@ import {
 } from "@mapos/layer-sdk";
 import { ApiError, apiPost, apiPostEventStream } from "../lib/api";
 import { emit } from "../lib/events";
+import { getLayerManifestV2 } from "../layers";
 import { registerInlineLayer } from "../layers/inlineLayers";
 import { saveInlineLayerAsUserLayer } from "../layers/saveInlineLayer";
 import { formatDistance } from "../lib/units";
@@ -68,7 +69,12 @@ interface AiPlanDiff {
 type AiCard =
   | { type: "places"; title: string; places: AiPlace[]; layerIds: string[] }
   | { type: "link"; title: string; url: string; excerpt?: string }
-  | { type: "layer"; title: string; layerIds: string[] }
+  | {
+      type: "layer";
+      title: string;
+      layerIds: string[];
+      filters?: { openNow?: boolean; minRating?: number; tags?: string[] };
+    }
   | {
       type: "facts";
       title: string;
@@ -116,6 +122,12 @@ interface Turn {
 }
 
 const PRIVACY_DISMISSED_KEY = "mapos:ai-privacy-ack";
+
+/** Layer ids are the model's vocabulary, not the user's — show the catalogue name where there
+ *  is one, and fall back to the id so an unknown layer is still named rather than hidden. */
+function layerSelectionName(layerId: string): string {
+  return getLayerManifestV2(layerId)?.name ?? layerId;
+}
 
 /** What the proposal would do, in the terms the user thinks in: stops, not revisions. */
 function planDiffSummary(diff: AiPlanDiff): string {
@@ -297,6 +309,23 @@ export function AiPanel() {
         }
       });
     }
+  };
+
+  /** "Zapni mi vrstvy pro…" (§4.13). `set_layer_selection_draft` is a draft on purpose: the
+   *  model names the layers, the user is the one who switches them on. */
+  const applyLayerSelection = (card: Extract<AiCard, { type: "layer" }>) => {
+    const missing = card.layerIds.filter((layerId) => !activeLayers[layerId]?.visible);
+    if (!missing.length) {
+      store.showToast("Tyhle vrstvy už v mapě máš");
+      return;
+    }
+    for (const layerId of missing) store.toggleLayer(layerId);
+    store.showToast(`Zapnuto: ${missing.map(layerSelectionName).join(", ")}`, {
+      action: {
+        label: "Vrátit",
+        onSelect: () => missing.forEach((layerId) => store.toggleLayer(layerId))
+      }
+    });
   };
 
   /** A drafted layer becomes a real one only here: the manifest is registered for this session
@@ -607,6 +636,42 @@ export function AiPanel() {
                           </div>
                         ))}
                       </dl>
+                    </section>
+                  ) : card.type === "layer" ? (
+                    <section
+                      key={`layer-${index}`}
+                      className="ai-turn-card"
+                      data-testid="ai-card-layer"
+                    >
+                      <p className="ai-turn-card-head">{card.title}</p>
+                      <div className="ai-turn-card-chips">
+                        {card.layerIds.map((layerId) => (
+                          <Chip
+                            key={layerId}
+                            icon="layers"
+                            label={layerSelectionName(layerId)}
+                            active={activeLayers[layerId]?.visible}
+                          />
+                        ))}
+                        {card.filters?.openNow && <Chip icon="schedule" label="Otevřeno teď" />}
+                        {card.filters?.minRating != null && (
+                          <Chip icon="star" label={`Od ${card.filters.minRating} ★`} />
+                        )}
+                        {card.filters?.tags?.map((tag) => (
+                          <Chip key={tag} icon="label" label={tag} />
+                        ))}
+                      </div>
+                      <div className="ai-turn-card-actions">
+                        <Button
+                          variant="tonal"
+                          size="sm"
+                          icon="layers"
+                          testId="ai-card-layer-apply"
+                          onClick={() => applyLayerSelection(card)}
+                        >
+                          Zapnout v mapě
+                        </Button>
+                      </div>
                     </section>
                   ) : card.type === "layer-draft" ? (
                     <section

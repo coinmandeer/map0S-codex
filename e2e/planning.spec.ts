@@ -319,7 +319,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
       localStorage.setItem("mapos:basemap", "carto-voyager");
-      localStorage.removeItem("mapos:bike-basemap-recommendation");
+      localStorage.removeItem("mapos:route-overlay-recommendation");
     });
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await page.getByTestId("mode-planning").click();
@@ -345,8 +345,10 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect
       .poll(() => new URL(page.url()).searchParams.get("layers") ?? "")
       .not.toContain("cyclosm");
+    // The offer is an overlay rather than a basemap swap, so the dismissal is remembered per
+    // route overlay — walking plans reuse the same answer for OpenTopoMap.
     expect(
-      await page.evaluate(() => localStorage.getItem("mapos:bike-basemap-recommendation"))
+      await page.evaluate(() => localStorage.getItem("mapos:route-overlay-recommendation"))
     ).toBe("dismissed");
   });
 
@@ -420,26 +422,40 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(second).toHaveAttribute("aria-checked", "true");
     await expect(page.getByTestId("planning-result")).toContainText("1.4 km");
 
+    // Features are keyed by `kind`, not by position: the dimmed variants are drawn before the
+    // route so they sit under it, so picking "the first LineString" would measure the variant
+    // the user just rejected.
     const mapProjection = await page.evaluate(() => {
       const map = window.__maposMap;
       const source = map?.getSource("route-preview") as unknown as {
         serialize?: () => {
-          data?: { features?: Array<{ geometry?: { type?: string; coordinates?: unknown[] } }> };
+          data?: {
+            features?: Array<{
+              properties?: Record<string, unknown>;
+              geometry?: { type?: string; coordinates?: unknown[] };
+            }>;
+          };
         };
       };
       const features = source?.serialize?.().data?.features ?? [];
+      const byKind = (kind: string) =>
+        features.filter((feature) => feature.properties?.kind === kind);
       return {
         casing: Boolean(map?.getLayer("route-preview-casing")),
         stopLabels: Boolean(map?.getLayer("route-preview-stop-labels")),
-        routeCoordinateCount: features.find((feature) => feature.geometry?.type === "LineString")
-          ?.geometry?.coordinates?.length,
-        stopCount: features.filter((feature) => feature.geometry?.type === "Point").length
+        routeCoordinateCount: byKind("route")[0]?.geometry?.coordinates?.length,
+        dimmedAlternativeIds: byKind("alternative").map(
+          (feature) => feature.properties?.alternativeId
+        ),
+        stopCount: byKind("stop").length
       };
     });
     expect(mapProjection).toEqual({
       casing: true,
       stopLabels: true,
+      // The chosen variant becomes the route, and the one it replaced becomes the dimmed line.
       routeCoordinateCount: 3,
+      dimmedAlternativeIds: ["recommended"],
       stopCount: 2
     });
     await page.screenshot({

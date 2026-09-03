@@ -300,19 +300,23 @@
   /* =====================================================================
      Segmented button
      ===================================================================== */
+  /* `min-height`, not `height`: a caller that lets the labels wrap (four route profiles in a
+     380 px panel) would otherwise grow the segments past a fixed track and over whatever sits
+     below, which is how the preference control ended up swallowing clicks meant for the next
+     row. */
   .kit-segmented {
     position: relative;
     display: inline-grid;
     grid-template-columns: repeat(var(--segment-count, 2), minmax(0, 1fr));
     align-items: stretch;
-    height: var(--control-h);
+    min-height: var(--control-h);
     padding: 3px;
     border-radius: var(--radius-sm);
     background: var(--surface-sunken);
   }
 
   .kit-segmented[data-size="sm"] {
-    height: var(--control-h-sm);
+    min-height: var(--control-h-sm);
   }
 
   .kit-segmented[data-block] {

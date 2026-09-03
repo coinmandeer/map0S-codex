@@ -25,6 +25,15 @@ Recorded here rather than in the plan document, which is frozen during implement
   baseline commit already provides the rollback. `VITE_APP_SHELL_V2` stays as-is.
 - **AI keys live in the repo-root `.env`, not `apps/api/.env`.** `apps/api/src/config.ts`
   resolves `../../../.env` from its own directory, so the root file is the one actually read.
+- **Segment variants are chips on the segment row, not a disclosure.** §16.6 says "a Varianty
+  row, not a section of its own", which was first built as a `Varianty (2)` toggle above a grid
+  of cards. §16.2 is more specific — trailing variant chips on the segment line — and it is also
+  the cheaper interaction: a segment that has an alternative is exactly where the user wants one
+  click, and the toggle charged two.
+- **The route-overlay dismissal key is `mapos:route-overlay-recommendation`.** `planning.spec.ts`
+  was written against `mapos:bike-basemap-recommendation`, from the plan text that predates the
+  decision to add an overlay rather than swap the basemap. The name now matches what it stores:
+  one answer covering CyclOSM for bike and OpenTopoMap for foot.
 
 ## Phase 0 — Design system foundation (§2)
 
@@ -122,12 +131,15 @@ Recorded here rather than in the plan document, which is frozen during implement
 
 ## §16.6 — Follow-ups on Codex's work
 
-- [ ] SegmentedButton for route preference
-- [ ] vehicle moved into Více možností
-- [ ] alternatives selectable from the map and from a Varianty row
-- [ ] basemap follows the routing profile
-- [ ] BRouter for "dobrodružná"
-- [ ] AI plan proposal → `applyCommand` sequence, `set_layer_selection_draft`
+- [x] SegmentedButton for route preference (`ui/planning/PlanOptions.tsx`), fallback as an
+      InfoTip + `warning` chip rather than a "Podporováno/Fallback" line
+- [x] vehicle moved into Více možností, the fallback warning said once under the select
+- [x] alternatives selectable from the map and as chips on the segment row
+- [x] basemap follows the routing profile — CyclOSM/OpenTopoMap as an overlay offered by a
+      toast with an undo, so the basemap the user picked is never replaced
+- [x] BRouter for "dobrodružná" (`services/brouterService.ts` via `adjacentRouteProvider`)
+- [x] AI plan proposal → `applyCommand` sequence; `set_layer_selection_draft` now has a card
+      with "Zapnout v mapě" instead of being emitted by the server and dropped by the panel
 
 ## §21 — Clean interface
 

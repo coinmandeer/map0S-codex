@@ -397,45 +397,24 @@
     color: var(--warning);
   }
 
-  .planner-segment-variants {
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  .planner-segment-variants-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    justify-self: start;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font: var(--type-label-sm);
-    transition: color var(--dur-fast) var(--ease-out);
-  }
-
-  .planner-segment-variants-toggle:hover {
-    color: var(--text);
-  }
-
+  /* §16.2: variants ride along the segment line as chips, so a two-variant segment costs one
+     wrapped row rather than a disclosure plus a grid of cards. */
   .planner-segment-alternatives {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: var(--space-2);
   }
 
   .planner-segment-alternative {
-    display: grid;
-    gap: 2px;
-    padding: var(--space-4);
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     background: var(--surface-solid);
     color: var(--text);
     cursor: pointer;
-    text-align: left;
     transition:
       border-color var(--dur-fast) var(--ease-out),
       background-color var(--dur-fast) var(--ease-out);
@@ -457,6 +436,7 @@
   .planner-segment-alternative small {
     color: var(--text-muted);
     font: var(--type-label-sm);
+    white-space: nowrap;
   }
 
   .planner-segment-temporal {
@@ -613,10 +593,6 @@
   @media (max-width: 520px) {
     .planner-options-grid,
     .planner-options-grid.three {
-      grid-template-columns: 1fr;
-    }
-
-    .planner-segment-alternatives {
       grid-template-columns: 1fr;
     }
   }

@@ -322,7 +322,8 @@
     color: var(--text-muted);
   }
 
-  .ai-turn-card-actions {
+  .ai-turn-card-actions,
+  .ai-turn-card-chips {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
