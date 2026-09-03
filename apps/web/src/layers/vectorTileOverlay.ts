@@ -54,8 +54,9 @@ function readGroups(filters: FilterValues, spec: VectorTileOverlaySpec): Set<str
   );
   if (!spec.groupFilterId) return null;
   const raw = filters[spec.groupFilterId];
-  const chosen = (Array.isArray(raw) ? raw : [raw])
-    .filter((value): value is string => typeof value === "string" && all.has(value));
+  const chosen = (Array.isArray(raw) ? raw : [raw]).filter(
+    (value): value is string => typeof value === "string" && all.has(value)
+  );
   if (chosen.length) return new Set(chosen);
   const fallback = spec.defaultGroups?.filter((group) => all.has(group)) ?? [];
   return new Set(fallback.length ? fallback : all);
@@ -162,11 +163,7 @@ export function createVectorTileOverlay(
       for (const sublayer of spec.sublayers) {
         const id = idFor(sublayer);
         if (!map.getLayer(id)) continue;
-        map.setPaintProperty(
-          id,
-          OPACITY_KEY[sublayer.type],
-          baseOpacity(sublayer) * next
-        );
+        map.setPaintProperty(id, OPACITY_KEY[sublayer.type], baseOpacity(sublayer) * next);
       }
     },
     detach() {

@@ -171,4 +171,34 @@ test.describe("basemap picker", () => {
       .poll(() => page.evaluate(() => Boolean(window.__maposMap?.getLayer("raster-tile-cyclosm"))))
       .toBe(true);
   });
+
+  // §6.6 wave A: the card illustrations. Nothing describes a map style like the style itself,
+  // so a card prefers its rendered screenshot — but only some backgrounds have one, because a
+  // thumbnail is a copy of the provider's cartography and most keyed providers' terms do not
+  // let us ship it. Both halves of that matter, so both are checked.
+  test("a card shows its rendered picture, and falls back to a schematic without one", async ({
+    page
+  }) => {
+    await stubTiles(page);
+    await page.goto("/");
+    await page.getByTestId("basemap-btn").click();
+
+    const rendered = page.getByTestId("basemap-osm-carto").locator(".basemap-preview-image");
+    await expect(rendered).toBeVisible();
+    // A broken image is still "visible" to a selector, so this asks the browser whether the
+    // file actually decoded — a missing asset would otherwise pass.
+    await expect
+      .poll(() =>
+        rendered.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)
+      )
+      .toBe(true);
+
+    // NASA's daily mosaic stops at z8, so it renders nothing at the shared viewport the cards
+    // are shot over and deliberately ships no thumbnail. Its card draws the schematic rather
+    // than a black rectangle, which is what the fallback is for.
+    await page.getByTestId("basemap-group-satellite").click();
+    const fallback = page.getByTestId("basemap-gibs-viirs");
+    await expect(fallback.locator(".basemap-preview-water")).toBeVisible();
+    await expect(fallback.locator(".basemap-preview-image")).toHaveCount(0);
+  });
 });

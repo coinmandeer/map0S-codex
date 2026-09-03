@@ -66,6 +66,12 @@ Recorded here rather than in the plan document, which is frozen during implement
   its own national survey chose, so a swatch key would be a guess that looks authoritative. The
   legend gives the international era scale that all of them follow and says outright that the
   shade varies by survey.
+- **Basemap thumbnails are rendered only where the licence allows it.** §4.8 asks for a
+  screenshot per background. A thumbnail is a derived copy of the provider's cartography, and
+  neither Esri's master agreement nor the keyed providers' terms obviously permit shipping one in
+  this repository, so 19 of 27 cards keep the schematic on purpose. The script also drops a
+  render that carries no information: NASA's daily mosaic stops at z8 and paints black at the
+  shared viewport, and a black card reads as a bug where a schematic reads as a style.
 - **Weather keeps its own legend rather than gaining a manifest one.** It was the eighth of
   "legends for all 8 existing overlays" and already has a colour ramp with ticks and a unit in
   `WeatherTimeline.tsx`. A manifest legend is static; weather's meaning changes with the active
@@ -276,8 +282,11 @@ in the plan text — see the deviation note below.
       (`e2e/infrastructure.spec.ts`). Needed a general `layers/vectorTileOverlay.ts`, since the
       existing vector helper drew one fill from one source layer; `createVectorTileLayer` is now
       expressed through it so there is one code path
-- [ ] Basemap previews — the picker and its fallback exist, the rendered `.webp` assets and the
-      render script do not
+- [x] Basemap previews. The picker and its fallback already existed; what was missing was
+      `scripts/render-basemap-thumbs.mjs` (`npm run basemap-thumbs`) and the assets. 8 of 27
+      backgrounds are rendered — 60 kB total — over one shared viewport; the rest keep the
+      schematic, either because their licence does not let us ship a copy of their cartography
+      or because they render nothing at that zoom (`e2e/basemap.spec.ts`, `docs/basemaps.md`)
 - [ ] Park4Night filters and a custom detail
 - [ ] Protected areas — EEA Natura 2000 first, AOPK as the Czech detail
 - [ ] ČÚZK Ortofoto + ZTM

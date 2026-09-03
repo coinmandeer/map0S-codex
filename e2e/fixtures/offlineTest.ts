@@ -172,11 +172,7 @@ function browserFixture(url: URL): { body: string | Buffer; contentType: string 
     return { body: EMPTY_TILEJSON, contentType: "application/json" };
   }
   for (const fixture of ASSET_FIXTURES) {
-    if (
-      fixture.origin.test(url.origin) &&
-      fixture.path.test(url.pathname) &&
-      url.search === ""
-    ) {
+    if (fixture.origin.test(url.origin) && fixture.path.test(url.pathname) && url.search === "") {
       return { body: fixture.body, contentType: fixture.contentType };
     }
   }

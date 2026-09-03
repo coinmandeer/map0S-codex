@@ -94,3 +94,23 @@ Dvě věci to nezachytí a musíš na ně myslet ručně:
 
 Nic dalšího není potřeba: výběr v Nastavení mapy, atribuce, přepínání témat i skrytí podkladu
 bez klíče jdou z katalogu.
+
+## Náhledy na kartách
+
+Karta podkladu ukazuje vyrenderovaný screenshot z `apps/web/public/basemaps/<id>.webp`. Generuje
+je `npm run basemap-thumbs` a výsledek je v repozitáři, takže po naklonování jsou obrázky hned
+k dispozici.
+
+Všechny náhledy se fotí nad **stejným výřezem** (Azurové pobřeží, z10). Otázka, na kterou karta
+odpovídá, je „který z těch podkladů chci“ — a to se nedá porovnat, když každá karta ukazuje jiné
+místo. Výřez musí zvládnout všechny typy: pobřeží odliší satelitní mozaiku od pouliční mapy,
+hustá města dají pouličním stylům co kreslit a Alpy padající do moře udělají z reliéfního stylu
+poznatelně reliéfní styl.
+
+Renderují se jen podklady, jejichž licence dovoluje šíření vzorku. Náhled je odvozená kopie
+kartografie poskytovatele, takže Esri a všechny klíčované zdroje jsou vynechané záměrně — ne
+kvůli chybějícímu klíči, ale protože jejich podmínky nám evidentně nedovolují mít obrázek jejich
+mapy v tomhle repozitáři. Skript navíc zahodí náhled, který nic neukazuje: NASA GIBS končí na
+z8, takže nad společným výřezem vyrenderuje černý obdélník. Takové karty použijí schematickou
+kresbu z `BasemapThumb`, což je přesně to, k čemu ten fallback je — chybějící obrázek nemá
+vypadat jako rozbitá aplikace.

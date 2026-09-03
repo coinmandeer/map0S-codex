@@ -89,9 +89,12 @@ test.describe("infrastruktura", () => {
     await stubTiles(page);
     await page.goto("/?layers=openinframap&lng=13.3775&lat=49.7475&z=10");
     await expect
-      .poll(() => page.evaluate(() => Boolean(window.__maposMap?.getSource("source-vt-openinframap"))), {
-        timeout: 20_000
-      })
+      .poll(
+        () => page.evaluate(() => Boolean(window.__maposMap?.getSource("source-vt-openinframap"))),
+        {
+          timeout: 20_000
+        }
+      )
       .toBe(true);
 
     await page.getByTestId("layers-btn").click();

@@ -58,7 +58,7 @@ export default tseslint.config(
     // Playwright driver scripts straddle two runtimes: the file runs in Node, but the callbacks
     // passed to `page.evaluate` are serialised and run in the browser, so both sets of globals
     // legitimately appear in the same source file.
-    files: ["e2e/**/*.mjs"],
+    files: ["e2e/**/*.mjs", "scripts/render-basemap-thumbs.mjs"],
     languageOptions: {
       globals: {
         process: "readonly",
