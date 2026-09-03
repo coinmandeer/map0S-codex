@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { GuideItem } from "@mapos/layer-sdk";
+import { featureAnchor, type GuideItem } from "@mapos/layer-sdk";
 import {
   loadDiscoverContext,
   type DiscoverContext,
@@ -451,7 +451,7 @@ export function DiscoverPanel() {
   };
 
   const openMapFeature = (entry: (typeof mapFeatures)[number]) => {
-    const [lng, lat] = entry.feature.geometry.coordinates;
+    const [lng, lat] = featureAnchor(entry.feature);
     emit("fly-to", { lng, lat, zoom: 16 });
     store.setView({ lng, lat, zoom: 16 });
     store.selectPin({ feature: entry.feature, layerId: entry.layerId });

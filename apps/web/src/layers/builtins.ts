@@ -4,11 +4,13 @@ import "./plugins/tileLayers";
 import "./plugins/dataLayers";
 import "./plugins/geologyLayer";
 import "./plugins/infrastructureLayer";
+import "./plugins/protectedAreasLayer";
 import "./savedPlacesLayer";
 import { createPinsLayerHandle } from "./pinsLayer";
 import { createWeatherLayerHandle } from "./weatherLayer";
 import { LazyHandle } from "./lazyHandle";
 import { GAME_ROAD_SOURCE } from "./game/roadSource";
+import { PIN_STYLES } from "../ui/presets";
 
 /**
  * The layers MapOS ships with. Each one is a plain object: nothing here is special-cased in the
@@ -132,6 +134,82 @@ registerLayer({
 registerLayer({
   kind: "pins",
   manifest: {
+    id: "game-quests",
+    name: "Herní questy",
+    icon: "🎯",
+    color: "#7C3AED",
+    description: "Keše, poznámky v mapě, památky bez fotky a Turf zóny jako questy",
+    category: "game",
+    // Deliberately not limited to the game mode. A geocache and an unanswered OSM note are
+    // reasons to walk somewhere whether or not you are playing, and the 3D quest world is a
+    // heavy thing to load just to see them.
+    modes: ["discover", "planning", "mine", "game"],
+    uiGroup: "game",
+    performance: { maxEntities: 200, refreshIntervalMs: 120_000 }
+  },
+  filters: [
+    {
+      id: "sources",
+      label: "Zdroj questů",
+      kind: "multi-select",
+      options: [
+        { id: "opencaching", label: "Keše (Opencaching)" },
+        { id: "osm-notes", label: "Poznámky v OSM" },
+        { id: "wlm-photo", label: "Památky bez fotky" },
+        { id: "turf-zones", label: "Turf zóny" }
+      ]
+    }
+  ],
+  legend: {
+    type: "categorical",
+    title: "Typ questu",
+    items: [
+      {
+        label: "Keš",
+        color: PIN_STYLES.geocache!.color,
+        description: "Opencaching — najdi schovanou keš"
+      },
+      {
+        label: "Ověřit v mapě",
+        color: PIN_STYLES.survey!.color,
+        description: "Otevřená poznámka v OSM, kterou někdo potřebuje ověřit"
+      },
+      {
+        label: "Památka bez fotky",
+        color: PIN_STYLES.monument!.color,
+        description: "Vyfoť ji a nahraj na Wikimedia Commons"
+      },
+      {
+        label: "Zóna k zabrání",
+        color: PIN_STYLES.territory!.color,
+        description: "Turf zóna"
+      }
+    ]
+  },
+  create: (ctx) => createPinsLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId, ctx.color),
+  attribution: [
+    {
+      label: "Opencaching",
+      url: "https://www.opencaching.de/",
+      license: "CC-BY-SA / CC-BY-NC-ND dle instance"
+    },
+    {
+      label: "© OpenStreetMap přispěvatelé",
+      url: "https://www.openstreetmap.org/copyright",
+      license: "ODbL"
+    },
+    {
+      label: "Wiki Loves Monuments",
+      url: "https://heritage.toolforge.org/",
+      license: "CC0"
+    },
+    { label: "Turf Game", url: "https://turfgame.com/", license: "Turf Game API" }
+  ]
+});
+
+registerLayer({
+  kind: "pins",
+  manifest: {
     id: "park4night",
     name: "Park4Night",
     icon: "🚐",
@@ -142,6 +220,47 @@ registerLayer({
     // Prototype policy keeps rights metadata advisory. Availability is controlled only by the
     // explicit server capability; the OSM vanlife layer below remains the keyless fallback.
     requiresCapability: "park4night"
+  },
+  // The upstream record already carries the category, the rating and five amenity flags, and
+  // "a place to sleep tonight with electricity" is the question this layer exists to answer.
+  // Filtering happens server-side: narrowing 1000 fetched rows in the browser would cap before
+  // filtering and make a filter look like an empty map.
+  filters: [
+    {
+      id: "categories",
+      label: "Typ místa",
+      kind: "multi-select",
+      options: [
+        { id: "p4n-camping", label: "Kemp" },
+        { id: "p4n-aire", label: "Servisní místo" },
+        { id: "p4n-night", label: "Nocování povoleno" },
+        { id: "p4n-parking", label: "Parkoviště" },
+        { id: "p4n-accommodation", label: "Placené ubytování" },
+        { id: "p4n-other", label: "Ostatní" }
+      ]
+    },
+    {
+      id: "services",
+      label: "Vybavení",
+      kind: "multi-select",
+      options: [
+        { id: "water", label: "Voda" },
+        { id: "electricity", label: "Elektřina" },
+        { id: "toilets", label: "WC" },
+        { id: "shower", label: "Sprcha" },
+        { id: "wifi", label: "Wi‑Fi" }
+      ]
+    },
+    // Whole stars: the slider's default step for a 0–5 span, and a finer one would suggest a
+    // precision that "places rated 4.5 and up" does not have.
+    { id: "minRating", label: "Hodnocení od", kind: "range", min: 0, max: 5, default: 0 }
+  ],
+  // Without a field order the sheet falls back to the generic place layout, which drops the
+  // rating, the amenities and the link back — everything that makes one parking spot a better
+  // answer than another. Ordered by what decides it: how good, how many said so, what is there.
+  detail: {
+    fieldOrder: ["rating", "reviews", "serviceLabels", "externalUrl"],
+    aiEnrichment: "on-demand"
   },
   create: (ctx) => createPinsLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId, ctx.color),
   attribution: [

@@ -285,13 +285,43 @@ export interface GeoFeatureProperties {
   [key: string]: unknown;
 }
 
+/**
+ * A point or a line. The renderer was point-only until routes arrived — a GPX track, a saved
+ * plan — and a route genuinely is a line: anchoring it to its start point and calling it a place
+ * would hide the shape that makes it worth importing. Lines carry `anchorLng`/`anchorLat` in
+ * their properties so anything that still needs a single position has one to use.
+ */
+/** Non-empty by construction, so reading the first position never needs a fallback. */
+export type LinePositions = [[number, number], ...Array<[number, number]>];
+
+export type GeoGeometry =
+  | { type: "Point"; coordinates: [number, number] }
+  | { type: "LineString"; coordinates: LinePositions };
+
 export interface GeoFeature {
   type: "Feature";
-  geometry: {
-    type: "Point";
-    coordinates: [number, number];
-  };
+  geometry: GeoGeometry;
   properties: GeoFeatureProperties;
+}
+
+/** Narrows to the point case, which most consumers still only handle. */
+export function isPointFeature(
+  feature: GeoFeature
+): feature is GeoFeature & { geometry: { type: "Point"; coordinates: [number, number] } } {
+  return feature.geometry.type === "Point";
+}
+
+/**
+ * The one position that stands for a feature — where to centre the map, drop a marker or show
+ * coordinates. For a point that is the point; for a route it is the anchor the producer chose
+ * (a track's start), which keeps a line usable everywhere a place is listed.
+ */
+export function featureAnchor(feature: GeoFeature): [number, number] {
+  if (feature.geometry.type === "Point") return feature.geometry.coordinates;
+  const { anchorLng, anchorLat } = feature.properties;
+  return typeof anchorLng === "number" && typeof anchorLat === "number"
+    ? [anchorLng, anchorLat]
+    : feature.geometry.coordinates[0];
 }
 
 export interface FeatureCollection {

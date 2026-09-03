@@ -1,4 +1,4 @@
-import type { Bbox, GeoFeature } from "@mapos/layer-sdk";
+import { isPointFeature, type Bbox, type GeoFeature } from "@mapos/layer-sdk";
 import { fetchJson, fetchText } from "../../utils/upstream.js";
 import { countriesForPoint } from "../../data/euCountries.js";
 import { bboxCenter, point, withinBbox, type DataSource } from "./types.js";
@@ -246,7 +246,9 @@ async function fetchAll(systems: GbfsSystem[]): Promise<GeoFeature[]> {
 }
 
 function inBbox(bbox: Bbox, features: GeoFeature[]): GeoFeature[] {
+  // GBFS reports stations, so every feature here is a point.
   return features.filter((f) => {
+    if (!isPointFeature(f)) return false;
     const [lng, lat] = f.geometry.coordinates;
     return withinBbox(bbox, lng, lat);
   });

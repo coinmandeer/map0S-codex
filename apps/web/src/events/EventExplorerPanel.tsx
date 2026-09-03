@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { GeoFeature, MapViewState } from "@mapos/layer-sdk";
+import { featureAnchor, type GeoFeature, type MapViewState } from "@mapos/layer-sdk";
 import { emit } from "../lib/events";
 import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
@@ -89,7 +89,7 @@ export function EventExplorerPanel({ view }: { view: MapViewState }) {
   );
 
   const openEvent = (feature: (typeof features)[number]) => {
-    const [lng, lat] = feature.geometry.coordinates;
+    const [lng, lat] = featureAnchor(feature);
     emit("fly-to", { lng, lat, zoom: 15 });
     store.setView({ lng, lat, zoom: 15 });
     store.selectPin({ feature, layerId: "events" });

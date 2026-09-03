@@ -4,11 +4,11 @@ import { db } from "../db/index.js";
 import { gameZones, gameQuests, gameGhosts, questCompletions, users } from "../db/schema.js";
 import { ghostById, ghostsForBbox as spawnGhostsForBbox } from "../game/spawn.js";
 import {
-  anchoredQuestsForBbox,
   parseAnchoredQuestId,
   verifyAnchoredQuest,
   COMPLETION_RADIUS_M
 } from "../game/anchors.js";
+import { cachedAnchoredQuestsForBbox } from "../game/questAnchorCache.js";
 import { registerDbQuestSources } from "../game/anchorSources.js";
 import { composeGameZones } from "../game/worldZones.js";
 import { ClientError } from "../utils/clientError.js";
@@ -28,8 +28,9 @@ export async function getGameState(userId?: string, bbox?: Bbox) {
   const curatedZones = await listGameZones();
   const seeded = await listGameQuests();
   // Anchored quests only exist relative to a viewport, so they join the list when the client
-  // says where it is looking; without a bbox the state is just the curated set.
-  const anchored = bbox ? await anchoredQuestsForBbox(bbox) : [];
+  // says where it is looking; without a bbox the state is just the curated set. Read from the
+  // anchor cache, so panning the map does not become a burst of third-party requests.
+  const anchored = bbox ? await cachedAnchoredQuestsForBbox(bbox) : [];
   const completed = userId
     ? (await db.select().from(questCompletions).where(eq(questCompletions.userId, userId))).map(
         (c) => c.questId

@@ -104,6 +104,7 @@ import {
   radarTilePath,
   fetchOwmTile
 } from "./services/weatherService.js";
+import { startQuestAnchorRefresher } from "./game/questAnchorCache.js";
 import { resolvePhoto } from "./services/photoService.js";
 import { enrichPlace } from "./services/placeEnrichmentService.js";
 import { getPlaceDetail } from "./services/placeDetailService.js";
@@ -1497,6 +1498,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
 async function main() {
   await initDb();
   startRadarArchiver();
+  startQuestAnchorRefresher();
   const app = await buildApp({
     rateLimiter: new DistributedFixedWindowRateLimiter(
       new PostgresRateLimitWindowStore(sql),

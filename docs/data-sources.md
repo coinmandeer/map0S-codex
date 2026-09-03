@@ -66,6 +66,7 @@ These need no registration and are always on.
 | Macrostrat           | Geology overlay and the "Pod nohama" panel | CC-BY 4.0          |
 | OpenInfraMap         | Power, telecoms, gas/oil and water grids   | ODbL 1.0 / CC-BY 4.0 |
 | Tilezen Terrain      | 3D terrain and hillshade (Terrarium DEM)   | Per source dataset |
+| EEA Natura 2000      | Protected areas across the EU              | EEA re-use policy  |
 
 ## What the licences ask for
 
@@ -99,6 +100,19 @@ own terms, which is why the table says "per source dataset" rather than naming o
 credit line names the aggregate and the main contributors. Heights are `terrarium`-encoded
 (`(R * 256 + G + B / 256) - 32768` metres); reading them as MapLibre's default Mapbox encoding
 yields wrong elevations rather than an error, so the source declares the encoding explicitly.
+
+Natura 2000 comes from the EEA as WMS rather than tiles, which needs no adapter: MapLibre's
+raster source substitutes the tile extent into `{bbox-epsg-3857}`, so one GetMap per tile is just
+a URL template. Two details are load-bearing. The placeholder must stay unencoded, or the literal
+braces are sent and the service answers with an empty image rather than an error — a layer that
+looks on and draws nothing. And the service publishes three layers, of which the combined one
+(`0`) is a flat magenta fill; the per-directive layers (`1`, `2`) draw outlines with hatching, so
+those are the ones used and the ground stays readable underneath.
+
+Because the EEA ships the cartography, MapOS does not restyle it — the legend instead quotes the
+service's own swatches, read off its `GetLegendGraphic` rather than sampled from a rendered tile,
+where antialiasing would have given a colour that is in no key. Coverage stops at the union
+border, so the legend says so: an empty map over Serbia is the dataset's limit, not a fault.
 
 ## Geology, and what a model is for
 

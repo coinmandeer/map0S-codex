@@ -61,6 +61,8 @@ export const opencaching: QuestSourceAdapter = {
   id: "opencaching",
   label: "Opencaching",
   attribution: "Opencaching (CC-BY-SA / CC-BY-NC-ND dle instance)",
+  // Caches are hidden and archived steadily rather than suddenly; a day-old sweep is fine.
+  refreshAfterMs: 24 * 60 * 60_000,
   unavailableReason: () =>
     config.okapiInstances.length
       ? null
@@ -154,6 +156,8 @@ export const monumentsWithoutPhoto: QuestSourceAdapter = {
   id: "wlm-photo",
   label: "Památky bez fotky",
   attribution: "Wiki Loves Monuments · heritage.toolforge.org (CC0)",
+  // Listed buildings do not move, and the photo backlog shifts over weeks.
+  refreshAfterMs: 7 * 24 * 60 * 60_000,
 
   async anchors(bbox, limit) {
     const [west, south, east, north] = bbox;
@@ -221,6 +225,9 @@ export const osmNotes: QuestSourceAdapter = {
   id: "osm-notes",
   label: "Poznámky v OSM",
   attribution: "© OpenStreetMap přispěvatelé (ODbL)",
+  // The most volatile source here: a note can be opened and answered within the hour, and a
+  // quest pointing at an already-answered note wastes the walk.
+  refreshAfterMs: 60 * 60_000,
 
   async anchors(bbox, limit) {
     const data = await fetchJson<{ features?: OsmNote[] }>(
@@ -285,6 +292,8 @@ export const turfZones: QuestSourceAdapter = {
   id: "turf-zones",
   label: "Turf zóny",
   attribution: "Turf Game (api.turfgame.com)",
+  // Zone positions are effectively permanent; only the scoring we do not cache changes.
+  refreshAfterMs: 7 * 24 * 60 * 60_000,
 
   async anchors(bbox, limit) {
     const zones = await turfZonesForBbox(bbox);

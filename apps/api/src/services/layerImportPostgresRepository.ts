@@ -181,6 +181,7 @@ export class PostgresLayerImportRepository implements LayerImportRepository {
               lat: candidate.lat,
               tags: candidate.tags,
               kind: candidate.kind,
+              path: candidate.path ?? null,
               properties: {
                 ...candidate.properties,
                 maposSources: candidate.sources,

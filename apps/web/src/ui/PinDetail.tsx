@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   PLACE_SOURCE_BY_ID,
   distanceMeters,
+  featureAnchor,
   type DetailAction,
   type GeoFeature,
   type Place,
@@ -159,7 +160,7 @@ function PlacePinDetail() {
     for (const [layerId, state] of Object.entries(active)) {
       if (!state.visible) continue;
       for (const feature of visibleFeatures[layerId] ?? []) {
-        const [lng, lat] = feature.geometry.coordinates;
+        const [lng, lat] = featureAnchor(feature);
         all.push({ feature, layerId, distance: distanceMeters(view, { lng, lat }) });
       }
     }
@@ -178,7 +179,7 @@ function PlacePinDetail() {
       if (index < 0) return;
       const next = nearby[index + delta];
       if (!next) return;
-      const [lng, lat] = next.feature.geometry.coordinates;
+      const [lng, lat] = featureAnchor(next.feature);
       emit("fly-to", { lng, lat, zoom: 16 });
       store.selectPin({ feature: next.feature, layerId: next.layerId });
     },

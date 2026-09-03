@@ -1,4 +1,9 @@
-import { distanceMeters, type GeoFeature, type MapViewState } from "@mapos/layer-sdk";
+import {
+  distanceMeters,
+  featureAnchor,
+  type GeoFeature,
+  type MapViewState
+} from "@mapos/layer-sdk";
 
 export interface EventExplorerItem {
   feature: GeoFeature;
@@ -54,7 +59,7 @@ export function buildEventExplorerItems(
   const maximumM = maxDistanceKm === null ? Number.POSITIVE_INFINITY : maxDistanceKm * 1_000;
   return features
     .flatMap((feature): EventExplorerItem[] => {
-      const [lng, lat] = feature.geometry.coordinates;
+      const [lng, lat] = featureAnchor(feature);
       if (!Number.isFinite(lng) || !Number.isFinite(lat)) return [];
       const distanceM = distanceMeters(view, { lng, lat });
       if (distanceM > maximumM) return [];

@@ -36,14 +36,34 @@ export function createPinsLayerHandle(
   options: PinsLayerOptions = {}
 ) {
   const sourceId = `source-${layerId}`;
+  const lineSourceId = `source-${layerId}-lines`;
   const clusterLayerId = `pins-${layerId}-cluster`;
   const clusterCountId = `pins-${layerId}-cluster-count`;
   const pinLayerId = `pins-${layerId}-pin`;
   const pinLabelId = `pins-${layerId}-label`;
+  const lineLayerId = `pins-${layerId}-line`;
 
   function ensureLayers() {
     ensurePinImages(map);
     if (map.getSource(sourceId)) return;
+
+    // Routes need a source of their own: clustering runs the data through a point index, so a
+    // LineString added to the clustered source below would simply never appear.
+    map.addSource(lineSourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    });
+    map.addLayer({
+      id: lineLayerId,
+      type: "line",
+      source: lineSourceId,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": ["coalesce", ["get", "color"], color],
+        "line-width": ["interpolate", ["linear"], ["zoom"], 6, 2, 12, 3.5, 16, 5],
+        "line-opacity": 0.9
+      }
+    });
 
     map.addSource(sourceId, {
       type: "geojson",
@@ -115,12 +135,35 @@ export function createPinsLayerHandle(
     });
   }
 
-  const layerIds = [clusterLayerId, clusterCountId, pinLayerId, pinLabelId];
+  const layerIds = [lineLayerId, clusterLayerId, clusterCountId, pinLayerId, pinLabelId];
 
   function setData(data: FeatureCollection) {
     ensureLayers();
-    const src = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
-    src?.setData(data);
+    const lines: FeatureCollection["features"] = [];
+    const points: FeatureCollection["features"] = [];
+    for (const feature of data.features) {
+      if (feature.geometry.type === "LineString") {
+        lines.push(feature);
+        // A route also gets a pin at its anchor, so it stays clickable, labelled and listed
+        // alongside every other place rather than becoming a line you cannot select.
+        const anchorLng = Number(feature.properties?.anchorLng);
+        const anchorLat = Number(feature.properties?.anchorLat);
+        if (Number.isFinite(anchorLng) && Number.isFinite(anchorLat)) {
+          points.push({
+            ...feature,
+            geometry: { type: "Point", coordinates: [anchorLng, anchorLat] }
+          });
+        }
+      } else points.push(feature);
+    }
+    (map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined)?.setData({
+      type: "FeatureCollection",
+      features: points
+    });
+    (map.getSource(lineSourceId) as maplibregl.GeoJSONSource | undefined)?.setData({
+      type: "FeatureCollection",
+      features: lines
+    });
   }
 
   return {
@@ -148,12 +191,15 @@ export function createPinsLayerHandle(
       if (map.getLayer(clusterLayerId))
         map.setPaintProperty(clusterLayerId, "circle-opacity", opacity * 0.92);
       if (map.getLayer(pinLayerId)) map.setPaintProperty(pinLayerId, "icon-opacity", opacity);
+      if (map.getLayer(lineLayerId))
+        map.setPaintProperty(lineLayerId, "line-opacity", opacity * 0.9);
     },
     detach() {
       for (const id of [...layerIds].reverse()) {
         if (map.getLayer(id)) map.removeLayer(id);
       }
       if (map.getSource(sourceId)) map.removeSource(sourceId);
+      if (map.getSource(lineSourceId)) map.removeSource(lineSourceId);
     }
   };
 }

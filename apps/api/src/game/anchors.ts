@@ -12,7 +12,7 @@
  * Adding a source of objectives means adding a `QuestSourceAdapter` — nothing else changes.
  */
 
-import type { Bbox } from "@mapos/layer-sdk";
+import type { Bbox, GeoFeature } from "@mapos/layer-sdk";
 import { distanceMeters } from "@mapos/layer-sdk";
 import { hashString, mulberry32 } from "./spawn.js";
 
@@ -62,6 +62,10 @@ export interface QuestSourceAdapter {
   /** Why this source has nothing to offer right now — a missing API key, usually. Returning a
    *  string keeps it out of the registry's results without pretending the area is empty. */
   unavailableReason?(): string | null;
+  /** How long a swept area stays trustworthy, for the cache in `questAnchorCache.ts`. A source
+   *  whose data moves — open OSM notes get answered — wants a shorter window than one whose
+   *  places have stood for centuries. Defaults to `DEFAULT_ANCHOR_REFRESH_MS`. */
+  refreshAfterMs?: number;
   /** Candidate places in this viewport. Returning none is normal, not an error. */
   anchors(bbox: Bbox, limit: number): Promise<QuestAnchor[]>;
   /**
@@ -173,10 +177,14 @@ const KIND_VERBS: Partial<Record<QuestKind, string>> = {
 };
 
 /**
- * Quests for what is actually in this viewport.
+ * Quests for what is actually in this viewport, asking every source directly.
  *
  * Ranked by how interesting the anchor is, then capped — a city centre holds hundreds of
  * candidates and a quest list of hundreds is not a quest list.
+ *
+ * The live path. Serving the map from this would call four third-party APIs on every pan, so
+ * request handling goes through `cachedAnchoredQuestsForBbox` instead and this stays as the
+ * uncached primitive the sweep is built on.
  */
 export async function anchoredQuestsForBbox(bbox: Bbox, limit = 12): Promise<AnchoredQuest[]> {
   const results = await Promise.all(
@@ -196,6 +204,49 @@ export async function anchoredQuestsForBbox(bbox: Bbox, limit = 12): Promise<Anc
     .flat()
     .sort((a, b) => b.rewardPoints - a.rewardPoints)
     .slice(0, limit);
+}
+
+/**
+ * An anchor as a map feature for the `game-quests` layer.
+ *
+ * Shaped here rather than beside either store, because the Postgres server reads anchors from
+ * the sweep cache and the offline server reads them from fixtures, and both have to produce
+ * pins that look and behave identically.
+ */
+export function anchoredQuestFeature(
+  adapter: Pick<QuestSourceAdapter, "id" | "label" | "attribution">,
+  anchor: QuestAnchor
+): GeoFeature {
+  const quest = deriveQuest(adapter, anchor);
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [anchor.lng, anchor.lat] },
+    properties: {
+      id: quest.id,
+      name: anchor.name,
+      category: anchor.category,
+      layerId: "game-quests",
+      description: quest.description,
+      questTitle: quest.title,
+      rewardPoints: quest.rewardPoints,
+      questKind: quest.kind,
+      radiusM: quest.radiusM,
+      sourceId: adapter.id,
+      sourceLabel: adapter.label,
+      attribution: adapter.attribution,
+      ...(quest.externalUrl ? { externalUrl: quest.externalUrl } : {})
+    }
+  };
+}
+
+/** Why an empty viewport is empty, when every source needs a key we do not have. An area with
+ *  no quests and an area we cannot ask about look identical on the map otherwise. */
+export function unavailableSourcesNotice(): string | undefined {
+  const blocked = questSources()
+    .map((adapter) => ({ adapter, reason: adapter.unavailableReason?.() }))
+    .filter((entry) => entry.reason);
+  if (!blocked.length || blocked.length < questSources().length) return undefined;
+  return blocked.map((entry) => `${entry.adapter.label}: ${entry.reason}`).join(" · ");
 }
 
 export interface AnchorVerification {

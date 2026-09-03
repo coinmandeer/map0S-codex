@@ -1,5 +1,5 @@
 import type { GeoFeature, Place, PlaceSourceId } from "@mapos/layer-sdk";
-import { PLACE_SOURCE_BY_ID, parseSourceRefs } from "@mapos/layer-sdk";
+import { PLACE_SOURCE_BY_ID, featureAnchor, parseSourceRefs } from "@mapos/layer-sdk";
 import { apiGet, apiGetSafe } from "./api";
 
 /** The identity of a clicked pin, in the terms every info panel needs.
@@ -23,7 +23,7 @@ function str(value: unknown): string | null {
 
 export function placeRefsFromFeature(feature: GeoFeature, layerId: string): PlaceRefs {
   const p = feature.properties;
-  const [lng, lat] = feature.geometry.coordinates;
+  const [lng, lat] = featureAnchor(feature);
   const id = str(p.id) ?? `${layerId}:${lng.toFixed(5)},${lat.toFixed(5)}`;
 
   const refs: Partial<Record<PlaceSourceId, string>> = {};

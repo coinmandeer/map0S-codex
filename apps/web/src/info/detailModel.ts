@@ -134,7 +134,9 @@ const FIELD_LABELS: Record<string, string> = {
   note: "Poznámka",
   tags: "Štítky",
   collection: "Sbírka",
-  status: "Stav"
+  status: "Stav",
+  serviceLabels: "Vybavení",
+  externalUrl: "Zdroj"
 };
 
 export function detailFieldLabel(id: string): string {

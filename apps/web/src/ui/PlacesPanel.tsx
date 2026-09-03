@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { GeoFeature } from "@mapos/layer-sdk";
-import { distanceMeters } from "@mapos/layer-sdk";
+import { distanceMeters, featureAnchor } from "@mapos/layer-sdk";
 import { getMapStore } from "../store/mapStore";
 import { emit } from "../lib/events";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
@@ -57,7 +57,7 @@ export function PlacesTab() {
     for (const [layerId, state] of Object.entries(active)) {
       if (!state.visible) continue;
       for (const feature of visibleFeatures[layerId] ?? []) {
-        const [lng, lat] = feature.geometry.coordinates;
+        const [lng, lat] = featureAnchor(feature);
         all.push({ feature, layerId, distance: distanceMeters(view, { lng, lat }) });
       }
     }
@@ -78,7 +78,7 @@ export function PlacesTab() {
   const hasActiveLayers = Object.values(active).some((s) => s.visible);
 
   const openPlace = (p: { feature: GeoFeature; layerId: string }) => {
-    const [lng, lat] = p.feature.geometry.coordinates;
+    const [lng, lat] = featureAnchor(p.feature);
     emit("fly-to", { lng, lat, zoom: 16 });
     store.selectPin({ feature: p.feature, layerId: p.layerId });
     if (window.innerWidth < 900) store.setSidebarOpen(false);

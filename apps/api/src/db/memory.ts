@@ -39,6 +39,8 @@ export interface MemoryPin {
   lat: number;
   tags?: string[];
   kind?: string;
+  /** Set for a `route` pin; `lng`/`lat` remain its anchor. Mirrors `user_pins.path`. */
+  path?: Array<[number, number]>;
   properties?: Record<string, unknown>;
 }
 
@@ -192,25 +194,50 @@ export function seedMemory() {
   );
 }
 
-export function memoryUserFeatures(bbox: Bbox): FeatureCollection {
+/** Mirrors `getUserLayerFeatures`: a signed-in caller sees their own layers, anyone else sees
+ *  the public ones. Without the owner branch nothing you create offline ever reaches the map. */
+export function memoryUserFeatures(bbox: Bbox, userId?: string): FeatureCollection {
   const [w, s, e, n] = bbox;
-  const publicLayers = memoryDb.userLayers.filter((l) => l.isPublic);
-  const layerIds = new Set(publicLayers.map((l) => l.id));
+  const visibleLayers = userId
+    ? memoryDb.userLayers.filter((l) => l.userId === userId)
+    : memoryDb.userLayers.filter((l) => l.isPublic);
+  const layerIds = new Set(visibleLayers.map((l) => l.id));
   const features = memoryDb.pins
     .filter((p) => layerIds.has(p.layerId))
-    .filter((p) => p.lng >= w && p.lng <= e && p.lat >= s && p.lat <= n)
+    .filter((p) => {
+      // A route is anchored at its start, so testing the anchor alone would hide the track as
+      // soon as the user panned past its beginning.
+      const path = p.path && p.path.length >= 2 ? p.path : null;
+      if (!path) return p.lng >= w && p.lng <= e && p.lat >= s && p.lat <= n;
+      const lngs = path.map(([lng]) => lng);
+      const lats = path.map(([, lat]) => lat);
+      return (
+        Math.min(...lngs) <= e &&
+        Math.max(...lngs) >= w &&
+        Math.min(...lats) <= n &&
+        Math.max(...lats) >= s
+      );
+    })
     .map((p) => {
-      const layer = publicLayers.find((l) => l.id === p.layerId);
+      const layer = visibleLayers.find((l) => l.id === p.layerId);
+      const path = p.path && p.path.length >= 2 ? p.path : null;
       return {
         type: "Feature" as const,
-        geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] as [number, number] },
+        geometry: path
+          ? {
+              type: "LineString" as const,
+              coordinates: path as [[number, number], ...Array<[number, number]>]
+            }
+          : { type: "Point" as const, coordinates: [p.lng, p.lat] as [number, number] },
         properties: {
           id: p.id,
           name: p.name,
           description: p.description ?? "",
           category: "user-pin",
           layerId: "user-layers",
-          userLayerName: layer?.name ?? ""
+          userLayerName: layer?.name ?? "",
+          kind: p.kind ?? "place",
+          ...(path ? { anchorLng: p.lng, anchorLat: p.lat } : {})
         }
       };
     });

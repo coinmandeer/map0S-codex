@@ -16,7 +16,7 @@ import {
   type LayerKind
 } from "@mapos/layer-sdk";
 import { getOsmPoiFeatures, getUserLayerFeatures } from "./layerService.js";
-import { getPark4nightFeatures } from "./park4nightService.js";
+import { getPark4nightFeatures, parsePark4nightFilters } from "./park4nightService.js";
 import { getFusedPlaces } from "./poiFusionService.js";
 import {
   parsePlaceSources,
@@ -24,6 +24,7 @@ import {
   placesToFeatureCollection
 } from "./placesPresentation.js";
 import { dataSourceProviders } from "./dataSources/index.js";
+import { questAnchorFeatures } from "../game/questAnchorCache.js";
 
 export interface FeatureRequest {
   bbox: Bbox;
@@ -119,7 +120,7 @@ const RAW_FEATURE_PROVIDERS: FeatureProvider[] = [
     id: "park4night",
     name: "Park4Night",
     kind: "pins",
-    features: ({ bbox }) => getPark4nightFeatures(bbox)
+    features: ({ bbox, query }) => getPark4nightFeatures(bbox, parsePark4nightFilters(query))
   },
   {
     // The open stand-in for Park4Night: same categories, ODbL, no one asking us to stop.
@@ -139,6 +140,15 @@ const RAW_FEATURE_PROVIDERS: FeatureProvider[] = [
   },
   { id: "weather", name: "Počasí", kind: "raster" },
   { id: "game", name: "QuestLayer", kind: "custom-gl" },
+  {
+    // Quest anchors as ordinary pins, so objectives can be turned on beside a hiking map
+    // without entering the 3D game mode — the caches, notes and monuments behind them are
+    // worth seeing whether or not you are playing.
+    id: "game-quests",
+    name: "Herní questy",
+    kind: "pins",
+    features: ({ bbox, query }) => questAnchorFeatures(bbox, query.sources)
+  },
   ...dataSourceProviders
 ];
 

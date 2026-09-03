@@ -12,6 +12,7 @@ import {
   MAPOS_V2_SCHEMA_VERSION
 } from "../v2/common.js";
 import type {
+  DetailManifestV2,
   FilterFacetV2,
   GeometryKindV2,
   LayerManifestV2,
@@ -29,6 +30,9 @@ export interface LayerV1AdapterOptions {
    *  a map of coloured lines nobody can read is decoration. Passed as an adapter option rather
    *  than added to the v1 manifest, which stays frozen. */
   legend?: LegendManifestV2;
+  /** Likewise for the detail sheet: without a field order the sheet falls back to the generic
+   *  place layout and drops everything the provider actually sent. */
+  detail?: DetailManifestV2;
 }
 
 const modeV1ToV2: Partial<Record<LayerMode, LayerModeV2>> = {
@@ -92,6 +96,7 @@ export function layerV1ToV2(
       : {}),
     ...(manifest.temporal ? { temporal: { enabled: true } } : {}),
     ...(options.legend ? { legend: options.legend } : {}),
+    ...(options.detail ? { detail: options.detail } : {}),
     compatibility: {
       legacyLayerId: manifest.id,
       legacyAdapter: "layerV1ToV2",

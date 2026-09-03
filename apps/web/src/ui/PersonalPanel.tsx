@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  featureAnchor,
   planV1ToV2,
   type SavedPlaceCollectionV2,
   type SavedPlaceV2,
@@ -254,7 +255,7 @@ export function PersonalPanel() {
 
   const openPlace = (savedPlace: SavedPlaceV2) => {
     const feature = savedPlaceToFeature(savedPlace);
-    const [lng, lat] = feature.geometry.coordinates;
+    const [lng, lat] = featureAnchor(feature);
     emit("fly-to", { lng, lat, zoom: 15 });
     store.selectPin({ feature, layerId: "my-saved-places" });
   };

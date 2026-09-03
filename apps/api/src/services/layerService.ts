@@ -2,6 +2,7 @@ import {
   buildOverpassQuery,
   type Bbox,
   type FeatureCollection,
+  type LinePositions,
   type OsmPoiCategoryId,
   OSM_POI_CATEGORIES
 } from "@mapos/layer-sdk";
@@ -214,6 +215,23 @@ export async function getOsmPoiFeatures(
   return { type: "FeatureCollection", features };
 }
 
+/** Narrows the stored `path` to a drawable line, tolerating the historic rows that predate the
+ *  column and anything a hand-edited jsonb might contain. */
+function routePath(value: unknown): LinePositions | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const path = value
+    .filter(
+      (entry): entry is [number, number] =>
+        Array.isArray(entry) &&
+        entry.length >= 2 &&
+        Number.isFinite(Number(entry[0])) &&
+        Number.isFinite(Number(entry[1]))
+    )
+    .map(([lng, lat]): [number, number] => [Number(lng), Number(lat)]);
+  // The length check above is what makes the non-empty tuple true; the compiler cannot see it.
+  return path.length >= 2 ? (path as LinePositions) : null;
+}
+
 export async function getUserLayerFeatures(
   bbox: Bbox,
   userId?: string,
@@ -230,16 +248,36 @@ export async function getUserLayerFeatures(
 
   const allPins = await db.select().from(userPins);
   const normalizedTag = tag?.trim().toLowerCase();
+  /** A route is only anchored at its start, so testing the anchor alone would hide the track as
+   *  soon as the user panned past its beginning — exactly when they are following it. */
+  const inView = (pin: (typeof allPins)[number]) => {
+    const path = routePath(pin.path);
+    if (!path) return pin.lng >= w && pin.lng <= e && pin.lat >= s && pin.lat <= n;
+    let west = Infinity;
+    let south = Infinity;
+    let east = -Infinity;
+    let north = -Infinity;
+    for (const [lng, lat] of path) {
+      west = Math.min(west, lng);
+      east = Math.max(east, lng);
+      south = Math.min(south, lat);
+      north = Math.max(north, lat);
+    }
+    return west <= e && east >= w && south <= n && north >= s;
+  };
   const features = allPins
     .filter((p) => layerIds.includes(p.layerId))
-    .filter((p) => p.lng >= w && p.lng <= e && p.lat >= s && p.lat <= n)
+    .filter(inView)
     .filter((p) => !normalizedTag || (p.tags ?? []).some((t) => t.toLowerCase() === normalizedTag))
     .filter((p) => !country || country === "ALL" || !p.country || p.country === country)
     .map((p) => {
       const layer = layers.find((l) => l.id === p.layerId);
+      const path = routePath(p.path);
       return {
         type: "Feature" as const,
-        geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] as [number, number] },
+        geometry: path
+          ? { type: "LineString" as const, coordinates: path }
+          : { type: "Point" as const, coordinates: [p.lng, p.lat] as [number, number] },
         properties: {
           ...(p.properties && typeof p.properties === "object" ? p.properties : {}),
           id: p.id,
@@ -253,7 +291,9 @@ export async function getUserLayerFeatures(
           tags: p.tags ?? [],
           kind: p.kind ?? "place",
           country: p.country ?? "",
-          authorName: p.authorName ?? ""
+          authorName: p.authorName ?? "",
+          // The client needs somewhere to put the marker and open the detail sheet for a line.
+          ...(path ? { anchorLng: p.lng, anchorLat: p.lat } : {})
         }
       };
     });

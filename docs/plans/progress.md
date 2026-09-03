@@ -146,14 +146,15 @@ Ticked once the §31.3 round came back clean on states 04–08 (shots
 
 Implemented and green in `placeDetail.spec.ts` / `eventsTimeline.spec.ts`, but left unticked on
 purpose: the §31.3 round has no capture of these yet. States 12 (detail), 13 (weather + timeline
-+ legend), 14 (events axis) and 17 (AI thread with cards) still have to go into
-`visual-audit.mjs`, which needs a routed plan and a stubbed AI stream in the harness.
 
-- [ ] §4.10 detail opens in the left panel, five Google-Maps-style actions, auto AI summary
-- [ ] §4.11 legend + timeline footer, non-linear year axis for events
-- [ ] §4.13 AI conversation context over the map
-- [ ] §4.14 toasts, empty states, errors
-- [x] AK: `placeDetail.spec.ts`, `eventsTimeline.spec.ts` green
+- legend), 14 (events axis) and 17 (AI thread with cards) still have to go into
+  `visual-audit.mjs`, which needs a routed plan and a stubbed AI stream in the harness.
+
+* [ ] §4.10 detail opens in the left panel, five Google-Maps-style actions, auto AI summary
+* [ ] §4.11 legend + timeline footer, non-linear year axis for events
+* [ ] §4.13 AI conversation context over the map
+* [ ] §4.14 toasts, empty states, errors
+* [x] AK: `placeDetail.spec.ts`, `eventsTimeline.spec.ts` green
 
 ## AI-1 (§30.3, §30.4, §30.6)
 
@@ -287,8 +288,53 @@ in the plan text — see the deviation note below.
       backgrounds are rendered — 60 kB total — over one shared viewport; the rest keep the
       schematic, either because their licence does not let us ship a copy of their cartography
       or because they render nothing at that zoom (`e2e/basemap.spec.ts`, `docs/basemaps.md`)
-- [ ] Park4Night filters and a custom detail
-- [ ] Protected areas — EEA Natura 2000 first, AOPK as the Czech detail
+- [x] Park4Night filters and detail. The category, the five amenity flags and the rating were all
+      already in the row and none of them reachable: no filters, and a detail sheet that fell back
+      to the generic place layout. Filtering is in SQL (`services/park4nightService.ts`), because
+      narrowing in JS would hit the 1000-row cap first and make a filter look like an empty map;
+      `parsePark4nightFilters` accepts only values the layer can emit. The sheet needed `detail`
+      threaded through the v1 → v2 adapter, exactly as `legend` was. The server also sends
+      `serviceLabels`, so the amenities read as words rather than the enum ids the filter uses
+      (`layers/builtins.ts`, `e2e/park4night.spec.ts`; `p4n-night` and `p4n-accommodation` were
+      also missing pin styles, so they drew as unclassified places)
+- [x] Protected areas. `layers/plugins/protectedAreasLayer.ts` — Natura 2000 from the EEA, so one
+      layer answers "is this protected" across the whole union rather than only where a national
+      source was wired (§23). Served as WMS, which needs no adapter: MapLibre substitutes the
+      extent into `{bbox-epsg-3857}`, so this ships before phase 2b. Per-directive filter; the
+      combined WMS layer is rejected because it is a flat fill that hides the ground, while the
+      two directive layers hatch. Legend swatches are quoted from the service's own
+      `GetLegendGraphic` (`e2e/protectedAreas.spec.ts`; the offline fixture table gained an
+      optional `search` matcher, since a WMS request is all query string)
+      — AOPK still open as the Czech detail, once it is shown to be finer than this
+- [x] GPX in the layer import. The parser knew three formats, and a track is the one shape none of
+      them could hold: `LayerImportCandidateV2` carried a single `lng`/`lat`, and
+      `candidateFromGeoJson` rejected anything that was not a point. Importing a ride and drawing
+      one dot where it started would be worse than refusing it, so `GeoFeature` now admits a
+      `LineString` and a `route` pin stores its line in `user_pins.path` (migration 0011) — a
+      column rather than a `properties` key, because geometry is not one of the fields the detail
+      sheet lists. `lng`/`lat` stay as the anchor, so a track is still one findable place in every
+      list, and `featureAnchor` gives the eight call sites that want one position a shared answer.
+      GPX is read without an XML parser, which is also the safer choice: nothing resolves or
+      expands an entity, so XXE and billion-laughs have nothing to act on. Dense tracks are
+      simplified with Ramer–Douglas–Peucker rather than uniform sampling, which would round off
+      the switchbacks that make a track recognisable, and the user is told when it happened
+      (`packages/layer-sdk/src/v2/layerPackage.ts`, `e2e/gpxImport.spec.ts`). The clustered pin
+      source cannot draw a line at all — clustering runs the data through a point index — so
+      routes get their own source and line layer in `layers/pinsLayer.ts`. `memoryUserFeatures`
+      also gained the owner branch it was missing, without which nothing you create offline ever
+      reached the map
+- [x] `quest_anchors` and the `game-quests` layer. The four quest source adapters were called live
+      on every viewport, so dragging the map was a burst of requests to Opencaching, the OSM notes
+      API, Turf and a Wikimedia toolserver — volunteer-run services, for data that does not move.
+      Migration 0012 adds the anchor cache with a GiST index, plus `quest_anchor_sweeps`, because
+      "no anchors here" is an answer worth remembering: without it an empty area and an unfetched
+      one look identical and get re-asked forever. Each adapter states its own `refreshAfterMs`,
+      since an open OSM note can be answered within the hour while a listed building has stood for
+      centuries. A regional viewport is served from cache and never sweeps, so a zoomed-out map
+      cannot fan out into hundreds of calls; a failed sweep is not recorded, so an outage is not
+      cached as emptiness. Quests are also a plain pins layer now, offered in Discover, Planning
+      and Osobní — a geocache is a reason to walk somewhere whether or not you loaded the 3D world
+      (`game/questAnchorCache.ts`, `e2e/gameQuests.spec.ts`)
 - [ ] ČÚZK Ortofoto + ZTM
 - [ ] Katastr
 - [ ] Záplavy VÚV
@@ -311,7 +357,7 @@ Not yet started; see §7, §15, §24.10 and §30.10 for the definitions.
 - [ ] 3D — building toggle, `osm-shortbread`, 3DMR via Three.js, terrain, Panoramax (§17)
 - [ ] Wallet — wagmi + AppKit, SIWE, ENS, fixture, Osobní › Peněženka (§28)
 - [ ] Game H1 — zones with countdowns, HUD, quests, orbs, XP, staking tiers, avatar (§24.10)
-- [ ] Game POI — `QuestSourceAdapter`s, `quest_anchors`, quest board, `game-quests` layer (§18)
+- [~] Game POI — `quest_anchors` cache and the `game-quests` layer are in; the quest board is not (§18)
 - [ ] Game H2 — subgraph, wearables, spritesheets, minigames, leaderboards, anti-cheat
 - [ ] Game H3 — GLB pipeline, props, NPCs, bosses, notifications, on-chain tier, community zones
 - [ ] Phase 9 — realtime hub: GTFS-RT, GBFS, AIS, ADS-B, MQTT, interpolation (§9.2)

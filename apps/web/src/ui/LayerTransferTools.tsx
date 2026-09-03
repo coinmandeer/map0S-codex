@@ -280,13 +280,13 @@ export function LayerTransferTools({
         </div>
       )}
       <label className="btn block layer-import-button">
-        {busy && !preview ? "Připravuji náhled…" : "Importovat MapOS / GeoJSON / CSV"}
+        {busy && !preview ? "Připravuji náhled…" : "Importovat MapOS / GeoJSON / CSV / GPX"}
         <input
           ref={inputRef}
           data-testid="layer-import-file"
           type="file"
           disabled={busy}
-          accept=".json,.geojson,.csv,application/json,application/geo+json,text/csv"
+          accept=".json,.geojson,.csv,.gpx,application/json,application/geo+json,text/csv,application/gpx+xml"
           onChange={(event) => void chooseFile(event.target.files?.[0])}
         />
       </label>

@@ -8,6 +8,7 @@ import {
   type Bbox,
   type ContentDraft,
   type DataProvider,
+  type FeatureCollection,
   type OsmPoiCategoryId,
   type TripPlan,
   type TripPlanResult
@@ -58,8 +59,11 @@ import {
   REWARD_BY_TIER
 } from "./game/spawn.js";
 import {
+  anchoredQuestFeature,
   anchoredQuestsForBbox,
+  questSources,
   registerQuestSource,
+  unavailableSourcesNotice,
   verifyAnchoredQuest,
   parseAnchoredQuestId,
   COMPLETION_RADIUS_M,
@@ -159,6 +163,29 @@ function registerMemoryQuestSource() {
       return row ? anchorOf(row) : null;
     }
   });
+}
+
+/** The `game-quests` layer offline. Same shaping as the Postgres path, straight off the
+ *  registered fixture sources instead of the sweep cache. */
+async function memoryQuestAnchorFeatures(bbox: Bbox, sources?: string): Promise<FeatureCollection> {
+  const wanted = new Set(
+    (sources ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  );
+  const selected = questSources().filter(
+    (adapter) => !adapter.unavailableReason?.() && (wanted.size === 0 || wanted.has(adapter.id))
+  );
+  const perSource = await Promise.all(
+    selected.map(async (adapter) => {
+      const anchors = await adapter.anchors(bbox, 50);
+      return anchors.map((anchor) => anchoredQuestFeature(adapter, anchor));
+    })
+  );
+  const features = perSource.flat();
+  const notice = features.length ? undefined : unavailableSourcesNotice();
+  return { type: "FeatureCollection", features, ...(notice ? { notice } : {}) };
 }
 
 function getSessionUser(sessionId: string | undefined) {
@@ -498,27 +525,34 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
   // the network or a database.
   app.get("/layers", async () => ({ layers: layerListing() }));
 
-  app.get<{ Params: { layerId: string }; Querystring: { bbox?: string; categories?: string } }>(
-    "/layers/:layerId/features",
-    async (request, reply) => {
-      try {
-        const bbox = parseBbox(request.query.bbox);
-        const { layerId } = request.params;
-        if (layerId === "osm-poi") {
-          const cats = (request.query.categories ?? "castle,viewpoint,parking")
-            .split(",")
-            .filter((c): c is OsmPoiCategoryId => c in OSM_POI_CATEGORIES);
-          return memoryOsmFeatures(bbox, cats);
-        }
-        if (layerId === "user-layers") return memoryUserFeatures(bbox);
-        return reply.code(404).send({ message: "Layer not found" });
-      } catch (err) {
-        return reply
-          .code(statusForClient(err))
-          .send({ message: messageForClient(err, "Vrstva je dočasně nedostupná") });
+  app.get<{
+    Params: { layerId: string };
+    Querystring: { bbox?: string; categories?: string; sources?: string };
+  }>("/layers/:layerId/features", async (request, reply) => {
+    try {
+      const bbox = parseBbox(request.query.bbox);
+      const { layerId } = request.params;
+      if (layerId === "osm-poi") {
+        const cats = (request.query.categories ?? "castle,viewpoint,parking")
+          .split(",")
+          .filter((c): c is OsmPoiCategoryId => c in OSM_POI_CATEGORIES);
+        return memoryOsmFeatures(bbox, cats);
       }
+      if (layerId === "user-layers") {
+        return memoryUserFeatures(bbox, getSessionUser(request.cookies.session)?.id);
+      }
+      if (layerId === "game-quests") {
+        // Straight from the registered sources: offline those are local fixtures, so there is
+        // nothing for the sweep cache to protect and no database to hold it.
+        return memoryQuestAnchorFeatures(bbox, request.query.sources);
+      }
+      return reply.code(404).send({ message: "Layer not found" });
+    } catch (err) {
+      return reply
+        .code(statusForClient(err))
+        .send({ message: messageForClient(err, "Vrstva je dočasně nedostupná") });
     }
-  );
+  });
 
   app.get<{
     Params: { layerId: string };

@@ -191,6 +191,8 @@ export const userPins = pgTable(
     geog: geographyPoint4326("geog"),
     tags: jsonb("tags").$type<string[]>().default([]),
     kind: text("kind").notNull().default("place"),
+    /** Set for a `route` pin; `lng`/`lat` remain its anchor. See migration 0011. */
+    path: jsonb("path").$type<Array<[number, number]>>(),
     country: text("country"),
     authorName: text("author_name"),
     properties: jsonb("properties").$type<Record<string, unknown>>().default({}),
@@ -1208,6 +1210,46 @@ export const gameQuests = pgTable(
     geog: geographyPoint4326("geog")
   },
   (t) => [index("game_quests_geog_gist").using("gist", t.geog)]
+);
+
+/** Cached anchors from the quest source adapters, so panning the map queries an index instead
+ *  of four volunteer-run APIs. See migration 0012. */
+export const questAnchors = pgTable(
+  "quest_anchors",
+  {
+    /** `${source}:${nativeId}`, the same shape `QuestAnchor.ref` uses. */
+    ref: text("ref").primaryKey(),
+    sourceId: text("source_id").notNull(),
+    name: text("name").notNull(),
+    category: text("category").notNull(),
+    kind: text("kind"),
+    lng: doublePrecision("lng").notNull(),
+    lat: doublePrecision("lat").notNull(),
+    geog: geographyPoint4326("geog"),
+    weight: doublePrecision("weight"),
+    radiusM: doublePrecision("radius_m"),
+    description: text("description"),
+    externalUrl: text("external_url"),
+    refreshedAt: timestamp("refreshed_at", { withTimezone: true }).notNull()
+  },
+  (t) => [
+    index("quest_anchors_geog_gist").using("gist", t.geog),
+    index("quest_anchors_source_refreshed_idx").on(t.sourceId, t.refreshedAt)
+  ]
+);
+
+/** Which viewports have already been swept, per source, so an area that really is empty is
+ *  remembered as empty rather than re-asked on every pan. */
+export const questAnchorSweeps = pgTable(
+  "quest_anchor_sweeps",
+  {
+    sourceId: text("source_id").notNull(),
+    /** The rounded viewport key; see `sweepCell` in `questAnchorCache.ts`. */
+    cell: text("cell").notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    anchorCount: integer("anchor_count").notNull().default(0)
+  },
+  (t) => [primaryKey({ columns: [t.sourceId, t.cell] })]
 );
 
 /** One row per (player, quest) completion. The unique primary key is the idempotency

@@ -68,6 +68,8 @@ const XYZ = String.raw`\d+\/\d+\/\d+`;
 const ASSET_FIXTURES: Array<{
   origin: RegExp;
   path: RegExp;
+  /** Only for services whose request lives in the query string. Omitted means "no query". */
+  search?: RegExp;
   body: Buffer;
   contentType: string;
 }> = [
@@ -153,6 +155,16 @@ const ASSET_FIXTURES: Array<{
     body: TERRARIUM_PNG,
     contentType: "image/png"
   },
+  // Natura 2000, served as WMS: one GetMap per tile, so the extent is in the query rather than
+  // the path. Matched on the request type to keep a GetCapabilities or GetLegendGraphic — which
+  // this layer does not make, and should not start making unnoticed — out of the fixture.
+  {
+    origin: /^https:\/\/bio\.discomap\.eea\.europa\.eu$/,
+    path: /^\/arcgis\/services\/ProtectedSites\/Natura2000Sites\/MapServer\/WMSServer$/,
+    search: /(?:\?|&)request=GetMap(?:&|$)/,
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
   {
     origin: /^https:\/\/flagcdn\.com$/,
     path: /^\/w40\/[a-z]{2}\.png$/,
@@ -172,9 +184,12 @@ function browserFixture(url: URL): { body: string | Buffer; contentType: string 
     return { body: EMPTY_TILEJSON, contentType: "application/json" };
   }
   for (const fixture of ASSET_FIXTURES) {
-    if (fixture.origin.test(url.origin) && fixture.path.test(url.pathname) && url.search === "") {
-      return { body: fixture.body, contentType: fixture.contentType };
-    }
+    if (!fixture.origin.test(url.origin) || !fixture.path.test(url.pathname)) continue;
+    // A tile URL carries its coordinates in the path, so an unexpected query string means this
+    // is not the request the fixture was written for. WMS is the exception — the whole request
+    // is a query — so those entries say what they expect instead.
+    const searchMatches = fixture.search ? fixture.search.test(url.search) : url.search === "";
+    if (searchMatches) return { body: fixture.body, contentType: fixture.contentType };
   }
   return null;
 }

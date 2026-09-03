@@ -25,6 +25,10 @@ export interface MapLayerPlugin extends LayerPlugin<maplibregl.Map> {
    *  v1 raster overlay has no way to declare one otherwise — a map of coloured lines with no
    *  key is decoration. */
   legend?: LayerManifestV2["legend"];
+  /** Which provider fields the detail sheet shows, and in what order. Same reason as `legend`:
+   *  the sheet reads this off the v2 manifest, so without it a v1 layer's own fields never
+   *  appear however carefully the server sent them. */
+  detail?: LayerManifestV2["detail"];
 }
 
 /** V2 owns discovery/query metadata while the existing lifecycle keeps rendering unchanged. */
@@ -54,7 +58,8 @@ export function registerLayer(plugin: MapLayerPlugin): void {
       filters: plugin.filters,
       attribution: plugin.attribution,
       viewportCost: plugin.viewportCost,
-      legend: plugin.legend
+      legend: plugin.legend,
+      detail: plugin.detail
     })
   );
 }

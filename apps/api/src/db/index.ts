@@ -11,6 +11,8 @@ import { commerceMigration } from "./migrations/0007_commerce.js";
 import { rateLimitsAndOperationsMigration } from "./migrations/0008_rateLimitsAndOperations.js";
 import { layerImportPreviewsMigration } from "./migrations/0009_layerImportPreviews.js";
 import { planCollaborationMigration } from "./migrations/0010PlanCollaboration.js";
+import { pinPathsMigration } from "./migrations/0011PinPaths.js";
+import { questAnchorsMigration } from "./migrations/0012QuestAnchors.js";
 import {
   runVersionedMigrations,
   type MigrationDatabase,
@@ -337,7 +339,9 @@ const VERSIONED_MIGRATIONS = [
   commerceMigration,
   rateLimitsAndOperationsMigration,
   layerImportPreviewsMigration,
-  planCollaborationMigration
+  planCollaborationMigration,
+  pinPathsMigration,
+  questAnchorsMigration
 ] as const;
 
 function migrationMetadata(env: Readonly<Record<string, string | undefined>> = process.env) {

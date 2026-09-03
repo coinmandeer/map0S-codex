@@ -47,7 +47,22 @@ export const PIN_STYLES: Record<string, PinStyle> = {
   "p4n-camping": { color: "#0EA5A4", label: "Kemp (P4N)", icon: "🚐", group: "p4n" },
   "p4n-parking": { color: "#0891B2", label: "Parkování (P4N)", icon: "🚐", group: "p4n" },
   "p4n-aire": { color: "#0D9488", label: "Servisní místo (P4N)", icon: "🚐", group: "p4n" },
-  "p4n-other": { color: "#14B8A6", label: "Místo (P4N)", icon: "🚐", group: "p4n" }
+  // These two arrive from `codeToCategory` like the rest; without an entry their pins fell
+  // through to the generic colour, so "nocování povoleno" looked like an unclassified place —
+  // and that is the distinction someone looking for somewhere to sleep is looking for.
+  "p4n-night": { color: "#0F766E", label: "Nocování povoleno (P4N)", icon: "🚐", group: "p4n" },
+  "p4n-accommodation": {
+    color: "#0369A1",
+    label: "Placené ubytování (P4N)",
+    icon: "🚐",
+    group: "p4n"
+  },
+  "p4n-other": { color: "#14B8A6", label: "Místo (P4N)", icon: "🚐", group: "p4n" },
+  // Quest anchors. The four external sources produce categories of their own, and telling a
+  // geocache apart from a note that needs answering is the whole choice a player makes.
+  geocache: { color: "#7C3AED", label: "Keš", icon: "◈", group: "quest" },
+  survey: { color: "#2563EB", label: "Ověřit v mapě", icon: "?", group: "quest" },
+  territory: { color: "#DB2777", label: "Zóna k zabrání", icon: "⬡", group: "quest" }
 };
 
 export function pinColor(category: string | undefined, fallback = "#B7791F"): string {
