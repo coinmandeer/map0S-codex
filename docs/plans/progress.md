@@ -53,6 +53,23 @@ Recorded here rather than in the plan document, which is frozen during implement
   small control height; a phone needs 44 px of finger and the interface does not. `--control-h-sm`
   reaches `--tap-min` on mobile while `--control-visual-sm` keeps the state layer at 32 px, so
   the box and the drawn circle stop being the same measurement.
+- **Wave A is being built global-first, not in the order §6.6 lists.** §6.6 opens with five
+  Czech sources (ČÚZK, katastr, VÚV, AOPK, NPÚ), which sits against the later instruction that
+  MapOS should reach for European or global data first and use a national source only where it
+  is genuinely finer or fresher. Nothing is dropped: the order within wave A is legends → terrain
+  → OpenInfraMap → previews → Park4Night → protected areas → the Czech four, so that the items
+  which serve every user land before the ones that serve one country. The protected-areas item
+  is built as EEA Natura 2000 with AOPK as the Czech detail, which is the reading §6.6's own
+  "AOPK/EEA" wording allows.
+- **Geology's legend names the dimension, not exact swatches.** Every other legend states the
+  colours the style uses, because the style is ours. Macrostrat hands each polygon the colour
+  its own national survey chose, so a swatch key would be a guess that looks authoritative. The
+  legend gives the international era scale that all of them follow and says outright that the
+  shade varies by survey.
+- **Weather keeps its own legend rather than gaining a manifest one.** It was the eighth of
+  "legends for all 8 existing overlays" and already has a colour ramp with ticks and a unit in
+  `WeatherTimeline.tsx`. A manifest legend is static; weather's meaning changes with the active
+  variable, so moving it would have made it wrong.
 
 ## Phase 0 — Design system foundation (§2)
 
@@ -240,11 +257,40 @@ Six checks were measuring the wrong thing and their findings were not real:
       photographed was never checked, and state leaked between captures — "Layers drawer" was
       shot over whatever panel the previous state left open
 
+## Phase 5 — layer wave A (§6.6)
+
+In progress. Wave A lists eleven items; the order here is deliberate and departs from the order
+in the plan text — see the deviation note below.
+
+- [x] Legends for the existing overlays. Was 0 of 8 despite Phase 2's acceptance criterion
+      claiming every overlay shows one: legends reach the footer through the v2 manifest, and the
+      six structural overlays are registered the v1 way, which had no way to carry one. Added
+      `legend` to `LayerV1AdapterOptions` and to `MapLayerPlugin`, then a key per overlay
+      (`layers/plugins/tileLayers.ts`, `geologyLayer.ts`; 7 cases in
+      `footerLegendTimeline.spec.ts`)
+- [x] Terrain. `map/terrain3d.ts` — Tilezen Terrarium DEM as a `raster-dem` source, hillshade
+      layer plus `setTerrain`, a `3D terén` switch beside 3D buildings, re-applied after every
+      background switch (`store/mapStore.ts`, `map/MapCore.tsx`, `e2e/terrain.spec.ts`)
+- [x] OpenInfraMap. `layers/plugins/infrastructureLayer.ts` — power, telecoms, oil/gas and water
+      from one vector tile set, network filter, voltage colour scale, exact legend
+      (`e2e/infrastructure.spec.ts`). Needed a general `layers/vectorTileOverlay.ts`, since the
+      existing vector helper drew one fill from one source layer; `createVectorTileLayer` is now
+      expressed through it so there is one code path
+- [ ] Basemap previews — the picker and its fallback exist, the rendered `.webp` assets and the
+      render script do not
+- [ ] Park4Night filters and a custom detail
+- [ ] Protected areas — EEA Natura 2000 first, AOPK as the Czech detail
+- [ ] ČÚZK Ortofoto + ZTM
+- [ ] Katastr
+- [ ] Záplavy VÚV
+- [ ] NPÚ monuments
+- [x] Wikivoyage guide — already shipped as a guide source (`services/guide/wikivoyage.ts`), not
+      as a map layer, which is what §4.4 actually asks for
+
 ## Later phases
 
 Not yet started; see §7, §15, §24.10 and §30.10 for the definitions.
 
-- [ ] Phase 5 — layer wave A (§6.6)
 - [ ] Phase 2b — `packages/adapter-sdk`, adapter registry, WMS/WMTS/ArcGIS/PMTiles, tile cache (§10)
 - [ ] Phase 5b — FSQ PMTiles, GEOČR50, Meteoalarm, Esri Wayback, "Přidat zdroj z URL", harvester (§10.2, §11)
 - [ ] Statistics — `stat-series` adapter, `geo_units`, choropleth, 12 presets, CSV/XLSX import (§20)

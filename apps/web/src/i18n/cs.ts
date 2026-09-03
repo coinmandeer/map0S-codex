@@ -122,6 +122,7 @@ export const cs = {
   "basemaps.title": "Mapové podklady",
   "basemaps.general": "Obecné nastavení",
   "basemaps.buildings3d": "3D budovy",
+  "basemaps.terrain3d": "3D terén",
   "basemaps.labels": "Názvy míst",
   "basemaps.terrain": "Terén",
   "basemaps.overlays": "Překryvy",

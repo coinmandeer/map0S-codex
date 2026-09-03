@@ -21,6 +21,10 @@ export interface MapLayerPlugin extends LayerPlugin<maplibregl.Map> {
   /** Ids of info panels this layer contributes to the place detail sheet. Resolved against the
    *  info-panel registry so a layer can add a tab without the sheet importing it. */
   infoPanelIds?: string[];
+  /** What the colours on the map mean. Legends reach the footer through the v2 manifest, and a
+   *  v1 raster overlay has no way to declare one otherwise — a map of coloured lines with no
+   *  key is decoration. */
+  legend?: LayerManifestV2["legend"];
 }
 
 /** V2 owns discovery/query metadata while the existing lifecycle keeps rendering unchanged. */
@@ -49,7 +53,8 @@ export function registerLayer(plugin: MapLayerPlugin): void {
       kind: plugin.kind,
       filters: plugin.filters,
       attribution: plugin.attribution,
-      viewportCost: plugin.viewportCost
+      viewportCost: plugin.viewportCost,
+      legend: plugin.legend
     })
   );
 }

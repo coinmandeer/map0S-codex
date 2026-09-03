@@ -61,6 +61,48 @@ test.describe("map footer", () => {
     await expect(page.getByTestId("legend-expand")).toHaveCount(0);
   });
 
+  // §6.6 wave A: the six structural overlays draw coloured lines over the basemap, and until
+  // now none of them said what the colours meant. They are registered the v1 way, so this also
+  // covers the legend reaching the footer through the v1 → v2 adapter.
+  for (const overlay of [
+    { id: "cyclosm", legendTitle: "CyclOSM", item: "Stezka jen pro kola" },
+    { id: "waymarked-trails", legendTitle: "Značené trasy", item: "Mezinárodní trasa" },
+    { id: "openrailwaymap", legendTitle: "Železnice", item: "Hlavní trať" },
+    { id: "openseamap", legendTitle: "Námořní značení", item: "Maják" },
+    { id: "opentopomap", legendTitle: "Topografická", item: "Vrstevnice" },
+    { id: "opensnowmap", legendTitle: "Sjezdovky a běžky", item: "Běžecká stopa" }
+  ]) {
+    test(`the ${overlay.id} overlay explains its colours`, async ({ page }) => {
+      await page.goto(`/?layers=${overlay.id}&lng=13.3775&lat=49.7475&z=10`);
+      await expect(page.getByTestId("mode-bar")).toBeVisible({ timeout: 30_000 });
+
+      const legend = page.getByTestId("legend-stack");
+      await expect(legend).toBeVisible({ timeout: 20_000 });
+      await expect(legend).toContainText(overlay.legendTitle);
+
+      // The compact row is the summary; the entries are behind the same expand as every other
+      // legend, so a six-item key never takes the map's room by default.
+      const expand = page.getByTestId("legend-expand");
+      if (await expand.count()) await expand.click();
+      await expect(legend).toContainText(overlay.item);
+    });
+  }
+
+  test("geology names the dimension its colours encode, not a false swatch", async ({ page }) => {
+    await page.goto("/?layers=geology&lng=13.3775&lat=49.7475&z=10");
+    await expect(page.getByTestId("mode-bar")).toBeVisible({ timeout: 30_000 });
+
+    const legend = page.getByTestId("legend-stack");
+    await expect(legend).toBeVisible({ timeout: 20_000 });
+    // Macrostrat hands each polygon the colour its own survey chose, so the honest legend says
+    // colour means age and admits the shade varies.
+    await expect(legend).toContainText("barva je věk");
+    const expand = page.getByTestId("legend-expand");
+    if (await expand.count()) await expand.click();
+    await expect(legend).toContainText("Mezozoikum");
+    await expect(legend).toContainText("Odstín se liší podle služby");
+  });
+
   test("more legends than the footer can hold defer the rest to a dialog", async ({ page }) => {
     await page.route("**/config", async (route) => {
       const response = await route.fetch();

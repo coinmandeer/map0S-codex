@@ -64,6 +64,8 @@ These need no registration and are always on.
 | OSM Notes            | Quests: open map problems to verify        | ODbL 1.0           |
 | Turf Game            | Quests: existing takeover zones            | Public API         |
 | Macrostrat           | Geology overlay and the "Pod nohama" panel | CC-BY 4.0          |
+| OpenInfraMap         | Power, telecoms, gas/oil and water grids   | ODbL 1.0 / CC-BY 4.0 |
+| Tilezen Terrain      | 3D terrain and hillshade (Terrarium DEM)   | Per source dataset |
 
 ## What the licences ask for
 
@@ -83,6 +85,20 @@ publishing it under ODbL too.
 
 iNaturalist observations are per-observer licensed and many are non-commercial. Treat the layer
 as "look, don't rebuild a product on top of it".
+
+OpenInfraMap is one person's project (Russss) with no published usage policy, unlike the OSMF
+services above. The layer therefore asks for tiles only from z7 up: below that a continent's
+worth of lines is unreadable anyway, so not requesting them costs nothing and is the polite
+reading of a service that has not told us what it can carry. The data is OSM's under ODbL; the
+CC-BY 4.0 applies to the project's own cartography and analysis, and since OpenInfraMap ships no
+style, MapOS draws the networks with its own — which is why its legend can state the voltage
+scale exactly.
+
+Tilezen's terrain tiles are an aggregate: SRTM, ESA and USGS data among others, each under its
+own terms, which is why the table says "per source dataset" rather than naming one licence. The
+credit line names the aggregate and the main contributors. Heights are `terrarium`-encoded
+(`(R * 256 + G + B / 256) - 32768` metres); reading them as MapLibre's default Mapbox encoding
+yields wrong elevations rather than an error, so the source declares the encoding explicitly.
 
 ## Geology, and what a model is for
 

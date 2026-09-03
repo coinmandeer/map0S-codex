@@ -16,6 +16,7 @@ import type {
   GeometryKindV2,
   LayerManifestV2,
   LayerModeV2,
+  LegendManifestV2,
   RendererDescriptorV2
 } from "../v2/layer.js";
 
@@ -24,6 +25,10 @@ export interface LayerV1AdapterOptions {
   filters?: FilterFacet[];
   attribution?: LayerAttribution[];
   viewportCost?: ViewportCost;
+  /** A legend is a v2 idea, but a raster overlay registered the v1 way needs one just as much:
+   *  a map of coloured lines nobody can read is decoration. Passed as an adapter option rather
+   *  than added to the v1 manifest, which stays frozen. */
+  legend?: LegendManifestV2;
 }
 
 const modeV1ToV2: Partial<Record<LayerMode, LayerModeV2>> = {
@@ -86,6 +91,7 @@ export function layerV1ToV2(
       ? { requiresServerCapabilities: [manifest.requiresCapability] }
       : {}),
     ...(manifest.temporal ? { temporal: { enabled: true } } : {}),
+    ...(options.legend ? { legend: options.legend } : {}),
     compatibility: {
       legacyLayerId: manifest.id,
       legacyAdapter: "layerV1ToV2",

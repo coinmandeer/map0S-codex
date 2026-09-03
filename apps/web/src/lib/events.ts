@@ -30,6 +30,7 @@ export interface MapOsEvents {
   /** The map background, or whether labels sit over it, changed. */
   "basemap-changed": { basemapId: string };
   "buildings-3d-changed": { enabled: boolean };
+  "terrain-3d-changed": { enabled: boolean };
   "country-changed": { countryCode: string };
   "tag-changed": { tag: string | null };
   "theme-changed": { theme: ThemeMode };

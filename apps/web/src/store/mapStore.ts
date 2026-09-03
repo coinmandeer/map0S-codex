@@ -158,6 +158,9 @@ export interface MapState {
   basemapLabels: boolean;
   /** Extrude buildings on backgrounds whose data carries heights. */
   buildings3d: boolean;
+  /** Raise the map onto an elevation mesh. Independent of the background, because the terrain
+   *  comes from its own global DEM rather than from the chosen tiles. */
+  terrain3d: boolean;
   /** Per-POI-source opt-in. Keys are `PLACE_SOURCES` ids from the layer SDK. */
   poiSources: Record<string, boolean>;
   /** Live fetch state per source, driving the SourceIconStrip loaders. */
@@ -177,6 +180,7 @@ const POI_SOURCES_KEY = "mapos:poi-sources";
 const BASEMAP_KEY = "mapos:basemap";
 const BASEMAP_LABELS_KEY = "mapos:basemap-labels";
 const BUILDINGS_3D_KEY = "mapos:buildings-3d";
+const TERRAIN_3D_KEY = "mapos:terrain-3d";
 const EXPERIENCE_KEY = "mapos:experience";
 const ACTIVE_GAMES_KEY = "mapos:active-games";
 const ACTIVE_PLAN_KEY = "mapos:active-plan";
@@ -498,6 +502,7 @@ export class MapStore {
       basemapId: loadBasemapId(),
       basemapLabels: loadFlag(BASEMAP_LABELS_KEY, true),
       buildings3d: loadFlag(BUILDINGS_3D_KEY, false),
+      terrain3d: loadFlag(TERRAIN_3D_KEY, false),
       poiSources: loadPoiSources(),
       sourceStatus: {},
       capabilities: null
@@ -668,6 +673,9 @@ export class MapStore {
   get buildings3d() {
     return this.state.buildings3d;
   }
+  get terrain3d() {
+    return this.state.terrain3d;
+  }
 
   setBasemap(id: string) {
     if (this.state.basemapId === id || !basemapById(id)) return;
@@ -691,6 +699,14 @@ export class MapStore {
     window.localStorage.setItem(BUILDINGS_3D_KEY, enabled ? "1" : "0");
     this.notify();
     emit("buildings-3d-changed", { enabled });
+  }
+
+  setTerrain3d(enabled: boolean) {
+    if (this.state.terrain3d === enabled) return;
+    this.state.terrain3d = enabled;
+    window.localStorage.setItem(TERRAIN_3D_KEY, enabled ? "1" : "0");
+    this.notify();
+    emit("terrain-3d-changed", { enabled });
   }
 
   setPoiSource(source: PlaceSourceId, enabled: boolean) {

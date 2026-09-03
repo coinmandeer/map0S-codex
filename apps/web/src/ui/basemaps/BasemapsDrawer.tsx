@@ -29,6 +29,7 @@ export function BasemapsDrawer() {
   const basemapId = useMapStoreSnapshot((s) => s.basemapId);
   const labels = useMapStoreSnapshot((s) => s.basemapLabels);
   const buildings = useMapStoreSnapshot((s) => s.buildings3d);
+  const terrain = useMapStoreSnapshot((s) => s.terrain3d);
   const theme = useMapStoreSnapshot((s) => s.theme);
   const capabilities = useMapStoreSnapshot((s) => s.capabilities);
   const activeLayers = useMapStoreSnapshot((s) => s.activeLayers);
@@ -84,6 +85,19 @@ export function BasemapsDrawer() {
             label={t("basemaps.buildings3d")}
             testId="toggle-buildings-3d"
             onChange={(next) => store.setBuildings3d(next)}
+          />
+        </div>
+        <div className="basemap-setting">
+          <span className="basemap-setting-label">{t("basemaps.terrain3d")}</span>
+          <InfoTip title={t("basemaps.terrain3d")} testId="basemap-terrain-info">
+            Výšková data jsou globální a nezávislá na podkladu, takže reliéf funguje i nad
+            leteckými snímky. Zdroj: Tilezen Terrain Tiles (NASA SRTM, ESA, USGS).
+          </InfoTip>
+          <Switch
+            checked={terrain}
+            label={t("basemaps.terrain3d")}
+            testId="toggle-terrain-3d"
+            onChange={(next) => store.setTerrain3d(next)}
           />
         </div>
         {activeOverlayIds.length > 0 && (

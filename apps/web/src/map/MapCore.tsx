@@ -6,6 +6,7 @@ import { usesMapyTiles } from "@mapos/layer-sdk";
 import { MapyLogoControl } from "./styleManager";
 import { overlayForBasemap, resolveBasemap, styleForBasemap } from "./basemapStyle";
 import { apply3dBuildings } from "./buildings3d";
+import { applyTerrain3d } from "./terrain3d";
 import { chromeMapPadding, readChromeInsets } from "./chromePadding";
 import { getMapStore, getMapBbox, type LayerMode } from "../store/mapStore";
 import { LayerEngine } from "../engine/LayerEngine";
@@ -350,6 +351,17 @@ export function MapCore() {
     );
 
     offs.push(
+      on("terrain-3d-changed", (detail) => {
+        applyTerrain3d(map, detail.enabled);
+        // Relief needs a viewing angle to read as relief, but a gentler one than buildings want:
+        // the subject is a range of hills, not a street. Hillshade carries it from overhead, so
+        // this is a nudge rather than the full tilt. The game mode runs its own camera.
+        if (store.mode === "game") return;
+        map.easeTo({ pitch: detail.enabled ? 45 : 0, duration: 700 });
+      })
+    );
+
+    offs.push(
       on("discover-geojson", (detail) => {
         const src = map.getSource("discover-regions") as maplibregl.GeoJSONSource | undefined;
         src?.setData(detail.geojson ?? { type: "FeatureCollection", features: [] });
@@ -482,9 +494,10 @@ export function MapCore() {
         engineRef.current = new LayerEngine(map, API_BASE, store, undefined, dataLayerLifecycle);
       }
       engineRef.current.refresh(getMapBbox(map), true);
-      // Extrusions live in the style, so they are gone after every background switch and have
-      // to be re-added here rather than only when the toggle is flipped.
+      // Extrusions and the terrain mesh live in the style, so they are gone after every
+      // background switch and have to be re-added here rather than only when a toggle is flipped.
       apply3dBuildings(map, store.buildings3d);
+      applyTerrain3d(map, store.terrain3d);
 
       if (!map.getSource("route-preview")) {
         map.addSource("route-preview", {

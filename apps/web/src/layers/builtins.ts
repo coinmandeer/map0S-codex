@@ -3,6 +3,7 @@ import { registerLayer } from "./registry";
 import "./plugins/tileLayers";
 import "./plugins/dataLayers";
 import "./plugins/geologyLayer";
+import "./plugins/infrastructureLayer";
 import "./savedPlacesLayer";
 import { createPinsLayerHandle } from "./pinsLayer";
 import { createWeatherLayerHandle } from "./weatherLayer";
