@@ -19,3 +19,4 @@ apps/web/public/models/
 # Personal deployment log — contains host paths and release notes specific to one operator.
 # Anchored so the tracked redesign ledger in docs/plans/progress.md is not swept up with it.
 /progress.md
+*.tsbuildinfo
