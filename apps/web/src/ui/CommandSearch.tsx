@@ -102,7 +102,7 @@ function intentLabel(intent: LocationIntent): string | null {
   if (intent.kind === "locality") return "Město nebo region · hledat místo";
   if (intent.kind === "poi") return "POI dotaz · hledat v mapě";
   if (intent.kind === "place") return "Místo · hledat v mapě";
-  if (intent.kind === "ai") return "AI konverzace · bez automatické změny mapy";
+  if (intent.kind === "ai") return `Zeptat se AI: „${intent.query}“`;
   if (intent.kind === "invalid") return "Tento vstup nelze bezpečně otevřít";
   return null;
 }
@@ -135,7 +135,6 @@ export function CommandSearch({
   const activeTag = useMapStoreSnapshot((state) => state.activeTag);
   const activeLayers = useMapStoreSnapshot((state) => state.activeLayers);
   const view = useMapStoreSnapshot((state) => state.view);
-  const capabilities = useMapStoreSnapshot((state) => state.capabilities);
   const aiEnabled = useMapStoreSnapshot((state) => state.preferences.aiEnabled);
   const units = useMapStoreSnapshot((state) => state.preferences.units);
   const requestRunner = useRef(new LatestRequestRunner<SearchResponse>());
@@ -348,7 +347,7 @@ export function CommandSearch({
     } else if (intent.kind === "category") {
       pickTag(intent.tag);
     } else if (intent.kind === "ai" && aiEnabled) {
-      setAiPreviewOpen(true);
+      confirmAiSearch();
     } else if (hits[0]) {
       pickHit(hits[0]);
     }
@@ -385,9 +384,12 @@ export function CommandSearch({
     }
   };
 
+  /** §29.3: asking is one click. The only thing that can come before the request is the layer
+   *  gate, and that appears where the answer will be — not as a dialog in front of it. */
   const confirmAiSearch = () => {
     const prompt = intent.kind === "ai" ? intent.query : query.trim();
     if (!prompt) return;
+    setAiPreviewOpen(true);
     if (!activeLayers["osm-poi"]?.visible) {
       setAiNeedsLayer(true);
       return;
@@ -708,69 +710,36 @@ export function CommandSearch({
                   {intent.kind === "coordinates" && (
                     <span className="meta">{intent.coordinates.normalized}</span>
                   )}
-                  {intent.kind === "ai" && (
-                    <span className="meta">
-                      {aiEnabled
-                        ? "Nejprve se otevře náhled"
-                        : "AI funkce jsou vypnuté v Nastavení"}
-                    </span>
+                  {intent.kind === "ai" && !aiEnabled && (
+                    <span className="meta">AI funkce jsou vypnuté v Nastavení</span>
                   )}
                 </button>
               )}
               {networkIntent && intent.kind !== "category" && aiEnabled && (
-                <section className="command-search-choice" aria-label="Způsob hledání">
-                  <div>
-                    <strong>Běžné hledání</strong>
-                    <span>Rychlé výsledky geokodéru jsou zobrazené níže.</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost small"
-                    data-testid="search-offer-ai"
-                    onClick={() => setAiPreviewOpen(true)}
-                  >
-                    Zeptat se AI
-                  </button>
-                </section>
+                <button
+                  type="button"
+                  className="search-hit command-search-ai-offer"
+                  data-testid="search-offer-ai"
+                  disabled={aiBusy}
+                  onClick={confirmAiSearch}
+                >
+                  <strong>{aiBusy ? "AI hledá…" : `Zeptat se AI: „${query.trim()}“`}</strong>
+                </button>
               )}
-              {intent.kind === "ai" && aiPreviewOpen && <></>}
               {aiPreviewOpen && aiEnabled && (
                 <div className="command-search-ai-preview" role="status">
-                  <div className="command-search-ai-head">
-                    <strong>AI použije střed mapy a aktivní vrstvy</strong>
-                    <span>
-                      Požadavek se odešle až tlačítkem. Výsledek nejprve uvidíš jako návrh.
-                    </span>
-                  </div>
-                  {!aiAnswer && !aiNeedsLayer && (
-                    <button
-                      type="button"
-                      className="btn btn-accent small"
-                      data-testid="search-run-ai"
-                      disabled={aiBusy}
-                      onClick={confirmAiSearch}
-                    >
-                      {aiBusy ? "AI hledá…" : "Spustit AI hledání"}
-                    </button>
-                  )}
-                  {capabilities?.cml === false && (
-                    <span>
-                      Mapový AI nástroj funguje deterministicky i bez generativního modelu.
-                    </span>
-                  )}
                   {aiNeedsLayer && (
                     <div
                       className="command-search-ai-command"
                       data-testid="search-ai-layer-preview"
                     >
-                      <div>
-                        <strong>Návrh změny: zapnout POI vrstvy</strong>
-                        <span>
-                          AI potřebuje veřejná místa v aktuálním výřezu. Nic se nezapne samo.
-                        </span>
-                      </div>
-                      <button type="button" className="btn small" onClick={activatePoiAndSearch}>
-                        Potvrdit a pokračovat
+                      <span>AI potřebuje veřejná místa POI v tomto výřezu.</span>
+                      <button
+                        type="button"
+                        className="btn btn-accent small"
+                        onClick={activatePoiAndSearch}
+                      >
+                        Zapnout a pokračovat
                       </button>
                     </div>
                   )}

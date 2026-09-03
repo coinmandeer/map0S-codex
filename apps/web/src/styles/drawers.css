@@ -1,0 +1,552 @@
+/* The two right-hand drawers: Vrstvy (§4.7) and Mapové podklady (§4.8).
+ *
+ * Both are lists of rows inside a scrolling column, so the rules here are mostly about rhythm:
+ * one 4 px grid, one row height, one place where a row's trailing controls sit. The kit owns
+ * the controls themselves — nothing below restyles a switch, a chip or a slider.
+ *
+ * The nesting rule from §2.4 is why almost nothing here draws a border: a row inside a section
+ * inside a drawer would be three boxes deep. Rows separate by 1 px dividers and by an accent
+ * tint when they are on.
+ */
+@layer panels {
+  .layers-drawer,
+  .basemaps-drawer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-7);
+  }
+
+  .layers-drawer-footer,
+  .basemaps-drawer-footer {
+    margin: 0;
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border);
+    color: var(--text-faint);
+    font: var(--type-body-sm);
+  }
+
+  /* ---- Presets (§4.7 ③) ------------------------------------------------ */
+
+  .preset-strip {
+    display: flex;
+    gap: var(--space-4);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    /* The fade tells the user there is more to the right without adding arrows that would
+       need their own hover state and hit area. */
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 8px,
+      #000 calc(100% - 16px),
+      transparent 100%
+    );
+    padding-block: var(--space-1);
+    scrollbar-width: none;
+  }
+
+  .preset-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .preset-card {
+    position: relative;
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: var(--space-1);
+    width: 112px;
+    height: 72px;
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-solid);
+    color: var(--text);
+    scroll-snap-align: start;
+    cursor: pointer;
+    transition:
+      background var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease),
+      transform var(--dur-fast) var(--ease);
+  }
+
+  .preset-card:hover {
+    background: var(--surface-hover);
+  }
+
+  .preset-card:active {
+    transform: scale(0.98);
+  }
+
+  .preset-card[data-active] {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    border-width: 1.5px;
+    color: var(--accent);
+  }
+
+  .preset-card-name {
+    font: var(--type-title-sm);
+  }
+
+  .preset-card-meta {
+    color: var(--text-faint);
+    font: var(--type-label-sm);
+  }
+
+  .preset-card[data-active] .preset-card-meta {
+    color: inherit;
+    opacity: 0.8;
+  }
+
+  /* ---- World and place sources (§4.7 ②) -------------------------------- */
+
+  .layers-world {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .layers-world-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .layers-subsection {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .layers-subsection-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    min-height: var(--control-h-sm);
+  }
+
+  .layers-source-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    min-height: var(--list-row-h);
+    padding-block: var(--space-2);
+  }
+
+  .layers-source-row + .layers-source-row {
+    border-top: 1px solid var(--border);
+  }
+
+  .layers-source-icon {
+    color: var(--text-muted);
+    flex: 0 0 auto;
+  }
+
+  .layers-source-row[data-enabled] .layers-source-icon {
+    color: var(--accent);
+  }
+
+  .layers-source-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font: var(--type-body-md);
+  }
+
+  /* ---- Categories (§4.7 ④) -------------------------------------------- */
+
+  .category-groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .category-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    min-height: var(--control-h-sm);
+  }
+
+  .category-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  /* ---- Weather (§4.7 ⑤) ----------------------------------------------- */
+
+  .weather-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .weather-option {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    width: 100%;
+  }
+
+  .weather-unit {
+    margin-left: auto;
+    color: var(--text-faint);
+    font: var(--type-label-md);
+  }
+
+  .weather-section-footer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--border);
+  }
+
+  .weather-section-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    min-height: var(--list-row-h);
+  }
+
+  .weather-section-label {
+    font: var(--type-body-md);
+  }
+
+  /* ---- Layer rows (§4.7 ⑥) -------------------------------------------- */
+
+  .layer-group {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .layer-group + .layer-group {
+    margin-top: var(--space-6);
+  }
+
+  .layer-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    min-height: 48px;
+    padding-block: var(--space-2);
+    border-radius: var(--radius-sm);
+  }
+
+  .layer-row + .layer-row {
+    border-top: 1px solid var(--border);
+  }
+
+  .layer-row-icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-pill);
+    /* The domain hue is the icon's colour; the circle behind it is the same hue at low alpha,
+       which keeps twenty rows from turning the drawer into a colour chart. */
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+
+  .layer-row-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .layer-row-name {
+    font: var(--type-body-md);
+  }
+
+  .layer-row-meta {
+    color: var(--text-faint);
+    font: var(--type-body-sm);
+    /* One line: the rest of the story is behind the row's info button. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .layer-row-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: 0 0 auto;
+  }
+
+  .layer-info-legend,
+  .layer-info-sources {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    font: var(--type-body-sm);
+  }
+
+  .layer-info-legend li,
+  .layer-info-sources li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .layer-info-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: var(--radius-xs);
+    flex: 0 0 auto;
+  }
+
+  /* ---- Layer filter popover ------------------------------------------- */
+
+  .layer-filter-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .layer-filter-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    min-height: var(--control-h);
+  }
+
+  .layer-filter-facet {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .layer-filter-label {
+    font: var(--type-title-sm);
+  }
+
+  .layer-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  /* ---- Basemaps (§4.8) ------------------------------------------------ */
+
+  .basemap-general {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+  }
+
+  .basemap-setting {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--list-row-h);
+  }
+
+  .basemap-setting-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    font: var(--type-body-md);
+  }
+
+  .basemap-groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .basemap-group-trigger {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    width: 100%;
+    min-height: var(--list-row-h);
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .basemap-group-title {
+    flex: 1 1 auto;
+    text-align: start;
+    font: var(--type-title-sm);
+  }
+
+  .basemap-group-trigger .kit-accordion-chevron {
+    transition: transform var(--dur) var(--ease);
+  }
+
+  .basemap-accordion[data-open] .kit-accordion-chevron {
+    transform: rotate(180deg);
+  }
+
+  .basemap-cards {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-block: var(--space-3) var(--space-5);
+  }
+
+  .basemap-card-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .basemap-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    width: 100%;
+    min-height: 96px;
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-solid);
+    color: var(--text);
+    text-align: start;
+    cursor: pointer;
+    transition:
+      background var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+
+  .basemap-card:hover {
+    background: var(--surface-hover);
+  }
+
+  .basemap-card[data-active] {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    border-width: 1.5px;
+    padding: calc(var(--space-4) - 0.5px);
+  }
+
+  .basemap-card-copy {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: var(--space-1);
+  }
+
+  .basemap-card-name {
+    font: var(--type-title-sm);
+  }
+
+  .basemap-card-hint {
+    color: var(--text-faint);
+    font: var(--type-body-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .basemap-card-trailing {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: 0 0 auto;
+  }
+
+  .basemap-card-radio {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    transition: border-color var(--dur-fast) var(--ease);
+  }
+
+  .basemap-card[data-active] .basemap-card-radio {
+    border-color: var(--accent);
+    /* The inner dot is a border rather than a pseudo-element so the ring animates as one. */
+    border-width: 6px;
+  }
+
+  .basemap-preview {
+    position: relative;
+    flex: 0 0 auto;
+    /* Large enough to read the style's palette and road hierarchy at a glance — a 56 px strip
+       shows a colour, not a map. */
+    width: 104px;
+    height: 80px;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background: hsl(var(--basemap-thumb-hue, 210) 24% 88%);
+  }
+
+  .theme-dark .basemap-preview {
+    background: hsl(var(--basemap-thumb-hue, 210) 18% 26%);
+  }
+
+  .basemap-preview-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* Schematic fallback: water body, two roads. Enough to read the tone of the style. */
+  .basemap-preview-water {
+    position: absolute;
+    inset: 55% -10% -20% 40%;
+    background: hsl(205 62% 62% / 0.55);
+    transform: rotate(-8deg);
+  }
+
+  .basemap-preview-road {
+    position: absolute;
+    background: var(--surface-solid);
+    opacity: 0.9;
+  }
+
+  .basemap-preview-road.road-primary {
+    inset: 42% 0 auto 0;
+    height: 5px;
+  }
+
+  .basemap-preview-road.road-secondary {
+    inset: 0 auto 0 28%;
+    width: 4px;
+  }
+
+  .basemap-preview[data-preview-kind="satellite"] {
+    background: linear-gradient(150deg, #24402a, #4a5d33 55%, #6a6a41);
+  }
+
+  .basemap-preview[data-preview-kind="terrain"] {
+    background: linear-gradient(150deg, #cbbfa6, #9aa87f 60%, #6f7d5c);
+  }
+
+  .basemap-preview[data-preview-kind="outdoor"] {
+    background: linear-gradient(150deg, #e6e2d3, #c9d3b4 60%, #a8bd93);
+  }
+
+  .basemap-preview[data-preview-kind="dark"] {
+    background: linear-gradient(150deg, #1d2126, #2a2f36);
+  }
+
+  @media (max-width: 899px) {
+    .layer-row,
+    .basemap-card {
+      min-height: var(--tap-min);
+    }
+
+    .preset-card {
+      width: 120px;
+    }
+  }
+}

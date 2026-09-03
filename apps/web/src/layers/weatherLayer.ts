@@ -233,6 +233,7 @@ export function createWeatherLayerHandle(map: maplibregl.Map, layerId: string) {
       }
 
       ensureRadarLayer(null);
+      field.setValueLabels(filters.valueLabels !== false);
       if (plan.kind !== "grid") {
         field.clear();
         wind.setGrid(null);

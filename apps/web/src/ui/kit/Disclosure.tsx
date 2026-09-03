@@ -12,6 +12,9 @@ export interface AccordionSection {
   count?: number;
   /** Right-aligned in the header — a switch, a chip, an InfoTip. Clicks do not toggle. */
   action?: ReactNode;
+  /** Marks the whole item, so a test or an audit can assert on the section rather than on its
+   *  trigger. The trigger keeps the generated `${accordion}-${section}` id. */
+  testId?: string;
   children: ReactNode;
 }
 
@@ -39,7 +42,12 @@ export function Accordion({
       data-testid={testId}
     >
       {sections.map((section) => (
-        <BaseAccordion.Item key={section.id} value={section.id} className="kit-accordion-item">
+        <BaseAccordion.Item
+          key={section.id}
+          value={section.id}
+          className="kit-accordion-item"
+          data-testid={section.testId}
+        >
           <BaseAccordion.Header className="kit-accordion-header">
             <BaseAccordion.Trigger
               className="kit-accordion-trigger"

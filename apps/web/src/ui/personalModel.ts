@@ -32,6 +32,41 @@ export function personalCategoryCounts(places: readonly SavedPlaceV2[]): Persona
     .sort((left, right) => left.label.localeCompare(right.label, "cs"));
 }
 
+/** "3 plány · 2 vrstvy · 20 míst · 1 hra" (§4.3).
+ *
+ *  Zero counts are dropped rather than shown as "0 plánů": a fresh profile should read as an
+ *  invitation, not as four empty tallies.
+ */
+export function personalSummaryLine(counts: {
+  plans: number;
+  layers: number;
+  places: number;
+  games: number;
+}): string {
+  const parts = [
+    part(counts.plans, "plán", "plány", "plánů"),
+    part(counts.layers, "vrstva", "vrstvy", "vrstev"),
+    part(counts.places, "místo", "místa", "míst"),
+    part(counts.games, "hra", "hry", "her")
+  ].filter((value): value is string => value !== null);
+  return parts.length ? parts.join(" · ") : "Zatím nic uloženého";
+}
+
+function part(count: number, one: string, few: string, many: string): string | null {
+  if (!Number.isFinite(count) || count <= 0) return null;
+  const rounded = Math.floor(count);
+  const noun = rounded === 1 ? one : rounded >= 2 && rounded <= 4 ? few : many;
+  return `${rounded} ${noun}`;
+}
+
+/** Second line of a saved place row: where it is filed and when it was saved. */
+export function savedPlaceSubtitle(place: SavedPlaceV2, collectionName?: string): string {
+  const saved = new Intl.DateTimeFormat("cs", { day: "numeric", month: "numeric" }).format(
+    new Date(place.createdAt)
+  );
+  return [collectionName ?? personalCategoryLabel(place.category), `uloženo ${saved}`].join(" · ");
+}
+
 export function filterPersonalPlaces(
   places: readonly SavedPlaceV2[],
   search: string,

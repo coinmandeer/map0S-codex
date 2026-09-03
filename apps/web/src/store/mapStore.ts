@@ -93,6 +93,18 @@ export type GameTrackingMode = "simulation" | "gps";
 export type GameCameraMode = "follow" | "top";
 export type PinKind = "place" | "route" | "task";
 
+/** A toast is one line plus at most one action — the undo for something the app just did on
+ *  the user's behalf (§4.14). */
+export interface ToastState {
+  message: string;
+  action?: { label: string; onSelect: () => void };
+}
+
+export interface ToastOptions {
+  durationMs?: number;
+  action?: ToastState["action"];
+}
+
 export interface MapState {
   view: MapViewState;
   activeLayers: Record<string, { visible: boolean; opacity: number; filters: FilterValues }>;
@@ -109,7 +121,7 @@ export interface MapState {
   activePlan: TripPlan | null;
   /** Canonical planning state; activePlan stays as a v1 projection for older panels. */
   activePlanDocument: PlanDocumentV2 | null;
-  toast: string | null;
+  toast: ToastState | null;
   mode: LayerModeV2;
   loadingLayers: Record<string, boolean>;
   layerNotices: Record<string, string>;
@@ -753,6 +765,17 @@ export class MapStore {
     emit("layers-changed");
   }
 
+  /** Releases the preset badge without touching the layers it switched on. Tapping the active
+   *  preset again means "stop calling this a preset", not "undo my map". */
+  clearPreset() {
+    if (this.state.activePresetId === null) return;
+    this.state.activePresetId = null;
+    if (typeof window !== "undefined") window.localStorage.removeItem(LAST_PRESET_KEY);
+    this.persistLayerSession();
+    this.syncToUrl();
+    this.notify();
+  }
+
   setSidebarOpen(open: boolean) {
     this.patch({ sidebarOpen: open });
   }
@@ -1116,12 +1139,13 @@ export class MapStore {
     emit("plan-changed", { planId: document?.id ?? null });
   }
 
-  showToast(message: string, durationMs = TOAST_MS) {
+  showToast(message: string, options: ToastOptions = {}) {
+    const { durationMs = TOAST_MS, action } = options;
     // Each message gets its own countdown. Without dropping the previous timer, a toast that
     // arrives just before an older one expires is swallowed by that older countdown — which is how
     // the greeting from auto-login used to eat whatever the user did next.
     if (this.toastTimer !== null) clearTimeout(this.toastTimer);
-    this.patch({ toast: message });
+    this.patch({ toast: { message, action } });
     this.toastTimer = setTimeout(() => {
       this.toastTimer = null;
       this.patch({ toast: null });

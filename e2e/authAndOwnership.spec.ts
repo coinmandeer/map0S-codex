@@ -181,9 +181,8 @@ test.describe("user-layer CRUD and publishing", () => {
     await expect.poll(() => currentUser(page), { timeout: 20_000 }).not.toBeNull();
 
     await page.getByTestId("mode-personal").click();
-    const layers = page.getByTestId("user-layers-section");
-    await layers.locator("summary").click();
-    await layers.getByTestId("manage-user-layers").click();
+    await page.getByTestId("personal-accordion-layers").click();
+    await page.getByTestId("manage-user-layers").click();
     await expect(page.getByTestId("edit-sheet")).toBeVisible();
 
     const name = `Moje výlety ${Date.now()}`;

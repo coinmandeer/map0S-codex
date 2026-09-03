@@ -110,8 +110,8 @@ test.describe("visual snapshots", () => {
     for (const width of [1440, 768, 390] as const) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.goto("/");
-      await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
-      const mobile = width < 768;
+      await page.getByTestId(width < 900 ? "bottom-nav" : "mode-bar").waitFor({ timeout: 30_000 });
+      const mobile = width < 900;
       if (mobile) {
         await page.getByTestId("bottom-nav").getByTestId("mode-planning").click();
       } else {
@@ -142,7 +142,7 @@ test.describe("visual snapshots", () => {
       await page.getByTestId("discover-guide").waitFor({ timeout: 15_000 });
       await page.screenshot({ path: `${DIR}/${width}-discover.png`, fullPage: true });
       const discoverWeather = page.getByTestId("discover-weather");
-      await discoverWeather.locator(":scope > summary").click();
+      await page.getByTestId("discover-accordion-weather").click();
       await discoverWeather.locator(".discover-weather-days").waitFor({ timeout: 15_000 });
       await discoverWeather.getByTestId("forecast-day").first().locator(":scope > summary").click();
       expect(
@@ -150,7 +150,7 @@ test.describe("visual snapshots", () => {
         "expanded daily weather must not overflow its panel"
       ).toBe(true);
       await page.screenshot({ path: `${DIR}/${width}-discover-weather.png`, fullPage: true });
-      await discoverWeather.locator(":scope > summary").click();
+      await page.getByTestId("discover-accordion-weather").click();
       // Reached by URL rather than by clicking through: the Discover panel's overlay sits over
       // the nav it would have to click, and this screenshot is about the game screen, not about
       // how you get there.
@@ -195,16 +195,18 @@ test.describe("visual snapshots", () => {
       await page.getByTestId("plan-name").fill(`Víkendový plán ${width}`);
       await page.getByTestId("save-plan").click();
       await expect(page.getByTestId("toast")).toContainText("uložený v Moje");
-      const shareManager = page.getByTestId("plan-share-manager");
-      await shareManager.locator("summary").click();
+      await page.getByRole("button", { name: "Sdílet", exact: true }).click();
+      const shareTools = page.getByTestId("plan-share-tools");
+      await expect(shareTools.getByTestId("plan-share-manager")).toBeVisible();
       await expect(page.getByTestId("create-plan-share")).toBeEnabled();
       await page.getByTestId("create-plan-share").click();
       await expect(page.getByTestId("plan-share-url")).toBeVisible();
-      await shareManager.scrollIntoViewIfNeeded();
       await page.screenshot({
         path: `${DIR}/${width}-planning-share.png`,
         fullPage: true
       });
+      await shareTools.getByRole("button", { name: "Zavřít" }).click();
+      await expect(shareTools).toHaveCount(0);
       await page.getByTestId("plan-ai-toggle").click();
       await page
         .getByLabel("Co chceš s plánem probrat?")
@@ -226,7 +228,7 @@ test.describe("visual snapshots", () => {
     for (const width of [1440, 390] as const) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.goto("/");
-      await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
+      await page.getByTestId(width < 900 ? "bottom-nav" : "mode-bar").waitFor({ timeout: 30_000 });
 
       await page.getByTestId("layers-btn").click();
       const layerDrawer = page.getByTestId("right-utility-drawer");
@@ -304,6 +306,7 @@ test.describe("visual snapshots", () => {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
       const panel = page.getByTestId("discover-panel");
+      await page.getByTestId("discover-accordion-boundary").click();
       await expect(page.getByTestId("discover-boundary-ready")).toBeVisible({ timeout: 20_000 });
       await page.getByRole("button", { name: "Ukázat celou" }).click();
       await expect
@@ -320,7 +323,7 @@ test.describe("visual snapshots", () => {
     for (const width of [1440, 390] as const) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.goto("/");
-      await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
+      await page.getByTestId(width < 900 ? "bottom-nav" : "mode-bar").waitFor({ timeout: 30_000 });
       await page.getByTestId("settings-btn").click();
       const drawer = page.getByTestId("right-utility-drawer");
       await expect(drawer).toBeVisible();
@@ -363,7 +366,6 @@ test.describe("visual snapshots", () => {
       await page.screenshot({ path: `${DIR}/${width}-search-grounded.png`, fullPage: true });
 
       await page.getByTestId("search-offer-ai").click();
-      await page.getByTestId("search-run-ai").click();
       await expect(page.getByTestId("search-ai-results")).toContainText("Irish Pub", {
         timeout: 20_000
       });

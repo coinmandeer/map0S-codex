@@ -1,5 +1,42 @@
 import { expect, test } from "./fixtures/offlineTest";
+import type { Page } from "@playwright/test";
 import { planV1ToV2 } from "@mapos/layer-sdk";
+
+/** The options section is an accordion, so every option assertion opens it first. */
+async function openMoreOptions(page: Page) {
+  await page.getByTestId("plan-options-options").click();
+  await expect(page.getByTestId("plan-options-options")).toHaveAttribute("aria-expanded", "true");
+}
+
+async function chooseVehicle(page: Page, value: string) {
+  await page.getByTestId("plan-vehicle").click();
+  await page.getByTestId(`plan-vehicle-${value}`).click();
+}
+
+/** Share, export and hand-off are three icons opening one tabbed dialog (§29.3). */
+async function openShareDialog(page: Page, tab: "share" | "export" | "handoff") {
+  const trigger = {
+    share: "open-plan-share",
+    export: "open-plan-export",
+    handoff: "open-plan-handoff"
+  }[tab];
+  await page.getByTestId(trigger).click();
+  await expect(page.getByTestId("plan-share-dialog")).toBeVisible();
+  await expect(page.getByTestId(`plan-share-tabs-${tab}`)).toHaveAttribute("aria-selected", "true");
+}
+
+/** Escape reaches the panel shell and closes the whole panel, so overlays are dismissed
+ *  through their own close button. */
+async function closeShareDialog(page: Page) {
+  const dialog = page.getByTestId("plan-share-dialog");
+  await dialog.getByRole("button", { name: "Zavřít" }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
+async function openStopMenu(page: Page, stop: number) {
+  await page.getByRole("button", { name: `Další akce zastávky ${stop}` }).click();
+  await expect(page.getByTestId(`stop-menu-${stop}`)).toBeVisible();
+}
 
 test.describe("PlanDocument v2 propojený s Moje", () => {
   test("ručně vytvoří, upraví, uloží, serverově obnoví a exportuje plán bez AI", async ({
@@ -16,19 +53,18 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await page.getByTestId("plan-name").fill("Ručně po Španělsku");
     await page.getByLabel("Název zastávky 1").fill("Barcelona");
 
-    const moreOptions = page.getByTestId("plan-more-options");
-    await moreOptions.getByText("Více možností", { exact: true }).click();
+    await openMoreOptions(page);
     await page.getByLabel("Datum odjezdu").fill("2026-09-18T09:30");
     const expectedDeparture = await page.evaluate(() => new Date("2026-09-18T09:30").toISOString());
-    await page.getByLabel("Typ vozidla").selectOption("camper");
+    await chooseVehicle(page, "camper");
     await page.getByLabel("Výška m").fill("3.2");
     await page.getByRole("button", { name: /Bez dálnic/ }).click();
-    await expect(page.getByTestId("plan-route-mapping")).toContainText(
-      "Provider použije označený fallback"
-    );
-    await expect(page.getByTestId("plan-route-mapping")).toContainText(
-      "profile=car · preference=fast"
-    );
+    // §29.3: the fallback is an InfoTip, and it never names a provider or a request parameter.
+    await page.getByRole("button", { name: "Podpora profilu trasy" }).click();
+    const profileSupport = page.getByTestId("plan-profile-support");
+    await expect(profileSupport).toContainText("neumí přímo");
+    await expect(profileSupport).not.toContainText("profile=");
+    await profileSupport.getByRole("button", { name: "Zavřít" }).click();
 
     const routeRequest = page.waitForRequest(
       (request) =>
@@ -54,15 +90,27 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(result).toBeVisible({ timeout: 20_000 });
     await expect(result).toContainText("1/1");
     await expect(result).toContainText("hotových úseků");
-    await expect(result.getByText("Barcelona → Cíl")).toBeVisible();
-    await expect(page.getByRole("button", { name: "GPX", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "GeoJSON", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "KML", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "MapOS JSON", exact: true })).toBeVisible();
+    await expect(page.getByTestId("plan-segment-1")).toHaveAttribute(
+      "aria-label",
+      "Úsek 1: Barcelona → Cíl"
+    );
 
-    await page.getByRole("button", { name: "Posunout zastávku 2 nahoru" }).click();
+    await openShareDialog(page, "export");
+    for (const [format, label] of [
+      ["gpx", "GPX"],
+      ["geojson", "GeoJSON"],
+      ["kml", "KML"],
+      ["mapos", "MapOS JSON"]
+    ]) {
+      await expect(page.getByTestId(`plan-export-${format}`)).toContainText(label!);
+    }
+    await closeShareDialog(page);
+
+    await openStopMenu(page, 2);
+    await page.getByTestId("stop-menu-2-up").click();
     await expect(page.getByLabel("Název zastávky 1")).toHaveValue("Cíl");
-    await page.getByRole("button", { name: "Vrátit" }).click();
+    await page.getByRole("button", { name: "Akce plánu" }).click();
+    await page.getByTestId("plan-menu-undo").click();
     await expect(page.getByLabel("Název zastávky 1")).toHaveValue("Barcelona");
 
     const saveRequest = page.waitForRequest(
@@ -92,9 +140,9 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(page.getByTestId("plan-name")).toHaveValue("Ručně po Španělsku");
     await expect(page.getByLabel("Název zastávky 1")).toHaveValue("Barcelona");
     await expect(page.getByLabel("Datum odjezdu")).toBeHidden();
-    await page.getByText("Více možností", { exact: true }).click();
+    await openMoreOptions(page);
     await expect(page.getByLabel("Datum odjezdu")).toHaveValue("2026-09-18T09:30");
-    await expect(page.getByLabel("Typ vozidla")).toHaveValue("camper");
+    await expect(page.getByTestId("plan-vehicle")).toContainText("Obytné auto");
     await expect(page.getByLabel("Výška m")).toHaveValue("3.2");
     await expect(page.getByRole("button", { name: /Bez dálnic/ })).toHaveAttribute(
       "aria-pressed",
@@ -107,7 +155,8 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
         request.method() === "POST" &&
         new URL(request.url()).pathname === "/api/v2/plans/export/gpx"
     );
-    await page.getByRole("button", { name: "GPX", exact: true }).click();
+    await openShareDialog(page, "export");
+    await page.getByTestId("plan-export-gpx").click();
     const [download] = await Promise.all([downloadEvent, exportRequest]);
     const stream = await download.createReadStream();
     let exported = "";
@@ -127,14 +176,14 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
 
     const options = page.getByTestId("plan-more-options");
-    const summary = options.locator("summary");
+    const trigger = page.getByTestId("plan-options-options");
     await expect(page.getByLabel("Datum odjezdu")).toBeHidden();
-    await summary.focus();
-    await expect(summary).toBeFocused();
+    await trigger.focus();
+    await expect(trigger).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(options).toHaveAttribute("open", "");
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByLabel("Datum odjezdu")).toBeVisible();
-    await expect(page.getByLabel("Typ vozidla")).toBeVisible();
+    await expect(page.getByTestId("plan-vehicle")).toBeVisible();
 
     await page.keyboard.press("Tab");
     await expect(page.getByLabel("Datum odjezdu")).toBeFocused();
@@ -146,17 +195,22 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await adventure.focus();
     await page.keyboard.press("Enter");
     await expect(adventure).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("plan-route-mapping")).toContainText("Request: osm");
+    // The request the provider gets is diagnostics behind `?debug=1`, never panel text (§29.3).
+    await expect(options).not.toContainText("Request:");
 
     await page.evaluate(() => {
       document.documentElement.style.fontSize = "200%";
     });
     const overflowers = await options.locator("*").evaluateAll((elements) =>
       elements
-        .filter(
-          (element) =>
-            element instanceof HTMLElement && element.scrollWidth > element.clientWidth + 1
-        )
+        .filter((element) => {
+          if (!(element instanceof HTMLElement)) return false;
+          if (element.scrollWidth <= element.clientWidth + 1) return false;
+          // Visually hidden inputs behind switches, and text that declares its own
+          // truncation, are not layout breakage.
+          if (element.clientWidth <= 2) return false;
+          return getComputedStyle(element).textOverflow !== "ellipsis";
+        })
         .map((element) => ({
           tag: element.tagName.toLowerCase(),
           className: element.className,
@@ -229,21 +283,28 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
 
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
-    await page.getByText("Více možností", { exact: true }).click();
+    await openMoreOptions(page);
     await page.getByRole("button", { name: /^Dobrodružná/ }).click();
+
+    // §29.3: the detour limit is a popover on the profile, and the suggestions arrive with the
+    // calculated route instead of behind their own section and button.
     const adventure = page.getByTestId("adventure-planner");
-    await expect(adventure).toContainText("Deterministický výběr · bez AI");
-    await expect(adventure).toContainText("stejným routovacím providerem");
-    await adventure.getByRole("button", { name: "15 %" }).click();
-    await page.getByTestId("find-adventure-route").click();
+    await expect(adventure).toContainText("Místa se nabídnou po výpočtu trasy");
+    await page.getByRole("button", { name: "Povolená zajížďka" }).click();
+    const detour = page.getByTestId("plan-detour-limit");
+    await detour.getByRole("button", { name: "15 %" }).click();
+    await detour.getByRole("button", { name: "Zavřít" }).click();
+    await page.getByTestId("calculate-plan").click();
 
     const candidate = page.getByTestId("adventure-candidate-1");
-    await expect(candidate).toContainText("Vyhlídka nad údolím");
-    await expect(candidate).toContainText("91");
-    await expect(candidate).toContainText("+9.2 %");
-    await expect(candidate).toContainText("Zajímavost 100");
-    await adventure.getByText("Jak vzniklo skóre").click();
-    await expect(adventure).toContainText("žádný náhodný waypoint");
+    await expect(candidate).toContainText("Vyhlídka nad údolím", { timeout: 20_000 });
+    await expect(candidate).toContainText("+460 m");
+    await expect(adventure).toContainText("Zajímavá místa po cestě (1)");
+    await page.getByRole("button", { name: "Jak vzniká výběr míst" }).click();
+    const method = page.getByTestId("adventure-method");
+    await expect(method).toContainText("0.55 × zajímavost");
+    await expect(method).not.toContainText("mapos-adventure-v1");
+    await method.getByRole("button", { name: "Zavřít" }).click();
     await adventure.screenshot({ path: "e2e/screenshots/1440-planning-adventure.png" });
 
     await page.getByTestId("apply-adventure-route").click();
@@ -263,22 +324,30 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await page.getByTestId("mode-planning").click();
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
-    await page.getByText("Více možností", { exact: true }).click();
-    await page.getByLabel("Typ vozidla").selectOption("bike");
+    await openMoreOptions(page);
+    await chooseVehicle(page, "bike");
 
-    const recommendation = page.getByTestId("bike-basemap-recommendation");
-    await expect(recommendation).toContainText("Doporučená cyklistická mapa");
-    await expect(recommendation).toContainText("CARTO Voyager");
+    // §4.5: the cycling map is offered by a toast with an undo after the calculation, not by a
+    // recommendation card — and it never replaces the basemap the user picked.
+    await page.getByTestId("calculate-plan").click();
+    const toast = page.getByTestId("toast");
+    await expect(toast).toContainText("původní podklad zůstal zachovaný", { timeout: 20_000 });
     expect(await page.evaluate(() => localStorage.getItem("mapos:basemap"))).toBe("carto-voyager");
-
-    await page.getByTestId("activate-bike-map").click();
-    await expect(recommendation).toContainText("CyclOSM je na mapě aktivní");
-    expect(await page.evaluate(() => localStorage.getItem("mapos:basemap"))).toBe("carto-voyager");
-    await expect(page.getByTestId("toast")).toContainText("původní podklad zůstal zachovaný");
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("layers") ?? "")
+      .toContain("cyclosm");
     await page.screenshot({
       path: "e2e/screenshots/390-planning-bike-map.png",
       fullPage: false
     });
+
+    await toast.getByRole("button", { name: "Vrátit" }).click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("layers") ?? "")
+      .not.toContain("cyclosm");
+    expect(
+      await page.evaluate(() => localStorage.getItem("mapos:bike-basemap-recommendation"))
+    ).toBe("dismissed");
   });
 
   test("porovná a zvolí variantu jednoho segmentu a hned překreslí trasu", async ({ page }) => {
@@ -386,7 +455,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
 
-    await expect(page.getByLabel("Délka 1")).toBeHidden();
+    await expect(page.getByLabel("Ruční délka 1")).toBeHidden();
     await page.getByTestId("pick-stop-1").click();
     await expect(page.getByTestId("map-picker-host")).toBeVisible();
     await expect(page.getByTestId("map-picker-host")).toContainText("Vyber polohu zastávky 1");
@@ -428,12 +497,13 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(page.getByTestId("map-picker-host")).toHaveCount(0);
     await expect(page.getByLabel("Souřadnice zastávky 1")).not.toContainText("49.74750, 13.37750");
 
-    await page.getByText("Čas a přesné GPS", { exact: true }).first().click();
-    expect(Number(await page.getByLabel("Délka 1").inputValue())).toBeCloseTo(
+    await openStopMenu(page, 1);
+    await page.getByTestId("stop-menu-1-manual").click();
+    expect(Number(await page.getByLabel("Ruční délka 1").inputValue())).toBeCloseTo(
       chosenCoordinates[1]!,
       4
     );
-    expect(Number(await page.getByLabel("Šířka 1").inputValue())).toBeCloseTo(
+    expect(Number(await page.getByLabel("Ruční šířka 1").inputValue())).toBeCloseTo(
       chosenCoordinates[0]!,
       4
     );
@@ -576,14 +646,23 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
       timeout: 20_000
     });
     await expect(page.getByText(/vyberte úsek tady nebo přímo v mapě/i)).toBeVisible();
-    const datedContext = page.getByTestId("plan-temporal-context");
-    await expect(datedContext).toContainText("4/4 zastávek");
-    await expect(datedContext).toContainText("Open-Meteo Forecast API");
-    await expect(datedContext).toContainText("nic se nesimuluje");
-    await expect(page.getByTestId("segment-2-temporal")).toContainText("33.4 °C");
-    await expect(page.getByTestId("segment-2-temporal")).toContainText("Déšť u C");
+    // §29.3: no context card any more — the numbers live at the segments, the timeline and the
+    // attribution behind the switch's InfoTip.
+    await expect(page.getByTestId("plan-temporal-context")).toHaveCount(0);
+    const segmentTemporal = page.getByTestId("segment-2-temporal");
+    await expect(segmentTemporal).toContainText("33.4 °C");
+    await expect(segmentTemporal).toContainText("Déšť u C");
     await expect(page.getByTestId("global-timeline")).toContainText("Plán");
-    await datedContext.screenshot({ path: "e2e/screenshots/1440-planning-temporal-context.png" });
+    await openMoreOptions(page);
+    await page.getByRole("button", { name: "Co ukáže kontext odjezdu" }).click();
+    const contextInfo = page.getByTestId("plan-context-info");
+    await expect(contextInfo).toContainText("4/4 zastávek");
+    await expect(contextInfo).toContainText("Open-Meteo Forecast API");
+    await expect(contextInfo).toContainText("nic se nesimuluje");
+    await contextInfo.getByRole("button", { name: "Zavřít" }).click();
+    await page.getByTestId("segment-2-temporal").screenshot({
+      path: "e2e/screenshots/1440-planning-temporal-context.png"
+    });
     await expect.poll(() => page.evaluate(() => window.__maposMap?.isMoving())).toBe(false);
 
     const routeFeatures = await page.evaluate(() => {
@@ -666,7 +745,8 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
       };
     });
 
-    await page.getByTestId("locate-stop-1").click();
+    await openStopMenu(page, 1);
+    await page.getByTestId("stop-menu-1-locate").click();
     const fallback = page.getByTestId("location-fallback-1");
     await expect(fallback).toContainText("Poloha není povolená");
     await expect(fallback.getByRole("button", { name: "Vybrat bod na mapě" })).toBeVisible();
@@ -683,7 +763,8 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await context.setGeolocation({ longitude: 14.4213, latitude: 50.0874 });
     await page.reload();
     await page.getByTestId("mode-planning").click();
-    await page.getByTestId("locate-stop-1").click();
+    await openStopMenu(page, 1);
+    await page.getByTestId("stop-menu-1-locate").click();
     await expect(page.getByLabel("Souřadnice zastávky 1")).toContainText("50.08740, 14.42130", {
       timeout: 20_000
     });
@@ -759,7 +840,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
 
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=12");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("105 celkem · bez limitu provideru")).toBeVisible();
+    await expect(page.getByTestId("plan-stop-count")).toHaveText("105 / ∞");
     await expect(page.getByRole("combobox", { name: "Název zastávky 1", exact: true })).toHaveValue(
       "Místo 1"
     );
@@ -772,7 +853,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(page.getByRole("navigation", { name: "Stránkování zastávek" })).toContainText(
       "1–25 z 105"
     );
-    await page.getByRole("button", { name: "Další" }).click();
+    await page.getByRole("button", { name: "Další zastávky" }).click();
     await expect(
       page.getByRole("combobox", { name: "Název zastávky 26", exact: true })
     ).toHaveValue("Místo 26");
@@ -797,9 +878,11 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await page.goto("/?mode=planning&lng=14&lat=50&z=14");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
 
-    const google = page.getByTestId("handoff-google");
-    const mapy = page.getByTestId("handoff-mapy");
-    const osm = page.getByTestId("handoff-osm");
+    await openShareDialog(page, "handoff");
+    const handoff = page.getByTestId("plan-share-dialog");
+    const google = handoff.getByTestId("handoff-google");
+    const mapy = handoff.getByTestId("handoff-mapy");
+    const osm = handoff.getByTestId("handoff-osm");
     await expect(google).toHaveAttribute("href", /^https:\/\/www\.google\.com\/maps\/dir\//);
     await expect(mapy).toHaveAttribute("href", /^https:\/\/mapy\.com\/fnc\/v1\/route/);
     await expect(osm).toHaveAttribute("href", /^https:\/\/www\.openstreetmap\.org\/directions/);
@@ -868,6 +951,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "Přidat z mapy" })).toHaveCount(0);
 
+    await openShareDialog(page, "share");
     await page.getByTestId("copy-plan-itinerary").click();
     await expect(page.getByTestId("toast")).toContainText("Itinerář je zkopírovaný");
     const copied = await page.evaluate(
@@ -875,6 +959,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     );
     expect(copied).toContain("1. Start");
     expect(copied).toContain("GPS:");
+    await closeShareDialog(page);
 
     await page.getByTestId("plan-ai-toggle").click();
     await expect(page.getByTestId("plan-ai-discussion")).toBeVisible();
@@ -894,10 +979,16 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     expect(payload.externalModelConsent).toBe(true);
     const revision = payload.plan.revision;
     await expect(page.getByText("AI doporučení")).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId("plan-ai-discussion")).toContainText(
-      "žádná změna nebyla provedena"
+    // §29.3: what the model saw is one popover, not a disclaimer under every message.
+    await page
+      .getByTestId("plan-ai-discussion")
+      .getByRole("button", { name: "Co AI vidělo" })
+      .click();
+    await expect(page.getByTestId("plan-ai-disclosure")).toContainText(
+      "žádná externí služba nebyla volána"
     );
-    await expect(page.getByText(`Revize ${revision}`, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Akce plánu" }).click();
+    await expect(page.getByTestId("plan-menu-revision")).toContainText(`Revize ${revision}`);
   });
 
   test("uložený plán má odvolatelný read-only odkaz a trvalou vícekolovou AI konverzaci", async ({
@@ -920,8 +1011,8 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await page.getByTestId("save-plan").click();
     await expect(page.getByTestId("toast")).toContainText("uložený v Moje");
 
-    const manager = page.getByTestId("plan-share-manager");
-    await manager.locator("summary").click();
+    await openShareDialog(page, "share");
+    await expect(page.getByTestId("plan-share-manager")).toBeVisible();
     const createLink = page.getByTestId("create-plan-share");
     await expect(createLink).toBeEnabled();
     const createRequest = page.waitForRequest(
@@ -931,7 +1022,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     );
     await createLink.click();
     await createRequest;
-    const shareUrl = await page.getByTestId("plan-share-url").locator("input").inputValue();
+    const shareUrl = await page.getByTestId("plan-share-url").getByLabel("Nový odkaz").inputValue();
     const parsedShareUrl = new URL(shareUrl);
     expect(parsedShareUrl.pathname).toBe("/s");
     expect(parsedShareUrl.hash).toMatch(/^#plan=[A-Za-z0-9_-]{43}$/);
@@ -948,17 +1039,23 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(viewer.getByTestId("plan-name")).toHaveValue("Sdílený plán na víkend");
     await expect(viewer.getByTestId("plan-name")).toBeDisabled();
     await expect(viewer.getByTestId("plan-ai-toggle")).toBeDisabled();
+    await expect(viewer.getByTestId("save-plan")).toHaveAttribute(
+      "aria-label",
+      "Uložit vlastní kopii"
+    );
+    await viewer.getByTestId("open-plan-share").click();
+    await expect(viewer.getByTestId("plan-share-dialog")).toBeVisible();
     await expect(viewer.getByTestId("plan-share-manager")).toHaveCount(0);
-    await expect(viewer.getByTestId("save-plan")).toContainText("Uložit vlastní kopii");
 
     await page.getByRole("button", { name: "Odvolat" }).click();
     await expect(page.getByText("Odvolaný odkaz")).toBeVisible();
     await viewer.reload();
-    await expect(viewer.getByRole("alert")).toContainText("nebyl nalezen nebo byl odvolán", {
+    await expect(viewer.getByTestId("plan-error")).toContainText("nebyl nalezen nebo byl odvolán", {
       timeout: 20_000
     });
     await viewer.close();
 
+    await closeShareDialog(page);
     await page.getByTestId("plan-ai-toggle").click();
     await expect(page.getByTestId("plan-ai-discussion")).toBeVisible();
     const question = page.getByLabel("Co chceš s plánem probrat?");

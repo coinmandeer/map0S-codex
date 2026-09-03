@@ -31,6 +31,18 @@
     bottom: calc(var(--space-6) + var(--safe-bottom) + 184px);
   }
 
+  /* The whole stack is the popover trigger, so the rows themselves are plain spans. */
+  .activity-rows {
+    display: grid;
+    justify-items: end;
+    gap: var(--space-2);
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+
   .activity-row {
     display: flex;
     align-items: center;
@@ -96,6 +108,38 @@
     border-radius: inherit;
     background: var(--accent);
     transition: width var(--dur) var(--ease-standard);
+  }
+
+  .activity-tasks {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .activity-tasks-empty {
+    margin: 0;
+    color: var(--text-muted);
+    font: var(--type-body-sm);
+  }
+
+  .activity-task {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .activity-task-label {
+    font: var(--type-title-sm);
+  }
+
+  .activity-task-detail {
+    color: var(--text-muted);
+    font: var(--type-label-sm);
+  }
+
+  .activity-task-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
   }
 
   @media (max-width: 899px) {
@@ -591,21 +635,12 @@
     color: var(--text);
   }
 
-  .command-search-choice {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-4);
-    margin: var(--space-3);
-    padding: var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface-elevated);
+  /* The AI offer is one row in the same list as the geocoder hits (§29.3), only accented so it
+     reads as the alternative to them rather than as a result. */
+  .command-search-ai-offer strong {
+    color: var(--accent);
   }
 
-  .command-search-choice > div,
-  .command-search-ai-head,
-  .command-search-ai-command > div,
   .command-search-ai-answer {
     display: flex;
     flex-direction: column;
@@ -617,7 +652,6 @@
     gap: var(--space-2);
   }
 
-  .command-search-choice span,
   .command-search-ai-command span {
     color: var(--text-muted);
     font-size: var(--text-xs);
@@ -629,7 +663,8 @@
 
   .command-search-ai-command {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
     gap: var(--space-4);
     padding: var(--space-4);
     border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
@@ -1226,6 +1261,9 @@
     top: calc(var(--modebar-h) + var(--space-6));
     left: 50%;
     transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
     background: var(--text);
     color: var(--bg);
     padding: var(--space-5) var(--space-7);
@@ -1237,6 +1275,14 @@
     animation: fadeIn var(--dur) var(--ease-out);
     max-width: min(420px, calc(100vw - 32px));
     text-align: center;
+  }
+
+  /* The action inherits the inverted surface, so it cannot use the kit's accent colour. */
+  .toast .kit-button {
+    flex-shrink: 0;
+    color: var(--bg);
+    font-weight: var(--weight-strong);
+    text-decoration: underline;
   }
 
   /* ---- Bottom nav (M3 navigation bar, §3.2) --------------------------- */

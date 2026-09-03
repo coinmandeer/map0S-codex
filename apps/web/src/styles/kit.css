@@ -1127,6 +1127,15 @@
   /* =====================================================================
      Popover, tooltip, menu, listbox
      ===================================================================== */
+
+  /* The positioner is what the portal actually places in the document, and Base UI positions it
+     with a transform — which makes it a stacking context, so a z-index on the popup inside it
+     is local and the panel (--z-panel) would paint over the popup. The layer has to be declared
+     here, on the outer element. */
+  .kit-positioner {
+    z-index: var(--z-popover);
+  }
+
   .kit-popover,
   .kit-menu,
   .kit-listbox {

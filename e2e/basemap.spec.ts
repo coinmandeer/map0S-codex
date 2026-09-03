@@ -24,7 +24,7 @@ async function selectBasemap(
   group: "street" | "outdoor" | "satellite" | "terrain"
 ) {
   const accordion = page.locator(`[data-basemap-group="${group}"]`);
-  if ((await accordion.getAttribute("open")) === null) {
+  if ((await accordion.getAttribute("data-open")) === null) {
     await page.getByTestId(`basemap-group-${group}`).click();
   }
   await page.getByTestId(`basemap-${id}`).click();
@@ -49,7 +49,7 @@ test.describe("basemap picker", () => {
     await page.reload();
     await page.getByTestId("basemap-btn").click();
     await expect(page.getByTestId("basemap-eox-s2cloudless")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "true"
     );
   });
@@ -109,24 +109,24 @@ test.describe("basemap picker", () => {
 
     // Backgrounds in Tiles deselect each other.
     await selectBasemap(page, "osm-carto", "street");
-    await expect(page.getByTestId("basemap-osm-carto")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("basemap-osm-carto")).toHaveAttribute("aria-checked", "true");
     await expect(page.getByTestId("basemap-carto-voyager")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "false"
     );
 
     await page.keyboard.press("Escape");
     await page.getByTestId("layers-btn").click();
-    await page.getByTestId("experience-selector").locator("summary").click();
+    await page.getByTestId("layers-accordion-world").click();
     const osm = page.getByTestId("layer-source-osm");
     const wikipedia = page.getByTestId("layer-source-wikipedia");
-    await expect(osm).toHaveAttribute("aria-pressed", "true");
-    await expect(wikipedia).toHaveAttribute("aria-pressed", "true");
+    await expect(osm).toHaveAttribute("aria-checked", "true");
+    await expect(wikipedia).toHaveAttribute("aria-checked", "true");
     await wikipedia.click();
-    await expect(wikipedia).toHaveAttribute("aria-pressed", "false");
+    await expect(wikipedia).toHaveAttribute("aria-checked", "false");
     await wikipedia.click();
-    await expect(wikipedia).toHaveAttribute("aria-pressed", "true");
-    await expect(osm).toHaveAttribute("aria-pressed", "true");
+    await expect(wikipedia).toHaveAttribute("aria-checked", "true");
+    await expect(osm).toHaveAttribute("aria-checked", "true");
     await expect(page.getByTestId("basemap-osm-carto")).toHaveCount(0);
   });
 

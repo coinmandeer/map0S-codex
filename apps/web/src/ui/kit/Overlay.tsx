@@ -29,7 +29,7 @@ export function Tooltip({
     <BaseTooltip.Root>
       <BaseTooltip.Trigger render={children} />
       <BaseTooltip.Portal>
-        <BaseTooltip.Positioner side={side} sideOffset={8}>
+        <BaseTooltip.Positioner className="kit-positioner" side={side} sideOffset={8}>
           <BaseTooltip.Popup className="kit-tooltip">{content}</BaseTooltip.Popup>
         </BaseTooltip.Positioner>
       </BaseTooltip.Portal>
@@ -62,7 +62,7 @@ export function Popover({
     <BasePopover.Root open={open} onOpenChange={onOpenChange}>
       <BasePopover.Trigger render={trigger} />
       <BasePopover.Portal>
-        <BasePopover.Positioner side={side} align={align} sideOffset={8}>
+        <BasePopover.Positioner className="kit-positioner" side={side} align={align} sideOffset={8}>
           <BasePopover.Popup
             className="kit-popover"
             style={width ? { width } : undefined}
@@ -140,7 +140,7 @@ export function Menu({
     <BaseMenu.Root>
       <BaseMenu.Trigger render={trigger} />
       <BaseMenu.Portal>
-        <BaseMenu.Positioner side="bottom" align={align} sideOffset={6}>
+        <BaseMenu.Positioner className="kit-positioner" side="bottom" align={align} sideOffset={6}>
           <BaseMenu.Popup className="kit-menu" data-testid={testId}>
             {actions.map((action) => (
               <BaseMenu.Item

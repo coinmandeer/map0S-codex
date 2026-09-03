@@ -59,6 +59,7 @@ test.describe("MapOS V3 smoke", () => {
     );
     expect(layers).toContain("waymarked-trails");
 
+    await page.getByTestId("layers-accordion-categories").click();
     await expect(page.getByTestId("filter-via_ferrata")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("filter-skatepark")).toHaveAttribute("aria-pressed", "true");
   });
@@ -66,7 +67,7 @@ test.describe("MapOS V3 smoke", () => {
   test("filter categories toggle in layers megamenu", async ({ page }) => {
     await page.goto("/?layers=osm-poi&mode=poi");
     await page.getByTestId("layers-btn").click();
-    await page.getByTestId("category-accordion").locator("summary").click();
+    await page.getByTestId("layers-accordion-categories").click();
     await expect(page.getByTestId("filter-castle")).toBeVisible();
     await page.getByTestId("filter-castle").click();
   });
@@ -85,7 +86,7 @@ test.describe("MapOS V3 smoke", () => {
     await expect(page.getByText("Pohyb", { exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.getByTestId("layers-btn").click();
-    await page.getByTestId("experience-selector").locator("summary").click();
+    await page.getByTestId("layers-accordion-world").click();
     for (const source of [
       "osm",
       "mapy",
@@ -99,15 +100,15 @@ test.describe("MapOS V3 smoke", () => {
       await expect(page.getByTestId(`layer-source-${source}`)).toBeVisible();
     }
     await expect(page.getByTestId("layer-source-wikipedia")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "true"
     );
     await expect(page.getByTestId("layer-source-park4night")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "true"
     );
     await expect(page.getByTestId("layer-source-overture")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "false"
     );
   });
@@ -227,8 +228,9 @@ test.describe("MapOS V3 smoke", () => {
     await page.goto("/?mode=discover");
     await expect(page.getByTestId("discover-panel")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("discover-context-pin")).toBeVisible();
+    // The hierarchy is a chip row now: each level is its own tappable target (§4.4).
     await expect(page.getByRole("navigation", { name: "Hierarchie oblasti" })).toContainText(
-      "Česko / Plzeňský kraj / Plzeň"
+      "ČeskoPlzeňský krajPlzeň"
     );
     await expect(page.getByRole("button", { name: "Zjistit co je tady" })).toBeVisible();
     await expect(page.getByTestId("discover-panel").getByTestId("country-picker")).toHaveCount(0);
@@ -262,9 +264,10 @@ test.describe("MapOS V3 smoke", () => {
 
     await page.goto("/?mode=discover");
     const weather = page.getByTestId("discover-weather");
+    const trigger = page.getByTestId("discover-accordion-weather");
     await expect(weather).toBeVisible({ timeout: 30_000 });
     expect(weatherRequests).toBe(0);
-    await weather.locator(":scope > summary").click();
+    await trigger.click();
     await expect(weather).toContainText("18°");
     expect(weatherRequests).toBe(1);
     const firstDay = weather.getByTestId("forecast-day").first();
@@ -275,8 +278,9 @@ test.describe("MapOS V3 smoke", () => {
     expect(await weather.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true
     );
-    await weather.locator(":scope > summary").click();
-    await weather.locator(":scope > summary").click();
+    // Closing and reopening keeps the loaded forecast instead of paying for it twice.
+    await trigger.click();
+    await trigger.click();
     await expect(weather).toContainText("18°");
     expect(weatherRequests).toBe(1);
   });

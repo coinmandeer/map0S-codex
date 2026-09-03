@@ -16,13 +16,24 @@ import type { LayerAttribution } from "./types.js";
  *   `GET /basemap/:provider/:mapset/:z/:x/:y` and the key stays on the server.
  */
 
-export type BasemapGroup = "street" | "outdoor" | "satellite" | "terrain";
+/** `historic` and `national` have no keyless members yet; they exist so the historical imagery
+ *  and the national geoportals land in a named category instead of being appended to
+ *  "Základní". The picker skips a group with nothing in it. */
+export type BasemapGroup =
+  | "street"
+  | "outdoor"
+  | "satellite"
+  | "terrain"
+  | "historic"
+  | "national";
 
 export const BASEMAP_GROUP_LABELS: Record<BasemapGroup, string> = {
   street: "Základní",
-  outdoor: "Turistické",
+  outdoor: "Turistické a outdoor",
   satellite: "Letecké a satelitní",
-  terrain: "Terén a reliéf"
+  terrain: "Terén a reliéf",
+  historic: "Historické",
+  national: "Národní geoportály"
 };
 
 export interface BasemapDefinition {
@@ -50,6 +61,10 @@ export interface BasemapDefinition {
   darkVariantId?: string;
   /** Something the user should know before switching, e.g. patchy zoom coverage. */
   note?: string;
+  /** Illustration for the picker card. Defaults by convention to `/basemaps/<id>.webp`, which
+   *  `scripts/render-basemap-thumbs.mjs` writes; set it to override, e.g. where an upstream's
+   *  terms do not allow republishing a rendered sample. */
+  thumbnail?: string;
   /** Vector schema whose building polygons can be extruded. Absent means no 3D. */
   buildingSourceLayer?: string;
 }

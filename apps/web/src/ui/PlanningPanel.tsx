@@ -1,31 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   applyPlanCommand,
-  basemapById,
   planV1ToV2,
-  resolvePlanRoutingRequestV2,
   restorePlanSnapshot,
   type GeoFeature,
   type PlanCommandV2,
   type PlanDocumentV2,
-  type PlanRoutePreferenceV2,
   type PlanTemporalContextV2,
-  type PlanTravelProfileV2,
   type Position,
   type TripPlan
 } from "@mapos/layer-sdk";
 import { apiGet, apiPost, apiSend } from "../lib/api";
 import { t } from "../i18n/cs";
-import { formatDistance as formatDistanceValue } from "../lib/units";
-import type { DistanceUnits } from "../settings/preferences";
 import { buildExternalPlanHandoffs } from "../planning/externalHandoff";
 import { buildPlanItinerary } from "../planning/planItinerary";
 import { createBlankPlanDocument } from "../planning/planDraft";
+import {
+  exportPlanDocument,
+  PLAN_EXPORT_LABELS,
+  type PlanExportFormat
+} from "../planning/planExport";
 import { buildPlanShareUrl, planShareTokenFromLocation } from "../planning/planSharing";
 import {
   longestRoutablePreview,
   routableSegmentPreviews,
-  selectedPlanAlternative,
   summarizePlanSegments
 } from "../planning/planPresentation";
 import { geolocation, GeolocationError, messageFor } from "../lib/geolocation";
@@ -35,131 +33,27 @@ import { getMapStore } from "../store/mapStore";
 import { getShellStore } from "../store/shellStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { PanelShell } from "./PanelShell";
-import { StopLocationInput, type StopLocationSelection } from "./planning/StopLocationInput";
+import { InlineNotice, TextField } from "./kit";
+import { PlanAdventure } from "./planning/PlanAdventure";
+import { PlanAssistant } from "./planning/PlanAssistant";
+import { PlanFooter } from "./planning/PlanFooter";
+import { PlanHeader } from "./planning/PlanHeader";
+import { PlanOptions } from "./planning/PlanOptions";
+import { PlanShareDialog, type PlanShareTab } from "./planning/PlanShareDialog";
+import { PlanShareTools } from "./planning/PlanShareTools";
+import { STOP_WINDOW_SIZE, StopList, type StopListHandlers } from "./planning/StopList";
+import type { StopLocationSelection } from "./planning/StopLocationInput";
+import type {
+  AdventureCandidate,
+  AdventureRecommendation,
+  AiStopAnswer,
+  AiStopResult,
+  PlanDiscussionThread,
+  PlanShareLink,
+  StopManualState
+} from "./planning/types";
 
-const STOP_WINDOW_SIZE = 25;
 const MAX_UNDO_SNAPSHOTS = 50;
-
-const PROFILE_LABELS: Record<PlanTravelProfileV2, string> = {
-  foot: "Pěšky",
-  bike: "Kolo",
-  car: "Osobní auto",
-  moto: "Motorka",
-  camper: "Karavan",
-  truck: "Nákladní"
-};
-
-const PREFERENCE_LABELS: Record<PlanRoutePreferenceV2, string> = {
-  fast: "Rychlá",
-  short: "Krátká",
-  nohwy: "Bez dálnic",
-  adventure: "Dobrodružná"
-};
-
-const EXPORT_LABELS = {
-  gpx: "GPX",
-  geojson: "GeoJSON",
-  kml: "KML",
-  mapos: "MapOS JSON"
-} as const;
-
-interface ExportResponse {
-  filename: string;
-  mimeType: string;
-  content: string;
-}
-
-interface AiStopResult {
-  id: string;
-  layerId: string;
-  title: string;
-  longitude: number;
-  latitude: number;
-  distanceMeters: number;
-  source: { sourceId: string; label: string; url?: string };
-}
-
-interface AiStopAnswer {
-  status: "succeeded";
-  answer: { text: string; results: AiStopResult[] };
-}
-
-interface PlanShareLink {
-  id: string;
-  planId: string;
-  permission: "view";
-  createdAt: string;
-  revokedAt: string | null;
-}
-
-interface PlanDiscussionMessage {
-  id: string;
-  revision: number;
-  role: "user" | "assistant";
-  content: string;
-  model: string | null;
-  disclosure: string | null;
-  createdAt: string;
-}
-
-interface PlanDiscussionThread {
-  id: string;
-  planId: string;
-  revision: number;
-  messageCount: number;
-  createdAt: string;
-  updatedAt: string;
-  messages: PlanDiscussionMessage[];
-}
-
-interface AdventureCandidate {
-  id: string;
-  placeId: string;
-  name: string;
-  category: string;
-  location: Position;
-  segmentIndex: number;
-  insertIndex: number;
-  score: number;
-  scoreBreakdown: {
-    interest: number;
-    detourEfficiency: number;
-    sourceConfidence: number;
-  };
-  baselineDistanceM: number;
-  viaDistanceM: number;
-  detourM: number;
-  detourPercent: number;
-  source: { id: string; reference: string | null };
-  explanation: string;
-}
-
-interface AdventureRecommendation {
-  algorithm: {
-    version: string;
-    deterministic: true;
-    formula: string;
-    detourLimitPercent: number;
-    minimumEndpointDistanceM: number;
-  };
-  suggestions: AdventureCandidate[];
-  coverage: {
-    totalSegments: number;
-    scannedSegments: number;
-    placesEvaluated: number;
-    eligiblePlaces: number;
-  };
-  dataBudget: {
-    sources: ["osm"];
-    categories: string[];
-    maxScannedSegments: number;
-    maxRoutedCandidates: number;
-    maxReturnedSuggestions: number;
-    providerCalls: number;
-  };
-  sourceStates: Array<{ source: string; state: string; count: number }>;
-  warnings: string[];
-}
 
 function localId(prefix: string): string {
   const suffix =
@@ -167,13 +61,6 @@ function localId(prefix: string): string {
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${prefix}-${suffix}`;
-}
-
-function localDateTime(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return shifted.toISOString().slice(0, 16);
 }
 
 function initialDocument(
@@ -196,46 +83,6 @@ function isPersisted(document: PlanDocumentV2 | null, legacy: TripPlan | null): 
   return document
     ? document.metadata?.["dev.mapos.persisted"] === true
     : Boolean(legacy?.createdAt);
-}
-
-function formatDistance(metres: number, units: DistanceUnits): string {
-  return formatDistanceValue(metres, units);
-}
-
-function formatDuration(seconds: number): string {
-  const minutes = Math.round(seconds / 60);
-  return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`;
-}
-
-function formatDistanceDelta(metres: number, units: DistanceUnits): string {
-  if (Math.abs(metres) < 50) return "stejná délka";
-  const sign = metres > 0 ? "+" : "−";
-  return `${sign}${formatDistance(Math.abs(metres), units)}`;
-}
-
-function formatDurationDelta(seconds: number): string {
-  if (Math.abs(seconds) < 30) return "stejný čas";
-  const sign = seconds > 0 ? "+" : "−";
-  return `${sign}${formatDuration(Math.abs(seconds))}`;
-}
-
-function formatPlanTime(value: string | null | undefined): string {
-  if (!value) return "čas není dostupný";
-  return new Date(value).toLocaleString("cs-CZ", {
-    day: "numeric",
-    month: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function triggerDownload(data: ExportResponse): void {
-  const url = URL.createObjectURL(new Blob([data.content], { type: data.mimeType }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = data.filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 function editableCopyOfSharedPlan(plan: PlanDocumentV2): PlanDocumentV2 {
@@ -269,6 +116,12 @@ function routePreviewForPlan(document: PlanDocumentV2) {
   };
 }
 
+/** The planning panel (§4.5).
+ *
+ *  The panel owns the document and every request; the pieces under `ui/planning/` are the
+ *  presentation. Reading order is the order a trip is built: name, options, stops with the
+ *  segments between them, then the sticky footer that computes and hands the route off.
+ */
 export function PlanningPanel() {
   const store = getMapStore();
   const shell = getShellStore();
@@ -282,7 +135,6 @@ export function PlanningPanel() {
   const provider = useMapStoreSnapshot((state) => state.dataProvider);
   const activeLayers = useMapStoreSnapshot((state) => state.activeLayers);
   const visibleFeatures = useMapStoreSnapshot((state) => state.visibleFeatures);
-  const basemapId = useMapStoreSnapshot((state) => state.basemapId);
   const aiEnabled = useMapStoreSnapshot((state) => state.preferences.aiEnabled);
   const units = useMapStoreSnapshot((state) => state.preferences.units);
   const [plan, setPlan] = useState<PlanDocumentV2>(() =>
@@ -303,19 +155,16 @@ export function PlanningPanel() {
   const [sharedPlanStatus, setSharedPlanStatus] = useState<"idle" | "loading" | "ready" | "error">(
     sharedToken ? "loading" : "idle"
   );
-  const [shareOpen, setShareOpen] = useState(false);
+  const [shareTab, setShareTab] = useState<PlanShareTab | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareListLoading, setShareListLoading] = useState(false);
+  const [shareLoadedForPlan, setShareLoadedForPlan] = useState<string | null>(null);
   const [shareLinks, setShareLinks] = useState<PlanShareLink[]>([]);
   const [newShareUrl, setNewShareUrl] = useState<string | null>(null);
   const [loadingSavedPlan, setLoadingSavedPlan] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [locatingStopId, setLocatingStopId] = useState<string | null>(null);
-  const [locationFallback, setLocationFallback] = useState<{
-    stopId: string;
-    kind: "denied" | "unavailable";
-    message: string;
-  } | null>(null);
+  const [manual, setManual] = useState<StopManualState | null>(null);
   const [aiStopBusyId, setAiStopBusyId] = useState<string | null>(null);
   const [aiStopAnswer, setAiStopAnswer] = useState<{
     stopId: string;
@@ -343,9 +192,6 @@ export function PlanningPanel() {
   const [adventureRecommendation, setAdventureRecommendation] =
     useState<AdventureRecommendation | null>(null);
   const [temporalContext, setTemporalContext] = useState<PlanTemporalContextV2 | null>(null);
-  const [temporalContextStatus, setTemporalContextStatus] = useState<
-    "idle" | "loading" | "ready" | "unavailable"
-  >("idle");
   const [error, setError] = useState<string | null>(null);
   const lastPublishedDocument = useRef<PlanDocumentV2 | null>(null);
   const loadedPlansForOwner = useRef<string | null>(null);
@@ -362,7 +208,7 @@ export function PlanningPanel() {
         if (seen.has(key)) continue;
         seen.add(key);
         suggestions.push({ feature, layerId });
-        if (suggestions.length >= 12) return suggestions;
+        if (suggestions.length >= 8) return suggestions;
       }
     }
     return suggestions;
@@ -370,10 +216,10 @@ export function PlanningPanel() {
 
   useEffect(() => {
     if (!selectedRouteSegmentId) return;
-    const selectedCard = Array.from(
+    const selectedRow = Array.from(
       document.querySelectorAll<HTMLElement>("[data-route-segment-id]")
     ).find((element) => element.dataset.routeSegmentId === selectedRouteSegmentId);
-    selectedCard?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    selectedRow?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [selectedRouteSegmentId]);
 
   const publishDocument = (document: PlanDocumentV2) => {
@@ -539,7 +385,6 @@ export function PlanningPanel() {
         command.type !== "remove-annotation"
       ) {
         setTemporalContext(null);
-        setTemporalContextStatus("idle");
       }
       return result.plan;
     } catch (cause) {
@@ -559,6 +404,44 @@ export function PlanningPanel() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Změnu nelze vrátit");
     }
+  };
+
+  const startNewPlan = () => {
+    const blank = createBlankPlanDocument(view.lng, view.lat);
+    setPlan(blank);
+    setSavedRevision(null);
+    setUndoStack([]);
+    setAiThread(null);
+    setAiPlanAnswer(null);
+    setShareLinks([]);
+    setNewShareUrl(null);
+    setTemporalContext(null);
+    loadedThreadForPlan.current = null;
+    publishDocument(blank);
+    store.setRoutePreview(null, false);
+    store.showToast("Nový plán je připravený");
+  };
+
+  const duplicatePlan = () => {
+    const copy = {
+      ...editableCopyOfSharedPlan(plan),
+      name: `${plan.name} (kopie)`,
+      revision: 1
+    };
+    setPlan(copy);
+    setSavedRevision(null);
+    setUndoStack([]);
+    setAiThread(null);
+    setShareLinks([]);
+    setNewShareUrl(null);
+    loadedThreadForPlan.current = null;
+    publishDocument(copy);
+    store.showToast("Kopie plánu je otevřená");
+  };
+
+  const stopAt = (stopId: string) => {
+    const index = plan.stops.findIndex((candidate) => candidate.id === stopId);
+    return index < 0 ? null : { stop: plan.stops[index]!, index };
   };
 
   const addStop = (feature?: GeoFeature) => {
@@ -588,7 +471,7 @@ export function PlanningPanel() {
   };
 
   const selectStopLocation = (stopId: string, selection: StopLocationSelection) => {
-    if (locationFallback?.stopId === stopId) setLocationFallback(null);
+    if (manual?.stopId === stopId) setManual(null);
     applyCommand({
       type: "update-stop",
       stopId,
@@ -599,7 +482,10 @@ export function PlanningPanel() {
     });
   };
 
-  const pickStopLocation = (stop: PlanDocumentV2["stops"][number], index: number) => {
+  const pickStopLocation = (stopId: string) => {
+    const target = stopAt(stopId);
+    if (!target) return;
+    const { stop, index } = target;
     const [lng, lat] = stop.location.coordinates;
     shell.startMapPicker(
       {
@@ -614,7 +500,7 @@ export function PlanningPanel() {
       },
       (result) => {
         if (result.status !== "confirmed") return;
-        if (locationFallback?.stopId === stop.id) setLocationFallback(null);
+        if (manual?.stopId === stop.id) setManual(null);
         updateStopLocation(stop.id, result.location.lng, result.location.lat);
         store.showToast(`Poloha „${stop.name}“ byla změněna`);
       }
@@ -624,26 +510,33 @@ export function PlanningPanel() {
     }
   };
 
-  const locateStop = async (stopId: string, stopName: string) => {
+  const locateStop = async (stopId: string) => {
+    const target = stopAt(stopId);
+    if (!target) return;
     setLocatingStopId(stopId);
-    setLocationFallback(null);
+    setManual(null);
     setError(null);
     try {
       const fix = await geolocation.locate(undefined, { timeoutMs: 10_000 });
       updateStopLocation(stopId, fix.lng, fix.lat);
-      setLocationFallback(null);
       emit("fly-to", { lng: fix.lng, lat: fix.lat, zoom: Math.max(view.zoom, 15) });
-      store.showToast(`„${stopName}“ používá tvoji polohu`);
+      store.showToast(`„${target.stop.name}“ používá tvoji polohu`);
     } catch (cause) {
       const denied = cause instanceof GeolocationError && cause.kind === "denied";
-      setLocationFallback({
+      setManual({
         stopId,
-        kind: denied ? "denied" : "unavailable",
+        reason: denied ? "denied" : "unavailable",
         message: messageFor(cause)
       });
     } finally {
       setLocatingStopId(null);
     }
+  };
+
+  const closeManual = () => {
+    const name = manual ? stopAt(manual.stopId)?.stop.name : null;
+    setManual(null);
+    if (name) store.showToast(`Ruční poloha zastávky „${name}“ je použitá`);
   };
 
   const pickNewStop = () => {
@@ -751,22 +644,19 @@ export function PlanningPanel() {
     store.setRoutePreview(routePreviewForPlan(document), false);
   };
 
-  const findAdventureRoute = async () => {
-    if (plan.routePolicy.preference !== "adventure" || adventureBusy) return;
+  const findAdventureRoute = async (document: PlanDocumentV2 = plan) => {
+    if (document.routePolicy.preference !== "adventure" || adventureBusy) return;
     setAdventureBusy(true);
     setAdventureRecommendation(null);
     setError(null);
     try {
       const response = await apiPost<AdventureRecommendation>("/v2/routing/adventure", {
-        plan,
+        plan: document,
         provider,
         detourLimitPercent: adventureDetourLimit,
         maximumSuggestions: 3
       });
       setAdventureRecommendation(response);
-      if (!response.suggestions.length) {
-        store.showToast("V tomto limitu nebylo nalezeno vhodné zajímavé místo");
-      }
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Dobrodružnou trasu se nepodařilo připravit"
@@ -776,11 +666,27 @@ export function PlanningPanel() {
     }
   };
 
+  /** §4.5: a bike plan gets the cycling overlay once, as a toast with an undo, instead of a
+   *  recommendation card. The basemap the user picked is never replaced — CyclOSM goes on top. */
+  const offerCyclingMap = () => {
+    if (bikeBasemapDismissed || store.activeLayers.cyclosm?.visible) return;
+    store.toggleLayer("cyclosm");
+    store.showToast("Zapnul jsem CyclOSM; původní podklad zůstal zachovaný", {
+      action: {
+        label: "Vrátit",
+        onSelect: () => {
+          if (store.activeLayers.cyclosm?.visible) store.toggleLayer("cyclosm");
+          window.localStorage.setItem("mapos:bike-basemap-recommendation", "dismissed");
+          setBikeBasemapDismissed(true);
+        }
+      }
+    });
+  };
+
   const calculate = async (document: PlanDocumentV2 = plan) => {
     setBusy(true);
     setError(null);
     setTemporalContext(null);
-    setTemporalContextStatus(document.departureAt ? "loading" : "idle");
     const run = startRoutingPlanTask(document, provider);
     cancelRouting.current = run.cancel;
     try {
@@ -796,9 +702,8 @@ export function PlanningPanel() {
             provider
           });
           setTemporalContext(context);
-          setTemporalContextStatus(context.status === "active" ? "ready" : "unavailable");
         } catch {
-          setTemporalContextStatus("unavailable");
+          // Context is an extra on top of the route; a failure here must not fail the plan.
         }
       }
       if (data.failedSegmentIds.length) {
@@ -806,6 +711,12 @@ export function PlanningPanel() {
           `${data.failedSegmentIds.length} úseků se nepodařilo spočítat; ostatní zůstaly dostupné`
         );
       }
+      // §29.3: the detour finder is part of the Dobrodružná profile, not a section the user
+      // has to discover and trigger.
+      if (data.plan.routePolicy.preference === "adventure") {
+        void findAdventureRoute(data.plan);
+      }
+      if (data.plan.routePolicy.profile === "bike") offerCyclingMap();
     } catch (cause) {
       if (!isRoutingAbortError(cause)) {
         setError(cause instanceof Error ? cause.message : "Trasu se nepodařilo vypočítat");
@@ -876,6 +787,16 @@ export function PlanningPanel() {
       return null;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openShareDialog = (tab: PlanShareTab) => {
+    setShareTab(tab);
+    // The link list is only worth a request once the dialog is on screen, and only for a plan
+    // that already exists on the server.
+    if (savedRevision !== null && shareLoadedForPlan !== plan.id) {
+      setShareLoadedForPlan(plan.id);
+      void loadShares();
     }
   };
 
@@ -963,12 +884,13 @@ export function PlanningPanel() {
     }
   };
 
-  const exportPlan = async (format: "gpx" | "geojson" | "kml" | "mapos") => {
+  const exportPlan = async (format: PlanExportFormat) => {
     setExporting(format);
     setError(null);
     try {
-      const data = await apiPost<ExportResponse>(`/v2/plans/export/${format}`, { plan });
-      triggerDownload(data);
+      await exportPlanDocument(plan, format);
+      setShareTab(null);
+      store.showToast(`Plán je uložený jako ${PLAN_EXPORT_LABELS[format]}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Plán se nepodařilo exportovat");
     } finally {
@@ -1053,1290 +975,216 @@ export function PlanningPanel() {
     store.showToast("Nová AI konverzace začne dalším dotazem");
   };
 
-  const totals = summarizePlanSegments(plan);
+  const segmentSummary = summarizePlanSegments(plan);
+  const totals = { ...segmentSummary, total: plan.segments.length };
   const temporalSegments = new Map(
     temporalContext?.segments.map((segment) => [segment.segmentId, segment]) ?? []
   );
+  const temporalContextNotes = temporalContext
+    ? [
+        temporalContext.weather.status === "ready"
+          ? `Počasí: ${temporalContext.weather.sampledStops}/${temporalContext.weather.totalStops} zastávek · ${temporalContext.weather.source?.label ?? "neuvedený zdroj"}`
+          : `Počasí: ${temporalContext.weather.reason ?? "bez dostupných dat"}`,
+        temporalContext.traffic.status === "provider-aware"
+          ? `Doprava: ${temporalContext.traffic.source?.label ?? "provider zohlednil živou dopravu"}`
+          : `Doprava: ${temporalContext.traffic.reason ?? "bez dostupných dat"}`
+      ]
+    : [];
   const externalHandoffs = buildExternalPlanHandoffs(plan);
-  const showVehicleLimits =
-    plan.routePolicy.profile === "camper" || plan.routePolicy.profile === "truck";
-  const routeMapping = resolvePlanRoutingRequestV2(
-    provider,
-    plan.routePolicy.profile,
-    plan.routePolicy.preference,
-    plan.routePolicy.avoid
-  );
-  const hasNativeMapping =
-    routeMapping.profileCapability === "native" && routeMapping.preferenceCapability === "native";
-  const cyclingMapActive = Boolean(activeLayers.cyclosm?.visible);
-  const currentBasemapLabel = basemapById(basemapId)?.label ?? basemapId;
-  const visibleStops = plan.stops.slice(stopWindowStart, stopWindowStart + STOP_WINDOW_SIZE);
-  const stopWindowEnd = stopWindowStart + visibleStops.length;
+
+  const stopHandlers: StopListHandlers = {
+    onNameChange: (stopId, name) => applyCommand({ type: "update-stop", stopId, patch: { name } }),
+    onSelect: selectStopLocation,
+    onAiQuery: (stopId, prompt) => void runAiStopQuery(stopId, prompt),
+    onPick: pickStopLocation,
+    onLocate: (stopId) => void locateStop(stopId),
+    onManual: (stopId) => setManual({ stopId, reason: "manual" }),
+    onManualClose: closeManual,
+    onCoordinateChange: updateStopLocation,
+    onDwellChange: (stopId, dwellMinutes) =>
+      applyCommand({ type: "update-stop", stopId, patch: { dwellMinutes } }),
+    onMove: (stopId, toIndex) => applyCommand({ type: "move-stop", stopId, toIndex }),
+    onRemove: (stopId) => applyCommand({ type: "remove-stop", stopId }),
+    onAdd: addStop,
+    onPickNew: pickNewStop,
+    onToggleMapSelection: (segmentId) => store.selectRouteSegment(segmentId),
+    onSelectAlternative: (segmentId, alternativeId) =>
+      applyCommand({ type: "select-segment-alternative", segmentId, alternativeId })
+  };
 
   return (
     <PanelShell
       title={t("mode.planning")}
       testId="planning-panel"
       className="planning-panel"
+      busy={loadingSavedPlan || sharedPlanStatus === "loading"}
+      busyLabel="Načítám plán"
       // §21.2: a plan that already has stops or a route opens full on a phone; a blank form
       // opens half, so the map the user is about to pick from stays in view.
       hasContent={plan.stops.length > 2 || totals.ready > 0}
+      headerExtra={
+        <PlanHeader
+          revision={plan.revision}
+          canUndo={undoStack.length > 0}
+          aiEnabled={aiEnabled}
+          aiOpen={aiPlanOpen}
+          readOnlyShared={readOnlyShared}
+          onToggleAi={() => setAiPlanOpen((value) => !value)}
+          onNewPlan={startNewPlan}
+          onDuplicate={duplicatePlan}
+          onUndo={undo}
+        />
+      }
+      footer={
+        <PlanFooter
+          totals={totals}
+          units={units}
+          busy={busy}
+          saving={saving}
+          readOnlyShared={readOnlyShared}
+          onCalculate={() => void calculate()}
+          onSave={() => void save()}
+          onOpenShare={openShareDialog}
+        />
+      }
     >
       <div className="planner-stack">
         {readOnlyShared && (
-          <div
-            className={`planner-shared-banner status-${sharedPlanStatus}`}
-            role="status"
-            data-testid="shared-plan-banner"
+          <InlineNotice
+            tone={sharedPlanStatus === "error" ? "danger" : "info"}
+            testId="shared-plan-banner"
           >
-            <span aria-hidden="true">↗</span>
-            <div>
-              <strong>
-                {sharedPlanStatus === "loading"
-                  ? "Otevírám sdílený plán…"
-                  : sharedPlanStatus === "error"
-                    ? "Sdílený plán není dostupný"
-                    : "Sdílený plán · jen pro čtení"}
-              </strong>
-              <small>
-                Soukromé poznámky a AI konverzace vlastníka nejsou součástí odkazu. Pro úpravy si
-                ulož vlastní kopii.
-              </small>
-            </div>
-          </div>
+            {sharedPlanStatus === "loading"
+              ? "Otevírám sdílený plán…"
+              : sharedPlanStatus === "error"
+                ? "Sdílený plán není dostupný"
+                : "Sdílený plán · jen pro čtení. Soukromé poznámky a AI konverzace vlastníka nejsou součástí odkazu; pro úpravy si ulož vlastní kopii."}
+          </InlineNotice>
         )}
 
-        <fieldset className="planner-editor-scope" disabled={readOnlyShared}>
-          <div className="planner-toolbar">
-            <span>{loadingSavedPlan ? "Načítám uložený plán…" : `Revize ${plan.revision}`}</span>
-            <button
-              type="button"
-              className="btn btn-ghost small"
-              disabled={undoStack.length === 0}
-              onClick={undo}
-            >
-              ↶ Vrátit
-            </button>
-          </div>
+        <TextField
+          label="Název plánu"
+          hideLabel
+          size="lg"
+          icon="edit"
+          placeholder="Nová cesta"
+          testId="plan-name"
+          disabled={readOnlyShared}
+          value={plan.name}
+          onChange={(event) =>
+            applyCommand({ type: "update-plan", patch: { name: event.target.value } })
+          }
+        />
 
-          <label className="planner-field">
-            <span>Název plánu</span>
-            <input
-              data-testid="plan-name"
-              value={plan.name}
-              onChange={(event) =>
-                applyCommand({ type: "update-plan", patch: { name: event.target.value } })
-              }
-            />
-          </label>
+        <PlanOptions
+          plan={plan}
+          provider={provider}
+          disabled={readOnlyShared}
+          detourLimit={adventureDetourLimit}
+          contextNotes={temporalContextNotes}
+          onDetourLimit={(next) => {
+            setAdventureDetourLimit(next);
+            setAdventureRecommendation(null);
+          }}
+          onCommand={(command) => applyCommand(command)}
+        />
 
-          <details className="planner-more-options" data-testid="plan-more-options">
-            <summary>Více možností</summary>
-            <div className="planner-more-content">
-              <div className="planner-grid two">
-                <label className="planner-field">
-                  <span>Datum odjezdu</span>
-                  <input
-                    type="datetime-local"
-                    value={localDateTime(plan.departureAt)}
-                    onChange={(event) =>
-                      applyCommand({
-                        type: "set-departure",
-                        departureAt: event.target.value
-                          ? new Date(event.target.value).toISOString()
-                          : null
-                      })
-                    }
-                  />
-                </label>
-                <label className="planner-field">
-                  <span>Typ vozidla</span>
-                  <select
-                    value={plan.routePolicy.profile}
-                    onChange={(event) => {
-                      const profile = event.target.value as PlanTravelProfileV2;
-                      applyCommand({
-                        type: "replace-vehicle",
-                        vehicle: { ...(plan.vehicle ?? { profile }), profile }
-                      });
-                      if (profile === "bike" && !bikeBasemapDismissed) {
-                        store.showToast("Pro kolo je připravené doporučení CyclOSM");
-                      }
-                    }}
-                  >
-                    {Object.entries(PROFILE_LABELS).map(([id, label]) => (
-                      <option key={id} value={id}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+        <StopList
+          plan={plan}
+          provider={provider}
+          units={units}
+          aiEnabled={aiEnabled}
+          aiBusyStopId={aiStopBusyId}
+          locatingStopId={locatingStopId}
+          manual={manual}
+          disabled={readOnlyShared}
+          windowStart={stopWindowStart}
+          onWindowStart={setStopWindowStart}
+          selectedRouteSegmentId={selectedRouteSegmentId}
+          temporalSegments={temporalSegments}
+          suggestions={readOnlyShared ? [] : mapSuggestions}
+          aiStopAnswer={aiStopAnswer}
+          onOpenAiCandidate={openAiStopCandidate}
+          onDismissAiAnswer={() => setAiStopAnswer(null)}
+          handlers={stopHandlers}
+        />
 
-              {plan.routePolicy.profile === "bike" && (
-                <section
-                  className={`planner-bike-map ${cyclingMapActive ? "active" : ""}`}
-                  data-testid="bike-basemap-recommendation"
-                  aria-label="Doporučení cyklistického podkladu"
-                >
-                  <span className="planner-bike-map-icon" aria-hidden="true">
-                    🚲
-                  </span>
-                  <div>
-                    <strong>
-                      {cyclingMapActive
-                        ? "CyclOSM je na mapě aktivní"
-                        : bikeBasemapDismissed
-                          ? "Tvůj ruční podklad zůstává"
-                          : "Doporučená cyklistická mapa"}
-                    </strong>
-                    <p>
-                      {cyclingMapActive
-                        ? `Cyklistické stezky a povrchy se kreslí nad podkladem ${currentBasemapLabel}.`
-                        : bikeBasemapDismissed
-                          ? `${currentBasemapLabel} jsme nepřepnuli. Doporučení můžeš kdykoli obnovit.`
-                          : `CyclOSM přidá stezky, pruhy a povrchy nad ${currentBasemapLabel}; základní podklad nepřepíše.`}
-                    </p>
-                  </div>
-                  <div className="planner-bike-map-actions">
-                    {cyclingMapActive ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost small"
-                        onClick={() => store.toggleLayer("cyclosm")}
-                      >
-                        Vypnout CyclOSM
-                      </button>
-                    ) : bikeBasemapDismissed ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost small"
-                        onClick={() => {
-                          window.localStorage.removeItem("mapos:bike-basemap-recommendation");
-                          setBikeBasemapDismissed(false);
-                        }}
-                      >
-                        Znovu nabídnout
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn-accent small"
-                          data-testid="activate-bike-map"
-                          onClick={() => {
-                            store.toggleLayer("cyclosm");
-                            store.showToast("CyclOSM je zapnutá; původní podklad zůstal zachovaný");
-                          }}
-                        >
-                          Zapnout CyclOSM
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost small"
-                          onClick={() => {
-                            window.localStorage.setItem(
-                              "mapos:bike-basemap-recommendation",
-                              "dismissed"
-                            );
-                            setBikeBasemapDismissed(true);
-                          }}
-                        >
-                          Ponechat můj podklad
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </section>
-              )}
+        {plan.routePolicy.preference === "adventure" && (
+          <PlanAdventure
+            recommendation={adventureRecommendation}
+            detourLimit={adventureDetourLimit}
+            busy={adventureBusy}
+            routed={totals.ready > 0}
+            units={units}
+            onApply={applyAdventureCandidates}
+          />
+        )}
 
-              {showVehicleLimits && (
-                <div className="planner-grid three vehicle-limits">
-                  {(["heightM", "widthM", "weightT"] as const).map((field) => (
-                    <label className="planner-field" key={field}>
-                      <span>
-                        {field === "heightM"
-                          ? "Výška m"
-                          : field === "widthM"
-                            ? "Šířka m"
-                            : "Hmotnost t"}
-                      </span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={plan.vehicle?.[field] ?? ""}
-                        onChange={(event) =>
-                          applyCommand({
-                            type: "replace-vehicle",
-                            vehicle: {
-                              ...(plan.vehicle ?? { profile: plan.routePolicy.profile }),
-                              [field]: event.target.value ? Number(event.target.value) : null
-                            }
-                          })
-                        }
-                      />
-                    </label>
-                  ))}
-                </div>
-              )}
-
-              <fieldset className="planner-preferences">
-                <legend>Profil trasy</legend>
-                <div className="planner-preference-grid">
-                  {(Object.keys(PREFERENCE_LABELS) as PlanRoutePreferenceV2[]).map((preference) => {
-                    const mapping = resolvePlanRoutingRequestV2(
-                      provider,
-                      plan.routePolicy.profile,
-                      preference,
-                      plan.routePolicy.avoid
-                    );
-                    const native =
-                      mapping.profileCapability === "native" &&
-                      mapping.preferenceCapability === "native";
-                    return (
-                      <button
-                        key={preference}
-                        type="button"
-                        className={plan.routePolicy.preference === preference ? "active" : ""}
-                        data-support={native ? "native" : "fallback"}
-                        aria-pressed={plan.routePolicy.preference === preference}
-                        aria-describedby={
-                          plan.routePolicy.preference === preference
-                            ? "planner-route-capability"
-                            : undefined
-                        }
-                        onClick={() =>
-                          applyCommand({
-                            type: "replace-route-policy",
-                            routePolicy: { ...plan.routePolicy, preference }
-                          })
-                        }
-                      >
-                        <span>{PREFERENCE_LABELS[preference]}</span>
-                        <small>{native ? "Podporováno" : "Fallback"}</small>
-                      </button>
-                    );
-                  })}
-                </div>
-              </fieldset>
-
-              <div
-                id="planner-route-capability"
-                className={`planner-capability ${hasNativeMapping ? "native" : "fallback"}`}
-                role="status"
-                aria-live="polite"
-                data-testid="plan-route-mapping"
-              >
-                <strong>
-                  {hasNativeMapping
-                    ? "Provider tuto kombinaci podporuje"
-                    : "Provider použije označený fallback"}
-                </strong>
-                <span>
-                  Request: {provider} · profile={routeMapping.providerProfile} · preference=
-                  {routeMapping.effectivePreference}
-                </span>
-                {routeMapping.warnings.map((warning) => (
-                  <small key={warning}>{warning}</small>
-                ))}
-              </div>
-            </div>
-          </details>
-
-          {plan.departureAt && (
-            <section
-              className="planner-temporal-context"
-              data-testid="plan-temporal-context"
-              aria-labelledby="plan-temporal-context-title"
-              aria-busy={temporalContextStatus === "loading"}
-            >
-              <div className="planner-temporal-heading">
-                <span className="planner-temporal-icon" aria-hidden="true">
-                  ◷
-                </span>
-                <div>
-                  <span>Kontext odjezdu</span>
-                  <h3 id="plan-temporal-context-title">{formatPlanTime(plan.departureAt)}</h3>
-                  <p>Časová osa mapy se po výpočtu nastaví na odjezd.</p>
-                </div>
-              </div>
-
-              <div className="planner-temporal-switches">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={plan.routePolicy.weatherAlongRoute !== false}
-                    onChange={(event) =>
-                      applyCommand({
-                        type: "replace-route-policy",
-                        routePolicy: {
-                          ...plan.routePolicy,
-                          weatherAlongRoute: event.target.checked
-                        }
-                      })
-                    }
-                  />
-                  Počasí podél trasy
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={plan.routePolicy.trafficAlongRoute !== false}
-                    onChange={(event) =>
-                      applyCommand({
-                        type: "replace-route-policy",
-                        routePolicy: {
-                          ...plan.routePolicy,
-                          trafficAlongRoute: event.target.checked
-                        }
-                      })
-                    }
-                  />
-                  Dopravní kontext
-                </label>
-              </div>
-
-              <div className="planner-temporal-status-grid">
-                <article data-status={temporalContext?.weather.status ?? temporalContextStatus}>
-                  <span aria-hidden="true">☁</span>
-                  <div>
-                    <strong>Počasí</strong>
-                    {temporalContextStatus === "loading" ? (
-                      <small>Načítám skutečnou předpověď…</small>
-                    ) : temporalContext?.weather.status === "ready" ? (
-                      <small>
-                        {temporalContext.weather.sampledStops}/{temporalContext.weather.totalStops}{" "}
-                        zastávek · {temporalContext.weather.source?.label}
-                      </small>
-                    ) : temporalContext?.weather.reason ? (
-                      <small>{temporalContext.weather.reason}</small>
-                    ) : (
-                      <small>Připraví se s výpočtem trasy.</small>
-                    )}
-                  </div>
-                </article>
-                <article data-status={temporalContext?.traffic.status ?? temporalContextStatus}>
-                  <span aria-hidden="true">⇥</span>
-                  <div>
-                    <strong>Doprava</strong>
-                    {temporalContextStatus === "loading" ? (
-                      <small>Ověřuji dostupnost provideru…</small>
-                    ) : temporalContext?.traffic.status === "provider-aware" ? (
-                      <small>{temporalContext.traffic.source?.label}</small>
-                    ) : temporalContext?.traffic.reason ? (
-                      <small>{temporalContext.traffic.reason}</small>
-                    ) : (
-                      <small>Připraví se s výpočtem trasy.</small>
-                    )}
-                  </div>
-                </article>
-              </div>
-
-              {temporalContext?.weather.status === "ready" && (
-                <button
-                  type="button"
-                  className="btn btn-ghost small planner-temporal-map-action"
-                  onClick={() => {
-                    if (!activeLayers.weather?.visible) store.toggleLayer("weather");
-                    if (temporalContext.departureAt) {
-                      store.setTimeCursor(temporalContext.departureAt, "preview");
-                    }
-                  }}
-                >
-                  {activeLayers.weather?.visible ? "Počasí je v mapě" : "Zobrazit počasí v mapě"}
-                </button>
-              )}
-              {temporalContext && (
-                <small className="planner-temporal-budget">
-                  Datově úsporné: nejvýše {temporalContext.dataBudget.maxWeatherStops} zastávek ·{" "}
-                  {temporalContext.dataBudget.upstreamWeatherRequests} dávka počasí · žádná
-                  simulovaná doprava
-                </small>
-              )}
-            </section>
-          )}
-
-          {plan.routePolicy.preference === "adventure" && (
-            <section
-              className="planner-adventure"
-              data-testid="adventure-planner"
-              aria-labelledby="adventure-planner-title"
-              aria-busy={adventureBusy}
-            >
-              <div className="planner-adventure-heading">
-                <span className="planner-adventure-icon" aria-hidden="true">
-                  ◈
-                </span>
-                <div>
-                  <span className="planner-adventure-eyebrow">Deterministický výběr · bez AI</span>
-                  <h3 id="adventure-planner-title">Najít zajímavější cestu</h3>
-                  <p>
-                    Vybere skutečné OSM místo a ověří zajížďku stejným routovacím providerem jako
-                    zbytek plánu.
-                  </p>
-                </div>
-              </div>
-
-              <div className="planner-adventure-controls">
-                <div className="planner-adventure-limit" role="group" aria-label="Limit zajížďky">
-                  <span>Max. zajížďka</span>
-                  {[10, 15, 25].map((limit) => (
-                    <button
-                      type="button"
-                      key={limit}
-                      className={adventureDetourLimit === limit ? "active" : ""}
-                      aria-pressed={adventureDetourLimit === limit}
-                      onClick={() => {
-                        setAdventureDetourLimit(limit);
-                        setAdventureRecommendation(null);
-                      }}
-                    >
-                      {limit} %
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-accent"
-                  data-testid="find-adventure-route"
-                  disabled={adventureBusy}
-                  onClick={() => void findAdventureRoute()}
-                >
-                  {adventureBusy ? "Ověřuji zajížďky…" : "Najít místa"}
-                </button>
-              </div>
-
-              {adventureRecommendation && (
-                <div className="planner-adventure-results" data-testid="adventure-results">
-                  <div className="planner-adventure-summary" role="status">
-                    <div>
-                      <strong>{adventureRecommendation.suggestions.length}</strong>
-                      <span>vhodná místa</span>
-                    </div>
-                    <div>
-                      <strong>
-                        {adventureRecommendation.coverage.scannedSegments}/
-                        {adventureRecommendation.coverage.totalSegments}
-                      </strong>
-                      <span>prohledaných úseků</span>
-                    </div>
-                    <div>
-                      <strong>{adventureRecommendation.dataBudget.providerCalls}</strong>
-                      <span>route ověření</span>
-                    </div>
-                  </div>
-
-                  {adventureRecommendation.suggestions.length > 0 ? (
-                    <>
-                      <div className="planner-adventure-candidates">
-                        {adventureRecommendation.suggestions.map((candidate, index) => (
-                          <article
-                            className="planner-adventure-candidate"
-                            data-testid={`adventure-candidate-${index + 1}`}
-                            key={candidate.id}
-                          >
-                            <div
-                              className="planner-adventure-score"
-                              aria-label={`Skóre ${candidate.score} ze 100`}
-                            >
-                              <strong>{candidate.score}</strong>
-                              <span>/100</span>
-                            </div>
-                            <div className="planner-adventure-place">
-                              <span>
-                                Úsek {candidate.segmentIndex + 1} · {candidate.category}
-                              </span>
-                              <h4>{candidate.name}</h4>
-                              <p>
-                                +{formatDistance(candidate.detourM, units)} · +
-                                {candidate.detourPercent.toFixed(1)} % oproti přímé trase
-                              </p>
-                              <div
-                                className="planner-adventure-breakdown"
-                                aria-label="Rozpad skóre"
-                              >
-                                <span>Zajímavost {candidate.scoreBreakdown.interest}</span>
-                                <span>Efektivita {candidate.scoreBreakdown.detourEfficiency}</span>
-                                <span>Zdroj {candidate.scoreBreakdown.sourceConfidence}</span>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="btn btn-ghost small"
-                              onClick={() => applyAdventureCandidates([candidate])}
-                            >
-                              Přidat
-                            </button>
-                          </article>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-accent block"
-                        data-testid="apply-adventure-route"
-                        onClick={() =>
-                          applyAdventureCandidates(adventureRecommendation.suggestions)
-                        }
-                      >
-                        Přidat doporučená místa a přepočítat
-                      </button>
-                    </>
-                  ) : (
-                    <p className="planner-adventure-empty">
-                      V limitu {adventureRecommendation.algorithm.detourLimitPercent} % není žádné
-                      relevantní místo. Zkus vyšší limit nebo posuň zastávky.
-                    </p>
-                  )}
-
-                  {adventureRecommendation.warnings.map((warning) => (
-                    <p className="planner-warning" key={warning}>
-                      {warning}
-                    </p>
-                  ))}
-                  <details className="planner-adventure-method">
-                    <summary>Jak vzniklo skóre</summary>
-                    <p>{adventureRecommendation.algorithm.formula}.</p>
-                    <small>
-                      {adventureRecommendation.algorithm.version} · žádný náhodný waypoint · OSM ·
-                      nejvýše {adventureRecommendation.dataBudget.maxRoutedCandidates} kandidátů a{" "}
-                      {adventureRecommendation.dataBudget.maxReturnedSuggestions} výsledky
-                    </small>
-                  </details>
-                </div>
-              )}
-            </section>
-          )}
-
-          <section className="planner-section">
-            <div className="planner-section-title">
-              <h3>Zastávky</h3>
-              <span>{plan.stops.length} celkem · bez limitu provideru</span>
-            </div>
-            <div className="planner-stops">
-              {visibleStops.map((stop, visibleIndex) => {
-                const index = stopWindowStart + visibleIndex;
-                return (
-                  <div className="planner-stop" key={stop.id}>
-                    <span className="planner-stop-index">{index + 1}</span>
-                    <div className="planner-stop-fields">
-                      <StopLocationInput
-                        index={index + 1}
-                        name={stop.name}
-                        provider={provider}
-                        aiEnabled={aiEnabled}
-                        aiBusy={aiStopBusyId === stop.id}
-                        onNameChange={(name) =>
-                          applyCommand({ type: "update-stop", stopId: stop.id, patch: { name } })
-                        }
-                        onSelect={(selection) => selectStopLocation(stop.id, selection)}
-                        onAiQuery={(prompt) => void runAiStopQuery(stop.id, prompt)}
-                      />
-                      <div className="planner-stop-location">
-                        <span aria-label={`Souřadnice zastávky ${index + 1}`}>
-                          {stop.location.coordinates[1].toFixed(5)},{" "}
-                          {stop.location.coordinates[0].toFixed(5)}
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn-ghost small"
-                          data-testid={`pick-stop-${index + 1}`}
-                          onClick={() => pickStopLocation(stop, index)}
-                        >
-                          Vybrat na mapě
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost small"
-                          data-testid={`locate-stop-${index + 1}`}
-                          disabled={locatingStopId !== null}
-                          onClick={() => void locateStop(stop.id, stop.name)}
-                        >
-                          {locatingStopId === stop.id ? "Zaměřuji…" : "Moje poloha"}
-                        </button>
-                      </div>
-                      {locationFallback?.stopId === stop.id && (
-                        <div
-                          className={`planner-location-fallback kind-${locationFallback.kind}`}
-                          data-testid={`location-fallback-${index + 1}`}
-                          role="status"
-                        >
-                          <div className="planner-location-fallback-heading">
-                            <span aria-hidden="true">⌖</span>
-                            <div>
-                              <strong>
-                                {locationFallback.kind === "denied"
-                                  ? "Poloha není povolená"
-                                  : "GPS teď není dostupná"}
-                              </strong>
-                              <p>{locationFallback.message}</p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-accent small"
-                            onClick={() => pickStopLocation(stop, index)}
-                          >
-                            Vybrat bod na mapě
-                          </button>
-                          <fieldset className="planner-location-manual">
-                            <legend>Nebo zadej souřadnice ručně</legend>
-                            <label>
-                              <span>Délka</span>
-                              <input
-                                aria-label={`Ruční délka ${index + 1}`}
-                                type="number"
-                                step="0.0001"
-                                value={Number(stop.location.coordinates[0].toFixed(6))}
-                                onChange={(event) =>
-                                  updateStopLocation(
-                                    stop.id,
-                                    Number(event.target.value),
-                                    stop.location.coordinates[1]
-                                  )
-                                }
-                              />
-                            </label>
-                            <label>
-                              <span>Šířka</span>
-                              <input
-                                aria-label={`Ruční šířka ${index + 1}`}
-                                type="number"
-                                step="0.0001"
-                                value={Number(stop.location.coordinates[1].toFixed(6))}
-                                onChange={(event) =>
-                                  updateStopLocation(
-                                    stop.id,
-                                    stop.location.coordinates[0],
-                                    Number(event.target.value)
-                                  )
-                                }
-                              />
-                            </label>
-                            <button
-                              type="button"
-                              className="btn btn-ghost small"
-                              onClick={() => {
-                                setLocationFallback(null);
-                                store.showToast(`Ruční poloha zastávky „${stop.name}“ je použitá`);
-                              }}
-                            >
-                              Použít souřadnice
-                            </button>
-                          </fieldset>
-                        </div>
-                      )}
-                      <details className="planner-stop-more">
-                        <summary>Čas a přesné GPS</summary>
-                        <div className="planner-coordinates">
-                          <input
-                            aria-label={`Délka ${index + 1}`}
-                            type="number"
-                            step="0.0001"
-                            value={stop.location.coordinates[0]}
-                            onChange={(event) =>
-                              updateStopLocation(
-                                stop.id,
-                                Number(event.target.value),
-                                stop.location.coordinates[1]
-                              )
-                            }
-                          />
-                          <input
-                            aria-label={`Šířka ${index + 1}`}
-                            type="number"
-                            step="0.0001"
-                            value={stop.location.coordinates[1]}
-                            onChange={(event) =>
-                              updateStopLocation(
-                                stop.id,
-                                stop.location.coordinates[0],
-                                Number(event.target.value)
-                              )
-                            }
-                          />
-                          <input
-                            aria-label={`Pobyt ${index + 1}`}
-                            title="Pobyt v minutách"
-                            type="number"
-                            min="0"
-                            value={stop.dwellMinutes}
-                            onChange={(event) =>
-                              applyCommand({
-                                type: "update-stop",
-                                stopId: stop.id,
-                                patch: { dwellMinutes: Math.max(0, Number(event.target.value)) }
-                              })
-                            }
-                          />
-                        </div>
-                      </details>
-                      <div className="planner-stop-actions planner-stop-order">
-                        <button
-                          type="button"
-                          className="btn btn-ghost small"
-                          aria-label={`Posunout zastávku ${index + 1} nahoru`}
-                          disabled={index === 0}
-                          onClick={() =>
-                            applyCommand({ type: "move-stop", stopId: stop.id, toIndex: index - 1 })
-                          }
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost small"
-                          aria-label={`Posunout zastávku ${index + 1} dolů`}
-                          disabled={index === plan.stops.length - 1}
-                          onClick={() =>
-                            applyCommand({ type: "move-stop", stopId: stop.id, toIndex: index + 1 })
-                          }
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="planner-remove"
-                      aria-label={`Odebrat zastávku ${index + 1}`}
-                      disabled={plan.stops.length <= 2}
-                      onClick={() => applyCommand({ type: "remove-stop", stopId: stop.id })}
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            {plan.stops.length > STOP_WINDOW_SIZE && (
-              <nav className="planner-stop-window" aria-label="Stránkování zastávek">
-                <button
-                  type="button"
-                  className="btn btn-ghost small"
-                  disabled={stopWindowStart === 0}
-                  onClick={() =>
-                    setStopWindowStart((current) => Math.max(0, current - STOP_WINDOW_SIZE))
-                  }
-                >
-                  ← Předchozí
-                </button>
-                <span>
-                  {stopWindowStart + 1}–{stopWindowEnd} z {plan.stops.length}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-ghost small"
-                  disabled={stopWindowEnd >= plan.stops.length}
-                  onClick={() =>
-                    setStopWindowStart((current) =>
-                      Math.min(
-                        current + STOP_WINDOW_SIZE,
-                        Math.floor((plan.stops.length - 1) / STOP_WINDOW_SIZE) * STOP_WINDOW_SIZE
-                      )
-                    )
-                  }
-                >
-                  Další →
-                </button>
-              </nav>
-            )}
-            <div className="planner-add-actions">
-              <button type="button" className="btn" onClick={() => addStop()}>
-                ＋ Přidat zastávku
-              </button>
-              <button
-                type="button"
-                className="btn btn-accent"
-                data-testid="pick-new-stop"
-                onClick={pickNewStop}
-              >
-                Vybrat z mapy
-              </button>
-            </div>
-            {mapSuggestions.length > 0 && (
-              <div className="planner-map-suggestion-block">
-                <span>Rychle přidat z viditelných míst</span>
-                <div className="planner-suggestions" aria-label="Viditelná místa pro plán">
-                  {mapSuggestions.map(({ feature, layerId }) => (
-                    <button
-                      type="button"
-                      key={`${layerId}:${String(feature.properties.id)}`}
-                      onClick={() => addStop(feature)}
-                    >
-                      <span aria-hidden="true">＋</span>
-                      <span>{String(feature.properties.name ?? "Místo na mapě")}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {aiStopAnswer && (
-              <div className="planner-ai-results" data-testid="planner-ai-results" role="status">
-                <div>
-                  <strong>AI návrhy</strong>
-                  <span>{aiStopAnswer.text}</span>
-                </div>
-                {aiStopAnswer.results.map((result) => (
-                  <button
-                    type="button"
-                    key={result.id}
-                    onClick={() =>
-                      openAiStopCandidate(aiStopAnswer.stopId, aiStopAnswer.prompt, result)
-                    }
-                  >
-                    <strong>{result.title}</strong>
-                    <span>{Math.round(result.distanceMeters)} m</span>
-                    <small>{result.source.label}</small>
-                  </button>
-                ))}
-                <button
-                  className="btn btn-ghost"
-                  type="button"
-                  onClick={() => setAiStopAnswer(null)}
-                >
-                  Zavřít návrhy
-                </button>
-              </div>
-            )}
-          </section>
-
-          {error && (
-            <p className="planner-error" role="alert">
-              {error}
-            </p>
-          )}
-
-          <button
-            className="btn btn-accent block"
-            data-testid="calculate-plan"
-            disabled={busy}
-            onClick={() => void calculate()}
-          >
-            {busy ? "Počítám sousední úseky…" : "Vypočítat plán"}
-          </button>
-
-          <section className="planner-result" data-testid="planning-result">
-            <div>
-              <strong>{formatDistance(totals.distanceM, units)}</strong>
-              <span>{formatDuration(totals.durationS)}</span>
-            </div>
-            <div>
-              <strong>
-                {totals.ready}/{plan.segments.length}
-              </strong>
-              <span>hotových úseků</span>
-            </div>
-            {totals.failed > 0 && (
-              <p className="planner-warning danger" role="status">
-                {totals.failed} úseků selhalo. Ostatní části plánu zůstávají dostupné.
-              </p>
-            )}
-            {totals.stale > 0 && (
-              <p className="planner-warning" role="status">
-                {totals.stale} úseků čeká na přepočet.
-              </p>
-            )}
-            {totals.ready > 0 && (
-              <p className="planner-map-selection-hint">
-                Trasa je složená ze skutečných úseků. Vyberte úsek tady nebo přímo v mapě; zvolená
-                část se zvýrazní oranžově.
-              </p>
-            )}
-            <div className="planner-segments" aria-label="Stav úseků plánu">
-              {plan.segments.map((segment) => {
-                const alternative = selectedPlanAlternative(segment);
-                const recommended = segment.alternatives[0] ?? null;
-                const selectedOnMap = selectedRouteSegmentId === segment.id;
-                const temporalSegment = temporalSegments.get(segment.id);
-                return (
-                  <article
-                    className={`planner-segment status-${segment.status}${selectedOnMap ? " selected-on-map" : ""}`}
-                    key={segment.id}
-                    data-testid={`plan-segment-${segment.order + 1}`}
-                    data-route-segment-id={segment.id}
-                    aria-current={selectedOnMap ? "true" : undefined}
-                  >
-                    <div className="planner-segment-head">
-                      <span>{segment.order + 1}</span>
-                      <div>
-                        <strong>
-                          {plan.stops[segment.order]?.name} → {plan.stops[segment.order + 1]?.name}
-                        </strong>
-                        <small>
-                          {alternative
-                            ? `${formatDistance(alternative.distanceM, units)} · ${formatDuration(alternative.durationS)}`
-                            : segment.status === "failed"
-                              ? "Výpočet selhal"
-                              : "Čeká na výpočet"}
-                        </small>
-                      </div>
-                      {segment.alternatives.length > 1 && (
-                        <span className="planner-alternative-count">
-                          {segment.alternatives.length} varianty
-                        </span>
-                      )}
-                    </div>
-                    {alternative && (
-                      <button
-                        type="button"
-                        className="planner-segment-map-focus"
-                        aria-pressed={selectedOnMap}
-                        onClick={() => store.selectRouteSegment(selectedOnMap ? null : segment.id)}
-                      >
-                        {selectedOnMap ? "Vybráno v mapě" : "Zvýraznit v mapě"}
-                      </button>
-                    )}
-                    {temporalSegment && (
-                      <div
-                        className="planner-segment-temporal"
-                        data-testid={`segment-${segment.order + 1}-temporal`}
-                      >
-                        <span>
-                          ◷ {formatPlanTime(temporalSegment.departureAt)} →{" "}
-                          {formatPlanTime(temporalSegment.arrivalAt)}
-                        </span>
-                        <span>
-                          {temporalSegment.weatherAtArrival
-                            ? `☁ ${temporalSegment.weatherAtArrival.temperatureC?.toFixed(1) ?? "—"} °C · ${temporalSegment.weatherAtArrival.precipitationMm?.toFixed(1) ?? "—"} mm`
-                            : "☁ Počasí bez dostupných dat"}
-                        </span>
-                        <span>
-                          ⇥{" "}
-                          {temporalSegment.trafficStatus === "provider-aware"
-                            ? "provider zohlednil živou dopravu"
-                            : temporalSegment.trafficStatus === "disabled"
-                              ? "dopravní kontext vypnutý"
-                              : "doprava pro tento čas bez dat"}
-                        </span>
-                        {temporalSegment.warnings.map((warning) => (
-                          <strong key={warning}>⚠ {warning}</strong>
-                        ))}
-                      </div>
-                    )}
-                    {segment.alternatives.length > 1 && recommended && (
-                      <div
-                        className="planner-alternatives"
-                        role="radiogroup"
-                        aria-label={`Varianty úseku ${segment.order + 1}`}
-                      >
-                        {segment.alternatives.map((candidate, index) => {
-                          const selected = candidate.id === segment.selectedAlternativeId;
-                          return (
-                            <button
-                              type="button"
-                              role="radio"
-                              aria-checked={selected}
-                              className={selected ? "selected" : ""}
-                              data-testid={`segment-${segment.order + 1}-alternative-${index + 1}`}
-                              key={candidate.id}
-                              onClick={() =>
-                                applyCommand({
-                                  type: "select-segment-alternative",
-                                  segmentId: segment.id,
-                                  alternativeId: candidate.id
-                                })
-                              }
-                            >
-                              <span>{index === 0 ? "Doporučená" : `Varianta ${index + 1}`}</span>
-                              <strong>{formatDistance(candidate.distanceM, units)}</strong>
-                              <span>{formatDuration(candidate.durationS)}</span>
-                              <small>
-                                {index === 0
-                                  ? "výchozí volba provideru"
-                                  : `${formatDistanceDelta(candidate.distanceM - recommended.distanceM, units)} · ${formatDurationDelta(candidate.durationS - recommended.durationS)}`}
-                              </small>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        </fieldset>
-
-        <section className="planner-service-actions" aria-labelledby="planner-service-title">
-          <div className="planner-section-title">
-            <h3 id="planner-service-title">Uložit a sdílet</h3>
-            <span>
-              {readOnlyShared ? "otevřená kopie je jen pro čtení" : "plán zůstává editovatelný"}
-            </span>
-          </div>
-          <div className="planner-primary-actions">
-            <button
-              className="btn btn-accent"
-              data-testid="save-plan"
-              disabled={saving}
-              onClick={() => void save()}
-            >
-              {saving ? "Ukládám…" : readOnlyShared ? "Uložit vlastní kopii" : "Uložit do Moje"}
-            </button>
-            <button
-              className="btn"
-              data-testid="share-plan-summary"
-              onClick={() => void shareItinerary()}
-            >
-              Sdílet přehled
-            </button>
-            <button
-              className="btn"
-              data-testid="copy-plan-itinerary"
-              onClick={() => void copyItinerary()}
-            >
-              Kopírovat itinerář
-            </button>
-          </div>
-
-          {!readOnlyShared && (
-            <details
-              className="planner-share-manager"
-              open={shareOpen}
-              data-testid="plan-share-manager"
-              onToggle={(event) => {
-                const nextOpen = event.currentTarget.open;
-                setShareOpen(nextOpen);
-                if (nextOpen && savedRevision !== null && shareLinks.length === 0) {
-                  void loadShares();
-                }
-              }}
-            >
-              <summary>
-                <span aria-hidden="true">↗</span>
-                <div>
-                  <strong>Odkaz jen pro čtení</strong>
-                  <small>Skutečný odvolatelný odkaz, ne jen zkopírovaný text</small>
-                </div>
-              </summary>
-              <div className="planner-share-content">
-                <p>
-                  Každý s odkazem uvidí trasu a zastávky. Soukromé poznámky, identita a AI
-                  konverzace se nikdy nesdílí.
-                </p>
-                <button
-                  type="button"
-                  className="btn btn-accent"
-                  data-testid="create-plan-share"
-                  disabled={shareBusy}
-                  onClick={() => void createShare()}
-                >
-                  {shareBusy ? "Připravuji odkaz…" : "Vytvořit a zkopírovat odkaz"}
-                </button>
-                {shareListLoading && (
-                  <p className="planner-share-loading" role="status">
-                    Načítám dříve vytvořené odkazy…
-                  </p>
-                )}
-                {newShareUrl && (
-                  <div className="planner-share-url" data-testid="plan-share-url">
-                    <label>
-                      <span>Nový odkaz — po zavření už ho nelze znovu zobrazit</span>
-                      <input
-                        readOnly
-                        value={newShareUrl}
-                        onFocus={(event) => event.target.select()}
-                      />
-                    </label>
-                    <button type="button" className="btn" onClick={() => void copyShareUrl()}>
-                      Kopírovat
-                    </button>
-                  </div>
-                )}
-                {shareLinks.length > 0 && (
-                  <ul className="planner-share-list" aria-label="Odkazy tohoto plánu">
-                    {shareLinks.map((share) => (
-                      <li key={share.id} className={share.revokedAt ? "revoked" : "active"}>
-                        <div>
-                          <strong>{share.revokedAt ? "Odvolaný odkaz" : "Aktivní odkaz"}</strong>
-                          <small>
-                            Jen pro čtení · vytvořen{" "}
-                            {new Date(share.createdAt).toLocaleDateString("cs-CZ")}
-                          </small>
-                        </div>
-                        {!share.revokedAt && (
-                          <button
-                            type="button"
-                            className="btn btn-ghost small"
-                            disabled={shareBusy}
-                            onClick={() => void revokeShare(share)}
-                          >
-                            Odvolat
-                          </button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </details>
-          )}
-
-          {aiEnabled && (
-            <button
-              type="button"
-              className="planner-ai-toggle"
-              aria-expanded={aiPlanOpen}
-              aria-controls="planner-ai-discussion"
-              data-testid="plan-ai-toggle"
-              disabled={readOnlyShared}
-              onClick={() => setAiPlanOpen((value) => !value)}
-            >
-              <span>AI</span>
-              <strong>
-                {readOnlyShared ? "AI po uložení vlastní kopie" : "Diskutovat tento plán"}
-              </strong>
-              <small>
-                {readOnlyShared
-                  ? "Konverzace vlastníka zůstává soukromá"
-                  : aiPlanOpen
-                    ? "Skrýt"
-                    : savedRevision === null
-                      ? "Jednorázový dotaz; uložený plán získá trvalé vlákno"
-                      : "Otevřít uloženou konverzaci tohoto plánu"}
-              </small>
-            </button>
-          )}
-          {aiEnabled && aiPlanOpen && (
-            <form
-              id="planner-ai-discussion"
-              className="planner-ai-discussion"
-              data-testid="plan-ai-discussion"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void discussPlan();
-              }}
-            >
-              {savedRevision !== null && (
-                <div className="planner-ai-thread-head">
-                  <div>
-                    <strong>Uložená konverzace</strong>
-                    <small>
-                      {aiThread
-                        ? `${aiThread.messageCount} zpráv · navazuje na tento plán`
-                        : "Další dotaz založí nové vlákno u tohoto plánu"}
-                    </small>
-                  </div>
-                  {aiThread && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost small"
-                      onClick={startNewAiThread}
-                    >
-                      Nové vlákno
-                    </button>
-                  )}
-                </div>
-              )}
-              {aiThreadLoading && <p className="planner-ai-thread-loading">Načítám konverzaci…</p>}
-              {aiThread && aiThread.messages.length > 0 && (
-                <div className="planner-ai-thread" data-testid="plan-ai-thread" aria-live="polite">
-                  {aiThread.messages.map((message) => (
-                    <article className={`role-${message.role}`} key={message.id}>
-                      <strong>{message.role === "user" ? "Ty" : "MapOS AI"}</strong>
-                      <p>{message.content}</p>
-                      {message.role === "assistant" && message.disclosure && (
-                        <small>{message.disclosure}</small>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              )}
-              <label className="planner-field">
-                <span>Co chceš s plánem probrat?</span>
-                <textarea
-                  rows={3}
-                  maxLength={2_000}
-                  value={aiPlanPrompt}
-                  placeholder="Např. Který den je příliš dlouhý a kde by dávalo smysl udělat pauzu?"
-                  onChange={(event) => setAiPlanPrompt(event.target.value)}
-                />
-              </label>
-              <p className="planner-ai-consent">
-                Odesláním sdílíš s nastaveným AI poskytovatelem text dotazu a omezený přehled: názvy
-                a GPS zastávek, profil a souhrn úseků. Soukromé poznámky ani identita se neposílají.
-                {aiThread
-                  ? " AI dostane i omezenou historii tohoto vlákna, aby mohla navázat."
-                  : ""}
-                {savedRevision === null
-                  ? " Tento jednorázový dotaz se neuloží; po uložení plánu bude vlákno trvalé."
-                  : " Vlákno je uložené jen u tvého plánu."}{" "}
-                AI plán sama nezmění.
-              </p>
-              <button
-                className="btn btn-ai"
-                type="submit"
-                disabled={aiPlanBusy || aiThreadLoading || !aiPlanPrompt.trim()}
-              >
-                {aiPlanBusy
-                  ? "AI zpracovává plán…"
-                  : aiThreadLoading
-                    ? "Načítám vlákno…"
-                    : "Odeslat AI"}
-              </button>
-              {aiPlanAnswer && (
-                <div className="planner-ai-plan-answer" role="status">
-                  <strong>AI doporučení</strong>
-                  <p>{aiPlanAnswer.text}</p>
-                  <small>{aiPlanAnswer.disclosure}</small>
-                </div>
-              )}
-            </form>
-          )}
-
-          <div className="planner-export-actions" aria-label="Exportovat plán">
-            {(["gpx", "geojson", "kml", "mapos"] as const).map((format) => (
-              <button
-                key={format}
-                className="btn btn-ghost"
-                data-testid={`export-${format}`}
-                disabled={exporting !== null}
-                onClick={() => void exportPlan(format)}
-              >
-                {exporting === format ? "Exportuji…" : EXPORT_LABELS[format]}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="planner-handoff" aria-labelledby="planner-handoff-title">
-          <div className="planner-section-title">
-            <h3 id="planner-handoff-title">Otevřít trasu</h3>
-            <span>externí mapy</span>
-          </div>
-          <div className="planner-handoff-links">
-            {externalHandoffs.map((handoff) => (
-              <a
-                key={handoff.id}
-                className="btn btn-ghost"
-                data-testid={`handoff-${handoff.id}`}
-                href={handoff.href}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {handoff.label}
-              </a>
-            ))}
-          </div>
-          {externalHandoffs.some((handoff) => handoff.limitation) && (
-            <ul className="planner-handoff-limits" aria-label="Limity externích map">
-              {externalHandoffs.flatMap((handoff) =>
-                handoff.limitation ? (
-                  <li key={handoff.id}>
-                    <strong>{handoff.label}:</strong> {handoff.limitation}
-                  </li>
-                ) : (
-                  []
-                )
-              )}
-            </ul>
-          )}
-          <p className="planner-route-disclaimer">
-            Trasu skládá MapOS po sousedních úsecích přes provider {provider}. Externí služba může
-            profil, dopravní data i výslednou geometrii přepočítat odlišně.
+        {totals.ready > 0 && (
+          <p className="planner-hint">
+            Trasa je složená ze skutečných úseků. Vyberte úsek tady nebo přímo v mapě; zvolená část
+            se zvýrazní oranžově.
           </p>
-        </section>
+        )}
+
+        {error && (
+          <InlineNotice tone="danger" testId="plan-error">
+            {error}
+          </InlineNotice>
+        )}
+
+        {aiEnabled && aiPlanOpen && !readOnlyShared && (
+          <PlanAssistant
+            prompt={aiPlanPrompt}
+            busy={aiPlanBusy}
+            threadLoading={aiThreadLoading}
+            thread={aiThread}
+            answer={aiPlanAnswer}
+            persisted={savedRevision !== null}
+            onPromptChange={setAiPlanPrompt}
+            onSubmit={() => void discussPlan()}
+            onNewThread={startNewAiThread}
+          />
+        )}
+
+        <PlanShareDialog
+          tab={shareTab}
+          onTabChange={setShareTab}
+          onClose={() => setShareTab(null)}
+          exporting={exporting}
+          onExport={(format) => void exportPlan(format)}
+          shareTools={
+            <PlanShareTools
+              readOnlyShared={readOnlyShared}
+              shareBusy={shareBusy}
+              shareListLoading={shareListLoading}
+              shareLinks={shareLinks}
+              newShareUrl={newShareUrl}
+              onShareSummary={() => void shareItinerary()}
+              onCopyItinerary={() => void copyItinerary()}
+              onCreateShare={() => void createShare()}
+              onCopyShareUrl={() => void copyShareUrl()}
+              onRevokeShare={(share) => void revokeShare(share)}
+            />
+          }
+          handoffs={
+            <div className="planner-handoffs">
+              {externalHandoffs.map((handoff) => (
+                <a
+                  key={handoff.id}
+                  className="planner-handoff"
+                  data-testid={`handoff-${handoff.id}`}
+                  href={handoff.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <strong>{handoff.label}</strong>
+                  {handoff.limitation && <small>{handoff.limitation}</small>}
+                </a>
+              ))}
+            </div>
+          }
+        />
       </div>
     </PanelShell>
   );

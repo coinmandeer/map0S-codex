@@ -178,46 +178,45 @@ test.describe("source-grounded Personal UI", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=personal&layers=osm-poi,my-saved-places&lng=13.3775&lat=49.7475&z=14");
 
-    const panel = page.getByTestId("mine-panel");
+    const panel = page.getByTestId("personal-panel");
     await expect(panel.getByTestId("personal-overview")).toBeVisible();
     await expect(panel.getByTestId("personal-count-plans")).toHaveText("2");
     await expect(panel.getByTestId("personal-count-places")).toHaveText("3");
     await expect(panel.getByTestId("personal-count-layers")).toHaveText("1");
-    await expect(panel.locator(".mine-accordion[open]")).toHaveCount(0);
+    await expect(panel.locator(".kit-accordion-panel[data-open]")).toHaveCount(0);
     await expect(panel).not.toContainText("Poslední hledání");
     await expect(panel).not.toContainText("Cizí veřejné místo");
 
-    await panel.getByText("Uložené plány", { exact: true }).click();
-    await expect(panel.locator(".mine-plan-card")).toHaveCount(2);
+    await panel.getByTestId("personal-accordion-plans").click();
+    await expect(panel.getByTestId("plan-row")).toHaveCount(2);
     await expect(panel.getByTestId("new-plan")).toBeVisible();
-    await panel.getByText("Uložené plány", { exact: true }).click();
+    await panel.getByTestId("personal-accordion-plans").click();
 
-    await panel.getByText("Moje místa", { exact: true }).click();
-    await expect(panel.locator(".mine-saved-place")).toHaveCount(3);
-    await expect(panel.getByRole("button", { name: "Vyhlídky 2" })).toHaveAttribute(
+    await panel.getByTestId("personal-accordion-places").click();
+    await expect(panel.getByTestId("saved-place-row")).toHaveCount(3);
+    await expect(panel.getByTestId("personal-category-viewpoint")).toHaveAttribute(
       "aria-pressed",
       "false"
     );
-    await panel.getByLabel("Filtrovat uložená místa").fill("západ");
-    await expect(panel.locator(".mine-saved-place")).toHaveCount(1);
+    await panel.getByTestId("personal-place-search").fill("západ");
+    await expect(panel.getByTestId("saved-place-row")).toHaveCount(1);
     await expect(panel).toContainText("Vyhlídka na západ slunce");
-    await panel.getByRole("button", { name: "Vyhlídky 2" }).click();
-    await expect(panel.locator(".mine-saved-place")).toHaveCount(1);
-    await panel.getByRole("button", { name: "Vymazat filtr míst" }).click();
-    await expect(panel.locator(".mine-saved-place")).toHaveCount(2);
+    await panel.getByTestId("personal-category-viewpoint").click();
+    await expect(panel.getByTestId("saved-place-row")).toHaveCount(1);
+    await panel.getByRole("button", { name: "Vymazat" }).click();
+    await expect(panel.getByTestId("saved-place-row")).toHaveCount(2);
   });
 
   test("keeps empty plans compact and the new-plan action available", async ({ page }) => {
     await stubPersonal(page, { empty: true });
     await page.goto("/?mode=personal");
-    const panel = page.getByTestId("mine-panel");
-    await panel.getByText("Uložené plány", { exact: true }).click();
-    await expect(panel.locator(".mine-accordion[open]").locator(".mine-empty")).toHaveText(
-      "Zatím žádný plán."
-    );
+    const panel = page.getByTestId("personal-panel");
+    await panel.getByTestId("personal-accordion-plans").click();
+    // §4.3: an empty section offers the action without a sentence restating the emptiness.
+    await expect(panel.getByTestId("plan-row")).toHaveCount(0);
     await expect(panel.getByTestId("new-plan")).toBeVisible();
-    await expect(panel.locator(".mine-stats")).toContainText("1aktivní hry");
-    await expect(panel.locator(".mine-stats")).not.toContainText("0plánů");
+    await expect(panel.getByTestId("personal-summary")).toContainText("1 hra");
+    await expect(panel.getByTestId("personal-summary")).not.toContainText("0 plánů");
   });
 
   test("is responsive at 200% text and produces inspected Personal captures", async ({ page }) => {
@@ -229,11 +228,11 @@ test.describe("source-grounded Personal UI", () => {
       if (width === 390) {
         await page.getByTestId("bottom-nav").getByTestId("mode-personal").click();
       }
-      const panel = page.getByTestId("mine-panel");
+      const panel = page.getByTestId("personal-panel");
       await expect(panel.getByTestId("personal-count-places")).toHaveText("3");
       await page.screenshot({ path: `${DIR}/${width}-personal-redesign.png`, fullPage: true });
-      await panel.getByText("Moje místa", { exact: true }).click();
-      await expect(panel.locator(".mine-saved-place")).toHaveCount(3);
+      await panel.getByTestId("personal-accordion-places").click();
+      await expect(panel.getByTestId("saved-place-row")).toHaveCount(3);
       await page.screenshot({ path: `${DIR}/${width}-personal-places.png`, fullPage: true });
 
       if (width === 390) {
@@ -244,6 +243,47 @@ test.describe("source-grounded Personal UI", () => {
         expect(overflow).toBe(false);
       }
     }
+  });
+
+  test("edits a saved note and asks before deleting a plan", async ({ page }) => {
+    await stubPersonal(page);
+    let patched: { id: string; note: unknown } | null = null;
+    await page.route(/\/api\/v2\/me\/saved-places\/[^/]+$/u, async (route) => {
+      const request = route.request();
+      if (request.method() !== "PATCH") return route.fallback();
+      const body = request.postDataJSON() as { note: unknown };
+      patched = { id: request.url().split("/").pop()!, note: body.note };
+      await route.fulfill({
+        json: {
+          savedPlace: { ...places[2], note: body.note as string | null }
+        }
+      });
+    });
+    let deleted = false;
+    await page.route("**/api/plans/plan-1", async (route) => {
+      deleted = route.request().method() === "DELETE";
+      await route.fulfill({ status: 204, body: "" });
+    });
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/?mode=personal");
+    const panel = page.getByTestId("personal-panel");
+
+    await panel.getByTestId("personal-accordion-places").click();
+    await panel.getByRole("button", { name: "Možnosti místa Kavárna u parku" }).click();
+    await page.getByTestId("saved-place-menu-saved-cafe-note").click();
+    await page.getByTestId("place-note-input").fill("Zavírají v 18:00");
+    await page.getByTestId("place-note-save").click();
+    await expect(page.getByTestId("place-note-dialog")).toHaveCount(0);
+    expect(patched).toEqual({ id: "saved-cafe", note: "Zavírají v 18:00" });
+
+    await panel.getByTestId("personal-accordion-plans").click();
+    await panel.getByRole("button", { name: "Možnosti plánu Víkend podél Berounky" }).click();
+    await page.getByTestId("plan-menu-plan-1-delete").click();
+    await expect(page.getByRole("dialog")).toContainText("Smazat plán?");
+    await page.getByRole("button", { name: "Smazat plán" }).click();
+    await expect(panel.getByTestId("plan-row")).toHaveCount(1);
+    expect(deleted).toBe(true);
   });
 
   test("keeps personal pin priority and information hierarchy in dark mode", async ({ page }) => {

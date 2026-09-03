@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { t } from "../i18n/cs";
 import { getShellStore } from "../store/shellStore";
-import { IconButton } from "./kit";
+import { IconButton, ProgressLinear } from "./kit";
 import {
   PANEL_SNAPS,
   defaultSnapFor,
@@ -57,6 +57,8 @@ export function PanelShell({
   testId,
   headerExtra,
   className,
+  busy = false,
+  busyLabel,
   footer,
   dismissible = false,
   hasContent = true,
@@ -67,6 +69,10 @@ export function PanelShell({
   testId: string;
   headerExtra?: ReactNode;
   className?: string;
+  /** Work in flight that refreshes the whole panel. Shown as a 2 px bar under the header
+   *  instead of a sentence in the body — the panel keeps its previous content readable. */
+  busy?: boolean;
+  busyLabel?: string;
   /** Sticky bottom bar for the panel's primary action, if it has one (§4.2). */
   footer?: ReactNode;
   /** Mode panels stay at `peek` when swiped down; only a place detail closes (§21.2), so this
@@ -338,6 +344,11 @@ export function PanelShell({
             onClick={() => shell.closeLeftContext()}
           />
         </div>
+        {busy && (
+          <div className="panel-left-progress" data-testid={`${testId}-busy`}>
+            <ProgressLinear label={busyLabel ?? t("status.loading")} />
+          </div>
+        )}
         <div id={`${testId}-body`} className="panel-left-body" data-testid="layer-switcher">
           {children}
         </div>

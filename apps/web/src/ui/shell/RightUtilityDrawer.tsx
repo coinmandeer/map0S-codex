@@ -4,12 +4,12 @@ import type { RightUtility } from "../../store/shellState";
 import { getShellStore } from "../../store/shellStore";
 import { useShellStoreSnapshot } from "../../store/useShellStoreSnapshot";
 import { IconButton, ProgressCircular } from "../kit";
-import { LayersMegaMenu } from "../LayersMegaMenu";
+import { LayersClearAll, LayersDrawer } from "../layers/LayersDrawer";
 import { useIsMobile } from "../useIsMobile";
 import { captureFocusedElement, restoreFocus } from "./focusRestore";
 
-const BasemapContent = lazy(() =>
-  import("../BasemapSheet").then((module) => ({ default: module.BasemapContent }))
+const BasemapsDrawer = lazy(() =>
+  import("../basemaps/BasemapsDrawer").then((module) => ({ default: module.BasemapsDrawer }))
 );
 const SettingsContent = lazy(() =>
   import("../SettingsSheet").then((module) => ({ default: module.SettingsContent }))
@@ -76,6 +76,7 @@ function OpenRightUtilityDrawer({ type }: { type: Exclude<RightUtility["type"], 
     >
       <div className="shell-right-drawer-header">
         <h2>{TITLES[type]}</h2>
+        {type === "layers" && <LayersClearAll />}
         <IconButton
           ref={closeRef}
           icon="close"
@@ -87,10 +88,8 @@ function OpenRightUtilityDrawer({ type }: { type: Exclude<RightUtility["type"], 
       </div>
       <div className="shell-right-drawer-body" data-testid={compatibilityTestId}>
         <Suspense fallback={<ProgressCircular label={t("status.loading")} />}>
-          {type === "layers" && (
-            <LayersMegaMenu mobile={false} embedded onClose={() => shell.closeRightUtility()} />
-          )}
-          {type === "basemaps" && <BasemapContent />}
+          {type === "layers" && <LayersDrawer />}
+          {type === "basemaps" && <BasemapsDrawer />}
           {type === "settings" && <SettingsContent />}
         </Suspense>
       </div>

@@ -26,7 +26,7 @@ test("owner dashboard previews, publishes and rolls back a canonical layer packa
     )
     .toBe(true);
 
-  const mine = page.getByTestId("mine-panel");
+  const mine = page.getByTestId("personal-panel");
   await expect(mine).toBeVisible();
   await mine.getByText("Moje vrstvy", { exact: true }).click();
 
@@ -93,7 +93,7 @@ test("owner dashboard previews, publishes and rolls back a canonical layer packa
 
   const report = mine.getByTestId("layer-import-report");
   await expect(report).toContainText("mapos.layer-import-report 2.0.0 · committed");
-  await expect(mine.locator(".mine-layer-row").filter({ hasText: layerName })).toHaveCount(1);
+  await expect(mine.getByTestId("user-layer-row").filter({ hasText: layerName })).toHaveCount(1);
 
   const stored = await page.evaluate(async (name) => {
     const response = await fetch("/api/user-layers", { credentials: "include" });
@@ -107,7 +107,7 @@ test("owner dashboard previews, publishes and rolls back a canonical layer packa
   await report.getByRole("button", { name: "Vrátit import" }).click();
   await expect(report).toContainText("rolled-back");
   await expect(report.getByRole("button", { name: "Vráceno zpět" })).toBeDisabled();
-  await expect(mine.locator(".mine-layer-row").filter({ hasText: layerName })).toHaveCount(0);
+  await expect(mine.getByTestId("user-layer-row").filter({ hasText: layerName })).toHaveCount(0);
 
   const remains = await page.evaluate(async (name) => {
     const response = await fetch("/api/user-layers", { credentials: "include" });

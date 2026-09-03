@@ -123,6 +123,9 @@ export interface AdaptiveWeatherOverlay {
   clear(): void;
   setVisible(visible: boolean): void;
   setOpacity(opacity: number): void;
+  /** Numbers printed in the sectors once zoomed in. Users reading the coloured field as a
+   *  picture find them noisy, so the layers drawer can turn them off (§4.7 ⑤). */
+  setValueLabels(enabled: boolean): void;
   detach(): void;
 }
 
@@ -137,6 +140,7 @@ export function createAdaptiveWeatherOverlay(
   const labelLayerId = `symbol-${layerId}-values`;
   let visible = true;
   let opacity = 0.75;
+  let valueLabels = true;
   let representation: WeatherRepresentation | null = null;
   let hoverAttached = false;
   let lastHoverId: string | number | null = null;
@@ -171,6 +175,8 @@ export function createAdaptiveWeatherOverlay(
   const setLayerVisibility = (id: string, next: boolean) => {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", next ? "visible" : "none");
   };
+
+  const labelsVisible = () => visible && valueLabels && representation === "numeric-sectors";
 
   function ensureVectorLayers(data: WeatherRenderFeatureCollection) {
     const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
@@ -244,7 +250,7 @@ export function createAdaptiveWeatherOverlay(
       const data = weatherGridFeatures(grid, strategy);
       ensureVectorLayers(data);
       setLayerVisibility(fillLayerId, visible);
-      setLayerVisibility(labelLayerId, visible && representation === "numeric-sectors");
+      setLayerVisibility(labelLayerId, labelsVisible());
       return data.features.length;
     },
     clear() {
@@ -260,13 +266,17 @@ export function createAdaptiveWeatherOverlay(
         fillLayerId,
         next && representation !== null && representation !== "continuous-grid"
       );
-      setLayerVisibility(labelLayerId, next && representation === "numeric-sectors");
+      setLayerVisibility(labelLayerId, labelsVisible());
     },
     setOpacity(next) {
       opacity = next;
       continuous.setOpacity(Math.min(1, next + 0.15));
       if (map.getLayer(fillLayerId)) map.setPaintProperty(fillLayerId, "fill-opacity", next);
       if (map.getLayer(labelLayerId)) map.setPaintProperty(labelLayerId, "text-opacity", next);
+    },
+    setValueLabels(enabled) {
+      valueLabels = enabled;
+      setLayerVisibility(labelLayerId, labelsVisible());
     },
     detach() {
       if (hoverAttached) {

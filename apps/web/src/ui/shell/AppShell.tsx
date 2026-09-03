@@ -6,6 +6,7 @@ import {
   windowShellHistoryPort
 } from "../../store/shellBrowserHistory";
 import { getShellStore } from "../../store/shellStore";
+import type { ToastState } from "../../store/mapStore";
 import { useMapStoreSnapshot } from "../../store/useMapStoreSnapshot";
 import { useShellStoreSnapshot } from "../../store/useShellStoreSnapshot";
 import { BottomNav } from "../BottomNav";
@@ -16,6 +17,7 @@ import { SourceStatus } from "../SourceStatus";
 import { TaskCenter } from "../TaskCenter";
 import { legendContributions, timelineContributions } from "../footerContributions";
 import { ModuleErrorBoundary } from "../primitives/ModuleErrorBoundary";
+import { Button } from "../kit";
 import { ActivityIndicator } from "./ActivityIndicator";
 import { MapFooterStack } from "./MapFooterStack";
 import { LegendStack } from "./LegendStack";
@@ -55,8 +57,8 @@ const DiscoverPanel = lazy(() =>
 const PlanningPanel = lazy(() =>
   import("../PlanningPanel").then((module) => ({ default: module.PlanningPanel }))
 );
-const MinePanel = lazy(() =>
-  import("../MinePanel").then((module) => ({ default: module.MinePanel }))
+const PersonalPanel = lazy(() =>
+  import("../PersonalPanel").then((module) => ({ default: module.PersonalPanel }))
 );
 const GameSimulationBridge = lazy(() =>
   import("../GameSimulationBridge").then((module) => ({ default: module.GameSimulationBridge }))
@@ -221,7 +223,7 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
             onDismiss={() => shell.closeLeftContext()}
             placement="panel"
           >
-            <MinePanel />
+            <PersonalPanel />
           </AsyncSurface>
         )}
         {leftContext.type === "mode" && leftContext.mode === "game" && (
@@ -293,12 +295,22 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
         <MapPickerHost />
       </ModuleErrorBoundary>
 
-      {toast && (
-        <div className="toast" data-testid="toast" role="status" aria-live="polite">
-          {toast}
-        </div>
-      )}
+      {toast && <Toast toast={toast} />}
     </>
+  );
+}
+
+/** One line, at most one action — the undo for something the app did on the user's behalf. */
+function Toast({ toast }: { toast: ToastState }) {
+  return (
+    <div className="toast" data-testid="toast" role="status" aria-live="polite">
+      <span className="toast-message">{toast.message}</span>
+      {toast.action && (
+        <Button variant="text" size="sm" testId="toast-action" onClick={toast.action.onSelect}>
+          {toast.action.label}
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -330,7 +342,7 @@ export function LegacyAppShell({ onFlyToMe }: AppChromeProps) {
         <DiscoverPanel />
       </AsyncSurface>
       <AsyncSurface id="legacy-personal-panel" title="Osobní místa">
-        <MinePanel />
+        <PersonalPanel />
       </AsyncSurface>
       <AsyncSurface id="legacy-game-panel" title="Herní panel">
         <GameHud />
@@ -361,11 +373,7 @@ export function LegacyAppShell({ onFlyToMe }: AppChromeProps) {
         {sheet === "wizard" && <CreateWizard />}
       </AsyncSurface>
 
-      {toast && (
-        <div className="toast" data-testid="toast" role="status" aria-live="polite">
-          {toast}
-        </div>
-      )}
+      {toast && <Toast toast={toast} />}
     </>
   );
 }

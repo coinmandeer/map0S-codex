@@ -33,7 +33,7 @@ test.describe("activity indicator", () => {
     await expect(indicator).toBeVisible();
     // Three layers are loading, and the cap is three rows (ACTIVITY_MAX_ROWS).
     await expect(indicator.getByTestId("activity-row")).toHaveCount(3);
-    // No expander and no per-task cancel: the pill reports, the drawer controls.
+    // The pill itself reports; cancel and retry live in its popover (§29.3), never inline.
     await expect(indicator.getByRole("button", { name: "Zrušit" })).toHaveCount(0);
 
     const geometry = await page.evaluate(() => {
@@ -101,9 +101,12 @@ test.describe("activity indicator", () => {
     expect(safeGeometry.aboveSheet).toBe(true);
     await page.screenshot({ path: `${DIR}/390-activity-error.png`, fullPage: true });
 
-    // The row is a button: it hands over to the notice in the layer drawer, which is where the
-    // upstream message and the retry live.
+    // Tapping the pill opens the task popover: retry, dismiss, and the way over to the layer
+    // drawer, where the upstream message for that layer is spelled out.
     await failedRow.click();
+    const tasks = page.getByTestId("activity-tasks");
+    await expect(tasks.getByTestId("activity-task").first()).toContainText("OSM");
+    await tasks.getByRole("button", { name: "Otevřít Vrstvy" }).click();
     await expect(page.getByTestId("right-utility-drawer")).toBeVisible();
   });
 });

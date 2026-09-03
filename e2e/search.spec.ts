@@ -49,14 +49,11 @@ test.describe("transparent global search", () => {
     await expect(geocoderResult).toContainText("Jistota: vysoká");
     expect(aiRequests).toBe(0);
 
+    // §29.3: asking is a single row, and the only thing between it and the request is the
+    // layer gate — rendered where the answer will be, never as a dialog in front of it.
+    await expect(page.getByTestId("search-offer-ai")).toContainText("najdi mi nejbližší bar");
     await page.getByTestId("search-offer-ai").click();
-    await expect(page.getByTestId("search-run-ai")).toBeVisible();
-    expect(aiRequests).toBe(0);
-
-    await page.getByTestId("search-run-ai").click();
-    await expect(page.getByTestId("search-ai-layer-preview")).toContainText("nic se nezapne samo", {
-      ignoreCase: true
-    });
+    await expect(page.getByTestId("search-ai-layer-preview")).toContainText("POI");
     expect(aiRequests).toBe(0);
 
     const aiRequest = page.waitForRequest(
@@ -65,7 +62,7 @@ test.describe("transparent global search", () => {
     );
     await page
       .getByTestId("search-ai-layer-preview")
-      .getByRole("button", { name: "Potvrdit a pokračovat" })
+      .getByRole("button", { name: "Zapnout a pokračovat" })
       .click();
     const request = await aiRequest;
     expect(request.postDataJSON()).toMatchObject({

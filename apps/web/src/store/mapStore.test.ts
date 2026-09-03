@@ -153,12 +153,16 @@ test("legacy mode transitions leave only canonical mode state", () => {
 test("a later toast keeps its own countdown instead of inheriting the earlier one's", async () => {
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  store.showToast("Vítej", 60);
+  store.showToast("Vítej", { durationMs: 60 });
   await wait(30);
-  store.showToast("Filtr #gastro", 400);
+  store.showToast("Filtr #gastro", { durationMs: 400 });
 
   await wait(60); // The greeting's dismissal would land in here.
-  assert.equal(store.toast, "Filtr #gastro", "the older countdown must not clear a newer message");
+  assert.equal(
+    store.toast?.message,
+    "Filtr #gastro",
+    "the older countdown must not clear a newer message"
+  );
 });
 
 test("subscribers are notified on every layer change", () => {

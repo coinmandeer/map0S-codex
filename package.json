@@ -17,6 +17,7 @@
     "dev:api": "npm run dev -w @mapos/api",
     "build": "npm run build -w @mapos/layer-sdk && npm run build -w @mapos/map-runtime && npm run build -w @mapos/api && npm run build -w @mapos/web && npm run build -w @mapos/runtime-starter",
     "models": "node scripts/fetch-models.mjs",
+    "icons": "node scripts/subset-icon-font.mjs",
     "pretest": "npm run build:shared",
     "test": "npm run test:architecture && npm run test:css-tokens && npm run test -w @mapos/layer-sdk && npm run test -w @mapos/map-runtime && npm run test -w @mapos/api && npm run test -w @mapos/web",
     "test:architecture": "node scripts/check-architecture-boundaries.mjs",

@@ -18,6 +18,18 @@ import { emit, on } from "../lib/events";
 import { GAME_AVATAR_V2_ENABLED } from "../lib/featureFlags";
 import { AccessibleGameDpad } from "./GameControls";
 import { PanelShell } from "./PanelShell";
+import {
+  Accordion,
+  Button,
+  IconButton,
+  InfoTip,
+  ListItem,
+  Popover,
+  ProgressLinear,
+  SegmentedButton,
+  Switch,
+  type AccordionSection
+} from "./kit";
 
 type Bbox = [number, number, number, number];
 
@@ -41,12 +53,28 @@ interface GameQuest {
 interface GameZone {
   id: string;
   name: string;
+  lng: number;
+  lat: number;
   zoneKind: "standard" | "event" | "staker_gate";
   lifecycle: "active" | "scheduled" | "expired";
   startsInSeconds: number | null;
   endsInSeconds: number | null;
   minStakeUsd: number;
 }
+
+const GAMES = [
+  { id: "aavegotchi", label: "Aavegotchi", icon: "casino" },
+  { id: "trail-signals", label: "Trail Signals", icon: "hiking" }
+] as const;
+
+/** XP per level, shared with the Personal panel's rank line. */
+const XP_PER_LEVEL = 100;
+
+const ZONE_COLORS: Record<GameZone["zoneKind"], string> = {
+  standard: "var(--accent)",
+  event: "var(--warning)",
+  staker_gate: "var(--info)"
+};
 
 function zoneKindLabel(kind: GameZone["zoneKind"]): string {
   if (kind === "event") return "Událost";
@@ -66,6 +94,12 @@ function zoneTimeLabel(zone: GameZone): string {
  *  player rather than from whatever the camera happens to frame. */
 const QUEST_RADIUS_DEG = 0.05;
 
+/** The game panel (§4.6).
+ *
+ *  Player, today's field, zones and quests — in that order, because that is the order a player
+ *  asks about them. Everything that is a setting rather than a status lives behind the header's
+ *  settings popover or the "Pokročilé" section, so the panel is not a wall of toggles.
+ */
 export function GameHud() {
   const store = getMapStore();
   const open = useMapStoreSnapshot((s) => s.sidebarOpen);
@@ -230,6 +264,14 @@ export function GameHud() {
     store.setActiveGames(next, next.includes(focusedGame) ? focusedGame : next[0]);
   };
 
+  const focusGame = (gameId: string) => {
+    if (!activeGames.includes(gameId)) {
+      store.setActiveGames([...activeGames, gameId], gameId);
+      return;
+    }
+    store.setFocusedGame(gameId);
+  };
+
   const selectInventoryItem = (result: AvatarInventoryResult, index: number) => {
     const item = result.items[index];
     if (!item || item.status !== "available") return;
@@ -248,200 +290,275 @@ export function GameHud() {
 
   if (!open || mode !== "game") return null;
 
+  const level = Math.floor(xp / XP_PER_LEVEL) + 1;
+  const gotchiEnabled = GAME_AVATAR_V2_ENABLED && Boolean(inventory?.items[0]);
+
+  const advanced: AccordionSection[] = [
+    {
+      id: "advanced",
+      title: "Pokročilé",
+      icon: "tune",
+      testId: "game-advanced",
+      children: (
+        <div className="game-advanced">
+          <div className="game-advanced-block">
+            <span className="kit-eyebrow">Přístupné ovládání</span>
+            <AccessibleGameDpad />
+          </div>
+          <div className="game-advanced-block">
+            <span className="kit-eyebrow">Výkon</span>
+            <SegmentedButton<GamePerformanceTier>
+              ariaLabel="Výkonnostní profil hry"
+              value={performanceTier}
+              onChange={changePerformanceTier}
+              block
+              options={[
+                { value: "low", label: "Úsporný" },
+                { value: "balanced", label: "Vyvážený" }
+              ]}
+              testId="game-performance"
+            />
+            <InfoTip title="Úsporný profil">
+              Omezuje animace na 24 fps, vypne halo orbů a nikdy nevolí LOD0.
+            </InfoTip>
+          </div>
+          {session && staking && (
+            <div className="game-advanced-block" data-testid="game-staking">
+              <span className="kit-eyebrow">Experimentální ekonomika</span>
+              <p className="game-note">
+                Vloženo ${staking.stakedUsd.toFixed(2)} · úroveň {staking.tier} · výnos $
+                {staking.pendingYieldUsd.toFixed(4)}
+              </p>
+              <div className="game-advanced-actions">
+                <Button variant="outlined" size="sm" onClick={() => void stake(10)}>
+                  +10 USD
+                </Button>
+                <Button variant="outlined" size="sm" onClick={() => void stake(100)}>
+                  +100 USD
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
+  ];
+
   return (
-    <PanelShell title={t("mode.game")} testId="game-panel" className="game-panel">
-      <div className="game-hud" data-testid="game-hud">
-        <div className="game-hud-title">
-          <strong>
-            {focusedGame === "trail-signals" ? "Trail Signals" : "Aavegotchi výprava"}
-          </strong>
-          <span>{xp} XP</span>
-        </div>
-        <div className="game-hud-games" data-testid="game-selector">
-          {[
-            { id: "aavegotchi", label: "Aavegotchi" },
-            { id: "trail-signals", label: "Trail Signals" }
-          ].map((game) => {
-            const active = activeGames.includes(game.id);
-            return (
-              <div key={game.id} className={active ? "active" : ""}>
-                <button type="button" onClick={() => active && store.setFocusedGame(game.id)}>
-                  {game.label}
-                </button>
-                <button
-                  type="button"
-                  aria-label={`${active ? "Vypnout" : "Zapnout"} ${game.label}`}
-                  onClick={() => toggleGame(game.id)}
-                >
-                  {active ? "✓" : "+"}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-        <div className="game-hud-row">
-          <span className="game-hud-count" data-testid="orb-count">
-            🔮 dnes {orbs.collected}/{orbs.total}
-          </span>
-          <span className="game-hud-count">👻 {caught}</span>
-          <span className="game-hud-count">⚔️ {encounters}</span>
-        </div>
-        <span className="meta game-hud-sector-note">
-          {orbs.total
-            ? `Pevné denní pole 1 × 1 km · zbývá ${orbs.remaining}`
-            : "Čekám na silniční data pro denní pole…"}
-        </span>
-        <div className="game-hud-controls">
-          <button
-            className={`btn small ${trackingMode === "simulation" ? "btn-accent" : ""}`}
-            onClick={() => store.setGameTrackingMode("simulation")}
-          >
-            Klávesy
-          </button>
-          <button
-            className={`btn small ${trackingMode === "gps" ? "btn-accent" : ""}`}
-            onClick={() => store.setGameTrackingMode("gps")}
-          >
-            GPS
-          </button>
-          <button
-            className={`btn small ${cameraMode === "follow" ? "btn-accent" : ""}`}
-            onClick={() => store.setGameCameraMode("follow")}
-          >
-            Za hráčem
-          </button>
-          <button
-            className={`btn small ${cameraMode === "top" ? "btn-accent" : ""}`}
-            onClick={() => store.setGameCameraMode("top")}
-          >
-            Shora
-          </button>
-        </div>
-        <span className="meta" data-testid="game-position-status">
-          {trackingMode === "gps"
-            ? gpsAccuracy == null
-              ? "Reálná poloha: zaměřuji GPS…"
-              : `Reálná poloha ±${Math.round(gpsAccuracy)} m; přesná poloha se nesdílí.`
-            : "Simulovaná poloha: start je střed mapy, nejde o tvrzení skutečné GPS."}
-        </span>
-        <details className="game-hud-movement">
-          <summary>Přístupné ovládání bez gesta</summary>
-          <AccessibleGameDpad />
-        </details>
-        <details className="game-hud-avatar">
-          <summary>Avatar a inventář</summary>
-          <div className="game-hud-controls">
-            <button
-              className={`btn small ${!GAME_AVATAR_V2_ENABLED || avatarStyle === "cube" ? "btn-accent" : ""}`}
-              onClick={() => store.setAvatarStyle("cube")}
-              data-testid="avatar-cube"
-            >
-              Původní postava
-            </button>
-            <button
-              className={`btn small ${GAME_AVATAR_V2_ENABLED && avatarStyle === "aavegotchi" ? "btn-accent" : ""}`}
-              onClick={() => inventory && selectInventoryItem(inventory, 0)}
-              disabled={!GAME_AVATAR_V2_ENABLED || !inventory?.items[0]}
-              data-testid="avatar-gotchi"
-            >
-              Neutrální 3D
-            </button>
-          </div>
-          <p className="meta" data-testid="avatar-asset-gate">
-            {!GAME_AVATAR_V2_ENABLED
-              ? "Nové 3D avatary jsou vypnuté bezpečným rollback přepínačem."
-              : (inventory?.message ?? "Načítám bezpečný lokální inventář…")}
-          </p>
-          {inventory?.items.map((item) => (
-            <p className="meta" key={item.selection.inventoryItemId}>
-              {item.selection.displayName}: {item.description}
-            </p>
-          ))}
-        </details>
-        <details className="game-hud-performance">
-          <summary>Výkon a animace</summary>
-          <div className="game-hud-controls" role="group" aria-label="Výkonnostní profil hry">
-            <button
-              type="button"
-              className={`btn small ${performanceTier === "low" ? "btn-accent" : ""}`}
-              aria-pressed={performanceTier === "low"}
-              onClick={() => changePerformanceTier("low")}
-            >
-              Úsporný
-            </button>
-            <button
-              type="button"
-              className={`btn small ${performanceTier === "balanced" ? "btn-accent" : ""}`}
-              aria-pressed={performanceTier === "balanced"}
-              onClick={() => changePerformanceTier("balanced")}
-            >
-              Vyvážený
-            </button>
-          </div>
-          <p className="meta">
-            Úsporný profil omezuje animace na 24 fps, vypne halo orbů a nikdy nevolí LOD0.
-          </p>
-        </details>
-        {zones.length > 0 && (
-          <div className="game-hud-zones" data-testid="game-zones">
-            <div className="meta">Časované zóny</div>
-            {zones.map((zone) => (
-              <div
-                key={zone.id}
-                className="game-hud-zone"
-                data-kind={zone.zoneKind}
-                data-lifecycle={zone.lifecycle}
-              >
-                <span className="game-hud-zone-dot" aria-hidden="true" />
-                <span className="game-hud-zone-name">{zone.name}</span>
-                <span className="meta">
-                  {zoneKindLabel(zone.zoneKind)} · {zoneTimeLabel(zone)}
-                  {zone.zoneKind === "staker_gate" ? ` · $${zone.minStakeUsd}` : ""}
+    <PanelShell
+      title={t("mode.game")}
+      testId="game-panel"
+      className="game-panel"
+      headerExtra={
+        <Popover
+          title="Nastavení hry"
+          testId="game-settings"
+          width={300}
+          trigger={<IconButton icon="settings" label="Nastavení hry" size="sm" />}
+        >
+          <div className="game-settings">
+            <div className="game-settings-field">
+              <span className="kit-eyebrow">
+                Pohyb
+                <InfoTip title="Poloha" testId="game-position-status">
+                  {trackingMode === "gps"
+                    ? gpsAccuracy == null
+                      ? "Reálná poloha: zaměřuji GPS."
+                      : `Reálná poloha ±${Math.round(gpsAccuracy)} m; přesná poloha se nesdílí.`
+                    : "Simulovaná poloha: start je střed mapy, nejde o tvrzení skutečné GPS."}
+                </InfoTip>
+              </span>
+              <SegmentedButton<"simulation" | "gps">
+                ariaLabel="Pohyb hráče"
+                value={trackingMode}
+                onChange={(next) => store.setGameTrackingMode(next)}
+                block
+                options={[
+                  { value: "simulation", label: "Klávesy" },
+                  { value: "gps", label: "GPS" }
+                ]}
+                testId="game-tracking"
+              />
+            </div>
+            <div className="game-settings-field">
+              <span className="kit-eyebrow">Kamera</span>
+              <SegmentedButton<"follow" | "top">
+                ariaLabel="Kamera"
+                value={cameraMode}
+                onChange={(next) => store.setGameCameraMode(next)}
+                block
+                options={[
+                  { value: "follow", label: "Za hráčem" },
+                  { value: "top", label: "Shora" }
+                ]}
+                testId="game-camera"
+              />
+            </div>
+            <div className="game-settings-field">
+              <span className="kit-eyebrow">
+                Avatar
+                <InfoTip title="Avatar" testId="avatar-asset-gate">
+                  {!GAME_AVATAR_V2_ENABLED
+                    ? "Nové 3D avatary jsou vypnuté bezpečným rollback přepínačem."
+                    : (inventory?.message ?? "Načítám bezpečný lokální inventář.")}
+                </InfoTip>
+              </span>
+              <SegmentedButton<"cube" | "gotchi">
+                ariaLabel="Avatar hráče"
+                value={GAME_AVATAR_V2_ENABLED && avatarStyle === "aavegotchi" ? "gotchi" : "cube"}
+                onChange={(next) => {
+                  if (next === "cube") {
+                    store.setAvatarStyle("cube");
+                    return;
+                  }
+                  if (inventory) selectInventoryItem(inventory, 0);
+                }}
+                block
+                options={[
+                  { value: "cube", label: "Kostka" },
+                  { value: "gotchi", label: "Gotchi", disabled: !gotchiEnabled }
+                ]}
+                testId="avatar"
+              />
+            </div>
+            <div className="game-settings-field">
+              <span className="kit-eyebrow">Aktivní hry</span>
+              {GAMES.map((game) => (
+                <span className="game-settings-game" key={game.id}>
+                  <span>{game.label}</span>
+                  <Switch
+                    checked={activeGames.includes(game.id)}
+                    label={game.label}
+                    testId={`game-active-${game.id}`}
+                    onChange={() => toggleGame(game.id)}
+                  />
                 </span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
+        </Popover>
+      }
+    >
+      <div className="game-hud" data-testid="game-hud">
+        <section className="game-player">
+          <span className="game-avatar" aria-hidden>
+            {(session?.displayName ?? "G").slice(0, 1).toLocaleUpperCase("cs")}
+          </span>
+          <span className="game-player-copy">
+            <span className="game-player-name">{session?.displayName ?? "Gotchi #0"}</span>
+            <span className="game-player-rank" data-testid="game-rank">
+              Lvl {level} · {xp} XP
+            </span>
+            <ProgressLinear
+              value={(xp % XP_PER_LEVEL) / XP_PER_LEVEL}
+              label={`Postup na úroveň ${level + 1}`}
+            />
+          </span>
+          {session?.isGuest && (
+            <Button
+              variant="text"
+              size="sm"
+              icon="account_balance_wallet"
+              testId="game-wallet-login"
+              onClick={() => store.showToast("Přihlášení peněženkou připravujeme")}
+            >
+              Peněženka
+            </Button>
+          )}
+        </section>
+
+        <SegmentedButton<string>
+          ariaLabel="Sledovaná hra"
+          value={focusedGame}
+          onChange={focusGame}
+          block
+          options={GAMES.map((game) => ({
+            value: game.id,
+            label: game.label,
+            icon: game.icon
+          }))}
+          testId="game-selector"
+        />
+
+        <section className="game-field">
+          <span className="game-field-value" data-testid="orb-count">
+            {orbs.collected} / {orbs.total}
+          </span>
+          <span className="game-field-label">sebráno dnes</span>
+          <ProgressLinear
+            value={orbs.total ? orbs.collected / orbs.total : 0}
+            label="Sebráno z denního pole"
+          />
+          <p className="game-note">
+            {orbs.total
+              ? `Sektor 1 × 1 km · zbývá ${orbs.remaining} · obnova o půlnoci`
+              : "Čekám na silniční data pro denní pole"}
+          </p>
+        </section>
+
+        <div className="game-counters">
+          <span className="game-counter">
+            <span className="game-counter-value">{caught}</span>
+            <span className="game-counter-label">duchů</span>
+          </span>
+          <span className="game-counter">
+            <span className="game-counter-value">{encounters}</span>
+            <span className="game-counter-label">soubojů</span>
+          </span>
+        </div>
+
+        {zones.length > 0 && (
+          <section className="game-section" data-testid="game-zones">
+            <span className="kit-eyebrow">Zóny</span>
+            {zones.map((zone) => (
+              <ListItem
+                key={zone.id}
+                testId={`game-zone-${zone.id}`}
+                icon="trip_origin"
+                iconColor={ZONE_COLORS[zone.zoneKind]}
+                title={zone.name}
+                subtitle={`${zoneKindLabel(zone.zoneKind)} · ${zoneTimeLabel(zone)}${
+                  zone.zoneKind === "staker_gate" ? ` · $${zone.minStakeUsd}` : ""
+                }`}
+                trailing={
+                  <IconButton
+                    icon="near_me"
+                    label={`Zaměřit ${zone.name}`}
+                    size="sm"
+                    onClick={() => emit("fly-to", { lng: zone.lng, lat: zone.lat, zoom: 15 })}
+                  />
+                }
+              />
+            ))}
+          </section>
         )}
+
         {quests.length > 0 && (
-          <div className="game-hud-quests">
-            <div className="meta">Questy</div>
-            {quests.map((q) => {
-              const done = completed.has(q.id);
+          <section className="game-section" data-testid="game-quests">
+            <span className="kit-eyebrow">Questy</span>
+            {quests.map((quest) => {
+              const done = completed.has(quest.id);
               return (
-                <button
-                  key={q.id}
-                  type="button"
-                  className="game-hud-quest"
-                  data-done={done || undefined}
-                  data-testid={`quest-${q.id}`}
+                <ListItem
+                  key={quest.id}
+                  testId={`quest-${quest.id}`}
+                  icon="flag"
+                  title={quest.title}
+                  subtitle={quest.anchorName ?? undefined}
                   disabled={done}
-                  onClick={() => void claimQuest(q)}
-                >
-                  <span>{q.title}</span>
-                  <span className="meta">{done ? "hotovo" : `+${q.rewardPoints} XP`}</span>
-                </button>
+                  onClick={() => void claimQuest(quest)}
+                  trailing={
+                    <span className="game-quest-reward" data-done={done || undefined}>
+                      {done ? "hotovo" : `+${quest.rewardPoints} XP`}
+                    </span>
+                  }
+                />
               );
             })}
-          </div>
+          </section>
         )}
-        {session && staking && (
-          <details className="game-hud-stake">
-            <summary>Experimentální ekonomika</summary>
-            <div className="meta">
-              Vloženo ${staking.stakedUsd.toFixed(2)} · úroveň {staking.tier} · výnos $
-              {staking.pendingYieldUsd.toFixed(4)}
-            </div>
-            <div className="game-hud-controls">
-              <button className="btn small" onClick={() => void stake(10)}>
-                +10 USD
-              </button>
-              <button className="btn small" onClick={() => void stake(100)}>
-                +100 USD
-              </button>
-            </div>
-          </details>
-        )}
-        <span className="meta">WASD/šipky pro pohyb · klikni na ducha nebo souboj</span>
+
+        <Accordion sections={advanced} testId="game-accordion" />
       </div>
     </PanelShell>
   );

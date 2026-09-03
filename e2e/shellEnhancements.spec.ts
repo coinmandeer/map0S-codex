@@ -70,7 +70,7 @@ test.describe("source-grounded shell enhancements", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width: 1440, height: 900 });
     const modes = [
-      ["personal", "mine-panel"],
+      ["personal", "personal-panel"],
       ["discover", "discover-panel"],
       ["planning", "planning-panel"],
       ["game", "game-panel"]
@@ -91,11 +91,11 @@ test.describe("source-grounded shell enhancements", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=personal");
-    await expect(page.getByTestId("mine-panel")).toBeVisible();
-    await expect(page.locator(".mine-rank")).toHaveCount(0);
-    await expect(page.locator(".mine-stats")).toContainText("1aktivní hry");
-    await expect(page.locator(".mine-stats")).not.toContainText(/^0/);
-    await expect(page.locator(".mine-accordion[open]")).toHaveCount(0);
+    await expect(page.getByTestId("personal-panel")).toBeVisible();
+    // §4.3: the profile line lists only non-zero counts, and every section starts collapsed.
+    await expect(page.getByTestId("personal-summary")).toContainText("1 hra");
+    await expect(page.getByTestId("personal-summary")).not.toContainText("0 plánů");
+    await expect(page.locator(".kit-accordion-panel[data-open]")).toHaveCount(0);
   });
 
   test("mobile sheet snaps peek/half/full, keeps a map strip and never dismisses a mode", async ({
@@ -263,6 +263,7 @@ test.describe("source-grounded shell enhancements", () => {
     await expect(badge).toHaveAttribute("data-thematic-count", "0");
 
     await page.getByTestId("layers-btn").click();
+    await page.getByTestId("layers-accordion-weather").click();
     await page.locator('label:has([data-testid="weather-visualization-temperature"])').click();
     await expect(badge).toHaveText("2");
     await expect(badge).toHaveAttribute("data-poi-count", "1");
@@ -299,23 +300,24 @@ test.describe("source-grounded shell enhancements", () => {
     await expect.poll(() => strip.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
 
     const world = page.getByTestId("experience-selector");
-    await expect(world).not.toHaveAttribute("open", "");
-    await world.locator("summary").click();
+    await expect(world).toHaveAttribute("data-closed", "");
+    await page.getByTestId("layers-accordion-world").click();
     await expect(page.getByTestId("layer-source-osm")).toBeVisible();
     await expect(page.getByRole("heading", { name: "POI vrstvy", exact: true })).toBeVisible();
     await expect(page.getByText("Integrace", { exact: true })).toHaveCount(0);
 
     await page.getByTestId("preset-day-trip").click();
     const categories = page.getByTestId("category-accordion");
-    await expect(categories).toContainText("10 vybráno");
-    await categories.locator("summary").click();
+    await expect(categories).toContainText("10");
+    await expect(categories).toContainText("Výlet");
+    await page.getByTestId("layers-accordion-categories").click();
     await page.getByTestId("filter-brewery").click();
-    await expect(categories).toContainText("11 vybráno");
+    await expect(categories).toContainText("11");
     await expect(categories).toContainText("Vlastní výběr");
 
     await page.reload();
     await page.getByTestId("layers-btn").click();
-    await expect(page.getByTestId("category-accordion")).toContainText("11 vybráno");
+    await expect(page.getByTestId("category-accordion")).toContainText("11");
     await expect(page.getByTestId("category-accordion")).toContainText("Vlastní výběr");
 
     await page.getByTestId("basemap-btn").click();
@@ -336,13 +338,13 @@ test.describe("source-grounded shell enhancements", () => {
       )
     ).toEqual(["street", "satellite", "terrain"]);
     const street = page.locator('[data-basemap-group="street"]');
-    const streetSummary = page.getByTestId("basemap-group-street");
-    await expect(street).toHaveAttribute("open", "");
-    await streetSummary.focus();
+    const streetTrigger = page.getByTestId("basemap-group-street");
+    await expect(street).toHaveAttribute("data-open", "true");
+    await streetTrigger.focus();
     await page.keyboard.press("Enter");
-    await expect(street).not.toHaveAttribute("open", "");
+    await expect(street).not.toHaveAttribute("data-open", "true");
     await page.keyboard.press("Enter");
-    await expect(street).toHaveAttribute("open", "");
+    await expect(street).toHaveAttribute("data-open", "true");
 
     await page.getByTestId("right-utility-close").click();
     await page.getByTestId("settings-btn").click();

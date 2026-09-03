@@ -86,9 +86,12 @@ registerLayer({
     temporal: true,
     experienceIds: ["default", "aavegotchi"]
   },
-  filters: [{ id: "opacity", label: "Průhlednost", kind: "range", min: 0.2, max: 1, default: 0.6 }],
+  filters: [
+    { id: "opacity", label: "Průhlednost", kind: "range", min: 0.2, max: 1, default: 0.6 },
+    { id: "valueLabels", label: "Popisky hodnot při přiblížení", kind: "toggle", default: true }
+  ],
   // One exclusive visualization. Legacy keys remain so old weather URLs still resolve safely.
-  defaultFilters: { visualization: "radar", radar: true, variable: null },
+  defaultFilters: { visualization: "radar", radar: true, variable: null, valueLabels: true },
   // Weather is an overlay: at full opacity it hides the map it is supposed to describe.
   defaultOpacity: 0.6,
   create: (ctx) => createWeatherLayerHandle(ctx.map, ctx.layerId),

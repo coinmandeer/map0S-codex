@@ -56,7 +56,7 @@ describe("mobile sheet snaps", () => {
   });
 
   it("opens lists fully and single records or empty forms at half", () => {
-    assert.equal(defaultSnapFor("mine-panel", false), "full");
+    assert.equal(defaultSnapFor("personal-panel", false), "full");
     assert.equal(defaultSnapFor("discover-panel", false), "full");
     assert.equal(defaultSnapFor("place-detail", true), "half");
     assert.equal(defaultSnapFor("planning-panel", false), "half");
@@ -65,12 +65,12 @@ describe("mobile sheet snaps", () => {
 
   it("remembers a snap per panel and ignores junk", () => {
     const storage = memoryStorage();
-    assert.equal(readSnap(storage, "mine-panel"), null);
-    writeSnap(storage, "mine-panel", "half");
-    assert.equal(readSnap(storage, "mine-panel"), "half");
+    assert.equal(readSnap(storage, "personal-panel"), null);
+    writeSnap(storage, "personal-panel", "half");
+    assert.equal(readSnap(storage, "personal-panel"), "half");
     assert.equal(readSnap(storage, "discover-panel"), null);
-    storage.setItem("mapos:panel-snap:mine-panel", "enormous");
-    assert.equal(readSnap(storage, "mine-panel"), null);
+    storage.setItem("mapos:panel-snap:personal-panel", "enormous");
+    assert.equal(readSnap(storage, "personal-panel"), null);
   });
 
   it("survives storage that throws", () => {
@@ -82,7 +82,7 @@ describe("mobile sheet snaps", () => {
         throw new Error("blocked");
       }
     } as unknown as Storage;
-    assert.equal(readSnap(broken, "mine-panel"), null);
-    assert.doesNotThrow(() => writeSnap(broken, "mine-panel", "full"));
+    assert.equal(readSnap(broken, "personal-panel"), null);
+    assert.doesNotThrow(() => writeSnap(broken, "personal-panel", "full"));
   });
 });

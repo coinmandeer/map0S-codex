@@ -139,6 +139,7 @@ export function ListItem({
   active = false,
   disabled = false,
   href,
+  ariaLabel,
   testId
 }: {
   icon?: IconName;
@@ -150,6 +151,9 @@ export function ListItem({
   active?: boolean;
   disabled?: boolean;
   href?: string;
+  /** Overrides the accessible name when the visible title alone does not say what activating
+   *  the row does — "Vyhlídka" versus "Otevřít detail místa Vyhlídka". */
+  ariaLabel?: string;
   testId?: string;
 }) {
   const body = (
@@ -199,7 +203,13 @@ export function ListItem({
 
   return (
     <div className="kit-list-row" data-active={active || undefined} data-testid={testId}>
-      <button type="button" className="kit-list-item" onClick={onClick} disabled={disabled}>
+      <button
+        type="button"
+        className="kit-list-item"
+        aria-label={ariaLabel}
+        onClick={onClick}
+        disabled={disabled}
+      >
         {body}
       </button>
       {trailingSlot}

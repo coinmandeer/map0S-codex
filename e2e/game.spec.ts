@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures/offlineTest";
 
 /** Unlike the smoke test, these run against the real memory server so the deterministic spawner,
@@ -10,6 +11,13 @@ import { test, expect } from "./fixtures/offlineTest";
  * populated?" a question about the spawner rather than about what time it is.
  */
 const PRAGUE_WHOLE_CELLS = "14.2,49.9,14.7,50.3";
+
+/** Movement, camera, avatar and which games are running are settings, so they sit behind the
+ *  panel header's popover instead of on the HUD itself (§4.6). */
+async function openGameSettings(page: Page) {
+  await page.getByRole("button", { name: "Nastavení hry" }).click();
+  await expect(page.getByTestId("game-settings")).toBeVisible();
+}
 
 test.describe("Hra", () => {
   test("herní deep link otevře standardní panel, který lze skrýt a znovu zobrazit", async ({
@@ -55,13 +63,14 @@ test.describe("Hra", () => {
     await expect(page.getByTestId("game-hud")).toBeVisible({ timeout: 20_000 });
 
     const quest = page.getByTestId("quest-q1");
+    const claim = quest.getByRole("button");
     await expect(quest).toBeVisible({ timeout: 15_000 });
 
-    if (await quest.isDisabled()) return; // already claimed by an earlier run against the same server
+    if (await claim.isDisabled()) return; // already claimed by an earlier run against the same server
 
-    await quest.click();
+    await claim.click();
     await expect(quest).toContainText("hotovo");
-    await expect(quest).toBeDisabled();
+    await expect(claim).toBeDisabled();
   });
 
   test("catching a ghost removes it from the world for this player", async ({ page }) => {
@@ -234,7 +243,9 @@ test.describe("herní scéna", () => {
       timeout: 20_000
     });
 
-    await page.getByRole("button", { name: "Zapnout Trail Signals" }).click();
+    await openGameSettings(page);
+    await page.getByTestId("game-active-trail-signals").click();
+    await page.keyboard.press("Escape");
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -254,9 +265,11 @@ test.describe("herní scéna", () => {
         trailNamespace: "trail-signals"
       });
 
-    await page.getByRole("button", { name: "Trail Signals", exact: true }).click();
+    await page.getByTestId("game-selector-trail-signals").click();
     await expect(page.getByTestId("game-hud")).toContainText("Trail Signals");
-    await page.getByRole("button", { name: "Vypnout Trail Signals" }).click();
+    await openGameSettings(page);
+    await page.getByTestId("game-active-trail-signals").click();
+    await page.keyboard.press("Escape");
     await expect
       .poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text!()).host.activeGames))
       .toEqual(["aavegotchi"]);
@@ -320,7 +333,10 @@ test.describe("herní scéna", () => {
       new Set(["standard", "event", "staker_gate"])
     );
 
-    await page.getByRole("button", { name: "Shora" }).click();
+    // Movement, camera and avatar all live in the header's settings popover, so it stays open
+    // for the rest of the test rather than being reopened per control.
+    await openGameSettings(page);
+    await page.getByTestId("game-camera-top").click();
     await expect
       .poll(() => page.evaluate(() => window.__maposMap?.getPitch()), { timeout: 10_000 })
       .toBeLessThan(1);
@@ -328,12 +344,11 @@ test.describe("herní scéna", () => {
       .poll(() => page.evaluate(() => window.__maposMap?.getZoom()), { timeout: 10_000 })
       .toBeCloseTo(15.8, 1);
 
-    await page.getByRole("button", { name: "Za hráčem" }).click();
+    await page.getByTestId("game-camera-follow").click();
     await expect
       .poll(() => page.evaluate(() => window.__maposMap?.getPitch()), { timeout: 10_000 })
       .toBeCloseTo(52, 0);
 
-    await page.locator(".game-hud-avatar > summary").click();
     await page.getByTestId("avatar-gotchi").click();
     await expect
       .poll(() => page.evaluate(() => window.__maposGame?.contents.avatarStyle))

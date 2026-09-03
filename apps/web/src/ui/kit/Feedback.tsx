@@ -101,11 +101,13 @@ export function EmptyState({
 export function InlineNotice({
   tone = "info",
   children,
-  action
+  action,
+  testId
 }: {
   tone?: "info" | "warning" | "danger" | "success";
   children: ReactNode;
   action?: ReactNode;
+  testId?: string;
 }) {
   const icon: IconName =
     tone === "warning"
@@ -117,7 +119,12 @@ export function InlineNotice({
           : "info";
 
   return (
-    <div className="kit-notice" data-tone={tone} role={tone === "danger" ? "alert" : undefined}>
+    <div
+      className="kit-notice"
+      data-tone={tone}
+      role={tone === "danger" ? "alert" : undefined}
+      data-testid={testId}
+    >
       <Icon name={icon} size={20} />
       <span className="kit-notice-text">{children}</span>
       {action}

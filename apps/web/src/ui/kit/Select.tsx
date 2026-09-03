@@ -80,6 +80,7 @@ export function Select<T extends string>({
       </div>
       <BaseSelect.Portal>
         <BaseSelect.Positioner
+          className="kit-positioner"
           side="bottom"
           align="start"
           sideOffset={6}
@@ -209,7 +210,12 @@ export function Combobox({
         </div>
       </div>
       <BaseCombobox.Portal>
-        <BaseCombobox.Positioner side="bottom" align="start" sideOffset={6}>
+        <BaseCombobox.Positioner
+          className="kit-positioner"
+          side="bottom"
+          align="start"
+          sideOffset={6}
+        >
           <BaseCombobox.Popup className="kit-listbox">
             <BaseCombobox.Empty className="kit-listbox-empty">{emptyMessage}</BaseCombobox.Empty>
             <BaseCombobox.List>

@@ -61,7 +61,7 @@ export async function stubDiscoverContext(page: Page, overrides: Record<string, 
 }
 
 export async function openAccessibleMapFeature(page: Page, name: string) {
-  await page.getByTestId("discover-map-features-toggle").click();
+  await page.getByTestId("discover-accordion-places").click();
   const feature = page.getByRole("button", { name: `Otevřít detail místa ${name}` });
   await feature.focus();
   await feature.press("Enter");

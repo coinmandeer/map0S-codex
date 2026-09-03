@@ -1,4 +1,5 @@
 import type { OsmPoiCategoryId } from "@mapos/layer-sdk";
+import type { IconName } from "./kit/icons";
 
 export interface PinStyle {
   color: string;
@@ -70,7 +71,10 @@ export interface MapPreset {
   id: string;
   name: string;
   description: string;
+  /** Emoji, used where a preset appears inside map content (Discover's use-case row). */
   icon: string;
+  /** Material Symbols name for the chrome (§2.3) — the layers drawer and the top bar. */
+  symbol: IconName;
   layers: string[];
   categories?: OsmPoiCategoryId[];
 }
@@ -81,6 +85,7 @@ export const MAP_PRESETS: MapPreset[] = [
     name: "Výlet",
     description: "Hrady, vyhlídky, voda, vrcholy a přírodní parky",
     icon: "🧭",
+    symbol: "hiking",
     layers: ["osm-poi"],
     categories: [
       "castle",
@@ -100,6 +105,7 @@ export const MAP_PRESETS: MapPreset[] = [
     name: "Město",
     description: "Kavárny, obchody, jídlo, kultura, bary a pivovary",
     icon: "🏙",
+    symbol: "location_city",
     layers: ["osm-poi"],
     categories: ["cafe", "shop", "restaurant", "bar", "brewery", "museum", "monument", "parking"]
   },
@@ -108,6 +114,7 @@ export const MAP_PRESETS: MapPreset[] = [
     name: "Cestování",
     description: "Kempy, služby a otevřená vanlife místa",
     icon: "🚐",
+    symbol: "airport_shuttle",
     layers: ["osm-poi", "vanlife"],
     categories: [
       "camp_site",
@@ -127,6 +134,7 @@ export const MAP_PRESETS: MapPreset[] = [
     name: "Sport",
     description: "Ferraty, lezení, skateparky, koupaliště",
     icon: "🧗",
+    symbol: "sports_gymnastics",
     // Trail overlays turn a set of points into something you can actually plan around: the
     // ferrata is only useful next to the path that reaches it.
     layers: ["osm-poi", "waymarked-trails"],

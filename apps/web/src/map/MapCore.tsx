@@ -142,7 +142,7 @@ export function MapCore() {
       beginBasemapHealth(store.theme === "dark" ? "carto-dark" : "osm-carto");
       store.showToast(
         "Mapový podklad se nepodařilo načíst. Zobrazuji nouzovou mapu; tvoje vrstvy zůstaly zapnuté.",
-        8000
+        { durationMs: 8000 }
       );
       map.setStyle(fallbackStyle);
     });

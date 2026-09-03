@@ -122,21 +122,23 @@ test.describe("map-first Discover boundary", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
 
-    const useCase = page.getByTestId("discover-usecase");
-    await expect(useCase).toBeVisible();
-    await page.getByTestId("discover-preset-city").click();
-    await expect(useCase).toHaveAttribute("data-active-preset", "city");
-    await expect(page.getByTestId("discover-preset-city")).toHaveAttribute("aria-pressed", "true");
-    await expect(useCase).toContainText("Město");
-    await expect(useCase).toContainText("Kavárna u náměstí");
+    // The preset lives in the Layers drawer (§4.7); Discover only consumes the use case.
+    await page.getByTestId("layers-btn").click();
+    await page.getByTestId("preset-city").click();
+    await page.getByTestId("right-utility-close").click();
+
+    const panel = page.getByTestId("discover-panel");
+    await page.getByTestId("discover-accordion-places").click();
+    await expect(panel.getByTestId("discover-map-features")).toContainText("Kavárna u náměstí");
+    await page.getByTestId("discover-accordion-statistics").click();
     const statistics = page.getByTestId("discover-statistics");
     await expect(statistics).toContainText("614 640");
-    await expect(statistics).toContainText("2025");
-    await expect(statistics).toContainText("Wikidata");
     await expect(statistics).toContainText("Regionální HDP na obyvatele");
-    await expect(statistics).toContainText("2024");
-    await expect(statistics).toContainText("CZ032");
-    await expect(statistics).toContainText("Eurostat");
+    // Year, scope and source belong in the InfoTip rather than in the row (§21.1).
+    await statistics.getByTestId("discover-statistic-population").getByRole("button").click();
+    const info = page.getByRole("dialog");
+    await expect(info).toContainText("2025");
+    await expect(info).toContainText("Wikidata");
     await expect.poll(() => requestedUseCases.filter((value) => value === "city").length).toBe(1);
     await page.screenshot({ path: "e2e/screenshots/1440-discover-usecase.png", fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -173,7 +175,7 @@ test.describe("map-first Discover boundary", () => {
     await expect(
       indicator.getByTestId("activity-row").filter({ hasText: "Zjišťuji kontext oblasti" })
     ).toHaveCount(0);
-    await expect(panel.getByText("Kontext odpovídá tomuto výřezu.")).toBeVisible();
+    await expect(page.getByTestId("discover-panel-busy")).toHaveCount(0);
     expect(requestCount).toBe(1);
   });
 
@@ -196,6 +198,7 @@ test.describe("map-first Discover boundary", () => {
 
     const panel = page.getByTestId("discover-panel");
     await expect(panel).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("discover-accordion-boundary").click();
     await expect(page.getByTestId("discover-boundary-ready")).toBeVisible();
     await expect
       .poll(
@@ -224,6 +227,7 @@ test.describe("map-first Discover boundary", () => {
     await expect(panel).toBeVisible();
     await expect(page.getByTestId("toast")).toContainText("Vybraná oblast: Plzeň");
 
+    await page.getByTestId("discover-accordion-boundary").click();
     await page.getByRole("button", { name: "Ukázat celou" }).click();
     await expect.poll(() => page.evaluate(() => window.__maposMap?.isMoving() ?? true)).toBe(false);
     expect(
@@ -272,6 +276,7 @@ test.describe("map-first Discover boundary", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
 
+    await page.getByTestId("discover-accordion-boundary").click();
     const options = page.getByTestId("discover-region-options");
     await expect(options).toContainText("Karlovarský kraj");
     await expect(options).toContainText("NUTS 3");
@@ -385,6 +390,7 @@ test.describe("map-first Discover boundary", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=4");
 
+    await page.getByTestId("discover-accordion-boundary").click();
     const options = page.getByTestId("discover-region-options");
     await expect(options).toContainText("Deutschland", { timeout: 20_000 });
     await expect(options).toContainText("NUTS 0");
@@ -474,6 +480,7 @@ test.describe("map-first Discover boundary", () => {
     );
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
+    await page.getByTestId("discover-accordion-boundary").click();
     await expect(page.getByTestId("discover-boundary-ready")).toBeVisible();
     await expect
       .poll(() =>
