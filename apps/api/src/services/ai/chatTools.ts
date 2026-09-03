@@ -93,6 +93,43 @@ export interface AiChatToolProviders {
     events: { id: string; layerId: string; title: string; startsAt: string; sourceId: string }[];
     sources: AiChatCitation[];
   }>;
+  regionContext?(
+    input: { point: { longitude: number; latitude: number }; zoom?: number; lang?: string },
+    context: AiToolExecutionContext
+  ): Promise<{
+    region: {
+      name: string;
+      level: string;
+      hierarchy?: string[];
+      countryCode?: string;
+    };
+    guide?: {
+      lead: string;
+      highlights: { title: string; text: string; sourceIds: string[] }[];
+      practical?: { arrival?: string; bestTime?: string; warnings?: string[] };
+    };
+    sources: AiChatCitation[];
+  }>;
+  stats?(
+    input: {
+      point: { longitude: number; latitude: number };
+      zoom?: number;
+      metrics?: readonly string[];
+    },
+    context: AiToolExecutionContext
+  ): Promise<{
+    statistics: {
+      id: string;
+      label: string;
+      value: number;
+      unit: string;
+      year?: number;
+      uncertaintyLabel?: string;
+      regionName?: string;
+      sourceIds: string[];
+    }[];
+    sources: AiChatCitation[];
+  }>;
   web?: AiWebTools;
 }
 
@@ -224,6 +261,28 @@ export function createChatToolRegistry(options: {
             context
           )
       : notComposed,
+    get_region_context: providers.regionContext
+      ? async (input, context) =>
+          providers.regionContext!(
+            {
+              point: input.point as { longitude: number; latitude: number },
+              ...(typeof input.zoom === "number" ? { zoom: input.zoom } : {}),
+              ...(typeof input.lang === "string" ? { lang: input.lang } : {})
+            },
+            context
+          )
+      : notComposed,
+    get_stats: providers.stats
+      ? async (input, context) =>
+          providers.stats!(
+            {
+              point: input.point as { longitude: number; latitude: number },
+              ...(typeof input.zoom === "number" ? { zoom: input.zoom } : {}),
+              ...(Array.isArray(input.metrics) ? { metrics: input.metrics as string[] } : {})
+            },
+            context
+          )
+      : notComposed,
     web_search: providers.web
       ? async (input, context) =>
           providers.web!.search(
@@ -249,6 +308,8 @@ export function createChatToolRegistry(options: {
   if (providers.route) available.add("route_segment");
   if (providers.weather) available.add("get_weather");
   if (providers.events) available.add("search_events");
+  if (providers.regionContext) available.add("get_region_context");
+  if (providers.stats) available.add("get_stats");
   if (providers.web) {
     available.add("web_search");
     available.add("web_fetch");

@@ -112,6 +112,7 @@ export const ICON_NAMES = [
   "swap_vert",
   "swap_horiz",
   "alt_route",
+  "no_crash",
   "fork_right",
   "trip_origin",
   "outlined_flag",

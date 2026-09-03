@@ -7,6 +7,7 @@ import {
   type PlanCommandV2,
   type PlanDocumentV2,
   type PlanTemporalContextV2,
+  type PlanTravelProfileV2,
   type Position,
   type TripPlan
 } from "@mapos/layer-sdk";
@@ -15,6 +16,7 @@ import { t } from "../i18n/cs";
 import { buildExternalPlanHandoffs } from "../planning/externalHandoff";
 import { buildPlanItinerary } from "../planning/planItinerary";
 import { createBlankPlanDocument } from "../planning/planDraft";
+import { askForStopCandidates } from "../planning/stopCandidates";
 import {
   exportPlanDocument,
   PLAN_EXPORT_LABELS,
@@ -24,10 +26,11 @@ import { buildPlanShareUrl, planShareTokenFromLocation } from "../planning/planS
 import {
   longestRoutablePreview,
   routableSegmentPreviews,
-  summarizePlanSegments
+  summarizePlanSegments,
+  unselectedAlternativePreviews
 } from "../planning/planPresentation";
 import { geolocation, GeolocationError, messageFor } from "../lib/geolocation";
-import { emit } from "../lib/events";
+import { emit, on } from "../lib/events";
 import { isRoutingAbortError, startRoutingPlanTask } from "../planning/routingTask";
 import { getMapStore } from "../store/mapStore";
 import { getShellStore } from "../store/shellStore";
@@ -46,7 +49,6 @@ import type { StopLocationSelection } from "./planning/StopLocationInput";
 import type {
   AdventureCandidate,
   AdventureRecommendation,
-  AiStopAnswer,
   AiStopResult,
   PlanDiscussionThread,
   PlanShareLink,
@@ -54,6 +56,7 @@ import type {
 } from "./planning/types";
 
 const MAX_UNDO_SNAPSHOTS = 50;
+const PROFILE_OVERLAY_KEY = "mapos:route-overlay-recommendation";
 
 function localId(prefix: string): string {
   const suffix =
@@ -107,6 +110,10 @@ function routePreviewForPlan(document: PlanDocumentV2) {
     segments: routableSegmentPreviews(document).map((segment) => ({
       ...segment,
       coordinates: segment.coordinates.map((position) => [...position] as [number, number])
+    })),
+    alternatives: unselectedAlternativePreviews(document).map((alternative) => ({
+      ...alternative,
+      coordinates: alternative.coordinates.map((position) => [...position] as [number, number])
     })),
     stops: document.stops.map((stop) => ({
       coordinates: [...stop.location.coordinates] as [number, number],
@@ -182,10 +189,10 @@ export function PlanningPanel() {
     model: string;
     disclosure: string;
   } | null>(null);
-  const [bikeBasemapDismissed, setBikeBasemapDismissed] = useState(
+  const [profileOverlayDismissed, setProfileOverlayDismissed] = useState(
     () =>
       typeof window !== "undefined" &&
-      window.localStorage.getItem("mapos:bike-basemap-recommendation") === "dismissed"
+      window.localStorage.getItem(PROFILE_OVERLAY_KEY) === "dismissed"
   );
   const [adventureDetourLimit, setAdventureDetourLimit] = useState(15);
   const [adventureBusy, setAdventureBusy] = useState(false);
@@ -197,6 +204,7 @@ export function PlanningPanel() {
   const loadedPlansForOwner = useRef<string | null>(null);
   const loadedThreadForPlan = useRef<string | null>(null);
   const cancelRouting = useRef<(() => boolean) | null>(null);
+  const pickAlternative = useRef<((segmentId: string, alternativeId: string) => void) | null>(null);
   const mapSuggestions = useMemo(() => {
     const suggestions: Array<{ feature: GeoFeature; layerId: string }> = [];
     const seen = new Set<string>();
@@ -358,7 +366,21 @@ export function PlanningPanel() {
     setStopWindowStart((current) => Math.min(current, maximumStart));
   }, [plan.stops.length]);
 
-  if (!open || mode !== "planning") return null;
+  // §16.6: clicking a dimmed variant on the map is the same edit as picking it in the itinerary.
+  // The map knows nothing about the document, so the panel answers through the handler it last
+  // rendered with; a closed panel leaves the ref empty and the click only highlights.
+  useEffect(
+    () =>
+      on("plan-alternative-picked", ({ segmentId, alternativeId }) => {
+        pickAlternative.current?.(segmentId, alternativeId);
+      }),
+    []
+  );
+
+  if (!open || mode !== "planning") {
+    pickAlternative.current = null;
+    return null;
+  }
 
   const readOnlyShared = sharedToken !== null;
 
@@ -392,6 +414,11 @@ export function PlanningPanel() {
       return null;
     }
   };
+
+  pickAlternative.current = readOnlyShared
+    ? null
+    : (segmentId, alternativeId) =>
+        void applyCommand({ type: "select-segment-alternative", segmentId, alternativeId });
 
   const undo = () => {
     const snapshot = undoStack.at(-1);
@@ -565,7 +592,20 @@ export function PlanningPanel() {
     );
   };
 
-  const openAiStopCandidate = (stopId: string, prompt: string, result: AiStopResult) => {
+  /**
+   * The pin, the suggestions and one confirmation (§4.5).
+   *
+   * All candidates travel into the picker session, so the popover next to the pin can offer them
+   * and a click moves the pin instead of writing to the plan. Only "Vybrat místo" writes, and it
+   * writes the name of the suggestion the pin is standing on — not the query the user typed.
+   */
+  const openAiStopCandidate = (
+    stopId: string,
+    prompt: string,
+    result: AiStopResult,
+    alternatives: readonly AiStopResult[] = []
+  ) => {
+    const offered = [result, ...alternatives.filter((entry) => entry.id !== result.id)].slice(0, 5);
     shell.startMapPicker(
       {
         caller: {
@@ -575,7 +615,12 @@ export function PlanningPanel() {
         },
         cancelPolicy: "restore-original-view",
         originalView: { center: { lng: view.lng, lat: view.lat }, zoom: view.zoom },
-        candidate: { lng: result.longitude, lat: result.latitude, label: result.title }
+        candidate: { lng: result.longitude, lat: result.latitude, label: result.title },
+        suggestions: offered.map((entry) => ({
+          lng: entry.longitude,
+          lat: entry.latitude,
+          label: entry.title
+        }))
       },
       (pickerResult) => {
         if (pickerResult.status !== "confirmed") return;
@@ -597,38 +642,45 @@ export function PlanningPanel() {
     setAiStopAnswer((current) => (current ? { ...current, stopId, prompt } : current));
   };
 
+  /**
+   * An open question in a stop input, answered without leaving Plánování (§4.5).
+   *
+   * The chat endpoint is used because it infers the category from the question — the orchestrator
+   * only knows one — and because its deterministic path answers from the same POI tool even when
+   * no model is available. Nothing is written: the answer becomes pin suggestions to confirm.
+   */
   const runAiStopQuery = async (stopId: string, prompt: string) => {
     const stop = plan.stops.find((candidate) => candidate.id === stopId);
     if (!stop || aiStopBusyId) return;
-    const activeLayerIds = Object.entries(activeLayers)
-      .filter(([id, state]) => id === "osm-poi" && state.visible)
+    const visibleLayerIds = Object.entries(activeLayers)
+      .filter(([, state]) => state.visible)
       .map(([id]) => id);
-    if (!activeLayerIds.length) {
-      setError("Pro AI hledání zastávky nejdřív zapni POI vrstvu ve Vrstvách.");
-      return;
-    }
+    const activeLayerIds = [...new Set(["osm-poi", ...visibleLayerIds])].slice(0, 20);
     setAiStopBusyId(stopId);
     setAiStopAnswer(null);
     setError(null);
     try {
       const [longitude, latitude] = stop.location.coordinates;
-      const response = await apiPost<AiStopAnswer>("/v2/ai/orchestrate", {
+      const answer = await askForStopCandidates({
         prompt,
-        conversation: { mode: "new", scope: { type: "global" } },
-        reference: { source: "explicit", longitude, latitude },
+        longitude,
+        latitude,
+        zoom: view.zoom,
         activeLayerIds,
-        radiusMeters: 10_000,
-        limit: 4,
-        preciseLocationConsent: true
+        planId: plan.id,
+        externalModel: aiEnabled
       });
-      setAiStopAnswer({
-        stopId,
-        prompt,
-        text: response.answer.text,
-        results: response.answer.results
-      });
-      const first = response.answer.results[0];
-      if (first) openAiStopCandidate(stopId, prompt, first);
+      if (!answer.results.length) {
+        setError("AI k tomuhle dotazu nenašla místo; zkus jiný popis nebo výběr na mapě.");
+        return;
+      }
+      setAiStopAnswer({ stopId, prompt, text: answer.text, results: answer.results });
+      // The answer names the layers it read; switching them on is what makes the pin checkable.
+      for (const layerId of answer.layerIds) {
+        if (activeLayers[layerId] && !activeLayers[layerId]?.visible) store.toggleLayer(layerId);
+      }
+      const [first, ...rest] = answer.results;
+      if (first) openAiStopCandidate(stopId, prompt, first, rest);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -666,18 +718,25 @@ export function PlanningPanel() {
     }
   };
 
-  /** §4.5: a bike plan gets the cycling overlay once, as a toast with an undo, instead of a
-   *  recommendation card. The basemap the user picked is never replaced — CyclOSM goes on top. */
-  const offerCyclingMap = () => {
-    if (bikeBasemapDismissed || store.activeLayers.cyclosm?.visible) return;
-    store.toggleLayer("cyclosm");
-    store.showToast("Zapnul jsem CyclOSM; původní podklad zůstal zachovaný", {
+  /** §4.5: a bike or walking plan gets the matching overlay once, as a toast with an undo,
+   *  instead of a recommendation card. The basemap the user picked is never replaced — CyclOSM
+   *  and OpenTopoMap go on top of it. */
+  const offerProfileOverlay = (profile: PlanTravelProfileV2) => {
+    const overlay =
+      profile === "bike"
+        ? { id: "cyclosm", label: "CyclOSM" }
+        : profile === "foot"
+          ? { id: "opentopomap", label: "OpenTopoMap" }
+          : null;
+    if (!overlay || profileOverlayDismissed || store.activeLayers[overlay.id]?.visible) return;
+    store.toggleLayer(overlay.id);
+    store.showToast(`Zapnul jsem ${overlay.label}; původní podklad zůstal zachovaný`, {
       action: {
         label: "Vrátit",
         onSelect: () => {
-          if (store.activeLayers.cyclosm?.visible) store.toggleLayer("cyclosm");
-          window.localStorage.setItem("mapos:bike-basemap-recommendation", "dismissed");
-          setBikeBasemapDismissed(true);
+          if (store.activeLayers[overlay.id]?.visible) store.toggleLayer(overlay.id);
+          window.localStorage.setItem(PROFILE_OVERLAY_KEY, "dismissed");
+          setProfileOverlayDismissed(true);
         }
       }
     });
@@ -716,7 +775,7 @@ export function PlanningPanel() {
       if (data.plan.routePolicy.preference === "adventure") {
         void findAdventureRoute(data.plan);
       }
-      if (data.plan.routePolicy.profile === "bike") offerCyclingMap();
+      offerProfileOverlay(data.plan.routePolicy.profile);
     } catch (cause) {
       if (!isRoutingAbortError(cause)) {
         setError(cause instanceof Error ? cause.message : "Trasu se nepodařilo vypočítat");

@@ -15,9 +15,10 @@
 import type { OsmPoiCategoryId, PlaceSourceId } from "@mapos/layer-sdk";
 import { OSM_POI_CATEGORIES, PLACE_SOURCE_BY_ID, defaultPlaceSources } from "@mapos/layer-sdk";
 import { askCml } from "./cmlService.js";
+import { aiPrompt } from "./ai/prompts/index.js";
 import { reverseGeocodePlaceName } from "./discoverService.js";
 import { getFusedPlaces } from "./poiFusionService.js";
-import { getWikipediaArticle } from "./infoService.js";
+import { getWikidataFacts, getWikipediaArticle } from "./infoService.js";
 
 /** Roughly 400 m at Czech latitudes — walking distance, not "in the same town". */
 const RADIUS_DEG_LAT = 0.0036;
@@ -130,7 +131,8 @@ async function neighbours(query: BriefQuery): Promise<BriefNeighbour[]> {
 
 export function buildBriefCitations(
   nearby: BriefNeighbour[],
-  article: { lang: string; title: string; url: string } | null
+  article: { lang: string; title: string; url: string } | null,
+  entity: { qid: string; url: string } | null = null
 ): BriefCitation[] {
   const citations = new Map<string, BriefCitation>();
   for (const neighbour of nearby) {
@@ -152,26 +154,25 @@ export function buildBriefCitations(
       license: "CC-BY-SA-4.0"
     });
   }
+  if (entity) {
+    citations.set(`wikidata:${entity.qid}`, {
+      sourceId: `wikidata:${entity.qid}`,
+      label: "Wikidata",
+      url: entity.url,
+      license: "CC0-1.0"
+    });
+  }
   return [...citations.values()];
 }
 
-const SYSTEM = [
-  "Jsi místní průvodce. Píšeš česky, dvě až tři věty, bez markdownu a bez odrážek.",
-  "Řekni, proč sem jít a co je prakticky po ruce.",
-  "Vycházej výhradně z podkladů níže — nic nedomýšlej a nic nepřidávej.",
-  // The prior on a famous name is strong enough to override a plain "use only these facts": told
-  // that Riegrovy sady are in Plzeň, the model replied that they are in Prague, not in Plzeň.
-  "Uvedená obec platí. Stejné jméno nese víc míst v republice, takže o obci se nedohaduj",
-  "a nepiš o jiném místě téhož jména, ani kdyby bylo známější.",
-  "O samotném místě uveď jen to, co stojí v podkladech. Když o něm podklady nic neříkají,",
-  "piš jen o tom, co je v okolí."
-].join(" ");
+const BRIEF_TEMPLATE_VERSION = "poi-brief.v1";
 
 function prompt(
   query: BriefQuery,
   locality: string | null,
   nearby: BriefNeighbour[],
-  extract: string | null
+  extract: string | null,
+  facts: readonly { label: string; value: string }[]
 ): string {
   const lines: string[] = [];
   lines.push(
@@ -179,6 +180,12 @@ function prompt(
   );
   if (locality) lines.push(`Obec: ${locality}`);
   if (extract) lines.push(`Z Wikipedie: ${extract.slice(0, 700)}`);
+  // Dates, heights and architects come from Wikidata as typed values; a prose extract states them
+  // only sometimes, and the model is not allowed to fill the gap from memory.
+  if (facts.length) {
+    lines.push("Z Wikidat:");
+    for (const fact of facts) lines.push(`- ${fact.label}: ${fact.value}`);
+  }
   if (nearby.length) {
     lines.push("V okolí do 400 m:");
     for (const n of nearby) lines.push(`- ${n.name} (${n.categoryLabel}, ${n.distanceM} m)`);
@@ -189,19 +196,21 @@ function prompt(
 }
 
 export async function getPlaceBrief(query: BriefQuery): Promise<PlaceBrief> {
-  const [nearby, article, locality] = await Promise.all([
+  const [nearby, article, locality, entity] = await Promise.all([
     neighbours(query),
     query.qid || query.name
       ? getWikipediaArticle({ qid: query.qid, title: query.name }).catch(() => null)
       : Promise.resolve(null),
-    reverseGeocodePlaceName(query.lng, query.lat)
+    reverseGeocodePlaceName(query.lng, query.lat),
+    query.qid ? getWikidataFacts(query.qid).catch(() => null) : Promise.resolve(null)
   ]);
 
   const extract = article?.extract?.trim() || null;
+  const facts = (entity?.facts ?? []).slice(0, 6);
   const answer = await askCml({
-    cacheKey: `brief|${query.lng.toFixed(4)},${query.lat.toFixed(4)}|${query.name ?? ""}|${nearby.length}`,
-    system: SYSTEM,
-    prompt: prompt(query, locality, nearby, extract),
+    cacheKey: `brief|${query.lng.toFixed(4)},${query.lat.toFixed(4)}|${query.name ?? ""}|${nearby.length}|${facts.length}`,
+    system: aiPrompt(BRIEF_TEMPLATE_VERSION),
+    prompt: prompt(query, locality, nearby, extract, facts),
     maxTokens: 2000,
     // Low: the job is to restate the facts it was handed, not to find a nicer way to say them.
     temperature: 0.2,
@@ -217,11 +226,15 @@ export async function getPlaceBrief(query: BriefQuery): Promise<PlaceBrief> {
     model: answer?.model ?? null,
     nearby,
     attribution: "Zdroje jsou uvedeny jednotlivě v citacích.",
-    citations: buildBriefCitations(nearby, article),
+    citations: buildBriefCitations(
+      nearby,
+      article,
+      entity && facts.length ? { qid: entity.qid, url: entity.url } : null
+    ),
     generation: {
       status: answer ? "succeeded" : "unavailable",
       profileId: answer?.model ?? null,
-      templateVersion: "poi-brief.v1",
+      templateVersion: BRIEF_TEMPLATE_VERSION,
       cached: answer?.cached ?? false
     },
     freshness: { collectedAt: new Date().toISOString() }

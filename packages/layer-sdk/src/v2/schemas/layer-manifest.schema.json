@@ -78,14 +78,24 @@
     "presetIds": {
       "type": "array",
       "items": {
-        "enum": ["trip", "city", "travel", "sport"]
+        "enum": [
+          "trip",
+          "city",
+          "travel",
+          "sport"
+        ]
       },
       "uniqueItems": true
     },
     "modes": {
       "type": "array",
       "items": {
-        "enum": ["personal", "discover", "planning", "game"]
+        "enum": [
+          "personal",
+          "discover",
+          "planning",
+          "game"
+        ]
       },
       "uniqueItems": true
     },
@@ -117,7 +127,9 @@
     "renderer": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "properties": {
         "type": {
           "enum": [
@@ -159,7 +171,9 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "properties": {
         "type": {
           "enum": [
@@ -171,6 +185,7 @@
             "realtime",
             "user-data",
             "computed",
+            "inline",
             "custom-runtime"
           ]
         },
@@ -181,7 +196,10 @@
           "type": "string"
         },
         "method": {
-          "enum": ["GET", "POST"]
+          "enum": [
+            "GET",
+            "POST"
+          ]
         },
         "tileTemplate": {
           "type": "string"
@@ -210,18 +228,153 @@
         "mapping": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["idPath", "titlePath", "longitudePath", "latitudePath"],
+          "required": [
+            "idPath",
+            "titlePath",
+            "longitudePath",
+            "latitudePath"
+          ],
           "properties": {
-            "itemsPath": { "$ref": "#/$defs/dataPath" },
-            "idPath": { "$ref": "#/$defs/dataPath" },
-            "titlePath": { "$ref": "#/$defs/dataPath" },
-            "categoryPath": { "$ref": "#/$defs/dataPath" },
-            "longitudePath": { "$ref": "#/$defs/dataPath" },
-            "latitudePath": { "$ref": "#/$defs/dataPath" },
-            "summaryPath": { "$ref": "#/$defs/dataPath" },
-            "descriptionPath": { "$ref": "#/$defs/dataPath" },
-            "sourceIdPath": { "$ref": "#/$defs/dataPath" },
-            "nextCursorPath": { "$ref": "#/$defs/dataPath" }
+            "itemsPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "idPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "titlePath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "categoryPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "longitudePath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "latitudePath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "summaryPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "descriptionPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "sourceIdPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "nextCursorPath": {
+              "$ref": "#/$defs/dataPath"
+            }
+          }
+        },
+        "inline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "features"
+          ],
+          "properties": {
+            "generatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "createdAt",
+                "sourceIds"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "ai",
+                    "import",
+                    "manual"
+                  ]
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "prompt": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "sourceIds": {
+                  "type": "array",
+                  "maxItems": 50,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            },
+            "features": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 200,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "title",
+                  "longitude",
+                  "latitude",
+                  "sourceId"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  },
+                  "longitude": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180
+                  },
+                  "latitude": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "category": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 600
+                  },
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  "sourceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
           }
         },
         "timeoutMs": {
@@ -237,19 +390,40 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "type": { "const": "declarative-http" } }, "required": ["type"] },
+          "if": {
+            "properties": {
+              "type": {
+                "const": "declarative-http"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
           "then": {
-            "required": ["endpoint", "requiresServerProxy", "mapping"],
+            "required": [
+              "endpoint",
+              "requiresServerProxy",
+              "mapping"
+            ],
             "properties": {
               "endpoint": {
                 "type": "string",
                 "format": "uri",
                 "pattern": "^https://[^@#]+$"
               },
-              "method": { "const": "GET" },
-              "requiresServerProxy": { "const": true }
+              "method": {
+                "const": "GET"
+              },
+              "requiresServerProxy": {
+                "const": true
+              }
             },
-            "not": { "required": ["responseAdapter"] }
+            "not": {
+              "required": [
+                "responseAdapter"
+              ]
+            }
           }
         }
       ]
@@ -257,10 +431,18 @@
     "queryPolicy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["strategy"],
+      "required": [
+        "strategy"
+      ],
       "properties": {
         "strategy": {
-          "enum": ["viewport", "tile", "realtime", "global", "manual"]
+          "enum": [
+            "viewport",
+            "tile",
+            "realtime",
+            "global",
+            "manual"
+          ]
         },
         "maxResultsPerViewport": {
           "type": "integer",
@@ -283,10 +465,22 @@
           "maximum": 24
         },
         "searchHere": {
-          "enum": ["never", "after-pan", "manual-only", "when-empty"]
+          "enum": [
+            "never",
+            "after-pan",
+            "manual-only",
+            "when-empty"
+          ]
         },
         "ranking": {
-          "enum": ["distance", "relevance", "popularity", "time", "provider", "hybrid"]
+          "enum": [
+            "distance",
+            "relevance",
+            "popularity",
+            "time",
+            "provider",
+            "hybrid"
+          ]
         },
         "cacheTtlSeconds": {
           "type": "integer",
@@ -308,7 +502,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "label", "kind"],
+        "required": [
+          "id",
+          "label",
+          "kind"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -333,7 +531,10 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["id", "label"],
+              "required": [
+                "id",
+                "label"
+              ],
               "properties": {
                 "id": {
                   "type": "string"
@@ -372,7 +573,11 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "label", "source"],
+            "required": [
+              "id",
+              "label",
+              "source"
+            ],
             "properties": {
               "id": {
                 "type": "string"
@@ -381,7 +586,14 @@
                 "type": "string"
               },
               "source": {
-                "enum": ["canonical", "provider", "mapos-social", "ai", "media", "custom"]
+                "enum": [
+                  "canonical",
+                  "provider",
+                  "mapos-social",
+                  "ai",
+                  "media",
+                  "custom"
+                ]
               },
               "providerId": {
                 "type": "string"
@@ -397,7 +609,12 @@
           "uniqueItems": true
         },
         "aiEnrichment": {
-          "enum": ["disabled", "on-open", "on-demand", "background"]
+          "enum": [
+            "disabled",
+            "on-open",
+            "on-demand",
+            "background"
+          ]
         }
       }
     },
@@ -406,7 +623,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "label", "kind"],
+        "required": [
+          "id",
+          "label",
+          "kind"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -446,7 +667,9 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["label"],
+        "required": [
+          "label"
+        ],
         "properties": {
           "label": {
             "type": "string"
@@ -501,7 +724,9 @@
     "temporal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled"],
+      "required": [
+        "enabled"
+      ],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -509,7 +734,12 @@
         "cursorKinds": {
           "type": "array",
           "items": {
-            "enum": ["instant", "range", "forecast", "replay"]
+            "enum": [
+              "instant",
+              "range",
+              "forecast",
+              "replay"
+            ]
           },
           "uniqueItems": true
         },
@@ -527,7 +757,13 @@
       "additionalProperties": false,
       "properties": {
         "type": {
-          "enum": ["categorical", "continuous", "numeric", "icon", "custom"]
+          "enum": [
+            "categorical",
+            "continuous",
+            "numeric",
+            "icon",
+            "custom"
+          ]
         },
         "title": {
           "type": "string"
@@ -540,7 +776,9 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["label"],
+            "required": [
+              "label"
+            ],
             "properties": {
               "label": {
                 "type": "string"
@@ -569,7 +807,10 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["value", "label"],
+            "required": [
+              "value",
+              "label"
+            ],
             "properties": {
               "value": {
                 "type": "number"
@@ -590,7 +831,12 @@
       "additionalProperties": false,
       "properties": {
         "defaultVisibility": {
-          "enum": ["public", "unlisted", "private", "entitled"]
+          "enum": [
+            "public",
+            "unlisted",
+            "private",
+            "entitled"
+          ]
         },
         "canCreate": {
           "type": "boolean"
@@ -644,13 +890,24 @@
       "additionalProperties": false,
       "properties": {
         "access": {
-          "enum": ["free", "entitlement", "subscription", "one-time", "external"]
+          "enum": [
+            "free",
+            "entitlement",
+            "subscription",
+            "one-time",
+            "external"
+          ]
         },
         "productId": {
           "type": "string"
         },
         "previewPolicy": {
-          "enum": ["none", "metadata", "sample", "blurred"]
+          "enum": [
+            "none",
+            "metadata",
+            "sample",
+            "blurred"
+          ]
         },
         "tipsEnabled": {
           "type": "boolean"
@@ -667,14 +924,28 @@
         "importFormats": {
           "type": "array",
           "items": {
-            "enum": ["geojson", "gpx", "kml", "csv", "json", "mapos-package"]
+            "enum": [
+              "geojson",
+              "gpx",
+              "kml",
+              "csv",
+              "json",
+              "mapos-package"
+            ]
           },
           "uniqueItems": true
         },
         "exportFormats": {
           "type": "array",
           "items": {
-            "enum": ["geojson", "gpx", "kml", "csv", "json", "mapos-package"]
+            "enum": [
+              "geojson",
+              "gpx",
+              "kml",
+              "csv",
+              "json",
+              "mapos-package"
+            ]
           },
           "uniqueItems": true
         },
@@ -695,7 +966,12 @@
           "minimum": 0
         },
         "failureMode": {
-          "enum": ["hide", "disabled-with-reason", "stale-cache", "empty-with-notice"]
+          "enum": [
+            "hide",
+            "disabled-with-reason",
+            "stale-cache",
+            "empty-with-notice"
+          ]
         }
       }
     },

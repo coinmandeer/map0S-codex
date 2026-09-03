@@ -24,6 +24,8 @@ export const MAP_AI_TOOL_NAMES = [
   "route_segment",
   "get_weather",
   "search_events",
+  "get_region_context",
+  "get_stats",
   "web_search",
   "web_fetch",
   "create_plan_draft"
@@ -830,6 +832,151 @@ const contracts: readonly CatalogContract[] = [
     redactOutputPaths: ["events"],
     timeoutMs: 5_000,
     maxResponseBytes: 131_072,
+    quotaCost: 2
+  },
+  {
+    name: "get_region_context",
+    title: "Načítám kontext oblasti",
+    description:
+      "Vrátí, co víme o oblasti pod bodem: název, hierarchii, průvodce a jeho zdroje. Vhodné, když se dotaz týká celé oblasti, ne jednoho místa.",
+    domain: "map",
+    effect: "read",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["point"],
+      properties: {
+        point: pointSchema,
+        zoom: { type: "number", minimum: 0, maximum: 24 },
+        lang: { type: "string", minLength: 2, maxLength: 2 }
+      }
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["region", "sources"],
+      properties: {
+        region: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name", "level"],
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 240 },
+            level: { type: "string", minLength: 1, maxLength: 40 },
+            hierarchy: {
+              type: "array",
+              maxItems: 8,
+              items: { type: "string", minLength: 1, maxLength: 240 }
+            },
+            countryCode: { type: "string", minLength: 2, maxLength: 2 }
+          }
+        },
+        guide: {
+          type: "object",
+          additionalProperties: false,
+          required: ["lead", "highlights"],
+          properties: {
+            lead: { type: "string", maxLength: 600 },
+            highlights: {
+              type: "array",
+              maxItems: 6,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["title", "text", "sourceIds"],
+                properties: {
+                  title: { type: "string", minLength: 1, maxLength: 240 },
+                  text: { type: "string", minLength: 1, maxLength: 600 },
+                  sourceIds: stringArray(6)
+                }
+              }
+            },
+            practical: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                arrival: { type: "string", maxLength: 240 },
+                bestTime: { type: "string", maxLength: 240 },
+                warnings: {
+                  type: "array",
+                  maxItems: 3,
+                  items: { type: "string", minLength: 1, maxLength: 240 }
+                }
+              }
+            }
+          }
+        },
+        sources: { type: "array", maxItems: 30, items: sourceSchema }
+      }
+    },
+    permissionId: "map.region.read",
+    requiresAuthentication: false,
+    requiredPermissions: ["map:read"],
+    dataClasses: ["public"],
+    // A map centre, not a device position: the caller rounds the point before it gets here, which
+    // is why this reads like `search_places` and not like `get_weather`.
+    requiresPreciseLocation: false,
+    outputFields: ["region", "guide", "sources"],
+    redactInputPaths: ["point"],
+    redactOutputPaths: ["guide"],
+    timeoutMs: 8_000,
+    maxResponseBytes: 131_072,
+    quotaCost: 2
+  },
+  {
+    name: "get_stats",
+    title: "Načítám statistiky",
+    description:
+      "Vrátí čísla o oblasti (obyvatelstvo, ekonomika) s rokem, zdrojem a mírou nejistoty. Čísla nikdy neodhaduj sám.",
+    domain: "map",
+    effect: "read",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["point"],
+      properties: {
+        point: pointSchema,
+        zoom: { type: "number", minimum: 0, maximum: 24 },
+        metrics: stringArray(10)
+      }
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["statistics", "sources"],
+      properties: {
+        statistics: {
+          type: "array",
+          maxItems: 20,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "label", "value", "unit", "sourceIds"],
+            properties: {
+              id: identifierSchema,
+              label: { type: "string", minLength: 1, maxLength: 240 },
+              value: { type: "number" },
+              unit: { type: "string", maxLength: 40 },
+              year: { type: "integer", minimum: 1_800, maximum: 2_200 },
+              uncertaintyLabel: { type: "string", maxLength: 120 },
+              regionName: { type: "string", maxLength: 240 },
+              sourceIds: stringArray(6)
+            }
+          }
+        },
+        sources: { type: "array", maxItems: 20, items: sourceSchema }
+      }
+    },
+    permissionId: "map.stats.read",
+    requiresAuthentication: false,
+    requiredPermissions: ["map:read"],
+    dataClasses: ["public"],
+    requiresPreciseLocation: false,
+    outputFields: ["statistics", "sources"],
+    redactInputPaths: ["point"],
+    redactOutputPaths: [],
+    timeoutMs: 8_000,
+    maxResponseBytes: 65_536,
     quotaCost: 2
   },
   {

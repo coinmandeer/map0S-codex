@@ -260,6 +260,12 @@ export const config = {
   get fsqKey() {
     return env("FSQ_API_KEY");
   },
+  /** BRouter answers the "Dobrodružná" preference (§16.6). Keyless and self-hostable, so the
+   *  base URL is configurable: a busy public instance is a reason to run your own, not to lose
+   *  the feature. */
+  get brouterBaseUrl() {
+    return env("BROUTER_BASE_URL") ?? "https://brouter.de/brouter";
+  },
   get openaiKey() {
     return env("OPENAI_API_KEY");
   },

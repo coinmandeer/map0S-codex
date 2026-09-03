@@ -29,6 +29,8 @@ export interface MapPickerSession {
   cancelPolicy: MapPickerCancelPolicy;
   originalView: MapPickerView;
   candidate?: MapPickerLocation;
+  /** Places offered next to the pin; picking one moves the pin instead of confirming (§4.5). */
+  suggestions?: MapPickerLocation[];
   createdAt: number;
   updatedAt: number;
 }
@@ -50,6 +52,7 @@ export interface OpenMapPickerInput {
   cancelPolicy?: MapPickerCancelPolicy;
   originalView: MapPickerView;
   candidate?: MapPickerLocation;
+  suggestions?: MapPickerLocation[];
 }
 
 export interface MapPickerRegistryOptions {
@@ -141,12 +144,30 @@ function cloneLocation(value: MapPickerLocation): MapPickerLocation {
   return { ...value };
 }
 
+const MAX_SUGGESTIONS = 5;
+
+/** A suggestion list is all-or-nothing: one unusable entry means the persisted session is not
+ *  the one that was written, and a picker that silently drops options is worse than none. */
+function mapSuggestions(value: unknown): MapPickerLocation[] | null {
+  if (!Array.isArray(value) || !value.length || value.length > MAX_SUGGESTIONS) return null;
+  const suggestions: MapPickerLocation[] = [];
+  for (const entry of value) {
+    const location = mapLocation(entry);
+    if (!location) return null;
+    suggestions.push(location);
+  }
+  return suggestions;
+}
+
 function cloneSession(session: MapPickerSession): MapPickerSession {
   return {
     ...session,
     caller: { ...session.caller },
     originalView: cloneView(session.originalView),
-    ...(session.candidate ? { candidate: cloneLocation(session.candidate) } : {})
+    ...(session.candidate ? { candidate: cloneLocation(session.candidate) } : {}),
+    ...(session.suggestions
+      ? { suggestions: session.suggestions.map(cloneLocation) }
+      : {})
   };
 }
 
@@ -166,12 +187,15 @@ export function parseMapPickerSession(value: unknown): MapPickerSession | null {
   const parsedCaller = caller(parsed.caller);
   const originalView = mapView(parsed.originalView);
   const candidate = parsed.candidate === undefined ? undefined : mapLocation(parsed.candidate);
+  const suggestions =
+    parsed.suggestions === undefined ? undefined : mapSuggestions(parsed.suggestions);
   const cancelPolicy = parsed.cancelPolicy;
   if (
     !id ||
     !parsedCaller ||
     !originalView ||
     (parsed.candidate !== undefined && !candidate) ||
+    (parsed.suggestions !== undefined && !suggestions) ||
     (cancelPolicy !== "restore-original-view" && cancelPolicy !== "keep-current-view") ||
     !Number.isSafeInteger(parsed.createdAt) ||
     !Number.isSafeInteger(parsed.updatedAt) ||
@@ -187,6 +211,7 @@ export function parseMapPickerSession(value: unknown): MapPickerSession | null {
     cancelPolicy,
     originalView,
     ...(candidate ? { candidate } : {}),
+    ...(suggestions ? { suggestions } : {}),
     createdAt: parsed.createdAt as number,
     updatedAt: parsed.updatedAt as number
   };
@@ -233,6 +258,7 @@ export class MapPickerControllerRegistry {
       cancelPolicy: input.cancelPolicy ?? "restore-original-view",
       originalView: input.originalView,
       ...(input.candidate ? { candidate: input.candidate } : {}),
+      ...(input.suggestions?.length ? { suggestions: input.suggestions } : {}),
       createdAt: timestamp,
       updatedAt: timestamp
     };

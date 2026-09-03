@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 import type { Bbox, Guide } from "@mapos/layer-sdk";
 import { getGuide } from "./guide/index.js";
+import {
+  buildGuideSynthesis,
+  collectGuideEvidence,
+  type GuideAreaRef,
+  type GuideSynthesis
+} from "./guide/guideAggregator.js";
 import { askCml } from "./cmlService.js";
+import { aiPrompt } from "./ai/prompts/index.js";
 import { fetchJson, fetchText } from "../utils/upstream.js";
 
 export type DiscoverRegionLevel = "country" | "admin1" | "admin2" | "locality" | "neighbourhood";
@@ -102,6 +109,10 @@ export interface DiscoverContext {
   region: Omit<ResolvedDiscoverRegion, "boundary"> | null;
   guide: Guide | null;
   synthesis: DiscoverSynthesis | null;
+  /** The multi-source guide of §30.5: lead, highlights and practical lines, each with the ids of
+   *  the sources it came from. Always present — its last fallback is an empty state with an
+   *  action, never nothing. */
+  guideSynthesis: GuideSynthesis | null;
   statistics: DiscoverStatistic[];
   regionCatalogue: DiscoverRegionCatalogue | null;
   sources: DiscoverCitation[];
@@ -177,6 +188,13 @@ export interface DiscoverContextDependencies {
     signal?: AbortSignal
   ) => Promise<DiscoverRegionCatalogue | null>;
   capabilities?: DiscoverContextCapability[];
+  /** The §30.5 guide. It receives what the capabilities already resolved so the Wikivoyage
+   *  article and the statistics are fetched once per request, not twice. */
+  resolveGuideSynthesis?: (
+    area: GuideAreaRef,
+    seed: { guide: Guide | null; statistics: DiscoverStatistic[]; sources: DiscoverCitation[] },
+    options: { allowModel: boolean; signal?: AbortSignal }
+  ) => Promise<GuideSynthesis | null>;
   synthesize?: (
     input: DiscoverContextInput,
     structured: {
@@ -879,7 +897,8 @@ function sourceCitations(
   if (guide) {
     sources.push({
       id: `guide:${guide.sourceId}`,
-      label: guide.sourceId,
+      // The attribution is the name a reader recognises; the id is for joining, not for reading.
+      label: guide.attribution || guide.sourceId,
       attribution: guide.attribution,
       url: guide.url ?? "https://www.wikivoyage.org/",
       license: null,
@@ -1008,12 +1027,7 @@ export async function synthesizeDiscoverContext(
   const answer = await askCml({
     cacheKey: `discover:${digest}`,
     verifiedPublic: true,
-    system: [
-      "Jsi stručný mapový průvodce MapOS. Odpovídej česky ve 2 až 4 krátkých větách.",
-      "Používej pouze dodaný veřejný kontext. Nevymýšlej aktuální fakta, ceny, otevírací dobu ani konkrétní místa.",
-      "Když zdroje nestačí, napiš obecný GPS-aware návrh a jasně přiznej omezení.",
-      "Zohledni use case a aktivní vrstvy, ale netvrď, že jejich data byla prohledána, pokud v kontextu nejsou."
-    ].join(" "),
+    system: aiPrompt("region-digest.v1"),
     prompt: JSON.stringify(publicContext),
     maxTokens: 420,
     temperature: 0.25,
@@ -1027,6 +1041,24 @@ export async function synthesizeDiscoverContext(
         sourceIds: structured.sources.map((source) => source.id)
       }
     : null;
+}
+
+/** The region as the guide aggregator wants it: a name, a language, an extent and the joins it
+ *  can use to find an article. */
+export function guideAreaFor(
+  input: DiscoverContextInput,
+  region: ResolvedDiscoverRegion
+): GuideAreaRef {
+  return {
+    regionId: region.id,
+    name: region.name,
+    level: region.level,
+    lang: input.lang?.trim().slice(0, 2) || "cs",
+    center: { longitude: input.lng, latitude: input.lat },
+    bbox: guideQueryExtent(input),
+    ...(region.wikidataId ? { wikidataId: region.wikidataId } : {}),
+    ...(region.nutsCode ? { nutsCode: region.nutsCode } : {})
+  };
 }
 
 function withCacheMetadata(
@@ -1106,6 +1138,32 @@ export function createDiscoverContextService(
       }
       const fetchedAt = new Date(now()).toISOString();
       const sources = sourceCitations(region, guide, statistics, regionCatalogue, fetchedAt);
+      const guideSynthesis =
+        region && dependencies.resolveGuideSynthesis
+          ? await dependencies
+              .resolveGuideSynthesis(
+                guideAreaFor(input, region),
+                { guide, statistics, sources },
+                {
+                  allowModel: input.allowModelFallback === true,
+                  ...(signal ? { signal } : {})
+                }
+              )
+              .catch(() => null)
+          : null;
+      // A source the guide cited but the structured blocks did not know about still has to be
+      // listed, or the panel would show a chip with nothing behind it.
+      for (const citation of guideSynthesis?.sources ?? []) {
+        if (sources.some((source) => source.id === citation.sourceId)) continue;
+        sources.push({
+          id: citation.sourceId,
+          label: citation.label,
+          attribution: citation.label,
+          url: citation.url ?? "",
+          license: null,
+          fetchedAt
+        });
+      }
       let synthesis = structuredSynthesis(region, guide);
       let modelStatus: "ready" | "empty" | "skipped" = "skipped";
 
@@ -1152,6 +1210,7 @@ export function createDiscoverContextService(
         region: publicRegion,
         guide,
         synthesis,
+        guideSynthesis,
         statistics,
         regionCatalogue,
         sources,
@@ -1234,7 +1293,9 @@ export function createDiscoverContextService(
   };
 }
 
-export const discoverContextService = createDiscoverContextService({
+/** The live composition, exported so the guide wiring can extend it without a second cache and
+ *  without this module having to know how a guide is written (§30.5). */
+export const PRODUCTION_DISCOVER_DEPENDENCIES: DiscoverContextDependencies = {
   resolveRegion: resolveDiscoverRegion,
   resolveGuide: resolveDiscoverGuide,
   capabilities: [
@@ -1267,14 +1328,120 @@ export const discoverContextService = createDiscoverContextService({
     }
   ],
   synthesize: synthesizeDiscoverContext
-});
+};
 
-/** Deterministic no-network service for the explicit offline fixture composition. */
+export const discoverContextService = createDiscoverContextService(
+  PRODUCTION_DISCOVER_DEPENDENCIES
+);
+
+const OFFLINE_GUIDE_SOURCE_ID = "wikivoyage:fixture";
+
+const OFFLINE_REGION: ResolvedDiscoverRegion = {
+  id: "fixture:plzen",
+  name: "Plzeň",
+  level: "locality",
+  hierarchy: [
+    { name: "Česko", level: "country" },
+    { name: "Plzeňský kraj", level: "admin1" }
+  ],
+  countryCode: "CZ",
+  populationSeed: { value: 181_000, year: 2025 }
+};
+
+const OFFLINE_GUIDE: Guide = {
+  area: "Plzeň",
+  lang: "cs",
+  sourceId: OFFLINE_GUIDE_SOURCE_ID,
+  attribution: "Wikivoyage (fixture)",
+  url: "https://fixture.test/wikivoyage/plzen",
+  sections: [
+    {
+      id: "understand",
+      title: "O místě",
+      intro:
+        "Plzeň leží na soutoku čtyř řek a je známá pivovarem, katedrálou a druhou největší synagogou v Evropě.",
+      items: []
+    },
+    {
+      id: "see",
+      title: "Co vidět",
+      items: [
+        {
+          name: "Velká synagoga",
+          description: "Druhá největší synagoga v Evropě, dokončená roku 1893.",
+          lng: 13.371,
+          lat: 49.747,
+          sourceRef: `${OFFLINE_GUIDE_SOURCE_ID}:synagoga`
+        },
+        {
+          name: "Pivovar Plzeňský Prazdroj",
+          description: "Prohlídka sklepů, kde se od roku 1842 vaří ležák.",
+          lng: 13.388,
+          lat: 49.748,
+          sourceRef: `${OFFLINE_GUIDE_SOURCE_ID}:prazdroj`
+        }
+      ]
+    }
+  ]
+};
+
+/**
+ * Deterministic no-network service for the explicit offline fixture composition.
+ *
+ * The offline profile answers with one labelled fixture region rather than with nothing: an
+ * Objevuj panel that is structurally empty cannot show that its guide, statistics and provenance
+ * work, and that is exactly what the offline profile exists to demonstrate.
+ */
 export function createOfflineDiscoverContextService(): DiscoverContextService {
+  const now = () => Date.parse("2026-09-01T12:00:00.000Z");
   return createDiscoverContextService({
-    resolveRegion: async () => null,
-    resolveGuide: async () => null,
-    now: () => Date.parse("2026-09-01T12:00:00.000Z")
+    resolveRegion: async () => structuredClone(OFFLINE_REGION),
+    resolveGuide: async () => structuredClone(OFFLINE_GUIDE),
+    resolveStatistics: async (_input, region) =>
+      region
+        ? [
+            {
+              id: "population",
+              label: "Počet obyvatel",
+              value: 181_000,
+              unit: "people",
+              scope: { regionId: region.id, regionName: region.name, level: region.level },
+              year: 2025,
+              uncertainty: "fixture",
+              uncertaintyLabel: "Ukázková data offline profilu.",
+              sourceIds: ["wikidata:fixture"]
+            }
+          ]
+        : [],
+    resolveGuideSynthesis: async (area, seed) =>
+      buildGuideSynthesis(
+        await collectGuideEvidence(
+          area,
+          {},
+          {
+            seed: {
+              guide: seed.guide,
+              statistics: seed.statistics.map((statistic) => ({
+                id: statistic.id,
+                label: statistic.label,
+                value: statistic.value,
+                unit: statistic.unit,
+                year: statistic.year,
+                uncertaintyLabel: statistic.uncertaintyLabel,
+                sourceIds: statistic.sourceIds
+              })),
+              sources: seed.sources.map((source) => ({
+                sourceId: source.id,
+                label: source.label,
+                ...(source.url ? { url: source.url } : {})
+              }))
+            }
+          }
+        ),
+        // No model offline: the fallback chain writes the guide from the fixture article itself.
+        { allowModel: false }
+      ),
+    now
   });
 }
 

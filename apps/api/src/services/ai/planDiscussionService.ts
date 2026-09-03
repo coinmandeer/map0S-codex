@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { assertPlanDocumentV2, type PlanDocumentV2 } from "@mapos/layer-sdk";
 import { askCml, type CmlAnswer } from "../cmlService.js";
+import { aiPrompt } from "./prompts/index.js";
 
 export interface PlanDiscussionRequest {
   ownerUserId: string;
@@ -106,13 +107,7 @@ export async function discussPlanWithCml(
     cacheKey: `plan-discussion:${requestDigest}`,
     permissionPartition: `user:${request.ownerUserId}`,
     accountPrivateConsent: true,
-    system: [
-      "Jsi MapOS plánovací asistent. Odpovídej česky, stručně a prakticky.",
-      "Pracuj pouze s dodaným plánem a dotazem. Pokud něco v datech není, řekni to.",
-      "Pokud je přiložena historie konverzace, přirozeně na ni navazuj a neopakuj už vyřešené body.",
-      "Nenahlašuj změnu plánu jako provedenou; můžeš pouze navrhnout další ruční krok.",
-      "Nevymýšlej aktuální provoz, počasí, ceny ani otevírací dobu bez zdroje."
-    ].join(" "),
+    system: aiPrompt("plan-discussion.v1"),
     prompt: JSON.stringify({
       conversationHistory: history,
       userQuestion: prompt,

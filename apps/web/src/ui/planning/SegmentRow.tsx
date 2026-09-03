@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { PlanDocumentV2, PlanTemporalContextV2 } from "@mapos/layer-sdk";
 import { selectedPlanAlternative } from "../../planning/planPresentation";
 import {
@@ -8,7 +9,7 @@ import {
   formatPlanTime
 } from "../../planning/planFormat";
 import type { DistanceUnits } from "../../settings/preferences";
-import { Icon } from "../kit";
+import { Chip, Icon } from "../kit";
 
 type PlanSegment = PlanDocumentV2["segments"][number];
 type TemporalSegment = PlanTemporalContextV2["segments"][number];
@@ -39,6 +40,12 @@ export function SegmentRow({
   const alternative = selectedPlanAlternative(segment);
   const recommended = segment.alternatives[0] ?? null;
   const order = segment.order + 1;
+  // §16.6: variants are a row you open, not a third block of cards in the itinerary. Picking
+  // the segment on the map is the same question asked from the other side, so it opens too.
+  const [variantsOpen, setVariantsOpen] = useState(false);
+  useEffect(() => {
+    if (selectedOnMap) setVariantsOpen(true);
+  }, [selectedOnMap]);
 
   return (
     <div
@@ -72,33 +79,55 @@ export function SegmentRow({
           )}
         </div>
 
+        {segment.status === "failed" && (
+          <Chip
+            icon="warning"
+            label="Úsek se nepodařilo spočítat"
+            testId={`segment-${order}-failed`}
+          />
+        )}
+
         {segment.alternatives.length > 1 && recommended && (
-          <div
-            className="planner-segment-alternatives"
-            role="radiogroup"
-            aria-label={`Varianty úseku ${order}`}
-          >
-            {segment.alternatives.map((candidate, index) => {
-              const selected = candidate.id === segment.selectedAlternativeId;
-              return (
-                <button
-                  key={candidate.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  className="planner-segment-alternative"
-                  data-testid={`segment-${order}-alternative-${index + 1}`}
-                  onClick={() => onSelectAlternative(candidate.id)}
-                >
-                  <span>{index === 0 ? "Doporučená" : `Varianta ${index + 1}`}</span>
-                  <small>
-                    {index === 0
-                      ? `${formatDistance(candidate.distanceM, units)} · ${formatDuration(candidate.durationS)}`
-                      : `${formatDistanceDelta(candidate.distanceM - recommended.distanceM, units)} · ${formatDurationDelta(candidate.durationS - recommended.durationS)}`}
-                  </small>
-                </button>
-              );
-            })}
+          <div className="planner-segment-variants">
+            <button
+              type="button"
+              className="planner-segment-variants-toggle"
+              aria-expanded={variantsOpen}
+              data-testid={`segment-${order}-variants`}
+              onClick={() => setVariantsOpen((open) => !open)}
+            >
+              <Icon name={variantsOpen ? "expand_less" : "expand_more"} size={16} />
+              Varianty ({segment.alternatives.length})
+            </button>
+            {variantsOpen && (
+              <div
+                className="planner-segment-alternatives"
+                role="radiogroup"
+                aria-label={`Varianty úseku ${order}`}
+              >
+                {segment.alternatives.map((candidate, index) => {
+                  const selected = candidate.id === segment.selectedAlternativeId;
+                  return (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      className="planner-segment-alternative"
+                      data-testid={`segment-${order}-alternative-${index + 1}`}
+                      onClick={() => onSelectAlternative(candidate.id)}
+                    >
+                      <span>{index === 0 ? "Doporučená" : `Varianta ${index + 1}`}</span>
+                      <small>
+                        {index === 0
+                          ? `${formatDistance(candidate.distanceM, units)} · ${formatDuration(candidate.durationS)}`
+                          : `${formatDistanceDelta(candidate.distanceM - recommended.distanceM, units)} · ${formatDurationDelta(candidate.durationS - recommended.durationS)}`}
+                      </small>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

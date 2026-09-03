@@ -24,6 +24,8 @@ const handlers: MapAiToolHandlers = {
   route_segment: unavailable,
   get_weather: unavailable,
   search_events: unavailable,
+  get_region_context: unavailable,
+  get_stats: unavailable,
   web_search: unavailable,
   web_fetch: unavailable,
   create_plan_draft: unavailable

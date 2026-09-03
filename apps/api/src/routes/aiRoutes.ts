@@ -18,6 +18,13 @@ import type { PlanDocumentRepository } from "../services/planDocumentRepository.
 import type { PlanDiscussionRepository } from "../services/planDiscussionRepository.js";
 import type { AiChatTurnFactory } from "../services/ai/chatComposition.js";
 import type { AiChatEvent } from "../services/ai/chatService.js";
+import {
+  AiPlanProposalNotFoundError,
+  AiPlanProposalPlanMissingError,
+  AiPlanProposalRevisionError,
+  AiPlanProposalStateError,
+  type AiPlanProposalCoordinator
+} from "../services/ai/planEditor.js";
 import { messageForClient, statusForClient } from "../utils/clientError.js";
 
 const IDENTIFIER_PATTERN = "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$";
@@ -224,6 +231,8 @@ export interface AiRouteDependencies {
   discussPlan?: (request: PlanDiscussionRequest) => Promise<PlanDiscussionAnswer | null>;
   planRepository?: PlanDocumentRepository;
   planDiscussionRepository?: PlanDiscussionRepository;
+  /** Confirm/reject/undo for AI plan edits; absent means the chat can only talk about plans. */
+  planProposals?: AiPlanProposalCoordinator;
 }
 
 function privateResponse(reply: FastifyReply) {
@@ -643,4 +652,100 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
       }
     }
   );
+
+  /**
+   * The confirmation boundary for an AI plan edit (§30.8).
+   *
+   * The chat only ever proposes; these three routes are the only way a proposal reaches the
+   * stored plan, and each of them re-reads the plan first. A proposal made against revision 4
+   * cannot be applied to revision 5 — the user sees "the plan changed" instead of a silent merge.
+   */
+  const proposalOptions = {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: REJECT_UNKNOWN_PROPERTY,
+        required: ["proposalId"],
+        properties: { proposalId: identifierSchema }
+      }
+    },
+    bodyLimit: 1024,
+    preHandler: rateLimitByIp(limiter, {
+      bucket: "ai-plan-proposal",
+      limit: dependencies.rateLimit ?? 20,
+      windowMs: dependencies.rateLimitWindowMs ?? 60_000
+    })
+  };
+
+  const proposalHandler =
+    (action: "confirm" | "reject" | "undo") =>
+    async (request: FastifyRequest<{ Params: { proposalId: string } }>, reply: FastifyReply) => {
+      const ownerUserId = (await dependencies.resolveUserId(request))?.trim() || null;
+      if (!ownerUserId) {
+        return privateResponse(reply).code(401).send({ message: "Přihlášení je vyžadováno" });
+      }
+      const coordinator = dependencies.planProposals;
+      if (!coordinator) {
+        return privateResponse(reply).code(503).send({ message: "AI návrhy nejsou dostupné" });
+      }
+      try {
+        if (action === "reject") {
+          const proposal = coordinator.reject(ownerUserId, request.params.proposalId);
+          return privateResponse(reply).send({ status: "rejected", proposal });
+        }
+        const applied =
+          action === "confirm"
+            ? await coordinator.confirm(ownerUserId, request.params.proposalId)
+            : await coordinator.undo(ownerUserId, request.params.proposalId);
+        return privateResponse(reply).send({
+          status: action === "confirm" ? "confirmed" : "undone",
+          proposal: applied.proposal,
+          plan: applied.plan
+        });
+      } catch (error) {
+        return privateResponse(reply)
+          .code(proposalStatus(error))
+          .send({ message: proposalMessage(error) });
+      }
+    };
+
+  app.post<{ Params: { proposalId: string } }>(
+    "/v2/ai/plan-proposals/:proposalId/confirm",
+    proposalOptions,
+    proposalHandler("confirm")
+  );
+  app.post<{ Params: { proposalId: string } }>(
+    "/v2/ai/plan-proposals/:proposalId/reject",
+    proposalOptions,
+    proposalHandler("reject")
+  );
+  app.post<{ Params: { proposalId: string } }>(
+    "/v2/ai/plan-proposals/:proposalId/undo",
+    proposalOptions,
+    proposalHandler("undo")
+  );
+}
+
+function proposalStatus(error: unknown): number {
+  if (
+    error instanceof AiPlanProposalNotFoundError ||
+    error instanceof AiPlanProposalPlanMissingError
+  ) {
+    return 404;
+  }
+  if (
+    error instanceof AiPlanProposalStateError ||
+    error instanceof AiPlanProposalRevisionError
+  ) {
+    return 409;
+  }
+  return statusForClient(error);
+}
+
+function proposalMessage(error: unknown): string {
+  if (error instanceof AiPlanProposalNotFoundError) return "Návrh nebyl nalezen";
+  if (error instanceof AiPlanProposalPlanMissingError) return "Plán nebyl nalezen";
+  if (error instanceof AiPlanProposalRevisionError) return "Plán se mezitím změnil";
+  if (error instanceof AiPlanProposalStateError) return "Návrh už není otevřený";
+  return messageForClient(error, "Návrh se nepodařilo použít");
 }

@@ -291,7 +291,69 @@ function compatibilityIssues(
   return issues;
 }
 
+/**
+ * What an inline layer has to carry to be shown at all (§30.7).
+ *
+ * The whole point of an inline source is that nobody can look up where the points came from
+ * later, so it has to say now: the manifest names its attribution, and every point names the
+ * source record it was read from. A layer that cannot answer "according to whom" is not shown.
+ */
+function inlineSourceIssues(value: Record<string, unknown>): LayerManifestValidationIssueV2[] {
+  const source = value.source as Record<string, unknown>;
+  const issues: LayerManifestValidationIssueV2[] = [];
+  const attribution = Array.isArray(value.attribution) ? value.attribution : [];
+  if (!attribution.length) {
+    issues.push({
+      code: "SCHEMA_INVALID",
+      path: "/attribution",
+      message: "An inline layer must name at least one attribution; its data cannot be re-fetched."
+    });
+  }
+  const inline = record(source.inline) ? source.inline : null;
+  if (!inline) {
+    issues.push({
+      code: "SCHEMA_INVALID",
+      path: "/source/inline",
+      message: "source.inline is required when source.type is inline."
+    });
+    return issues;
+  }
+  if (source.endpoint !== undefined || source.tileTemplate !== undefined) {
+    issues.push({
+      code: "SCHEMA_INVALID",
+      path: "/source/endpoint",
+      message: "An inline layer has no upstream; remove endpoint and tileTemplate."
+    });
+  }
+  const features = Array.isArray(inline.features) ? inline.features : [];
+  const seen = new Set<string>();
+  features.forEach((feature, index) => {
+    if (!record(feature)) return;
+    const id = typeof feature.id === "string" ? feature.id : "";
+    if (seen.has(id)) {
+      issues.push({
+        code: "SCHEMA_INVALID",
+        path: `/source/inline/features/${index}/id`,
+        message: `Inline feature id ${id} is used twice; ids identify a point for selection.`
+      });
+    }
+    seen.add(id);
+  });
+  // Provenance is what tells a saved inline layer apart from surveyed data, so an `ai` origin
+  // has to name its model — "some assistant, some time" is not provenance.
+  const provenance = record(inline.provenance) ? inline.provenance : null;
+  if (provenance?.kind === "ai" && typeof provenance.model !== "string") {
+    issues.push({
+      code: "SCHEMA_INVALID",
+      path: "/source/inline/provenance/model",
+      message: "AI provenance must name the model that produced the layer."
+    });
+  }
+  return issues;
+}
+
 function semanticSchemaIssues(value: Record<string, unknown>): LayerManifestValidationIssueV2[] {
+  if (record(value.source) && value.source.type === "inline") return inlineSourceIssues(value);
   if (!record(value.source) || value.source.type !== "declarative-http") return [];
   if (
     typeof value.source.endpoint === "string" &&

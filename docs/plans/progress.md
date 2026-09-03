@@ -105,17 +105,20 @@ Recorded here rather than in the plan document, which is frozen during implement
 
 ## AI-2 (§30.5)
 
-- [ ] `guideAggregator` → `submit_guide`
-- [ ] hero / Stojí za to / Prakticky / Čísla UI, "always show something" fallback chain
-- [ ] `get_region_context`, `get_stats`, `get_weather`, `search_events`
+- [x] `guideAggregator` → `submit_guide`, parallel collectors behind per-source timeouts
+- [x] hero / Stojí za to / Prakticky / Čísla UI, "always show something" fallback chain
+- [x] `get_region_context`, `get_stats`, `get_weather`, `search_events`
+- [x] events read per request and seeded, so a cached guide never names last weekend
+- [x] multi-source place brief (fused POI + Wikipedia + Wikidata) with its citations
 
 ## AI-3 (§30.7, §30.8)
 
-- [ ] `LayerManifest` `source.type: inline` + provenance
-- [ ] `emit_layer` → temporary "AI: …" layer with Uložit do Moje vrstvy
-- [ ] `submit_plan` → Otevřít v Plánování
-- [ ] `apply_plan_commands` through `AiPlanProposalStore` with diff and undo
-- [ ] versioned prompts + golden evals
+- [x] `LayerManifest` `source.type: inline` + provenance
+- [x] `emit_layer` → temporary "AI: …" layer with Uložit do Moje vrstvy
+- [x] `submit_plan` → Otevřít v Plánování
+- [x] `apply_plan_commands` through `AiPlanProposalStore` with diff and undo
+- [x] multifunctional stop input: suggestions beside the pin, confirmed before anything moves
+- [x] versioned prompts (`services/ai/prompts/*.md`) + 30 golden evals (`services/ai/evals`)
 
 ## §16.6 — Follow-ups on Codex's work
 

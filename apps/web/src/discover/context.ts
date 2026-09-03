@@ -30,6 +30,23 @@ export interface DiscoverContext {
     sourceIds: string[];
     model?: string;
   };
+  /** The multi-source guide of §30.5. Every claim carries the ids of the sources it came from,
+   *  and its last fallback is an empty state with an action rather than nothing. */
+  guideSynthesis: null | {
+    kind: "model" | "structured" | "extract" | "none";
+    label: string;
+    lead: string;
+    highlights: Array<{
+      title: string;
+      text: string;
+      sourceIds: string[];
+      place?: { id: string; longitude: number; latitude: number; layerId?: string };
+    }>;
+    practical: { arrival?: string; bestTime?: string; warnings: string[] };
+    degraded: string[];
+    model?: string;
+    action?: { id: "ask-ai-web"; label: string };
+  };
   statistics: Array<{
     id: string;
     label: string;

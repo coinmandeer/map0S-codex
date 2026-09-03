@@ -375,6 +375,19 @@ export function MapCore() {
         return;
       }
 
+      if (map.getLayer("route-preview-alternatives")) {
+        const variantHit = map.queryRenderedFeatures(e.point, {
+          layers: ["route-preview-alternatives"]
+        })[0];
+        const segmentId = variantHit?.properties?.segmentId;
+        const alternativeId = variantHit?.properties?.alternativeId;
+        if (typeof segmentId === "string" && typeof alternativeId === "string") {
+          store.selectRouteSegment(segmentId);
+          emit("plan-alternative-picked", { segmentId, alternativeId });
+          return;
+        }
+      }
+
       if (map.getLayer("route-preview-line")) {
         const routeHit = map.queryRenderedFeatures(e.point, {
           layers: ["route-preview-line"]
@@ -487,6 +500,21 @@ export function MapCore() {
             "line-color": "rgba(15, 23, 42, 0.78)",
             "line-width": 8,
             "line-opacity": 0.72
+          },
+          layout: { "line-cap": "round", "line-join": "round" }
+        });
+        // §16.6: the variants a segment was not routed with stay on the map, dimmed, so the
+        // choice can be made by pointing at the line instead of reading the itinerary.
+        map.addLayer({
+          id: "route-preview-alternatives",
+          type: "line",
+          source: "route-preview",
+          filter: ["==", ["get", "kind"], "alternative"],
+          paint: {
+            "line-color": "#2563eb",
+            "line-width": 5,
+            "line-opacity": 0.35,
+            "line-dasharray": [2, 1.5]
           },
           layout: { "line-cap": "round", "line-join": "round" }
         });
@@ -824,6 +852,15 @@ export function MapCore() {
       src.setData({
         type: "FeatureCollection",
         features: [
+          ...(route.alternatives ?? []).map((alternative) => ({
+            type: "Feature" as const,
+            geometry: { type: "LineString" as const, coordinates: alternative.coordinates },
+            properties: {
+              kind: "alternative",
+              segmentId: alternative.segmentId,
+              alternativeId: alternative.alternativeId
+            }
+          })),
           ...segmentFeatures,
           ...(route.stops ?? []).map((stop) => ({
             type: "Feature" as const,

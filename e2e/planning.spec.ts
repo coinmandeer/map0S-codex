@@ -918,18 +918,29 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(input).toHaveValue("Plzeň, Česko");
 
     await input.fill("ai: najdi mi nejbližší bar");
+    // §4.5: an open question gets a button in the field, not only a row in the dropdown.
+    await expect(page.getByTestId("stop-ai-inline-1")).toBeVisible();
     await expect(page.getByTestId("stop-ai-1")).toContainText("AI hledání");
     await expect(page.getByTestId("stop-ai-1")).toContainText("nic nezmění bez potvrzení");
     const aiRequest = page.waitForRequest(
       (request) =>
-        request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/ai/orchestrate"
+        request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/ai/chat"
     );
-    await page.getByTestId("stop-ai-1").click();
+    await page.getByTestId("stop-ai-inline-1").click();
     await aiRequest;
     await expect(page.getByTestId("planner-ai-results")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId("map-picker-host")).toContainText("Potvrď AI návrh zastávky");
+    // The suggestions sit beside the pin; choosing one moves the pin and changes nothing else.
+    const suggestion = page.getByTestId("map-picker-suggestion-1");
+    await expect(suggestion).toBeVisible();
+    const suggested = (await suggestion.textContent())?.trim() ?? "";
+    expect(suggested.length).toBeGreaterThan(0);
+    await suggestion.click();
+    // Choosing a suggestion moves the pin onto it; the stop itself is still untouched.
+    await expect(suggestion).toHaveAttribute("aria-pressed", "true");
+
     await page.getByTestId("map-picker-select").click();
-    await expect(input).not.toHaveValue("Plzeň, Česko");
+    await expect(input).toHaveValue(suggested);
     await expect(page.getByTestId("toast")).toContainText("AI návrh zastávky byl potvrzen");
   });
 

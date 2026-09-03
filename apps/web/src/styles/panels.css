@@ -355,6 +355,32 @@
     color: var(--text-faint);
   }
 
+  /* The AI route lives in the field, right of the text, next to the clear button. */
+  .planner-stop-ai-button {
+    position: absolute;
+    right: 34px;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 26px;
+    padding: 0 var(--space-2);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+    font: var(--type-label-md);
+    cursor: pointer;
+  }
+
+  .planner-stop-ai-button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .planner-stop-ai-button .material-symbols-rounded {
+    font-size: 18px;
+  }
+
   .planner-stop-ai-action {
     border-left: 3px solid var(--accent) !important;
     background: color-mix(in srgb, var(--accent) 8%, var(--surface)) !important;
@@ -4446,6 +4472,37 @@
     height: 10px;
     border-radius: 50%;
     background: var(--surface-solid);
+  }
+
+  /* Suggestions sit beside the pin, not in a panel: the pin is what the choice is about (§4.5). */
+  .shell-map-picker-suggestions {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 1;
+    display: grid;
+    gap: var(--space-1);
+    width: min(260px, calc(100vw - 48px));
+    margin: 0;
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-solid);
+    box-shadow: var(--shadow);
+    list-style: none;
+    transform: translate(28px, -100%);
+    pointer-events: auto;
+  }
+
+  .shell-map-picker-suggestions button {
+    justify-content: flex-start;
+    width: 100%;
+    text-align: left;
+  }
+
+  .shell-map-picker-suggestions button[aria-pressed="true"] {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
 
   @media (max-width: 899px) {

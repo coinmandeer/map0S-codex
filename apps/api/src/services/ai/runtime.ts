@@ -23,6 +23,8 @@ const nearestPoiPathHandlers: MapAiToolHandlers = {
   route_segment: unavailableOnNearestPoiPath,
   get_weather: unavailableOnNearestPoiPath,
   search_events: unavailableOnNearestPoiPath,
+  get_region_context: unavailableOnNearestPoiPath,
+  get_stats: unavailableOnNearestPoiPath,
   web_search: unavailableOnNearestPoiPath,
   web_fetch: unavailableOnNearestPoiPath,
   create_plan_draft: unavailableOnNearestPoiPath

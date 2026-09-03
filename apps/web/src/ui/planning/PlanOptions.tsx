@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import { localDateTime, planOptionsSummary } from "../../planning/planFormat";
 import {
   Accordion,
+  Chip,
   InfoTip,
   Popover,
   IconButton,
@@ -30,10 +31,10 @@ export const PLAN_PROFILE_OPTIONS: readonly SelectOption<PlanTravelProfileV2>[] 
 ];
 
 const PREFERENCE_OPTIONS = [
-  { value: "fast", label: "Rychlá" },
-  { value: "short", label: "Krátká" },
-  { value: "nohwy", label: "Bez dálnic" },
-  { value: "adventure", label: "Dobrodružná" }
+  { value: "fast", label: "Rychlá", icon: "bolt" },
+  { value: "short", label: "Krátká", icon: "straighten" },
+  { value: "nohwy", label: "Bez dálnic", icon: "no_crash" },
+  { value: "adventure", label: "Dobrodružná", icon: "hiking" }
 ] as const;
 
 const DETOUR_OPTIONS = [
@@ -160,6 +161,14 @@ export function PlanOptions({
                 />
               </div>
 
+              {/* §16.6: the vehicle fallback is said once, under the select that caused it. */}
+              {mapping.profileCapability === "fallback" && (
+                <p className="planner-hint" data-testid="plan-vehicle-fallback">
+                  {planProfileLabel(profile)} zdroj tras nepočítá zvlášť — trasa vznikne
+                  automobilovým profilem a rozměry vozidla nezaručí.
+                </p>
+              )}
+
               {showVehicleLimits && (
                 <div className="planner-options-grid three" data-testid="plan-vehicle-limits">
                   {VEHICLE_LIMITS.map(({ field, label }) => (
@@ -194,9 +203,24 @@ export function PlanOptions({
                     testId="plan-profile-support"
                   >
                     {nativeMapping
-                      ? "Vybrané vozidlo i profil zdroj tras počítá přímo."
+                      ? mapping.adventureRouter === "brouter"
+                        ? "Dobrodružnou trasu počítá BRouter podle profilu pro nezpevněné cesty."
+                        : "Vybrané vozidlo i profil zdroj tras počítá přímo."
                       : `Tuhle kombinaci zdroj tras neumí přímo; trasa vznikne podle nejbližšího podporovaného nastavení (${planPreferenceLabel(mapping.effectivePreference)}).`}
+                    {mapping.alternativesSupported === 1 && (
+                      <span className="planner-context-note">
+                        Tento zdroj tras vrací jednu variantu úseku; varianty k výběru nabídne
+                        OSM/OSRM nebo dobrodružný profil.
+                      </span>
+                    )}
                   </InfoTip>
+                  {mapping.preferenceCapability === "fallback" && (
+                    <Chip
+                      icon="warning"
+                      label={`Náhradní profil: ${planPreferenceLabel(mapping.effectivePreference)}`}
+                      testId="plan-preference-fallback"
+                    />
+                  )}
                   {preference === "adventure" && (
                     <Popover
                       title="Povolená zajížďka"

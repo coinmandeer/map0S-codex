@@ -500,22 +500,38 @@ export function DiscoverPanel() {
 
   if (!open || mode !== "discover") return null;
 
+  const guide = context?.guideSynthesis ?? null;
+  // The multi-source guide answers the section when it has anything to say; the older
+  // single-source guide stays as the list underneath, so nothing that used to be visible is lost.
   const guideItems = context?.guide?.sections.flatMap((section) => section.items) ?? [];
-  // Provenance sits next to the text it backs (§30.5): the synthesis sources plus, when the
-  // guide itself supplied the highlights, its attribution.
+  const guideLead = guide?.lead || context?.synthesis?.text || "";
+  const sourceLabel = (sourceIds: readonly string[]): string | null => {
+    const source = context?.sources.find((candidate) => sourceIds.includes(candidate.id));
+    return source?.label ?? null;
+  };
+  // Provenance sits next to the text it backs (§30.5): the sources the lead came from plus, when
+  // the guide itself supplied the highlights, its attribution.
   const guideSources = [
     ...new Set(
       [
-        ...(context?.synthesis?.sourceIds ?? []).map(
-          (id) => context?.sources.find((candidate) => candidate.id === id)?.label
-        ),
+        ...(
+          guide?.highlights.flatMap((highlight) => highlight.sourceIds) ??
+          context?.synthesis?.sourceIds ??
+          []
+        ).map((id) => sourceLabel([id])),
         context?.guide?.attribution
       ].filter((value): value is string => Boolean(value))
     )
   ];
-  const sourceLabel = (sourceIds: readonly string[]): string | null => {
-    const source = context?.sources.find((candidate) => sourceIds.includes(candidate.id));
-    return source?.label ?? null;
+  const practicalLines = [
+    guide?.practical.arrival ? `Doprava: ${guide.practical.arrival}` : null,
+    guide?.practical.bestTime ? `Kdy jet: ${guide.practical.bestTime}` : null,
+    ...(guide?.practical.warnings ?? [])
+  ].filter((value): value is string => Boolean(value));
+  const flyTo = (longitude: number, latitude: number) => {
+    emit("fly-to", { lng: longitude, lat: latitude, zoom: 16 });
+    store.setView({ lng: longitude, lat: latitude, zoom: 16 });
+    if (window.innerWidth < 900) store.setSidebarOpen(false);
   };
 
   const sections: AccordionSection[] = [];
@@ -528,17 +544,17 @@ export function DiscoverPanel() {
     children: (
       <div className="discover-guide">
         {contextState.status === "loading" && !context && <Skeleton height={72} count={2} />}
-        {context?.synthesis && (
+        {guideLead && (
           <ModuleErrorBoundary
             moduleId="discover-guide-synthesis"
             title="Souhrn oblasti"
             compact
-            resetKey={`${context.synthesis.kind}:${context.synthesis.text}`}
+            resetKey={guideLead}
           >
             <div data-testid="discover-summary">
-              <p className="discover-lead">{context.synthesis.text}</p>
+              <p className="discover-lead">{guideLead}</p>
               <div className="discover-chip-row">
-                {context.synthesis.kind === "model" && (
+                {(guide?.kind ?? context?.synthesis?.kind) === "model" && (
                   <Chip label="AI souhrn" icon="auto_awesome" testId="discover-summary-ai" />
                 )}
                 {guideSources.map((label) => (
@@ -548,7 +564,43 @@ export function DiscoverPanel() {
             </div>
           </ModuleErrorBoundary>
         )}
-        {guideItems.length > 0 && (
+        {guide?.highlights.length ? (
+          <div data-testid="discover-guide-highlights">
+            <h3 className="discover-subheading">Stojí za to</h3>
+            {guide.highlights.map((highlight) => (
+              <ListItem
+                key={`${highlight.title}:${highlight.sourceIds.join(",")}`}
+                testId="discover-guide-highlight"
+                icon="star"
+                title={highlight.title}
+                subtitle={[highlight.text, sourceLabel(highlight.sourceIds)]
+                  .filter(Boolean)
+                  .join(" · ")}
+                {...(highlight.place
+                  ? {
+                      onClick: () => flyTo(highlight.place!.longitude, highlight.place!.latitude),
+                      ariaLabel: `Ukázat ${highlight.title} na mapě`
+                    }
+                  : {})}
+              />
+            ))}
+          </div>
+        ) : null}
+        {practicalLines.length > 0 && (
+          <ul className="discover-source-list" data-testid="discover-guide-practical">
+            {practicalLines.map((line) => (
+              <li key={line}>
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {guide?.degraded.length ? (
+          <InlineNotice tone="info" testId="discover-guide-degraded">
+            Část podkladů se teď nenačetla ({guide.degraded.join(", ")}); zbytek souhrnu platí.
+          </InlineNotice>
+        ) : null}
+        {!guide?.highlights.length && guideItems.length > 0 && (
           <>
             <h3 className="discover-subheading">Stojí za to</h3>
             {guideItems.map((item) => (
@@ -570,17 +622,20 @@ export function DiscoverPanel() {
             ))}
           </>
         )}
-        {!context?.synthesis && guideItems.length === 0 && contextState.status !== "loading" && (
-          <EmptyState
-            icon="menu_book"
-            title="O téhle oblasti zatím nic nemáme."
-            actionLabel="Zeptat se AI"
-            onAction={() =>
-              void controllerRef.current?.refresh({ ...viewport, allowModelFallback: true })
-            }
-            testId="discover-guide-empty"
-          />
-        )}
+        {!guideLead &&
+          !guide?.highlights.length &&
+          guideItems.length === 0 &&
+          contextState.status !== "loading" && (
+            <EmptyState
+              icon="menu_book"
+              title="O téhle oblasti zatím nic nemáme."
+              actionLabel={guide?.action?.label ?? "Zeptat se AI"}
+              onAction={() =>
+                void controllerRef.current?.refresh({ ...viewport, allowModelFallback: true })
+              }
+              testId="discover-guide-empty"
+            />
+          )}
       </div>
     )
   });

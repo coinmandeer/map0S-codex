@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { apiPostEventStream } from "../lib/api";
+import {
+  planV1ToV2,
+  type LayerManifestV2,
+  type PlanDocumentV2,
+  type TripPlan
+} from "@mapos/layer-sdk";
+import { ApiError, apiPost, apiPostEventStream } from "../lib/api";
 import { emit } from "../lib/events";
+import { registerInlineLayer } from "../layers/inlineLayers";
+import { saveInlineLayerAsUserLayer } from "../layers/saveInlineLayer";
 import { formatDistance } from "../lib/units";
+import { t } from "../i18n/cs";
 import { getMapStore } from "../store/mapStore";
 import { getShellStore } from "../store/shellStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
@@ -36,10 +45,44 @@ interface AiCitation {
   url?: string;
 }
 
+interface AiPlanStop {
+  title: string;
+  longitude: number;
+  latitude: number;
+  day?: number;
+  note?: string;
+  sourceId: string;
+}
+
+interface AiPlanDiff {
+  baseRevision: number;
+  previewRevision: number;
+  changedPlanFields: string[];
+  addedStopIds: string[];
+  removedStopIds: string[];
+  movedStopIds: string[];
+  updatedStopIds: string[];
+  affectedSegmentIds: string[];
+}
+
 type AiCard =
   | { type: "places"; title: string; places: AiPlace[]; layerIds: string[] }
   | { type: "link"; title: string; url: string; excerpt?: string }
-  | { type: "layer"; title: string; layerIds: string[] };
+  | { type: "layer"; title: string; layerIds: string[] }
+  | {
+      type: "facts";
+      title: string;
+      items: { label: string; value: string; note?: string; sourceIds: string[] }[];
+    }
+  | {
+      type: "layer-draft";
+      title: string;
+      layerId: string;
+      manifest: LayerManifestV2;
+      featureCount: number;
+    }
+  | { type: "plan"; title: string; summary: string; stops: AiPlanStop[] }
+  | { type: "plan-edit"; title: string; proposalId: string; planId: string; diff: AiPlanDiff };
 
 interface AiAnswer {
   execution: "model-tool-loop" | "deterministic";
@@ -74,6 +117,17 @@ interface Turn {
 
 const PRIVACY_DISMISSED_KEY = "mapos:ai-privacy-ack";
 
+/** What the proposal would do, in the terms the user thinks in: stops, not revisions. */
+function planDiffSummary(diff: AiPlanDiff): string {
+  const parts: string[] = [];
+  if (diff.addedStopIds.length) parts.push(`+${diff.addedStopIds.length} zastávka/y`);
+  if (diff.removedStopIds.length) parts.push(`−${diff.removedStopIds.length} zastávka/y`);
+  if (diff.movedStopIds.length) parts.push(`${diff.movedStopIds.length}× přesun`);
+  if (diff.updatedStopIds.length) parts.push(`${diff.updatedStopIds.length}× úprava`);
+  if (diff.changedPlanFields.length) parts.push(`změna: ${diff.changedPlanFields.join(", ")}`);
+  return parts.length ? parts.join(" · ") : "Beze změny zastávek";
+}
+
 /** The map-wide assistant (§4.13, §30.6).
  *
  *  One thread over the map. A question is streamed to `/v2/ai/chat` together with a projection of
@@ -90,6 +144,7 @@ export function AiPanel() {
   const mode = useShellStoreSnapshot((state) => state.mode);
   const units = useMapStoreSnapshot((state) => state.preferences.units);
   const aiEnabled = useMapStoreSnapshot((state) => state.preferences.aiEnabled);
+  const activePlanId = useMapStoreSnapshot((state) => state.activePlanDocument?.id ?? null);
   const seeded = leftContext.type === "ai" ? leftContext.prompt : undefined;
 
   const [prompt, setPrompt] = useState("");
@@ -101,6 +156,11 @@ export function AiPanel() {
     () =>
       typeof window !== "undefined" && window.localStorage.getItem(PRIVACY_DISMISSED_KEY) === "1"
   );
+  const [savingLayer, setSavingLayer] = useState<string | null>(null);
+  const [savedLayers, setSavedLayers] = useState<Record<string, boolean>>({});
+  const [proposals, setProposals] = useState<
+    Record<string, "busy" | "confirmed" | "rejected" | "undone" | "failed">
+  >({});
   const askedSeed = useRef<string | null>(null);
   /** Only "Zastavit" aborts a turn. Aborting on unmount would also abort the seeded question,
    *  because a StrictMode mount runs the cleanup between the two effect passes. */
@@ -146,7 +206,10 @@ export function AiPanel() {
             mapCenter: { longitude: view.lng, latitude: view.lat },
             zoom: view.zoom,
             activeLayerIds: visibleLayerIds.slice(0, 20),
-            mode
+            mode,
+            // The open plan is what "add a stop on day two" refers to; without it the assistant
+            // is not offered the edit tool at all.
+            ...(activePlanId ? { planId: activePlanId } : {})
           },
           consent: { externalModel: aiEnabled, preciseLocation: false }
         },
@@ -233,6 +296,109 @@ export function AiPanel() {
           onSelect: () => missing.forEach((layerId) => store.toggleLayer(layerId))
         }
       });
+    }
+  };
+
+  /** A drafted layer becomes a real one only here: the manifest is registered for this session
+   *  and switched on, so it behaves like any other layer — including switching it back off. */
+  const showLayerDraft = (card: Extract<AiCard, { type: "layer-draft" }>) => {
+    const layerId = registerInlineLayer(card.manifest);
+    if (!activeLayers[layerId]?.visible) store.toggleLayer(layerId);
+    const first = card.manifest.source.inline?.features[0];
+    if (first) {
+      emit("fly-to", { lng: first.longitude, lat: first.latitude, zoom: Math.max(view.zoom, 11) });
+    }
+    store.showToast(`Vrstva ${card.manifest.name} je v mapě`, {
+      action: { label: "Vrátit", onSelect: () => store.toggleLayer(layerId) }
+    });
+  };
+
+  /** Saving turns the session layer into a personal one, provenance and all (§30.7). */
+  const saveLayerDraft = async (card: Extract<AiCard, { type: "layer-draft" }>) => {
+    setSavingLayer(card.layerId);
+    try {
+      const result = await saveInlineLayerAsUserLayer(card.manifest);
+      setSavedLayers((current) => ({ ...current, [card.layerId]: true }));
+      store.showToast(
+        result.failed
+          ? `Uloženo ${result.saved} míst, ${result.failed} se nepodařilo`
+          : `Vrstva uložená v Moje vrstvy (${result.saved} míst)`
+      );
+    } catch (cause) {
+      store.showToast(
+        cause instanceof ApiError && cause.status === 401
+          ? "Uložení vyžaduje přihlášení"
+          : "Vrstvu se nepodařilo uložit"
+      );
+    } finally {
+      setSavingLayer(null);
+    }
+  };
+
+  /** The plan card opens a draft in Plánování; nothing is saved until the user saves it there. */
+  const openPlanDraft = (card: Extract<AiCard, { type: "plan" }>) => {
+    const now = new Date();
+    const departure = new Date(now.getTime() + 15 * 60_000);
+    departure.setSeconds(0, 0);
+    const draft: TripPlan = {
+      id: `plan-ai-${now.getTime()}`,
+      name: card.title.slice(0, 120),
+      departureAt: departure.toISOString(),
+      variant: "fast",
+      stops: card.stops.map((stop, index) => ({
+        id: `ai-stop-${index + 1}`,
+        name: stop.title,
+        lng: stop.longitude,
+        lat: stop.latitude,
+        dwellMinutes: 45
+      })),
+      vehicle: { profile: "car" },
+      visibility: "private"
+    };
+    const document: PlanDocumentV2 = planV1ToV2(draft, { now: now.toISOString() });
+    store.setActivePlanDocument(document);
+    shell.setMode("planning");
+    store.showToast("Návrh plánu je otevřený v Plánování");
+  };
+
+  /** Confirming is the only thing that writes: the server re-reads the plan, applies the same
+   *  command it showed in the diff, and hands back the plan — with one undo behind it (§30.8). */
+  const decideProposal = async (
+    card: Extract<AiCard, { type: "plan-edit" }>,
+    action: "confirm" | "reject"
+  ) => {
+    setProposals((current) => ({ ...current, [card.proposalId]: "busy" }));
+    try {
+      const result = await apiPost<{ plan?: PlanDocumentV2 }>(
+        `/v2/ai/plan-proposals/${card.proposalId}/${action}`,
+        {},
+        { auth: true }
+      );
+      setProposals((current) => ({
+        ...current,
+        [card.proposalId]: action === "confirm" ? "confirmed" : "rejected"
+      }));
+      if (action === "reject") return;
+      if (result.plan) store.setActivePlanDocument(result.plan);
+      store.showToast("Změna plánu potvrzena", {
+        action: {
+          label: "Vrátit",
+          onSelect: () => {
+            void apiPost<{ plan?: PlanDocumentV2 }>(
+              `/v2/ai/plan-proposals/${card.proposalId}/undo`,
+              {},
+              { auth: true }
+            )
+              .then((undone) => {
+                if (undone.plan) store.setActivePlanDocument(undone.plan);
+                setProposals((current) => ({ ...current, [card.proposalId]: "undone" }));
+              })
+              .catch(() => store.showToast("Vrácení se nepodařilo"));
+          }
+        }
+      });
+    } catch {
+      setProposals((current) => ({ ...current, [card.proposalId]: "failed" }));
     }
   };
 
@@ -420,6 +586,132 @@ export function AiPanel() {
                       >
                         Zobrazit v mapě
                       </Button>
+                    </section>
+                  ) : card.type === "facts" ? (
+                    <section
+                      key={`facts-${index}`}
+                      className="ai-turn-card"
+                      data-testid="ai-card-facts"
+                    >
+                      <p className="ai-turn-card-head">{card.title}</p>
+                      <dl className="ai-turn-facts">
+                        {card.items.map((item) => (
+                          <div key={item.label}>
+                            <dt>{item.label}</dt>
+                            {/* The year and the caveat travel with the number, because a figure
+                                without them is not checkable. */}
+                            <dd>
+                              {item.value}
+                              {item.note ? <span>{item.note}</span> : null}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </section>
+                  ) : card.type === "layer-draft" ? (
+                    <section
+                      key={`layer-draft-${index}`}
+                      className="ai-turn-card"
+                      data-testid="ai-card-layer-draft"
+                    >
+                      <p className="ai-turn-card-head">{card.title}</p>
+                      <p className="ai-turn-card-note">
+                        {card.featureCount} míst ze zdrojů, které odpověď cituje. Vrstva platí do
+                        zavření aplikace.
+                      </p>
+                      <div className="ai-turn-card-actions">
+                        <Button
+                          variant="tonal"
+                          size="sm"
+                          icon="layers"
+                          testId="ai-card-layer-draft-show"
+                          onClick={() => showLayerDraft(card)}
+                        >
+                          Zobrazit v mapě
+                        </Button>
+                        <Button
+                          variant="text"
+                          size="sm"
+                          icon="bookmark"
+                          disabled={savingLayer === card.layerId || savedLayers[card.layerId]}
+                          testId="ai-card-layer-draft-save"
+                          onClick={() => void saveLayerDraft(card)}
+                        >
+                          {savedLayers[card.layerId]
+                            ? "Uloženo v Moje vrstvy"
+                            : "Uložit do Moje vrstvy"}
+                        </Button>
+                      </div>
+                    </section>
+                  ) : card.type === "plan" ? (
+                    <section
+                      key={`plan-${index}`}
+                      className="ai-turn-card"
+                      data-testid="ai-card-plan"
+                    >
+                      <p className="ai-turn-card-head">{card.title}</p>
+                      <ol className="ai-turn-plan">
+                        {card.stops.map((stop, position) => (
+                          <li key={`${stop.title}-${position}`}>
+                            <span>{stop.title}</span>
+                            {stop.day ? <em>{stop.day}. den</em> : null}
+                          </li>
+                        ))}
+                      </ol>
+                      <Button
+                        variant="tonal"
+                        size="sm"
+                        icon="route"
+                        testId="ai-card-plan-open"
+                        onClick={() => openPlanDraft(card)}
+                      >
+                        {t("ai.openInPlanning")}
+                      </Button>
+                    </section>
+                  ) : card.type === "plan-edit" ? (
+                    <section
+                      key={`plan-edit-${index}`}
+                      className="ai-turn-card"
+                      data-testid="ai-card-plan-edit"
+                    >
+                      <p className="ai-turn-card-head">{card.title}</p>
+                      <p className="ai-turn-card-note" data-testid="ai-card-plan-edit-diff">
+                        {planDiffSummary(card.diff)}
+                      </p>
+                      {proposals[card.proposalId] === "confirmed" ? (
+                        <InlineNotice tone="success">Změna je v plánu.</InlineNotice>
+                      ) : proposals[card.proposalId] === "undone" ? (
+                        <InlineNotice tone="info">Změna byla vrácena.</InlineNotice>
+                      ) : proposals[card.proposalId] === "rejected" ? (
+                        <InlineNotice tone="info">Návrh jsi zamítl.</InlineNotice>
+                      ) : (
+                        <div className="ai-turn-card-actions">
+                          <Button
+                            variant="filled"
+                            size="sm"
+                            icon="check"
+                            disabled={proposals[card.proposalId] === "busy"}
+                            testId="ai-card-plan-edit-confirm"
+                            onClick={() => void decideProposal(card, "confirm")}
+                          >
+                            Potvrdit
+                          </Button>
+                          <Button
+                            variant="text"
+                            size="sm"
+                            disabled={proposals[card.proposalId] === "busy"}
+                            testId="ai-card-plan-edit-reject"
+                            onClick={() => void decideProposal(card, "reject")}
+                          >
+                            Zamítnout
+                          </Button>
+                        </div>
+                      )}
+                      {proposals[card.proposalId] === "failed" && (
+                        <InlineNotice tone="warning">
+                          Plán se mezitím změnil, návrh už nesedí. Zeptej se znovu.
+                        </InlineNotice>
+                      )}
                     </section>
                   ) : card.type === "link" ? (
                     <a

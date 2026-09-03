@@ -66,6 +66,13 @@ export interface RoutePreview {
     distanceM: number;
     durationS: number;
   }>;
+  /** Variants the user has not chosen, drawn dimmed and clickable so a segment can be swapped
+   *  from the map instead of the itinerary (§16.6). */
+  alternatives?: Array<{
+    segmentId: string;
+    alternativeId: string;
+    coordinates: [number, number][];
+  }>;
   stops?: Array<{
     coordinates: [number, number];
     order: number;

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { MapPickerLocation } from "../../search/mapPicker";
 import { emit, on } from "../../lib/events";
 import { mapPickerControllers } from "../../store/mapPickerRuntime";
 import { getMapStore } from "../../store/mapStore";
@@ -18,6 +19,7 @@ function ActiveMapPickerHost({ picker }: { picker: Extract<MapPickerState, { typ
   const shell = getShellStore();
   const store = getMapStore();
   const view = useMapStoreSnapshot((state) => state.view);
+  const [picked, setPicked] = useState<MapPickerLocation | null>(null);
   const settledRef = useRef(false);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
@@ -77,12 +79,29 @@ function ActiveMapPickerHost({ picker }: { picker: Extract<MapPickerState, { typ
   }, [cancel]);
 
   const candidate = picker.session.candidate ?? { lat: view.lat, lng: view.lng };
+  const suggestions = picker.session.suggestions ?? [];
+
+  /** A suggestion moves the pin; the camera signal that follows carries no label, so the chosen
+   *  one is remembered here and re-attached on confirm while the pin is still on it (§4.5). */
+  const pickSuggestion = (suggestion: MapPickerLocation) => {
+    setPicked(suggestion);
+    shell.updateMapPickerCandidate(suggestion);
+    emit("fly-to", { lng: suggestion.lng, lat: suggestion.lat, zoom: Math.max(view.zoom, 14) });
+  };
+
+  const onPin = (location: MapPickerLocation) =>
+    Math.abs(location.lat - candidate.lat) < 1e-5 && Math.abs(location.lng - candidate.lng) < 1e-5;
 
   const select = () => {
     settledRef.current = true;
+    const label = picked && onPin(picked) ? picked.label : candidate.label;
     // The first React effect may not have copied the map centre into the serializable session yet.
     // Confirm the value displayed by this render so an immediate click can never strand the host.
-    mapPickerControllers.confirm(picker.session.id, candidate);
+    mapPickerControllers.confirm(picker.session.id, {
+      lat: candidate.lat,
+      lng: candidate.lng,
+      ...(label ? { label } : {})
+    });
     shell.closeMapPicker("caller");
   };
 
@@ -101,6 +120,24 @@ function ActiveMapPickerHost({ picker }: { picker: Extract<MapPickerState, { typ
       <div className="shell-map-picker-pin" aria-hidden="true">
         <span />
       </div>
+      {suggestions.length > 0 && (
+        <ul className="shell-map-picker-suggestions" data-testid="map-picker-suggestions">
+          {suggestions.map((suggestion, index) => (
+            <li key={`${suggestion.lat}:${suggestion.lng}:${index}`}>
+              <button
+                type="button"
+                className="btn btn-ghost small"
+                aria-pressed={onPin(suggestion)}
+                data-testid={`map-picker-suggestion-${index + 1}`}
+                onClick={() => pickSuggestion(suggestion)}
+              >
+                {suggestion.label ??
+                  `${suggestion.lat.toFixed(4)}, ${suggestion.lng.toFixed(4)}`}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="shell-map-picker-actions">
         <output aria-live="polite">
           {candidate.lat.toFixed(6)}, {candidate.lng.toFixed(6)}

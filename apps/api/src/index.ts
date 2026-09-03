@@ -112,6 +112,11 @@ import { getRegionSummary } from "./services/regionSummaryService.js";
 import { reverseGeocodeCountry } from "./services/discoverService.js";
 import { registerGuideRoutes } from "./routes/guideRoutes.js";
 import { registerDiscoverContextRoutes } from "./routes/discoverContextRoutes.js";
+import {
+  createEventServiceGuideLister,
+  createGuidedDiscoverContextService
+} from "./services/guide/guideComposition.js";
+import { createOllamaWebTools } from "./services/ai/webTools.js";
 import { initDb, sql } from "./db/index.js";
 import { capabilities, config } from "./config.js";
 import { getMapyReadiness } from "./services/providerReadinessService.js";
@@ -176,6 +181,7 @@ import {
   createProductionChatToolProviders
 } from "./services/ai/chatComposition.js";
 import { discussPlanWithCml } from "./services/ai/planDiscussionService.js";
+import { createAiPlanProposalCoordinator } from "./services/ai/planEditor.js";
 import { postgresPlanShareRepository } from "./services/planSharePostgresRepository.js";
 import { postgresPlanDiscussionRepository } from "./services/planDiscussionPostgresRepository.js";
 import { findOsmAdventurePlaces } from "./services/adventurePlaceProvider.js";
@@ -303,17 +309,32 @@ export async function buildApp(options: BuildAppOptions = {}) {
     postgresEventRepository,
     ticketmasterEventAdapter ? [ticketmasterEventAdapter] : []
   );
+  // Objevuj reads its guide from many sources at once (§30.5); the web collector exists only where
+  // there is a key for it. The assistant shares this instance so `get_region_context` and the panel
+  // answer from one cache, and so they cannot disagree about which region the map centre is in.
+  const guidedDiscoverContextService = createGuidedDiscoverContextService({
+    web: createOllamaWebTools(),
+    events: createEventServiceGuideLister(eventService)
+  });
+  // The assistant proposes plan edits; this coordinator is the only thing that can apply one,
+  // and it re-reads the plan before it does (§30.8).
+  const planProposals = createAiPlanProposalCoordinator({
+    repository: postgresPlanDocumentRepository
+  });
   registerAiRoutes(app, {
     orchestrator: aiRuntime.orchestrator,
+    planProposals,
     resolveUserId: async (request) => (await getSessionUser(getSessionId(request)))?.id ?? null,
     allowedLayerIds: new Set(["osm-poi", "vanlife", "park4night", "events"]),
     chatTurn: createAiChatTurnFactory({
       conversations: aiRuntime.conversations,
       providers: createProductionChatToolProviders({
         savedPlaces: savedPlaceService,
-        events: eventService
+        events: eventService,
+        discover: guidedDiscoverContextService
       }),
-      onToolTrace: recordAiToolTrace
+      onToolTrace: recordAiToolTrace,
+      planEditor: planProposals.editor
     }),
     discussPlan: discussPlanWithCml,
     planRepository: postgresPlanDocumentRepository,
@@ -1468,7 +1489,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
 
   registerGuideRoutes(app);
-  registerDiscoverContextRoutes(app);
+  registerDiscoverContextRoutes(app, { service: guidedDiscoverContextService });
 
   return app;
 }

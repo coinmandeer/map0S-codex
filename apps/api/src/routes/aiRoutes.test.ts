@@ -10,6 +10,7 @@ import {
   createFixtureChatToolProviders
 } from "../services/ai/chatComposition.js";
 import { buildMemoryApp } from "../memory-server.js";
+import { createAiPlanProposalCoordinator } from "../services/ai/planEditor.js";
 import { registerAiRoutes } from "./aiRoutes.js";
 import type { PlanDocumentRepository } from "../services/planDocumentRepository.js";
 import type {
@@ -455,6 +456,125 @@ test("chat requires a session and rejects an unknown body field", async (t) => {
     payload: { ...chatBody, conversationId: "conversation-1" }
   });
   assert.equal(halfConversation.statusCode, 400);
+});
+
+async function proposalApp(options: { authenticated?: boolean; withCoordinator?: boolean } = {}) {
+  const plans = new Map([["route-plan", discussionPlan()]]);
+  const coordinator = createAiPlanProposalCoordinator({
+    createStopId: () => "ai-stop-1",
+    repository: {
+      async get(ownerUserId, planId) {
+        const plan = plans.get(planId);
+        return ownerUserId === "route-user" && plan ? structuredClone(plan) : null;
+      },
+      async replace(_ownerUserId, planId, document, expectedRevision) {
+        const current = plans.get(planId);
+        if (!current || current.revision !== expectedRevision) throw new Error("revision conflict");
+        plans.set(planId, structuredClone(document));
+        return structuredClone(document);
+      }
+    }
+  });
+  const runtime = createProviderNeutralAiRuntime({ nearestPoiSource: fixtureSource() });
+  const app = Fastify({ logger: false });
+  registerAiRoutes(app, {
+    orchestrator: runtime.orchestrator,
+    resolveUserId: () => (options.authenticated === false ? null : "route-user"),
+    allowedLayerIds: new Set(["osm-poi"]),
+    rateLimiter: new FixedWindowRateLimiter(),
+    ...(options.withCoordinator === false ? {} : { planProposals: coordinator })
+  });
+  await app.ready();
+  return { app, coordinator, stops: () => plans.get("route-plan")!.stops.map((stop) => stop.id) };
+}
+
+const PROPOSAL_EDIT = {
+  ownerUserId: "route-user",
+  planId: "route-plan",
+  conversationId: "conversation-1",
+  summary: "Přidat Kutnou Horu jako druhou zastávku.",
+  edits: [{ op: "add-stop" as const, placeId: "osm:node/1", atIndex: 1 }],
+  places: [
+    {
+      id: "osm:node/1",
+      layerId: "osm-poi",
+      title: "Kutná Hora",
+      category: "attraction",
+      longitude: 15.268,
+      latitude: 49.948,
+      sourceId: "osm"
+    }
+  ],
+  citations: [{ sourceId: "osm", label: "OpenStreetMap" }]
+};
+
+test("an AI plan edit is applied only on confirmation and can be undone once", async (t) => {
+  const fixture = await proposalApp();
+  t.after(() => fixture.app.close());
+  const proposed = await fixture.coordinator.editor.propose(PROPOSAL_EDIT);
+  assert.deepEqual(fixture.stops(), ["start", "finish"], "proposing writes nothing");
+
+  const confirmed = await fixture.app.inject({
+    method: "POST",
+    url: `/v2/ai/plan-proposals/${proposed.proposalId}/confirm`
+  });
+  assert.equal(confirmed.statusCode, 200, confirmed.body);
+  assert.equal(confirmed.headers["cache-control"], "private, no-store");
+  assert.deepEqual(fixture.stops(), ["start", "ai-stop-1", "finish"]);
+  assert.equal(confirmed.json().status, "confirmed");
+
+  const twice = await fixture.app.inject({
+    method: "POST",
+    url: `/v2/ai/plan-proposals/${proposed.proposalId}/confirm`
+  });
+  assert.equal(twice.statusCode, 409, "a confirmed proposal cannot be replayed");
+
+  const undone = await fixture.app.inject({
+    method: "POST",
+    url: `/v2/ai/plan-proposals/${proposed.proposalId}/undo`
+  });
+  assert.equal(undone.statusCode, 200, undone.body);
+  assert.deepEqual(fixture.stops(), ["start", "finish"]);
+});
+
+test("a proposal route needs a session, a known proposal and a deployment that has the editor", async (t) => {
+  const anonymous = await proposalApp({ authenticated: false });
+  t.after(() => anonymous.app.close());
+  const unauthorized = await anonymous.app.inject({
+    method: "POST",
+    url: "/v2/ai/plan-proposals/whatever/confirm"
+  });
+  assert.equal(unauthorized.statusCode, 401);
+
+  const withoutEditor = await proposalApp({ withCoordinator: false });
+  t.after(() => withoutEditor.app.close());
+  const unavailable = await withoutEditor.app.inject({
+    method: "POST",
+    url: "/v2/ai/plan-proposals/whatever/reject"
+  });
+  assert.equal(unavailable.statusCode, 503);
+
+  const fixture = await proposalApp();
+  t.after(() => fixture.app.close());
+  const unknown = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/plan-proposals/does-not-exist/undo"
+  });
+  assert.equal(unknown.statusCode, 404);
+
+  const proposed = await fixture.coordinator.editor.propose(PROPOSAL_EDIT);
+  const rejected = await fixture.app.inject({
+    method: "POST",
+    url: `/v2/ai/plan-proposals/${proposed.proposalId}/reject`
+  });
+  assert.equal(rejected.statusCode, 200, rejected.body);
+  assert.equal(rejected.json().status, "rejected");
+  assert.deepEqual(fixture.stops(), ["start", "finish"]);
+  const afterReject = await fixture.app.inject({
+    method: "POST",
+    url: `/v2/ai/plan-proposals/${proposed.proposalId}/confirm`
+  });
+  assert.equal(afterReject.statusCode, 409);
 });
 
 test("chat drops a layer the projection does not allow instead of trusting the body", async (t) => {

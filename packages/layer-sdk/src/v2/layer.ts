@@ -46,6 +46,47 @@ export interface RendererDescriptorV2 {
   zIndex?: number;
 }
 
+/**
+ * A place carried inside the manifest instead of fetched.
+ *
+ * This is what an assistant can hand over: a handful of points it has already read from tools,
+ * each still naming the source it came from. There is no endpoint to call and nothing to trust —
+ * the layer is exactly the rows below, and `sourceId` is what makes each row checkable.
+ */
+export interface InlineFeatureV2 {
+  id: string;
+  title: string;
+  longitude: number;
+  latitude: number;
+  category?: string;
+  summary?: string;
+  url?: string;
+  /** The source record id this point came from; joins to `attribution` and to tool citations. */
+  sourceId: string;
+}
+
+/**
+ * Where an inline layer came from.
+ *
+ * An inline layer has no endpoint to re-check, so its origin has to travel with it: which kind of
+ * act produced it, and — for an assistant answer — which model and which question. Without this a
+ * saved AI layer is indistinguishable from data somebody surveyed.
+ */
+export interface InlineProvenanceV2 {
+  kind: "ai" | "import" | "manual";
+  model?: string;
+  prompt?: string;
+  createdAt: string;
+  /** Source record ids the features join to; a superset of the `sourceId`s below. */
+  sourceIds: string[];
+}
+
+export interface InlineSourceDataV2 {
+  generatedAt?: string;
+  provenance?: InlineProvenanceV2;
+  features: InlineFeatureV2[];
+}
+
 export interface LayerSourceV2 {
   type:
     | "static"
@@ -56,6 +97,7 @@ export interface LayerSourceV2 {
     | "realtime"
     | "user-data"
     | "computed"
+    | "inline"
     | "custom-runtime";
   adapterId?: string;
   endpoint?: string;
@@ -69,6 +111,8 @@ export interface LayerSourceV2 {
   query?: Record<string, DeclarativeHttpQueryValueV2>;
   /** Declarative response projection. Dot paths are data lookups, never executable code. */
   mapping?: DeclarativeHttpMappingV2;
+  /** Present only for `type: "inline"`: the layer's whole content. */
+  inline?: InlineSourceDataV2;
   timeoutMs?: number;
   maxResponseBytes?: number;
 }

@@ -11,7 +11,13 @@ export type PlanProviderRouteProfileV2 =
   | "bike_road"
   | "bike_mountain"
   | "car_fast_traffic"
-  | "car_short";
+  | "car_short"
+  | "trekking"
+  | "mtb";
+
+/** The router that actually answers "Dobrodružná" for walking and cycling (§16.6). BRouter is
+ *  keyless and profile-driven, so it is asked directly instead of relabelling a fast route. */
+export type PlanAdventureRouterV2 = "brouter";
 
 /**
  * Auditable mapping from the provider-neutral PlanDocument contract to one provider request.
@@ -29,6 +35,12 @@ export interface PlanRoutingRequestMappingV2 {
   avoidTolls: boolean;
   /** No currently wired provider adapter guarantees motorway avoidance. */
   avoidMotorways: false;
+  /** Set when the segment is routed by a different router than `providerId` because the asked-for
+   *  preference is its speciality; the plan still cites the router that answered. */
+  adventureRouter?: PlanAdventureRouterV2;
+  /** How many distinct routes the answering router can return for one segment. Mapy.com has no
+   *  `alternatives` parameter, so a plan on Mapy never offers a second variant to choose from. */
+  alternativesSupported: 1 | 2;
   warnings: string[];
 }
 
@@ -60,9 +72,17 @@ export function resolvePlanRoutingRequestV2(
   let providerProfile = baseProfile(providerId, profile);
   let effectivePreference: PlanRoutingRequestMappingV2["effectivePreference"] = "fast";
   let preferenceCapability: PlanRoutingCapabilityStateV2 = "fallback";
+  let adventureRouter: PlanAdventureRouterV2 | undefined;
   const warnings: string[] = [];
 
-  if (preference === "fast") {
+  // Walking and cycling adventures go to BRouter: its trekking and mtb profiles prefer the small
+  // roads and trails the preference is asking for, which no car router can express.
+  if (preference === "adventure" && (profile === "foot" || profile === "bike")) {
+    providerProfile = profile === "bike" ? "mtb" : "trekking";
+    effectivePreference = "adventure";
+    preferenceCapability = "native";
+    adventureRouter = "brouter";
+  } else if (preference === "fast") {
     preferenceCapability = "native";
   } else if (
     providerId === "mapy" &&
@@ -114,6 +134,8 @@ export function resolvePlanRoutingRequestV2(
     preferenceCapability,
     avoidTolls: providerId === "mapy" && asksToAvoidTolls,
     avoidMotorways: false,
+    ...(adventureRouter ? { adventureRouter } : {}),
+    alternativesSupported: adventureRouter || providerId === "osm" ? 2 : 1,
     warnings
   };
 }

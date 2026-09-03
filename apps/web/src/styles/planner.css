@@ -397,6 +397,29 @@
     color: var(--warning);
   }
 
+  .planner-segment-variants {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .planner-segment-variants-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    justify-self: start;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font: var(--type-label-sm);
+    transition: color var(--dur-fast) var(--ease-out);
+  }
+
+  .planner-segment-variants-toggle:hover {
+    color: var(--text);
+  }
+
   .planner-segment-alternatives {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));

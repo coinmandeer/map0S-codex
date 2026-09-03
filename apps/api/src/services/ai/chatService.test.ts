@@ -14,6 +14,7 @@ import type { AiModelRuntime } from "./modelRuntime.js";
 import { createChatToolRegistry } from "./chatTools.js";
 import { createMemoryPlaceSearchSource } from "./placeSearch.js";
 import { createFixtureWebTools } from "./webTools.js";
+import { createOfflineDiscoverContextService } from "../discoverService.js";
 import type { AiToolActor, AiToolPermissionProjection } from "./toolRegistry.js";
 
 const FIXTURES = [
@@ -69,7 +70,9 @@ function collect() {
 
 /** A profile whose adapter is scripted: the real gateway policy, cache and byte limits still
  *  apply, only the provider round trip is replaced. */
-function scriptedRuntime(results: readonly AiAdapterResult[]): {
+function scriptedRuntime(
+  results: readonly (AiAdapterResult | ((input: AiAdapterRequest) => AiAdapterResult))[]
+): {
   runtime: AiModelRuntime;
   requests: AiAdapterRequest[];
 } {
@@ -83,7 +86,7 @@ function scriptedRuntime(results: readonly AiAdapterResult[]): {
       const result = results[Math.min(index, results.length - 1)];
       index += 1;
       if (!result) throw new Error("script exhausted");
-      return result;
+      return typeof result === "function" ? result(input) : result;
     }
   };
   const profile: AiModelProfile = {
@@ -109,6 +112,20 @@ function scriptedRuntime(results: readonly AiAdapterResult[]): {
     runtime: { gateway: new AiGateway([adapter]), enabled: true, profiles: () => [profile] },
     requests
   };
+}
+
+/** The ids of the places a tool already returned, read back the way the model would read them:
+ *  out of the tool result in the history. They are opaque hashes, so nothing else can know them. */
+function placeIdsFromHistory(input: AiAdapterRequest): string[] {
+  const ids: string[] = [];
+  for (const turn of input.history ?? []) {
+    if (turn.role !== "tool") continue;
+    const parsed = JSON.parse(turn.content) as { places?: Array<{ id?: unknown }> };
+    for (const place of parsed.places ?? []) {
+      if (typeof place.id === "string") ids.push(place.id);
+    }
+  }
+  return ids;
 }
 
 function service(runtime?: AiModelRuntime) {
@@ -143,6 +160,11 @@ test("the router keeps place lookups off the model path and names plan work as p
   assert.equal(classifyChatIntent("vytvoř vrstvu s pivovary"), "layer_create");
   assert.equal(classifyChatIntent("zapni katastr"), "command");
   assert.equal(classifyChatIntent("jak vysoká je Sněžka?"), "question");
+  // Verbs ending in a soft consonant are the normal Czech imperative; an ASCII word boundary
+  // after "ť" or "ň" matches nothing, which used to send these to the planner as new plans.
+  assert.equal(classifyChatIntent("zkrať plán na dva dny"), "edit_plan");
+  assert.equal(classifyChatIntent("změň trasu, ať se vyhne dálnicím"), "edit_plan");
+  assert.equal(classifyChatIntent("proč je tu kemp zavřený?"), "question");
 });
 
 test("without a model the same question is answered from the same tool", async () => {
@@ -322,6 +344,260 @@ test("the offline composition answers the same question over the demo fixtures",
   assert.ok(answer);
   assert.match(answer.text, /Kemp/);
   assert.ok(answer.sources.every((source) => source.label.includes("fixture")));
+});
+
+test("a question about the place itself is answered from the guide, not from a category", async () => {
+  const turn = createAiChatTurnFactory({
+    conversations: new AiConversationStore(),
+    providers: createFixtureChatToolProviders({
+      fixtures: () => FIXTURES,
+      discover: createOfflineDiscoverContextService()
+    })
+  });
+  const sink = collect();
+  const answer = await turn({
+    center: { longitude: 13.3775, latitude: 49.7475 },
+    zoom: 12,
+    activeLayerIds: ["osm-poi"]
+  }).run(
+    request("co je tu zajímavého?", { externalModel: false, preciseLocation: false }),
+    sink.emit
+  );
+  assert.ok(answer);
+  assert.equal(answer.execution, "deterministic");
+  assert.match(answer.text, /Plzeň/);
+  assert.match(answer.text, /Velká synagoga/, "a highlight from the guide, not an invented one");
+  assert.ok(
+    answer.sources.some((source) => source.sourceId === "guide:wikivoyage:fixture"),
+    "the guide the sentences came from is cited"
+  );
+  assert.ok(
+    sink.events.some((event) => event.type === "tool_start" && event.tool === "get_region_context"),
+    "the panel and the assistant read the same context tool"
+  );
+  assert.ok(
+    !sink.events.some((event) => event.type === "tool_start" && event.tool === "get_stats"),
+    "a question with no numbers in it does not pay for the statistics lookup"
+  );
+});
+
+test("numbers arrive with their year and their source, or not at all", async () => {
+  const turn = createAiChatTurnFactory({
+    conversations: new AiConversationStore(),
+    providers: createFixtureChatToolProviders({
+      fixtures: () => FIXTURES,
+      discover: createOfflineDiscoverContextService()
+    })
+  });
+  const answer = await turn({
+    center: { longitude: 13.3775, latitude: 49.7475 },
+    zoom: 12,
+    activeLayerIds: ["osm-poi"]
+  }).run(
+    request("kolik tady žije obyvatel?", { externalModel: false, preciseLocation: false }),
+    collect().emit
+  );
+  assert.ok(answer);
+  const card = answer.cards.find((entry) => entry.type === "facts");
+  assert.ok(card && card.type === "facts");
+  const [item] = card.items;
+  assert.ok(item);
+  assert.equal(item.label, "Počet obyvatel");
+  assert.match(item.value, /181/);
+  assert.match(item.note ?? "", /2025/, "a statistic without its year cannot be checked");
+  assert.deepEqual(item.sourceIds, ["wikidata:fixture"]);
+  assert.ok(answer.sources.some((source) => source.sourceId === "wikidata:fixture"));
+});
+
+test("a layer the model emits is built from the rows it cited, or it is not offered", async () => {
+  const { runtime } = scriptedRuntime([
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "call-1",
+          name: "search_places",
+          arguments: {
+            categories: ["stay.camp_site"],
+            near: { longitude: 13.3775, latitude: 49.7475 },
+            radiusMeters: 15_000,
+            limit: 5
+          }
+        }
+      ]
+    },
+    (input) => ({
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "call-2",
+          name: "emit_layer",
+          arguments: {
+            text: "Vrstva se dvěma kempy v okolí.",
+            name: "Kempy u vody",
+            placeIds: [...placeIdsFromHistory(input), "poi:invented"]
+          }
+        }
+      ]
+    })
+  ]);
+
+  const sink = collect();
+  const answer = await service(runtime).run(request("vytvoř vrstvu s kempy"), sink.emit);
+  assert.ok(answer);
+  const card = answer.cards.find((entry) => entry.type === "layer-draft");
+  assert.ok(card && card.type === "layer-draft");
+  assert.equal(card.featureCount, 2, "the invented id never becomes a point on the map");
+  assert.equal(card.manifest.source.type, "inline");
+  assert.ok((card.manifest.attribution ?? []).length > 0, "the layer carries its attribution");
+  assert.ok(
+    !answer.cards.some((entry) => entry.type === "places"),
+    "the same places are not listed twice next to the layer"
+  );
+});
+
+test("a layer selection may only name layers a tool listed for this user", async () => {
+  const { runtime } = scriptedRuntime([
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [{ id: "call-1", name: "list_available_layers", arguments: {} }]
+    },
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "call-2",
+          name: "select_layers",
+          arguments: {
+            text: "Zapnula jsem vrstvu s kempy.",
+            title: "Kempování",
+            layerIds: ["osm-poi", "secret-layer"],
+            filters: { openNow: true, tags: ["kemp"] }
+          }
+        }
+      ]
+    }
+  ]);
+
+  const answer = await service(runtime).run(
+    request("zapni mi vrstvy pro kempování"),
+    collect().emit
+  );
+  assert.ok(answer);
+  assert.equal(answer.intent, "command");
+  const card = answer.cards.find((entry) => entry.type === "layer");
+  assert.ok(card && card.type === "layer");
+  assert.deepEqual(card.layerIds, ["osm-poi"], "a layer outside the projection is dropped");
+  assert.deepEqual(card.filters, { openNow: true, tags: ["kemp"] });
+});
+
+test("an edit to an open plan arrives as a diff to confirm, never as a write", async () => {
+  const { runtime } = scriptedRuntime([
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "call-1",
+          name: "search_places",
+          arguments: {
+            categories: ["stay.camp_site"],
+            near: { longitude: 13.3775, latitude: 49.7475 },
+            radiusMeters: 15_000,
+            limit: 5
+          }
+        }
+      ]
+    },
+    (input) => ({
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "call-2",
+          name: "apply_plan_commands",
+          arguments: {
+            text: "Přidal bych Kemp U Řeky jako druhou zastávku.",
+            summary: "Přidat Kemp U Řeky na druhé místo.",
+            edits: [{ op: "add-stop", placeId: placeIdsFromHistory(input)[0], atIndex: 1 }]
+          }
+        }
+      ]
+    })
+  ]);
+
+  const proposed: unknown[] = [];
+  const { registry, available } = createChatToolRegistry({
+    providers: {
+      placeSearch: createMemoryPlaceSearchSource(() => FIXTURES),
+      layers: () => [
+        { layerId: "osm-poi", name: "OSM POI", categories: ["stay.camp_site"], access: "public" }
+      ]
+    },
+    mapContext: {
+      center: { longitude: 13.3775, latitude: 49.7475 },
+      zoom: 13,
+      activeLayerIds: ["osm-poi"]
+    }
+  });
+  const chat = new AiChatService({
+    registry,
+    conversations: new AiConversationStore(),
+    availableTools: available,
+    runtime,
+    planEditor: {
+      async propose(input) {
+        proposed.push(input);
+        return {
+          proposalId: "proposal-1",
+          planId: input.planId,
+          diff: {
+            baseRevision: 1,
+            previewRevision: 2,
+            changedPlanFields: [],
+            addedStopIds: ["ai-stop-1"],
+            removedStopIds: [],
+            movedStopIds: [],
+            updatedStopIds: [],
+            affectedSegmentIds: []
+          }
+        };
+      }
+    }
+  });
+
+  const base = request("přidej kemp na den 2 do plánu");
+  const answer = await chat.run(
+    {
+      ...base,
+      context: { ...base.context, planId: "plan-1" },
+      projection: { ...projection, allowedPlanIds: new Set(["plan-1"]) }
+    },
+    collect().emit
+  );
+  assert.ok(answer);
+  const card = answer.cards.find((entry) => entry.type === "plan-edit");
+  assert.ok(card && card.type === "plan-edit");
+  assert.equal(card.proposalId, "proposal-1");
+  assert.deepEqual(card.diff.addedStopIds, ["ai-stop-1"]);
+  assert.equal(proposed.length, 1, "the chat proposes once and applies nothing");
+});
+
+test("without an open plan the model is not even offered the plan-edit tool", async () => {
+  const { runtime, requests } = scriptedRuntime([
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [{ id: "c", name: "submit_answer", arguments: { text: "Otevři nejdřív plán." } }]
+    }
+  ]);
+  await service(runtime).run(request("přidej kutnou horu do plánu"), collect().emit);
+  const offered = new Set((requests[0]?.tools ?? []).map((tool) => tool.name));
+  assert.ok(!offered.has("apply_plan_commands"));
 });
 
 test("a message from someone else's account is refused before any tool runs", async () => {

@@ -66,6 +66,26 @@ export function routableSegmentPreviews(document: PlanDocumentV2): PlanRouteSegm
   });
 }
 
+export interface PlanAlternativePreview {
+  segmentId: string;
+  alternativeId: string;
+  coordinates: Position[];
+}
+
+/** The variants of every routed segment that are not currently drawn as the route (§16.6). */
+export function unselectedAlternativePreviews(document: PlanDocumentV2): PlanAlternativePreview[] {
+  return document.segments.flatMap((segment) => {
+    if (segment.status !== "ready" && segment.status !== "partial") return [];
+    return segment.alternatives
+      .filter((alternative) => alternative.id !== segment.selectedAlternativeId)
+      .map((alternative) => ({
+        segmentId: segment.id,
+        alternativeId: alternative.id,
+        coordinates: alternative.geometry.coordinates.map((position) => [...position] as Position)
+      }));
+  });
+}
+
 /**
  * A failed segment is a real gap. Preview only the longest contiguous successful part so the map
  * never draws a misleading straight connection through that gap.

@@ -26,6 +26,7 @@ export function discoverContextFixture(overrides: Record<string, unknown> = {}) 
       text: "Střed mapy leží v oblasti Plzeň.",
       sourceIds: ["nominatim-osm"]
     },
+    guideSynthesis: null,
     statistics: [],
     regionCatalogue: null,
     sources: [

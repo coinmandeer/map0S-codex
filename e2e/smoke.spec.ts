@@ -337,4 +337,51 @@ test.describe("MapOS V3 smoke", () => {
     await expect(page.locator('[data-testid^="discover-tab-"]')).toHaveCount(0);
     await expect(page.getByText("Příspěvky lidí")).toHaveCount(0);
   });
+
+  test("the guide names the source of each highlight and admits what did not load", async ({
+    page
+  }) => {
+    await page.route("**/v2/discover/context**", (route) =>
+      route.fulfill({
+        json: discoverContextFixture({
+          guideSynthesis: {
+            kind: "model",
+            label: "Souhrn ze zdrojů",
+            lead: "Plzeň leží na soutoku čtyř řek a je známá pivovarem.",
+            highlights: [
+              {
+                title: "Velká synagoga",
+                text: "Druhá největší synagoga v Evropě.",
+                sourceIds: ["guide:wikivoyage"],
+                place: { id: "wv:synagoga", longitude: 13.3736, latitude: 49.7466 }
+              }
+            ],
+            practical: { arrival: "Vlakem z Prahy 1:30", warnings: ["V srpnu bývá plno."] },
+            degraded: ["events"],
+            model: "fixture-model"
+          },
+          sources: [
+            {
+              id: "guide:wikivoyage",
+              label: "Wikivoyage (CC BY-SA 4.0)",
+              attribution: "Wikivoyage (CC BY-SA 4.0)",
+              url: "https://cs.wikivoyage.org/wiki/Plze%C5%88",
+              license: "CC BY-SA 4.0",
+              fetchedAt: "2026-09-01T12:00:00.000Z"
+            }
+          ]
+        })
+      })
+    );
+
+    await page.goto("/?mode=discover");
+    await expect(page.getByTestId("discover-panel")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("discover-summary")).toContainText("soutoku čtyř řek");
+    await expect(page.getByTestId("discover-summary-ai")).toBeVisible();
+    const highlight = page.getByTestId("discover-guide-highlight").first();
+    await expect(highlight).toContainText("Velká synagoga");
+    await expect(highlight).toContainText("Wikivoyage");
+    await expect(page.getByTestId("discover-guide-practical")).toContainText("Vlakem z Prahy");
+    await expect(page.getByTestId("discover-guide-degraded")).toContainText("events");
+  });
 });

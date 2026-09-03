@@ -59,12 +59,110 @@ function chatStream(text: string): string {
   return events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
 }
 
+/** The same frames with one card of the caller's choosing, for the proposals of §30.7 and §30.8. */
+function cardStream(text: string, card: unknown): string {
+  const events = [
+    { type: "intent", intent: "question", execution: "model-tool-loop" },
+    {
+      type: "done",
+      conversation: { id: "conv-1", revision: 1 },
+      answer: {
+        execution: "model-tool-loop",
+        intent: "question",
+        text,
+        cards: [card],
+        sources: [{ sourceId: "osm-poi", label: "OpenStreetMap" }],
+        followUps: []
+      }
+    }
+  ];
+  return events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
+}
+
+const LAYER_DRAFT_CARD = {
+  type: "layer-draft",
+  title: "AI: Kempy u vody",
+  layerId: "ai-kempy-u-vody-e2e",
+  featureCount: 2,
+  manifest: {
+    schema: "mapos.layer-manifest",
+    schemaVersion: "2.0.0",
+    sdkRange: "^2.0.0",
+    id: "ai-kempy-u-vody-e2e",
+    name: "AI: Kempy u vody",
+    description: "Návrh vrstvy z odpovědi asistenta: 2 místa ze zdrojů, které odpověď citovala.",
+    icon: "auto_awesome",
+    color: "#7C4DFF",
+    category: "user",
+    modes: ["discover"],
+    geometryKinds: ["Point"],
+    renderer: { type: "symbols", style: { iconByCategory: true }, zIndex: 620 },
+    source: {
+      type: "inline",
+      inline: {
+        generatedAt: "2026-09-02T10:00:00.000Z",
+        provenance: {
+          kind: "ai",
+          model: "glm-5.3-flash",
+          prompt: "vytvoř z toho vrstvu",
+          createdAt: "2026-09-02T10:00:00.000Z",
+          sourceIds: ["osm-poi"]
+        },
+        features: [
+          {
+            id: "osm:41",
+            title: "Kemp U Řeky",
+            longitude: 13.3785,
+            latitude: 49.7485,
+            category: "stay.camp_site",
+            sourceId: "osm-poi"
+          },
+          {
+            id: "osm:42",
+            title: "Kemp Na Kopci",
+            longitude: 13.4,
+            latitude: 49.76,
+            category: "stay.camp_site",
+            sourceId: "osm-poi"
+          }
+        ]
+      }
+    },
+    queryPolicy: { strategy: "manual" },
+    attribution: [{ label: "OpenStreetMap", requiredOnMap: true, requiredOnExport: true }],
+    capabilities: ["query", "export"]
+  }
+};
+
+const PLAN_EDIT = {
+  type: "plan-edit",
+  title: "Přidat Kutnou Horu jako druhou zastávku.",
+  proposalId: "proposal-1",
+  planId: "plan-1",
+  diff: {
+    baseRevision: 1,
+    previewRevision: 2,
+    changedPlanFields: [],
+    addedStopIds: ["ai-stop-1"],
+    removedStopIds: [],
+    movedStopIds: [],
+    updatedStopIds: [],
+    affectedSegmentIds: []
+  }
+};
+
 const QUESTION = "kde najdu klidný kemp u vody?";
+
+/** A second turn in the open panel, which is where the proposal cards of §30.7 and §30.8 land. */
+async function askInPanel(page: Page, question: string) {
+  await page.getByLabel("Na co se chceš zeptat?").fill(question);
+  await page.getByTestId("ai-panel-send").click();
+}
 
 /** The assistant is reached from search: one answer in the popover is a lookup, a conversation
  *  belongs in the left panel (§4.13). The returned handle lets a test make later turns fail. */
 async function openPanel(page: Page) {
-  const state = { failing: false };
+  const state = { failing: false, stream: chatStream("Nejblíž je kemp u řeky.") };
   await page.route("**/v2/ai/orchestrate", (route) =>
     route.fulfill({ json: searchAnswer("Nejblíž je kemp u řeky.") })
   );
@@ -74,7 +172,7 @@ async function openPanel(page: Page) {
       : route.fulfill({
           status: 200,
           headers: { "content-type": "text/event-stream" },
-          body: chatStream("Nejblíž je kemp u řeky.")
+          body: state.stream
         })
   );
   await page.goto("/?layers=osm-poi&lng=13.3775&lat=49.7475&z=13");
@@ -165,6 +263,91 @@ test.describe("AI panel", () => {
     await expect(page.getByTestId("ai-panel-thread")).toContainText("Nejblíž je kemp u řeky.", {
       timeout: 20_000
     });
+  });
+
+  test("a drafted layer reaches the map only when its own action is taken", async ({ page }) => {
+    const state = await openPanel(page);
+    state.stream = cardStream("Vrstvu se dvěma kempy jsem připravil.", LAYER_DRAFT_CARD);
+    await askInPanel(page, "vytvoř z toho vrstvu");
+
+    const card = page.getByTestId("ai-card-layer-draft");
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card).toContainText("2 míst");
+    // Until the button is pressed the drafted layer is a proposal, not a layer on the map.
+    await expect(page.getByTestId("toast")).toHaveCount(0);
+
+    await page.getByTestId("ai-card-layer-draft-show").click();
+    await expect(page.getByTestId("toast")).toContainText("AI: Kempy u vody", { timeout: 20_000 });
+  });
+
+  test("a drafted layer can be kept, and every kept point carries its provenance", async ({
+    page
+  }) => {
+    const pins: Array<Record<string, unknown>> = [];
+    await page.route("**/user-layers", (route) =>
+      route.fulfill({ json: { layer: { id: "layer-1" } } })
+    );
+    await page.route("**/user-layers/layer-1/pins", (route) => {
+      pins.push(route.request().postDataJSON() as Record<string, unknown>);
+      return route.fulfill({ json: { pin: { id: `pin-${pins.length}` } } });
+    });
+
+    const state = await openPanel(page);
+    state.stream = cardStream("Vrstvu se dvěma kempy jsem připravil.", LAYER_DRAFT_CARD);
+    await askInPanel(page, "vytvoř z toho vrstvu");
+    await page.getByTestId("ai-card-layer-draft-save").click();
+
+    await expect(page.getByTestId("toast")).toContainText("Moje vrstvy", { timeout: 20_000 });
+    expect(pins.length).toBe(2);
+    const properties = pins[0]!.properties as Record<string, Record<string, unknown>>;
+    expect(properties.sourceId).toBe("osm-poi");
+    // A place kept from an answer must stay distinguishable from one somebody surveyed.
+    expect(properties.provenance!.model).toBe("glm-5.3-flash");
+    await expect(page.getByTestId("ai-card-layer-draft-save")).toBeDisabled();
+  });
+
+  test("a proposed plan edit shows its diff and writes nothing until it is confirmed", async ({
+    page
+  }) => {
+    const confirmed: string[] = [];
+    await page.route("**/v2/ai/plan-proposals/*/confirm", (route) => {
+      confirmed.push(route.request().url());
+      return route.fulfill({ json: { status: "confirmed", proposal: { id: "proposal-1" } } });
+    });
+    const state = await openPanel(page);
+    state.stream = cardStream("Přidal bych Kutnou Horu jako druhou zastávku.", PLAN_EDIT);
+    await askInPanel(page, "přidej Kutnou Horu na den 2");
+
+    const card = page.getByTestId("ai-card-plan-edit");
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("ai-card-plan-edit-diff")).toContainText("+1 zastávka");
+    expect(confirmed).toEqual([]);
+
+    await page.getByTestId("ai-card-plan-edit-confirm").click();
+    await expect(card).toContainText("Změna je v plánu.", { timeout: 20_000 });
+    expect(confirmed.length).toBe(1);
+    expect(confirmed[0]).toContain("/v2/ai/plan-proposals/proposal-1/confirm");
+  });
+
+  test("a rejected plan edit is not sent anywhere near the plan", async ({ page }) => {
+    let confirmCalls = 0;
+    await page.route("**/v2/ai/plan-proposals/*/confirm", (route) => {
+      confirmCalls += 1;
+      return route.fulfill({ json: { status: "confirmed" } });
+    });
+    await page.route("**/v2/ai/plan-proposals/*/reject", (route) =>
+      route.fulfill({ json: { status: "rejected", proposal: { id: "proposal-1" } } })
+    );
+    const state = await openPanel(page);
+    state.stream = cardStream("Přidal bych Kutnou Horu.", PLAN_EDIT);
+    await askInPanel(page, "přidej Kutnou Horu na den 2");
+
+    await expect(page.getByTestId("ai-card-plan-edit")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("ai-card-plan-edit-reject").click();
+    await expect(page.getByTestId("ai-card-plan-edit")).toContainText("Návrh jsi zamítl.", {
+      timeout: 20_000
+    });
+    expect(confirmCalls).toBe(0);
   });
 
   test("a failed turn keeps the question visible and explains itself", async ({ page }) => {

@@ -15,7 +15,8 @@
  *    model was not allowed to call cannot be reached by asking nicely.
  */
 
-import type { Bbox } from "@mapos/layer-sdk";
+import { randomUUID } from "node:crypto";
+import type { Bbox, LayerManifestV2 } from "@mapos/layer-sdk";
 import type { AiChatTurn, AiCitation, AiDataClass, AiToolSpec } from "./contracts.js";
 import {
   AiConversationStore,
@@ -27,6 +28,9 @@ import {
 import { aiModelRuntime, type AiModelRuntime } from "./modelRuntime.js";
 import { aiCategoryLabel, bboxAround, inferAiCategories } from "./placeSearch.js";
 import type { AiPlaceSearchOutput, AiPlaceSearchRecord } from "./placeSearch.js";
+import { buildInlineLayerManifest, inlineLayerFeatureCount } from "./inlineLayer.js";
+import { aiPrompt } from "./prompts/index.js";
+import type { AiPlanDiff } from "./planProposal.js";
 import type {
   AiToolActor,
   AiToolPermissionProjection,
@@ -40,6 +44,10 @@ const MAX_TOOL_CALLS_PER_ROUND = 3;
 const MAX_TOOL_RESULT_CHARS = 6_000;
 const MAX_PLACE_CARD_ITEMS = 8;
 const SUBMIT_ANSWER_TOOL = "submit_answer";
+const EMIT_LAYER_TOOL = "emit_layer";
+const SUBMIT_PLAN_TOOL = "submit_plan";
+const APPLY_PLAN_COMMANDS_TOOL = "apply_plan_commands";
+const SELECT_LAYERS_TOOL = "select_layers";
 
 /** What the browser knows about the current view. The server re-derives everything it acts on:
  *  a layer id here is a request, and the projection decides whether it is granted. */
@@ -99,7 +107,56 @@ export interface AiChatLayerCard {
   filters?: Record<string, unknown>;
 }
 
-export type AiChatCard = AiChatPlaceCard | AiChatLinkCard | AiChatLayerCard;
+/** A layer the user can switch on, carrying its own data and its own attribution (§30.7). It is
+ *  a proposal: nothing is registered or saved until the user says so. */
+export interface AiChatLayerDraftCard {
+  type: "layer-draft";
+  title: string;
+  layerId: string;
+  manifest: LayerManifestV2;
+  featureCount: number;
+}
+
+/** A plan the user can open in Plánování. Every stop keeps the source of the place it is. */
+export interface AiChatPlanCard {
+  type: "plan";
+  title: string;
+  summary: string;
+  stops: {
+    title: string;
+    longitude: number;
+    latitude: number;
+    day?: number;
+    note?: string;
+    sourceId: string;
+  }[];
+}
+
+/** An edit to an existing plan, as a diff waiting for confirmation (§30.8). */
+export interface AiChatPlanEditCard {
+  type: "plan-edit";
+  title: string;
+  proposalId: string;
+  planId: string;
+  diff: AiPlanDiff;
+}
+
+/** Numbers with their year and source, never rounded into prose: a statistic without its vintage
+ *  is a statistic the reader cannot check (§30.5). */
+export interface AiChatFactsCard {
+  type: "facts";
+  title: string;
+  items: { label: string; value: string; note?: string; sourceIds: string[] }[];
+}
+
+export type AiChatCard =
+  | AiChatPlaceCard
+  | AiChatLinkCard
+  | AiChatLayerCard
+  | AiChatFactsCard
+  | AiChatLayerDraftCard
+  | AiChatPlanCard
+  | AiChatPlanEditCard;
 
 export interface AiChatAnswer {
   execution: "model-tool-loop" | "deterministic";
@@ -129,13 +186,7 @@ export type AiChatErrorCode =
 
 export type AiChatEmit = (event: AiChatEvent) => void | Promise<void>;
 
-const SYSTEM_PROMPT = [
-  "Jsi asistent mapové aplikace MapOS. Odpovídáš česky, věcně a krátce.",
-  "Fakta o místech, trasách, počasí a událostech smíš uvádět jen z výsledků nástrojů.",
-  "Souřadnice nikdy nevymýšlíš; místo bez zdroje do odpovědi nepatří.",
-  "Když nástroj nic nenajde, řekni to a navrhni, co zkusit dál.",
-  `Výsledek vždy odevzdej voláním nástroje ${SUBMIT_ANSWER_TOOL}.`
-].join(" ");
+const CHAT_TEMPLATE_VERSION = "ai-chat-turn.v1";
 
 /** The structured answer, delivered as a tool call because the cloud ignores JSON-schema output
  *  but honours a forced tool (§30.2). */
@@ -159,6 +210,166 @@ const SUBMIT_ANSWER_SCHEMA = {
   }
 } as const;
 
+/** `emit_layer`: a name and a selection of places the loop already saw (§30.7). The model does
+ *  not describe a data source, because a described source is one nobody can check. */
+const EMIT_LAYER_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name", "text", "placeIds"],
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: 80 },
+    text: { type: "string", minLength: 1, maxLength: 2_000 },
+    description: { type: "string", maxLength: 400 },
+    placeIds: {
+      type: "array",
+      minItems: 1,
+      maxItems: 200,
+      items: { type: "string", minLength: 1, maxLength: 128 },
+      description: "Identifikátory míst z výsledků nástrojů, která mají být ve vrstvě."
+    },
+    followUps: {
+      type: "array",
+      maxItems: 3,
+      items: { type: "string", minLength: 1, maxLength: 120 }
+    }
+  }
+} as const;
+
+/** `submit_plan`: stops picked from tool results, optionally spread over days. */
+const SUBMIT_PLAN_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name", "text", "stops"],
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: 80 },
+    text: { type: "string", minLength: 1, maxLength: 2_000 },
+    stops: {
+      type: "array",
+      minItems: 1,
+      maxItems: 40,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["placeId"],
+        properties: {
+          placeId: { type: "string", minLength: 1, maxLength: 128 },
+          day: { type: "integer", minimum: 1, maximum: 30 },
+          note: { type: "string", maxLength: 240 }
+        }
+      }
+    },
+    followUps: {
+      type: "array",
+      maxItems: 3,
+      items: { type: "string", minLength: 1, maxLength: 120 }
+    }
+  }
+} as const;
+
+/** `select_layers`: the answer to "zapni mi vrstvy pro…" (§4.13). The model may only name layers
+ *  a tool listed for this user, and the client applies the selection — the server never toggles
+ *  anything on somebody's map. */
+const SELECT_LAYERS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["text", "title", "layerIds"],
+  properties: {
+    text: { type: "string", minLength: 1, maxLength: 2_000 },
+    title: { type: "string", minLength: 1, maxLength: 80 },
+    layerIds: {
+      type: "array",
+      minItems: 1,
+      maxItems: 8,
+      items: { type: "string", minLength: 1, maxLength: 128 },
+      description: "Identifikátory vrstev z list_available_layers, které se mají zapnout."
+    },
+    filters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        openNow: { type: "boolean" },
+        minRating: { type: "number", minimum: 0, maximum: 5 },
+        tags: {
+          type: "array",
+          maxItems: 8,
+          items: { type: "string", minLength: 1, maxLength: 64 }
+        }
+      }
+    },
+    followUps: {
+      type: "array",
+      maxItems: 3,
+      items: { type: "string", minLength: 1, maxLength: 120 }
+    }
+  }
+} as const;
+
+/**
+ * `apply_plan_commands`: an edit vocabulary, not raw plan commands (§30.8).
+ *
+ * The store would validate a hand-written `PlanCommandV2` too, but a fast model writing envelope
+ * JSON spends its attention on the shape instead of on the edit. Four operations cover what a
+ * chat asks for, and the server translates them into one batch command whose diff the user sees
+ * before anything is applied.
+ */
+const APPLY_PLAN_COMMANDS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["text", "summary", "edits"],
+  properties: {
+    text: { type: "string", minLength: 1, maxLength: 2_000 },
+    summary: { type: "string", minLength: 1, maxLength: 240 },
+    edits: {
+      type: "array",
+      minItems: 1,
+      maxItems: 20,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["op"],
+        properties: {
+          op: { enum: ["add-stop", "remove-stop", "move-stop", "rename-plan"] },
+          placeId: { type: "string", minLength: 1, maxLength: 128 },
+          stopId: { type: "string", minLength: 1, maxLength: 128 },
+          atIndex: { type: "integer", minimum: 0, maximum: 200 },
+          toIndex: { type: "integer", minimum: 0, maximum: 200 },
+          note: { type: "string", maxLength: 240 },
+          name: { type: "string", minLength: 1, maxLength: 120 }
+        }
+      }
+    },
+    followUps: {
+      type: "array",
+      maxItems: 3,
+      items: { type: "string", minLength: 1, maxLength: 120 }
+    }
+  }
+} as const;
+
+export interface AiChatPlanEdit {
+  op: "add-stop" | "remove-stop" | "move-stop" | "rename-plan";
+  placeId?: string;
+  stopId?: string;
+  atIndex?: number;
+  toIndex?: number;
+  note?: string;
+  name?: string;
+}
+
+/** What the chat needs in order to propose an edit: a proposal it can describe, never a write. */
+export interface AiChatPlanEditor {
+  propose(input: {
+    ownerUserId: string;
+    planId: string;
+    conversationId: string;
+    summary: string;
+    edits: readonly AiChatPlanEdit[];
+    places: readonly AiPlaceSearchRecord[];
+    citations: readonly AiCitation[];
+    signal?: AbortSignal;
+  }): Promise<{ proposalId: string; planId: string; diff: AiPlanDiff }>;
+}
+
 function hasDisallowedControl(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
@@ -174,6 +385,17 @@ function validMessage(value: string): string | null {
 }
 
 /**
+ * Whole-word alternatives for any script.
+ *
+ * `\b` is defined on ASCII word characters, so `\bzkrať\b` never matches: the boundary after "ť"
+ * sits between two characters JavaScript both considers non-word. Czech imperatives end in those
+ * letters more often than not, which silently cost the router "zkrať", "změň", "proč" and "čím".
+ */
+function wholeWords(...words: readonly string[]): RegExp {
+  return new RegExp(`(?<!\\p{L})(?:${words.join("|")})(?!\\p{L})`, "u");
+}
+
+/**
  * The server half of the intent router (§30.4 point 1).
  *
  * The client already ran the same kind of heuristic for instant feedback; this either confirms it
@@ -182,10 +404,29 @@ function validMessage(value: string): string | null {
  */
 export function classifyChatIntent(message: string): AiChatIntent {
   const text = message.toLocaleLowerCase("cs-CZ");
-  const editsSomething = /\b(přidej|pridej|odeber|zkrať|zkrat|změň|zmen|vyhni|přehoď|prehod)\b/u;
-  const aboutAPlan = /plán|plan|trasu|trasa|zastávk|zastavk|\bden\b|\bdn[ií]\b|itinerář|itinerar/u;
+  const editsSomething = wholeWords(
+    "přidej",
+    "pridej",
+    "odeber",
+    "zkrať",
+    "zkrat",
+    "změň",
+    "zmen",
+    "vyhni",
+    "přehoď",
+    "prehod"
+  );
+  const aboutAPlan = new RegExp(
+    `plán|plan|trasu|trasa|zastávk|zastavk|itinerář|itinerar|${wholeWords("den", "dny", "dní", "dni").source}`,
+    "u"
+  );
   if (editsSomething.test(text) && aboutAPlan.test(text)) return "edit_plan";
-  if (/naplánuj|naplanuj|plán na|itinerář|itinerar|\bvýlet\b|\bvylet\b|\bdn[ií]\b/u.test(text)) {
+  if (
+    new RegExp(
+      `naplánuj|naplanuj|plán na|itinerář|itinerar|${wholeWords("výlet", "vylet", "dní", "dni", "dny").source}`,
+      "u"
+    ).test(text)
+  ) {
     return "plan";
   }
   if (/vytvoř vrstvu|vytvor vrstvu|udělej vrstvu|udelej vrstvu|vlastní vrstvu/u.test(text)) {
@@ -193,7 +434,9 @@ export function classifyChatIntent(message: string): AiChatIntent {
   }
   if (/^(zapni|vypni|zobraz|skryj|přepni|prepni)\b/u.test(text)) return "command";
   if (inferAiCategories(message).length) {
-    return /\b(kolik|proč|proc|jak|co je|čím|cim)\b/u.test(text) ? "question" : "place";
+    return wholeWords("kolik", "proč", "proc", "jak", "co je", "čím", "cim").test(text)
+      ? "question"
+      : "place";
   }
   if (/vrstv|katastr|záplav|zaplav|geolog/u.test(text)) return "layer_query";
   return "question";
@@ -370,10 +613,63 @@ function linkCardsFrom(value: unknown): AiChatLinkCard[] {
   return cards;
 }
 
+/** The two guide tools, as the registry has already validated them against their output schemas. */
+interface AiRegionContextResult {
+  region: { name: string; level: string; hierarchy?: string[]; countryCode?: string };
+  guide?: {
+    lead: string;
+    highlights: { title: string; text: string; sourceIds: string[] }[];
+    practical?: { arrival?: string; bestTime?: string; warnings?: string[] };
+  };
+}
+
+interface AiStatsResult {
+  statistics: {
+    id: string;
+    label: string;
+    value: number;
+    unit: string;
+    year?: number;
+    uncertaintyLabel?: string;
+    regionName?: string;
+    sourceIds: string[];
+  }[];
+}
+
+const CZECH_NUMBER = new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 1 });
+
+/** "Kolik lidí tu žije" is a numbers question; "co je tu zajímavého" is not. The distinction
+ *  decides whether the deterministic path pays for the statistics lookup as well. */
+const ASKS_FOR_NUMBERS =
+  /kolik|obyvatel|počet|pocet|rozloh|hustot|statistik|nezaměstnan|nezamestnan/u;
+
 interface CollectedEvidence {
   places: Map<string, AiPlaceSearchRecord>;
   sources: Map<string, AiCitation>;
   links: AiChatLinkCard[];
+  /** Layers a tool actually listed this turn, by id. A selection may only name these. */
+  layers: Map<string, string>;
+}
+
+function newEvidence(): CollectedEvidence {
+  return { places: new Map(), sources: new Map(), links: [], layers: new Map() };
+}
+
+function layersFrom(value: unknown): Array<{ layerId: string; name: string }> {
+  if (typeof value !== "object" || value === null) return [];
+  const rows = (value as { layers?: unknown }).layers;
+  if (!Array.isArray(rows)) return [];
+  const layers: Array<{ layerId: string; name: string }> = [];
+  for (const row of rows) {
+    if (typeof row !== "object" || row === null) continue;
+    const entry = row as { layerId?: unknown; name?: unknown };
+    if (typeof entry.layerId !== "string") continue;
+    layers.push({
+      layerId: entry.layerId,
+      name: typeof entry.name === "string" ? safeText(entry.name) : entry.layerId
+    });
+  }
+  return layers;
 }
 
 export interface AiChatServiceOptions {
@@ -384,6 +680,10 @@ export interface AiChatServiceOptions {
   availableTools?: ReadonlySet<string>;
   /** Deterministic place search for the no-model path; the registry is still the caller. */
   deterministicSearchLimit?: number;
+  /** Present where a plan can be edited; absent means the chat can only talk about plans. */
+  planEditor?: AiChatPlanEditor;
+  /** Ids for emitted layers, injectable so a test can assert a stable manifest. */
+  createId?: () => string;
 }
 
 export class AiChatService {
@@ -392,12 +692,16 @@ export class AiChatService {
   private readonly runtime: AiModelRuntime;
   private readonly availableTools?: ReadonlySet<string>;
   private readonly deterministicLimit: number;
+  private readonly planEditor?: AiChatPlanEditor;
+  private readonly createId: () => string;
 
   constructor(options: AiChatServiceOptions) {
     this.registry = options.registry;
     this.conversations = options.conversations;
     this.runtime = options.runtime ?? aiModelRuntime();
     if (options.availableTools) this.availableTools = options.availableTools;
+    if (options.planEditor) this.planEditor = options.planEditor;
+    this.createId = options.createId ?? (() => randomUUID().slice(0, 8));
     this.deterministicLimit = Math.min(
       50,
       Math.max(1, Math.floor(options.deterministicSearchLimit ?? 8))
@@ -507,21 +811,22 @@ export class AiChatService {
     emit: AiChatEmit
   ): Promise<AiChatAnswer | null> {
     const slot = intent === "plan" || intent === "layer_create" ? "strong" : "fast";
+    const submissions = this.submissionTools(request, intent);
     const specs = [
       ...chatToolSpecs(this.registry, request.actor, this.availableTools),
       {
         name: SUBMIT_ANSWER_TOOL,
         description: "Odevzdej hotovou odpověď pro uživatele.",
         parameters: SUBMIT_ANSWER_SCHEMA as unknown as Record<string, unknown>
-      }
+      },
+      ...submissions
     ];
-    const evidence: CollectedEvidence = { places: new Map(), sources: new Map(), links: [] };
-    const history: AiChatTurn[] = conversation.messages
-      .slice(-6, -1)
-      .map((entry) => ({
-        role: entry.role === "user" ? "user" : "assistant",
-        content: entry.content
-      }));
+    const submissionNames = new Set([SUBMIT_ANSWER_TOOL, ...submissions.map(({ name }) => name)]);
+    const evidence = newEvidence();
+    const history: AiChatTurn[] = conversation.messages.slice(-6, -1).map((entry) => ({
+      role: entry.role === "user" ? "user" : "assistant",
+      content: entry.content
+    }));
     const maxRounds = Math.min(
       MAX_TOOL_ROUNDS,
       this.runtime.profiles(slot)[0]!.limits.maxToolRounds
@@ -532,8 +837,8 @@ export class AiChatService {
       for (let round = 0; round < maxRounds; round += 1) {
         const outcome = await this.runtime.gateway.turn({
           taskId: "ai-chat-turn",
-          templateVersion: "ai-chat-turn.v1",
-          system: SYSTEM_PROMPT,
+          templateVersion: CHAT_TEMPLATE_VERSION,
+          system: aiPrompt(CHAT_TEMPLATE_VERSION, { submitTool: SUBMIT_ANSWER_TOOL }),
           prompt: message,
           profile,
           permissionPartition: request.ownerUserId,
@@ -552,12 +857,24 @@ export class AiChatService {
         });
         if (outcome.status !== "succeeded") break;
 
-        const submitted = outcome.toolCalls.find((call) => call.name === SUBMIT_ANSWER_TOOL);
+        const submitted = outcome.toolCalls.find((call) => submissionNames.has(call.name));
         if (submitted) {
-          return this.answerFromSubmission(submitted.arguments, intent, evidence, profile.model);
+          const answer = await this.answerFromSubmission(
+            submitted.name,
+            submitted.arguments,
+            request,
+            intent,
+            conversation,
+            evidence,
+            profile.model
+          );
+          // A submission the server could not honour — an unresolvable place, a plan that moved
+          // under it — is not an answer; the loop lets the fallback speak instead.
+          if (answer) return answer;
+          break;
         }
         const calls = outcome.toolCalls
-          .filter((call) => call.name !== SUBMIT_ANSWER_TOOL)
+          .filter((call) => !submissionNames.has(call.name))
           .slice(0, MAX_TOOL_CALLS_PER_ROUND);
         if (!calls.length) {
           // Prose without a submission still answers the user; the cards come from whatever the
@@ -615,6 +932,10 @@ export class AiChatService {
   ): Promise<AiChatAnswer | null> {
     const categories = inferAiCategories(message);
     if (!categories.length) {
+      // A question that names no category is usually about the place itself, and the guide answers
+      // exactly that — without a model, from the same sources the Objevuj panel cites (§30.5).
+      const guided = await this.regionAnswer(request, message, intent, emit);
+      if (guided) return guided;
       const text =
         "Bez AI modelu umím spolehlivě hledat místa podle kategorie — zkus třeba „kempy poblíž“ nebo „vyhlídky do 10 km“.";
       await emit({ type: "token", text });
@@ -670,24 +991,191 @@ export class AiChatService {
     await emit({ type: "tool_result", tool: "search_places", status: result.status });
     if (result.status !== "succeeded") return null;
 
-    const evidence: CollectedEvidence = { places: new Map(), sources: new Map(), links: [] };
+    const evidence = newEvidence();
     this.collect(result.value, evidence);
     const places = [...evidence.places.values()];
     const text = deterministicText(categories, places);
     await emit({ type: "token", text });
+    // Without a model the same request still gets its layer or its plan: the categories came
+    // from the question, the places from the tool, so there is nothing left for a model to add.
+    const extraCards: AiChatCard[] = [];
+    if (intent === "layer_create") {
+      const label = categories.map((id) => aiCategoryLabel(id) ?? id).join(", ");
+      const card = this.layerDraftCard(label, undefined, places, evidence, {
+        prompt: message
+      });
+      if (card) extraCards.push(card);
+    }
+    if (intent === "plan" && places.length) {
+      extraCards.push({
+        type: "plan",
+        title: `Návrh plánu: ${categories.map((id) => aiCategoryLabel(id) ?? id).join(", ")}`,
+        summary: text.slice(0, 400),
+        stops: places.slice(0, 8).map((place) => ({
+          title: safeText(place.title),
+          longitude: place.longitude,
+          latitude: place.latitude,
+          sourceId: place.sourceId
+        }))
+      });
+    }
     return this.assembleAnswer(
-      { text, execution: "deterministic", intent, categories },
+      {
+        text,
+        execution: "deterministic",
+        intent,
+        categories,
+        ...(extraCards.length ? { extraCards } : {})
+      },
       evidence,
       places
     );
   }
 
-  private answerFromSubmission(
-    submission: Record<string, unknown>,
+  /** The guide, read without a model: what the area is, two things worth knowing, and — when the
+   *  question asked for numbers — the numbers with their year and source. */
+  private async regionAnswer(
+    request: AiChatRequest,
+    message: string,
     intent: AiChatIntent,
+    emit: AiChatEmit
+  ): Promise<AiChatAnswer | null> {
+    if (this.availableTools && !this.availableTools.has("get_region_context")) return null;
+    const invocation = {
+      actor: request.actor,
+      projection: request.projection,
+      ...(request.signal ? { signal: request.signal } : {})
+    };
+    const point = { ...request.context.mapCenter };
+    const zoom = Math.min(24, Math.max(0, Math.round(request.context.zoom)));
+
+    await emit({
+      type: "tool_start",
+      tool: "get_region_context",
+      title: "Načítám kontext oblasti"
+    });
+    const context = await this.registry.invoke<AiRegionContextResult>(
+      "get_region_context",
+      { point, zoom },
+      invocation
+    );
+    await emit({ type: "tool_result", tool: "get_region_context", status: context.status });
+    if (context.status !== "succeeded") return null;
+
+    const evidence = newEvidence();
+    this.collect(context.value, evidence);
+    const { region, guide } = context.value;
+    const where = [region.name, ...(region.hierarchy ?? []).slice(0, 1)].join(", ");
+    const sentences = [`Jsi v ${safeText(where)}.`];
+    if (guide?.lead) sentences.push(safeText(guide.lead));
+    for (const highlight of guide?.highlights.slice(0, 2) ?? []) {
+      sentences.push(`${safeText(highlight.title)}: ${safeText(highlight.text)}`);
+    }
+    if (guide?.practical?.arrival) sentences.push(`Doprava: ${safeText(guide.practical.arrival)}.`);
+
+    const cards: AiChatCard[] = [];
+    if (ASKS_FOR_NUMBERS.test(message.toLocaleLowerCase("cs-CZ"))) {
+      if (!this.availableTools || this.availableTools.has("get_stats")) {
+        await emit({ type: "tool_start", tool: "get_stats", title: "Načítám statistiky" });
+        const stats = await this.registry.invoke<AiStatsResult>(
+          "get_stats",
+          { point, zoom },
+          invocation
+        );
+        await emit({ type: "tool_result", tool: "get_stats", status: stats.status });
+        if (stats.status === "succeeded" && stats.value.statistics.length) {
+          this.collect(stats.value, evidence);
+          const items = stats.value.statistics.slice(0, 8).map((statistic) => ({
+            label: safeText(statistic.label),
+            value: `${CZECH_NUMBER.format(statistic.value)} ${statistic.unit}`.trim(),
+            ...(statistic.year || statistic.uncertaintyLabel
+              ? {
+                  note: [
+                    statistic.year ? String(statistic.year) : "",
+                    statistic.uncertaintyLabel ? safeText(statistic.uncertaintyLabel) : ""
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                }
+              : {}),
+            sourceIds: statistic.sourceIds
+          }));
+          cards.push({
+            type: "facts",
+            title: safeText(stats.value.statistics[0]!.regionName ?? region.name),
+            items
+          });
+        }
+      }
+    }
+
+    if (sentences.length === 1 && !cards.length) return null;
+    const text = sentences.join(" ");
+    await emit({ type: "token", text });
+    return {
+      execution: "deterministic",
+      intent,
+      text,
+      cards,
+      sources: [...evidence.sources.values()],
+      followUps: ["Co je zajímavého v okolí?", "Kolik tu žije lidí?", "Naplánuj mi tu den"]
+    };
+  }
+
+  /** The submission tools this turn may use. `submit_answer` is always there; the others exist
+   *  only where the intent asks for them and the deployment can honour them (§30.7, §30.8). */
+  private submissionTools(request: AiChatRequest, intent: AiChatIntent): AiToolSpec[] {
+    const specs: AiToolSpec[] = [];
+    if (intent === "layer_create") {
+      specs.push({
+        name: EMIT_LAYER_TOOL,
+        description:
+          "Odevzdej odpověď i s návrhem vrstvy z míst, která ti vrátily nástroje. Uživatel ji sám zapne nebo uloží.",
+        parameters: EMIT_LAYER_SCHEMA as unknown as Record<string, unknown>
+      });
+    }
+    if (intent === "plan") {
+      specs.push({
+        name: SUBMIT_PLAN_TOOL,
+        description:
+          "Odevzdej odpověď i s návrhem plánu ze zastávek, které ti vrátily nástroje. Plán se nikam neuloží, uživatel ho otevře v Plánování.",
+        parameters: SUBMIT_PLAN_SCHEMA as unknown as Record<string, unknown>
+      });
+    }
+    if (intent === "command") {
+      specs.push({
+        name: SELECT_LAYERS_TOOL,
+        description:
+          "Odevzdej odpověď i s výběrem vrstev, které si uživatel přeje zapnout. Vrstvy jen z list_available_layers; zapne je klient, ne ty.",
+        parameters: SELECT_LAYERS_SCHEMA as unknown as Record<string, unknown>
+      });
+    }
+    const planId = request.context.planId;
+    if (
+      intent === "edit_plan" &&
+      this.planEditor &&
+      planId &&
+      request.projection.allowedPlanIds.has(planId)
+    ) {
+      specs.push({
+        name: APPLY_PLAN_COMMANDS_TOOL,
+        description:
+          "Navrhni úpravy otevřeného plánu. Nic se neaplikuje — uživatel uvidí rozdíl a potvrdí ho.",
+        parameters: APPLY_PLAN_COMMANDS_SCHEMA as unknown as Record<string, unknown>
+      });
+    }
+    return specs;
+  }
+
+  private async answerFromSubmission(
+    tool: string,
+    submission: Record<string, unknown>,
+    request: AiChatRequest,
+    intent: AiChatIntent,
+    conversation: AiConversation,
     evidence: CollectedEvidence,
     model: string
-  ): AiChatAnswer | null {
+  ): Promise<AiChatAnswer | null> {
     const text = typeof submission.text === "string" ? safeText(submission.text) : "";
     if (!text) return null;
     const requested = Array.isArray(submission.placeIds)
@@ -704,17 +1192,220 @@ export class AiChatService {
           .filter(Boolean)
           .slice(0, 3)
       : [];
+    const extraCards: AiChatCard[] = [];
+
+    if (tool === EMIT_LAYER_TOOL) {
+      const card = this.layerDraftCard(
+        typeof submission.name === "string" ? submission.name : "",
+        typeof submission.description === "string" ? submission.description : undefined,
+        chosen,
+        evidence,
+        { prompt: request.message, model }
+      );
+      if (!card) return null;
+      extraCards.push(card);
+    }
+
+    if (tool === SUBMIT_PLAN_TOOL) {
+      const card = this.planCard(
+        typeof submission.name === "string" ? submission.name : "",
+        text,
+        submission.stops,
+        evidence
+      );
+      if (!card) return null;
+      extraCards.push(card);
+    }
+
+    if (tool === SELECT_LAYERS_TOOL) {
+      const card = this.layerSelectionCard(request, submission, evidence);
+      if (!card) return null;
+      extraCards.push(card);
+    }
+
+    if (tool === APPLY_PLAN_COMMANDS_TOOL) {
+      const card = await this.planEditCard(request, conversation, submission, evidence);
+      if (!card) return null;
+      extraCards.push(card);
+    }
+
     return this.assembleAnswer(
       {
         text,
         execution: "model-tool-loop",
         intent,
         model,
-        ...(followUps.length ? { followUps } : {})
+        ...(followUps.length ? { followUps } : {}),
+        ...(extraCards.length ? { extraCards } : {})
       },
       evidence,
-      chosen.length ? chosen : [...evidence.places.values()]
+      // A layer or plan submission already says which places it means; showing the same list
+      // twice as a places card would only repeat it.
+      extraCards.length ? [] : chosen.length ? chosen : [...evidence.places.values()]
     );
+  }
+
+  private layerDraftCard(
+    name: string,
+    description: string | undefined,
+    places: readonly AiPlaceSearchRecord[],
+    evidence: CollectedEvidence,
+    origin: { prompt: string; model?: string }
+  ): AiChatLayerDraftCard | null {
+    if (!places.length) return null;
+    try {
+      const manifest = buildInlineLayerManifest({
+        name: safeText(name),
+        ...(description ? { description: safeText(description) } : {}),
+        places,
+        sources: [...evidence.sources.values()],
+        generatedAt: new Date().toISOString(),
+        seed: this.createId(),
+        prompt: origin.prompt,
+        ...(origin.model ? { model: origin.model } : {})
+      });
+      return {
+        type: "layer-draft",
+        title: manifest.name,
+        layerId: manifest.id,
+        manifest,
+        featureCount: inlineLayerFeatureCount(manifest)
+      };
+    } catch {
+      // An unattributable or empty layer is not offered at all; the text answer still stands.
+      return null;
+    }
+  }
+
+  /** §4.13: "zapni mi vrstvy pro…" answered as a selection the client applies. A layer id the
+   *  loop never listed, or one the projection does not allow, is dropped rather than offered. */
+  private layerSelectionCard(
+    request: AiChatRequest,
+    submission: Record<string, unknown>,
+    evidence: CollectedEvidence
+  ): AiChatLayerCard | null {
+    const requested = Array.isArray(submission.layerIds)
+      ? submission.layerIds.filter((id): id is string => typeof id === "string")
+      : [];
+    const layerIds = [...new Set(requested)].filter(
+      (layerId) =>
+        (evidence.layers.has(layerId) || request.context.activeLayerIds.includes(layerId)) &&
+        request.projection.allowedLayerIds.has(layerId)
+    );
+    if (!layerIds.length) return null;
+    const title =
+      typeof submission.title === "string" && submission.title.trim()
+        ? safeText(submission.title)
+        : "Vrstvy k zapnutí";
+    const raw = submission.filters;
+    const filters: Record<string, unknown> = {};
+    if (typeof raw === "object" && raw !== null) {
+      const entry = raw as Record<string, unknown>;
+      if (typeof entry.openNow === "boolean") filters.openNow = entry.openNow;
+      if (typeof entry.minRating === "number") filters.minRating = entry.minRating;
+      if (Array.isArray(entry.tags)) {
+        const tags = entry.tags
+          .filter((tag): tag is string => typeof tag === "string")
+          .map(safeText)
+          .filter(Boolean)
+          .slice(0, 8);
+        if (tags.length) filters.tags = tags;
+      }
+    }
+    return {
+      type: "layer",
+      title,
+      layerIds,
+      ...(Object.keys(filters).length ? { filters } : {})
+    };
+  }
+
+  private planCard(
+    name: string,
+    text: string,
+    raw: unknown,
+    evidence: CollectedEvidence
+  ): AiChatPlanCard | null {
+    const rows = Array.isArray(raw) ? raw : [];
+    const stops: AiChatPlanCard["stops"] = [];
+    for (const row of rows) {
+      if (typeof row !== "object" || row === null) continue;
+      const entry = row as { placeId?: unknown; day?: unknown; note?: unknown };
+      const place =
+        typeof entry.placeId === "string" ? evidence.places.get(entry.placeId) : undefined;
+      if (!place) continue;
+      stops.push({
+        title: safeText(place.title),
+        longitude: place.longitude,
+        latitude: place.latitude,
+        ...(typeof entry.day === "number" ? { day: entry.day } : {}),
+        ...(typeof entry.note === "string" && entry.note.trim()
+          ? { note: safeText(entry.note) }
+          : {}),
+        sourceId: place.sourceId
+      });
+      if (stops.length >= 40) break;
+    }
+    if (!stops.length) return null;
+    return {
+      type: "plan",
+      title: safeText(name) || "Návrh plánu",
+      summary: text.slice(0, 400),
+      stops
+    };
+  }
+
+  private async planEditCard(
+    request: AiChatRequest,
+    conversation: AiConversation,
+    submission: Record<string, unknown>,
+    evidence: CollectedEvidence
+  ): Promise<AiChatPlanEditCard | null> {
+    const planId = request.context.planId;
+    if (!this.planEditor || !planId) return null;
+    const summary = typeof submission.summary === "string" ? safeText(submission.summary) : "";
+    const rows = Array.isArray(submission.edits) ? submission.edits : [];
+    const edits: AiChatPlanEdit[] = [];
+    for (const row of rows) {
+      if (typeof row !== "object" || row === null) continue;
+      const entry = row as Record<string, unknown>;
+      if (typeof entry.op !== "string") continue;
+      edits.push({
+        op: entry.op as AiChatPlanEdit["op"],
+        ...(typeof entry.placeId === "string" ? { placeId: entry.placeId } : {}),
+        ...(typeof entry.stopId === "string" ? { stopId: entry.stopId } : {}),
+        ...(typeof entry.atIndex === "number" ? { atIndex: entry.atIndex } : {}),
+        ...(typeof entry.toIndex === "number" ? { toIndex: entry.toIndex } : {}),
+        ...(typeof entry.note === "string" && entry.note.trim()
+          ? { note: safeText(entry.note) }
+          : {}),
+        ...(typeof entry.name === "string" ? { name: safeText(entry.name) } : {})
+      });
+    }
+    if (!summary || !edits.length) return null;
+    try {
+      const proposal = await this.planEditor.propose({
+        ownerUserId: request.ownerUserId,
+        planId,
+        conversationId: conversation.id,
+        summary,
+        edits,
+        places: [...evidence.places.values()],
+        citations: [...evidence.sources.values()],
+        ...(request.signal ? { signal: request.signal } : {})
+      });
+      return {
+        type: "plan-edit",
+        title: summary,
+        proposalId: proposal.proposalId,
+        planId: proposal.planId,
+        diff: proposal.diff
+      };
+    } catch {
+      // The plan moved, the edit did not apply, or the store refused it: no card, and the text
+      // answer is what the user sees.
+      return null;
+    }
   }
 
   private assembleAnswer(
@@ -725,6 +1416,7 @@ export class AiChatService {
       model?: string;
       followUps?: string[];
       categories?: readonly string[];
+      extraCards?: readonly AiChatCard[];
     },
     evidence: CollectedEvidence,
     places: readonly AiPlaceSearchRecord[]
@@ -732,7 +1424,7 @@ export class AiChatService {
     const categories = base.categories ?? [
       ...new Set(places.map((place) => place.category).filter(Boolean))
     ];
-    const cards: AiChatCard[] = [];
+    const cards: AiChatCard[] = [...(base.extraCards ?? [])];
     const card = placeCard(categories, places);
     if (card) cards.push(card);
     cards.push(...evidence.links.slice(0, 3));
@@ -748,6 +1440,7 @@ export class AiChatService {
   }
 
   private collect(value: unknown, evidence: CollectedEvidence): void {
+    for (const layer of layersFrom(value)) evidence.layers.set(layer.layerId, layer.name);
     for (const place of placesFrom(value)) evidence.places.set(place.id, place);
     for (const citation of citationsFrom(value)) {
       if (!evidence.sources.has(citation.sourceId))

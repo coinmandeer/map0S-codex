@@ -19,11 +19,6 @@ export interface AiStopResult {
   source: { sourceId: string; label: string; url?: string };
 }
 
-export interface AiStopAnswer {
-  status: "succeeded";
-  answer: { text: string; results: AiStopResult[] };
-}
-
 export interface PlanShareLink {
   id: string;
   planId: string;

@@ -98,6 +98,8 @@ const inputs: Record<MapAiToolName, Record<string, unknown>> = {
     to: "2026-09-02T00:00:00.000Z",
     limit: 10
   },
+  get_region_context: { point: { longitude: 14.42, latitude: 50.08 }, zoom: 11, lang: "cs" },
+  get_stats: { point: { longitude: 14.42, latitude: 50.08 }, metrics: ["population"] },
   web_search: { query: "festivaly Plzeň září 2026", maxResults: 3 },
   web_fetch: { url: "https://fixture.test/festivaly" },
   create_plan_draft: {
@@ -229,6 +231,41 @@ function fixtureHandlers(onCall: (name: string) => void = () => undefined): MapA
         }
       ],
       sources: [source("events:fixture"), source("events:hidden")]
+    }),
+    get_region_context: handler("get_region_context", {
+      region: {
+        name: "Plzeň",
+        level: "locality",
+        hierarchy: ["Plzeňský kraj", "Česko"],
+        countryCode: "CZ"
+      },
+      guide: {
+        lead: "Město ležáku na soutoku čtyř řek.",
+        highlights: [
+          {
+            title: "Velká synagoga",
+            text: "Druhá největší v Evropě.",
+            sourceIds: ["guide:wikivoyage"]
+          }
+        ],
+        practical: { arrival: "Vlakem z Prahy 1:30", warnings: [] }
+      },
+      sources: [source("guide:wikivoyage", "Wikivoyage")]
+    }),
+    get_stats: handler("get_stats", {
+      statistics: [
+        {
+          id: "population",
+          label: "Obyvatelstvo",
+          value: 614_640,
+          unit: "osob",
+          year: 2025,
+          uncertaintyLabel: "Ověřený zdroj",
+          regionName: "Plzeňský kraj",
+          sourceIds: ["wikidata:Q38511"]
+        }
+      ],
+      sources: [source("wikidata:Q38511", "Wikidata")]
     }),
     web_search: handler("web_search", {
       results: [

@@ -10,7 +10,7 @@
 import { OSM_POI_CATEGORIES, type OsmPoiCategoryId } from "@mapos/layer-sdk";
 import { FEATURE_PROVIDERS } from "../featureProviders.js";
 import type { AiConversationStore } from "./conversation.js";
-import { AiChatService } from "./chatService.js";
+import { AiChatService, type AiChatPlanEditor } from "./chatService.js";
 import { createChatToolRegistry, type AiChatMapContext } from "./chatTools.js";
 import type { AiToolTrace } from "./toolRegistry.js";
 import { getFusedPlaces } from "../poiFusionService.js";
@@ -18,6 +18,7 @@ import { getPointForecast } from "../infoService.js";
 import { fetchRoute } from "../routingService.js";
 import type { SavedPlaceService } from "../savedPlaceService.js";
 import type { EventService } from "../events/eventService.js";
+import type { DiscoverContextService } from "../discoverService.js";
 import type { AiChatLayerDescriptor, AiChatToolProviders } from "./chatTools.js";
 import {
   createFusedPlaceSearchSource,
@@ -73,6 +74,9 @@ export interface ProductionChatToolOptions {
   savedPlaces?: SavedPlaceService;
   events?: EventService;
   eventLayerId?: string;
+  /** The Objevuj context, reused so `get_region_context` and the panel cannot disagree about
+   *  which region the map centre is in (§30.5). */
+  discover?: Pick<DiscoverContextService, "get">;
 }
 
 export function createProductionChatToolProviders(
@@ -238,7 +242,99 @@ export function createProductionChatToolProviders(
     };
   }
 
+  if (options.discover) attachDiscoverProviders(providers, options.discover);
+
   return providers;
+}
+
+/** `get_region_context` and `get_stats`, both read from the Objevuj context service. */
+function attachDiscoverProviders(
+  providers: AiChatToolProviders,
+  discover: Pick<DiscoverContextService, "get">
+): void {
+  {
+    // One context lookup answers both tools; the service caches it, so asking for the region and
+    // then for its numbers costs one round of upstreams.
+    const context = (
+      input: { point: { longitude: number; latitude: number }; zoom?: number; lang?: string },
+      signal: AbortSignal
+    ) =>
+      discover.get(
+        {
+          lng: input.point.longitude,
+          lat: input.point.latitude,
+          zoom: input.zoom ?? 12,
+          ...(input.lang ? { lang: input.lang } : {})
+        },
+        signal
+      );
+
+    providers.regionContext = async (input, execution) => {
+      execution.signal.throwIfAborted();
+      const resolved = await context(input, execution.signal);
+      if (!resolved.region) throw new Error("region is not resolvable for this point");
+      const guide = resolved.guideSynthesis;
+      return {
+        region: {
+          name: resolved.region.name,
+          level: resolved.region.level,
+          hierarchy: resolved.region.hierarchy.map((item) => item.name).slice(0, 8),
+          ...(resolved.region.countryCode ? { countryCode: resolved.region.countryCode } : {})
+        },
+        ...(guide && (guide.lead || guide.highlights.length)
+          ? {
+              guide: {
+                lead: guide.lead,
+                highlights: guide.highlights.slice(0, 6).map((highlight) => ({
+                  title: highlight.title,
+                  text: highlight.text,
+                  sourceIds: highlight.sourceIds
+                })),
+                ...(guide.practical.arrival ||
+                guide.practical.bestTime ||
+                guide.practical.warnings.length
+                  ? { practical: guide.practical }
+                  : {})
+              }
+            }
+          : {}),
+        sources: resolved.sources.map((source) => ({
+          sourceId: source.id,
+          label: source.label,
+          ...(source.url ? { url: source.url } : {})
+        }))
+      };
+    };
+
+    providers.stats = async (input, execution) => {
+      execution.signal.throwIfAborted();
+      const resolved = await context(input, execution.signal);
+      const wanted = new Set(input.metrics ?? []);
+      const statistics = resolved.statistics
+        .filter((statistic) => !wanted.size || wanted.has(statistic.id))
+        .map((statistic) => ({
+          id: statistic.id,
+          label: statistic.label,
+          value: statistic.value,
+          unit: statistic.unit,
+          ...(statistic.year === null ? {} : { year: statistic.year }),
+          uncertaintyLabel: statistic.uncertaintyLabel,
+          regionName: statistic.scope.regionName,
+          sourceIds: statistic.sourceIds
+        }));
+      const cited = new Set(statistics.flatMap((statistic) => statistic.sourceIds));
+      return {
+        statistics,
+        sources: resolved.sources
+          .filter((source) => cited.has(source.id))
+          .map((source) => ({
+            sourceId: source.id,
+            label: source.label,
+            ...(source.url ? { url: source.url } : {})
+          }))
+      };
+    };
+  }
 }
 
 /** Offline: the demo POI fixtures and one labelled web page, so every tool the offline profile
@@ -246,9 +342,10 @@ export function createProductionChatToolProviders(
 export function createFixtureChatToolProviders(options: {
   fixtures: () => readonly MemoryPlaceFixture[];
   layerIds?: readonly string[];
+  discover?: Pick<DiscoverContextService, "get">;
 }): AiChatToolProviders {
   const layerIds = options.layerIds ?? ["osm-poi"];
-  return {
+  const providers: AiChatToolProviders = {
     placeSearch: createMemoryPlaceSearchSource(options.fixtures),
     layers: () =>
       layerIds.map((layerId) => ({
@@ -271,6 +368,8 @@ export function createFixtureChatToolProviders(options: {
       }
     ])
   };
+  if (options.discover) attachDiscoverProviders(providers, options.discover);
+  return providers;
 }
 
 export type AiChatTurnFactory = (mapContext: AiChatMapContext) => AiChatService;
@@ -286,6 +385,8 @@ export function createAiChatTurnFactory(options: {
   conversations: AiConversationStore;
   providers: AiChatToolProviders;
   onToolTrace?: (trace: AiToolTrace) => void;
+  /** Where an `edit_plan` turn sends its proposals; absent means the chat only talks about plans. */
+  planEditor?: AiChatPlanEditor;
 }): AiChatTurnFactory {
   return (mapContext) => {
     const { registry, available } = createChatToolRegistry({
@@ -296,7 +397,8 @@ export function createAiChatTurnFactory(options: {
     return new AiChatService({
       registry,
       conversations: options.conversations,
-      availableTools: available
+      availableTools: available,
+      ...(options.planEditor ? { planEditor: options.planEditor } : {})
     });
   };
 }

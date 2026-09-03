@@ -40,6 +40,7 @@ import { registerCommerceRoutes } from "./routes/commerceRoutes.js";
 import { registerOperationalRoutes } from "./routes/operationalRoutes.js";
 import { registerDataRightsRoutes } from "./routes/dataRightsRoutes.js";
 import { registerAiRoutes } from "./routes/aiRoutes.js";
+import { createAiPlanProposalCoordinator } from "./services/ai/planEditor.js";
 import { registerGuideRoutes } from "./routes/guideRoutes.js";
 import { registerDiscoverContextRoutes } from "./routes/discoverContextRoutes.js";
 import { registerOfflineFixtureRoutes } from "./routes/offlineFixtureRoutes.js";
@@ -83,10 +84,9 @@ import { createMemoryAdjacentRouteProvider } from "./services/adjacentRouteProvi
 import { EventService } from "./services/events/eventService.js";
 import { MemoryEventRepository } from "./services/events/eventMemoryRepository.js";
 import { buildMemoryEventFixtures } from "./services/events/eventFixtures.js";
-import {
-  createOfflineDiscoverContextService,
-  discoverContextService
-} from "./services/discoverService.js";
+import { createOfflineDiscoverContextService } from "./services/discoverService.js";
+import { createGuidedDiscoverContextService } from "./services/guide/guideComposition.js";
+import { createOllamaWebTools } from "./services/ai/webTools.js";
 import {
   LinkedIdentityService,
   MemoryIdentityRepository
@@ -284,6 +284,11 @@ interface MemoryAppOptions {
 
 export async function buildMemoryApp(options: MemoryAppOptions = {}) {
   const offlineFixture = options.offlineFixture ?? isOfflineFixtureMode();
+  // One instance for the panel and for the assistant's `get_region_context`, so both answer from
+  // the same cache and cannot disagree about which region the map centre is in (§30.5).
+  const discoverContext = offlineFixture
+    ? createOfflineDiscoverContextService()
+    : createGuidedDiscoverContextService({ web: createOllamaWebTools() });
   seedMemory();
   registerMemoryQuestSource();
   const app = Fastify({ logger: false });
@@ -316,16 +321,26 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
     nearestPoiSource: createMemoryNearestPoiSource(memoryPoiFixtures),
     onToolTrace: recordAiToolTrace
   });
+  // Offline the proposal path is the same code as in production, over the in-memory plans: the
+  // e2e profile can confirm and undo an AI edit without a model or a database (§30.8).
+  const planProposals = createAiPlanProposalCoordinator({
+    repository: memoryPlanDocumentRepository
+  });
   registerAiRoutes(app, {
     orchestrator: aiRuntime.orchestrator,
+    planProposals,
     resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null,
     allowedLayerIds: new Set(["osm-poi"]),
     // Offline the assistant runs its deterministic path over the demo fixtures, which is what the
     // e2e profile exercises: same catalog, same tool, no network.
     chatTurn: createAiChatTurnFactory({
       conversations: aiRuntime.conversations,
-      providers: createFixtureChatToolProviders({ fixtures: memoryPoiFixtures }),
-      onToolTrace: recordAiToolTrace
+      providers: createFixtureChatToolProviders({
+        fixtures: memoryPoiFixtures,
+        discover: discoverContext
+      }),
+      onToolTrace: recordAiToolTrace,
+      planEditor: planProposals.editor
     }),
     discussPlan: async ({ plan, history }) => ({
       text: `Plán „${plan.name}“ má ${plan.stops.length} zastávky. Toto je offline kontrolní odpověď; žádná změna nebyla provedena.`,
@@ -476,9 +491,7 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
     registerInfoRoutes(app);
     registerGuideRoutes(app);
   }
-  registerDiscoverContextRoutes(app, {
-    service: offlineFixture ? createOfflineDiscoverContextService() : discoverContextService
-  });
+  registerDiscoverContextRoutes(app, { service: discoverContext });
 
   // Shared with the real server so a new provider can't show up in one and not the other. The
   // feature route below still answers from memory — the point of this server is not touching

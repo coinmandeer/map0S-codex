@@ -30,7 +30,10 @@ export default defineConfig({
     {
       command:
         "MAPOS_FIXTURE_MODE=offline MAPOS_E2E_RATE_LIMIT_MULTIPLIER=100 npm run dev:memory -w @mapos/api",
-      port: 4033,
+      // A bound port only proves the process reached `listen`; the first specs were reaching Vite's
+      // proxy while routes were still registering, so the whole first second of the run answered
+      // /config and /auth/guest with ECONNREFUSED. Polling /health waits for a served response.
+      url: "http://127.0.0.1:4033/health",
       // Reusing an arbitrary developer process would silently drop the server-side offline guard.
       reuseExistingServer: false
     },

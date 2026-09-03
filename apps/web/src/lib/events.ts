@@ -36,6 +36,9 @@ export interface MapOsEvents {
   "experience-changed": { id: ExperienceId };
   "time-changed": { temporal: TemporalState };
   "plan-changed": { planId: string | null };
+  /** A dimmed variant line was clicked on the map (§16.6); the planner owns the document, so
+   *  the map only reports which variant the user pointed at. */
+  "plan-alternative-picked": { segmentId: string; alternativeId: string };
   "games-changed": { activeGameIds: string[]; focusedGameId: string };
   "weather-grid-updated": {
     variable: string;
