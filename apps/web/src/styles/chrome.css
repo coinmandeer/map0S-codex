@@ -1208,6 +1208,9 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-4);
+    /* Floats over the map, where it is tapped rather than clicked, so it carries the tap
+       target instead of the smaller chrome height. */
+    min-height: var(--tap-min);
     padding: var(--space-4) var(--space-7);
     border-radius: var(--radius-pill);
     background: var(--surface-solid);

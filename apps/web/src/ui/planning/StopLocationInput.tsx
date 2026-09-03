@@ -6,6 +6,7 @@ import {
   resolveLocationIntent,
   type LocationIntent
 } from "../../search";
+import { IconButton } from "../kit";
 
 interface GeoHit {
   display_name: string;
@@ -221,17 +222,18 @@ export function StopLocationInput({
           </button>
         )}
         {query && (
-          <button
-            type="button"
+          <IconButton
+            icon="close"
+            size="sm"
+            variant="plain"
+            round
             className="planner-stop-clear"
-            aria-label={`Vymazat zastávku ${index}`}
+            label={`Vymazat zastávku ${index}`}
             onClick={() => {
               setQuery("");
               setHits([]);
             }}
-          >
-            ×
-          </button>
+          />
         )}
       </div>
 

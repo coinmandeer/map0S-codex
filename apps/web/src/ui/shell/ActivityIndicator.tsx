@@ -10,6 +10,10 @@ import { activityRows, activitySummary } from "./activityModel";
 /** Nothing is shown for the first third of a second: most layer queries resolve inside it, and
  *  a pill that appears and vanishes again is worse than no pill. */
 const APPEAR_DELAY_MS = 300;
+/** And nothing is taken away for a moment after the last row goes. A layer refresh retires its
+ *  task before starting the replacement, so the list is empty for a tick in the middle of one
+ *  piece of work; hiding on that tick unmounted the pill along with any popover open on it. */
+const LINGER_MS = 400;
 /** How long a finished row keeps its tick before fading out. */
 const SUCCESS_HOLD_MS = 200;
 /** Failures stay long enough to read and click. */
@@ -74,25 +78,40 @@ export function ActivityIndicator() {
 
   const rows = useMemo(() => activityRows(tasks, settled), [tasks, settled]);
   const hasRows = rows.length > 0;
+  const lastRowsRef = useRef(rows);
 
   useEffect(() => {
-    if (!hasRows) {
-      setVisible(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setVisible(true), APPEAR_DELAY_MS);
+    const timer = window.setTimeout(
+      () => setVisible(hasRows),
+      hasRows ? APPEAR_DELAY_MS : LINGER_MS
+    );
     return () => window.clearTimeout(timer);
   }, [hasRows]);
 
-  if (!hasRows || !visible) return null;
+  // What the pill showed last, so it has something to show through the linger.
+  if (hasRows) lastRowsRef.current = rows;
+  const shownRows = hasRows ? rows : lastRowsRef.current;
 
-  const failed = rows.some((row) => row.tone === "error");
-  const summary = activitySummary(rows);
-  const actionable = tasks.filter(
-    (task) =>
-      task.status === "failed" ||
-      ((task.status === "queued" || task.status === "running") && task.cancellable)
-  );
+  if (!visible || shownRows.length === 0) return null;
+
+  const failed = shownRows.some((row) => row.tone === "error");
+  const summary = activitySummary(shownRows);
+  // A row here is "this layer needs you", not "this attempt failed". Every refresh retires the
+  // old task and starts one with a fresh id, so keying on the id tore the row down and built a
+  // new one mid-refresh — a user reaching for Zkusit znovu could have it vanish under the
+  // cursor. One row per layer, updated in place, and the newest attempt is the one it shows.
+  const actionable = [
+    ...tasks
+      .filter(
+        (task) =>
+          task.status === "failed" ||
+          ((task.status === "queued" || task.status === "running") && task.cancellable)
+      )
+      .reduce((byLayer, task) => {
+        byLayer.set(task.layerId ?? task.id, task);
+        return byLayer;
+      }, new Map<string, (typeof tasks)[number]>())
+  ];
 
   return (
     <aside
@@ -114,7 +133,7 @@ export function ActivityIndicator() {
         testId="activity-tasks"
         trigger={
           <button type="button" className="activity-rows" aria-label={t("status.activity")}>
-            {rows.map((row) => (
+            {shownRows.map((row) => (
               <span
                 key={row.id}
                 className="activity-row"
@@ -146,8 +165,8 @@ export function ActivityIndicator() {
             cancel, retry, dismiss — lives here instead of on the map. */}
         <div className="activity-tasks">
           {actionable.length === 0 && <p className="activity-tasks-empty">Nic nevyžaduje zásah.</p>}
-          {actionable.map((task) => (
-            <div className="activity-task" key={task.id} data-testid="activity-task">
+          {actionable.map(([key, task]) => (
+            <div className="activity-task" key={key} data-testid="activity-task">
               <span className="activity-task-label">{task.label}</span>
               {(task.error?.message || task.message) && (
                 <span className="activity-task-detail">{task.error?.message ?? task.message}</span>

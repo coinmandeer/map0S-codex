@@ -238,21 +238,28 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    height: 40px;
+    /* The kit's control height rather than a hardcoded 40 px, so the stop field grows to the
+       tap target on a phone like every other field does. The outline is an inset shadow for
+       the same reason the kit's fields use one: a real border eats 2 px of the height the
+       input needs to be tappable. */
+    height: var(--control-h);
     padding-inline: var(--space-4);
-    border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
     background: var(--surface-solid);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
   }
 
   .planner-stop-search-control:focus-within {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
+    box-shadow: inset 0 0 0 2px var(--accent);
   }
 
   .planner-stop-search-control input {
     min-width: 0;
     flex: 1;
+    /* Fill the shell rather than sit inside it on the global input padding: the shell carries
+       the border, so the input has to be the part that is actually tapped. */
+    align-self: stretch;
+    padding: 0;
     border: 0;
     background: none;
     color: var(--text);
@@ -261,24 +268,6 @@
 
   .planner-stop-search-control input:focus {
     outline: none;
-  }
-
-  .planner-stop-clear {
-    display: grid;
-    place-items: center;
-    width: 20px;
-    height: 20px;
-    border: 0;
-    border-radius: var(--radius-pill);
-    background: none;
-    color: var(--text-faint);
-    cursor: pointer;
-    font-size: var(--text-lg);
-  }
-
-  .planner-stop-clear:hover {
-    background: var(--surface-hover);
-    color: var(--text);
   }
 
   .planner-stop-suggestions {

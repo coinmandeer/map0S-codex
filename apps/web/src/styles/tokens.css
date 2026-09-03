@@ -76,6 +76,9 @@
     --control-h: 36px;
     --control-h-lg: 40px; /* top bar, primary CTA */
     --control-h-sm: 32px;
+    /* What a small icon button *looks* like. Separate from `--control-h-sm` because on a phone
+       the box grows to the tap target while the drawn circle stays this size. */
+    --control-visual-sm: 32px;
     /* Minimum comfortable touch target — never shrink interactive chrome below this. */
     --tap-min: 44px;
     --list-row-h: 44px;
@@ -267,13 +270,17 @@
 
   @media (max-width: 899px) {
     :root {
-      --topbar-h: 44px;
+      /* The pill's border and padding come out of this, so 44 px here left the search field —
+         the primary entry point on a phone — at 40 px. 48 px gives the field the tap target. */
+      --topbar-h: 48px;
       --bottom-nav-h: 64px;
       --sidebar-w: 100%;
       --drawer-w: 100%;
-      /* Everything the finger can reach grows to the tap target. */
+      /* Everything the finger can reach grows to the tap target, the small scale included —
+         a 32 px control is a comfortable mouse target and an uncomfortable thumb one. */
       --control-h: var(--tap-min);
       --control-h-lg: var(--tap-min);
+      --control-h-sm: var(--tap-min);
       --list-row-h: var(--tap-min);
     }
   }

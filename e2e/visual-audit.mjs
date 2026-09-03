@@ -116,13 +116,34 @@ function auditPage() {
     if (el.children.length > 0) return false;
     return (el.textContent ?? "").trim().length > 1;
   });
+
+  /** What of an element is actually on screen. A row scrolled past the bottom of a panel still
+   *  reports its full rect, which read as an overlap with the sticky footer below it — it is
+   *  clipped by the scrollport, not drawn over anything. */
+  const onScreen = (el) => {
+    let box = rects.get(el);
+    for (let node = el.parentElement; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      const scrolls = /auto|scroll|hidden/.test(`${style.overflowY} ${style.overflowX}`);
+      if (!scrolls) continue;
+      const port = node.getBoundingClientRect();
+      const top = Math.max(box.top, port.top);
+      const bottom = Math.min(box.bottom, port.bottom);
+      const left = Math.max(box.left, port.left);
+      const right = Math.min(box.right, port.right);
+      if (bottom <= top || right <= left) return null;
+      box = { top, bottom, left, right };
+    }
+    return box;
+  };
   for (let i = 0; i < leaves.length; i += 1) {
     for (let j = i + 1; j < leaves.length; j += 1) {
       const a = leaves[i];
       const b = leaves[j];
       if (a.contains(b) || b.contains(a)) continue;
-      const ra = rects.get(a);
-      const rb = rects.get(b);
+      const ra = onScreen(a);
+      const rb = onScreen(b);
+      if (!ra || !rb) continue;
       const overlapW = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
       const overlapH = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
       if (overlapW <= 2 || overlapH <= 2) continue;
@@ -290,7 +311,11 @@ function auditPage() {
     const l1 = luminance(fg);
     const l2 = luminance(bg);
     const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-    const required = large ? 3 : 4.5;
+    // Icons are drawn with a text font but they are not text: WCAG asks 3:1 of non-text
+    // content, and holding a glyph to 4.5:1 would force the whole icon set darker than the
+    // labels it sits beside.
+    const icon = el.classList.contains("kit-icon") || el.classList.contains("material-symbols-rounded");
+    const required = large || icon ? 3 : 4.5;
     if (ratio + 0.05 < required) {
       findings.push(`contrast ${ratio.toFixed(2)}:1 < ${required}: ${describe(el)}`);
     }
@@ -299,39 +324,78 @@ function auditPage() {
   // ---- Density ----------------------------------------------------------
   // A panel that is mostly bordered boxes reads as boxes rather than as content (§31.1: at most
   // one level of enclosed area per panel).
-  const panel = document.querySelector(".panel-left-body, .shell-right-drawer-body");
-  if (panel) {
+  // Every open surface gets audited, not just the first one in the document: with a drawer over
+  // the mode panel, `querySelector` returned the panel behind it and the drawer — the thing
+  // being photographed — was never checked.
+  for (const panel of document.querySelectorAll(
+    ".panel-left-body, .shell-right-drawer-body, .tiles-sheet-body"
+  )) {
+    if (!visible(panel)) continue;
+    const where = panel.className.trim().split(/\s+/)[0];
     const boxed = [...panel.querySelectorAll("*")].filter((el) => {
       if (!visible(el)) return false;
+      // What §31.1 is about is content in a box in a box. A fill that carries no words is not
+      // one of those boxes — icon badges, basemap thumbnails and the segmented control's
+      // sliding indicator are all painted shapes, and counting them said the Podklady drawer
+      // nested 18 surfaces when what it actually has is 18 little pictures of maps.
+      if (el.getAttribute("aria-hidden") === "true") return false;
+      if ((el.textContent ?? "").trim().length < 2) return false;
       const style = getComputedStyle(el);
-      const hasBorder = Number.parseFloat(style.borderTopWidth) > 0;
+      // A box is bordered on every side. Testing only the top counted the 1 px rule between
+      // settings rows as an enclosure, so a plain list of dividers reported as nesting.
+      const hasBorder = ["Top", "Right", "Bottom", "Left"].every(
+        (side) => Number.parseFloat(style[`border${side}Width`]) > 0
+      );
       const hasFill = (parseColor(style.backgroundColor)?.a ?? 0) > 0.02;
       return (hasBorder || hasFill) && rects.get(el).height > 24;
     });
     const nested = boxed.filter((el) => boxed.some((other) => other !== el && other.contains(el)));
     if (nested.length > 0) {
       findings.push(
-        `nested surfaces: ${nested.length} boxed elements inside another boxed element (${nested
+        `${where} nested surfaces: ${nested.length} boxed elements inside another boxed element (${nested
           .slice(0, 4)
           .map(describe)
           .join(", ")})`
       );
     }
 
-    // §31.3/3: how much the panel asks of the reader before they scroll.
-    const fold = rects.get(panel).top + innerHeight;
+    // §31.3/3: how much the panel asks of the reader before they scroll. The fold is where the
+    // panel stops being visible — `panel.top + innerHeight` put it a screen below the viewport
+    // and counted the whole scrollable panel as if none of it needed scrolling to.
+    const fold = Math.min(rects.get(panel).bottom, innerHeight);
     const aboveFold = [
       ...panel.querySelectorAll("button, a[href], input, select, [role=button], [role=slider]")
     ].filter((el) => visible(el) && rects.get(el).bottom <= fold);
-    if (aboveFold.length > 12) {
-      findings.push(`density: ${aboveFold.length} interactive elements above the fold (max 12)`);
+
+    // What the panel asks of the reader is the number of *things*, not of widgets. A row that
+    // repeats — stop after stop, layer after layer — asks its question once and then again in
+    // the same shape, so each row counts as one; a stop with a field, a clear, a map pick and
+    // a menu is one stop. Unique controls still count individually, which is what the rule is
+    // there to catch.
+    const unit = (el) => {
+      for (let node = el.parentElement; node && node !== panel; node = node.parentElement) {
+        const signature = `${node.tagName}.${(node.className ?? "").trim().split(/\s+/)[0]}`;
+        const twin = [node.previousElementSibling, node.nextElementSibling].some(
+          (sibling) =>
+            sibling &&
+            `${sibling.tagName}.${(sibling.className ?? "").trim().split(/\s+/)[0]}` === signature
+        );
+        if (twin) return node;
+      }
+      return el;
+    };
+    const units = new Set(aboveFold.map(unit));
+    if (units.size > 12) {
+      findings.push(
+        `${where} density: ${units.size} interactive units above the fold (max 12, from ${aboveFold.length} controls)`
+      );
     }
     const primary = aboveFold.filter(
       (el) => el.matches("[data-variant=filled]") || el.classList.contains("btn-accent")
     );
     if (primary.length > 1) {
       findings.push(
-        `density: ${primary.length} primary buttons above the fold (max 1): ${primary
+        `${where} density: ${primary.length} primary buttons above the fold (max 1): ${primary
           .slice(0, 4)
           .map(describe)
           .join(", ")}`
@@ -346,14 +410,27 @@ function auditPage() {
         (el.textContent ?? "").trim().length > 1 &&
         !el.closest("[role=dialog],[data-popup]")
     );
-    const edges = new Map();
+    // Only the leftmost text on each line is where a row "starts". Measuring every text node
+    // put right-aligned accordion chevrons and centred button labels on the same ruler as the
+    // labels they sit beside, and those cannot be on a left grid by construction.
+    const lineStart = new Map();
     for (const el of rows) {
-      const left = Math.round(rects.get(el).left - rects.get(panel).left);
-      edges.set(left, (edges.get(left) ?? 0) + 1);
+      const rect = rects.get(el);
+      const line = Math.round(rect.top / 4);
+      const left = rect.left - rects.get(panel).left;
+      if (!lineStart.has(line) || left < lineStart.get(line)) lineStart.set(line, left);
     }
-    const offGrid = [...edges.entries()].filter(([left, count]) => left % 4 !== 0 && count >= 2);
+    const edges = new Map();
+    for (const left of lineStart.values()) {
+      const rounded = Math.round(left);
+      edges.set(rounded, (edges.get(rounded) ?? 0) + 1);
+    }
+    // The spacing scale in `tokens.css` steps in 2 px, so 2 px is the grid to hold text to.
+    // Checking a 4 px one flagged every legitimate `--space-5` indent and buried the real
+    // finding: an odd offset, which only comes from fractional layout.
+    const offGrid = [...edges.entries()].filter(([left, count]) => left % 2 !== 0 && count >= 2);
     for (const [left, count] of offGrid.slice(0, 4)) {
-      findings.push(`alignment: ${count} text nodes start at ${left} px, off the 4 px grid`);
+      findings.push(`${where} alignment: ${count} text nodes start at ${left} px, off the 2 px grid`);
     }
   }
 
@@ -409,6 +486,16 @@ for (const viewport of VIEWPORTS) {
 
     for (const state of STATES) {
       if (only && !only.includes(state.id)) continue;
+      // Each state has to be the state it claims to be. Without this the layer and mode
+      // residue from the previous capture came along, so "Layers drawer" was photographed
+      // over whichever panel state 08 happened to leave open.
+      await page
+        .evaluate(() => {
+          window.sessionStorage.clear();
+          window.localStorage.clear();
+        })
+        // `about:blank` has no storage to clear before the first capture.
+        .catch(() => {});
       await page.goto(`${baseUrl}${state.url}`, { waitUntil: "domcontentloaded" });
       await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
       await page.evaluate(() => document.fonts.ready);

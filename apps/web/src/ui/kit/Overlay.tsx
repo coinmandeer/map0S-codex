@@ -108,7 +108,16 @@ export function InfoTip({
       align="end"
       width={288}
       testId={testId}
-      trigger={<IconButton icon="info" label={label} size={size} variant="plain" round />}
+      trigger={
+        <IconButton
+          icon="info"
+          label={label}
+          size={size}
+          variant="plain"
+          round
+          className="kit-infotip-trigger"
+        />
+      }
     >
       <div className="kit-infotip-body">{children}</div>
     </Popover>

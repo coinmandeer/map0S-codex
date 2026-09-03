@@ -329,7 +329,7 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
             label={
               capabilities?.cml
                 ? "Ollama Cloud · rychlý a silný model přes server"
-                : "deterministický režim bez modelu"
+                : "Bez modelu — odpovídají jen data"
             }
           />
         }
@@ -355,8 +355,8 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     render: ({ capabilities }) => (
       <Row
         label="Aktivní poskytovatelé"
-        info="Poskytovatele geokódování a tras volí server podle dostupných klíčů. Tady je jen vidíš."
-        value={capabilities?.mapy ? "Mapy.com + OSM + OSRM" : "OSM + OSRM"}
+        info="Poskytovatele geokódování a tras volí server podle dostupných klíčů. Tady je jen vidíš. Trasy počítá OSRM, dobrodružné BRouter."
+        value={capabilities?.mapy ? "Mapy.com + OpenStreetMap" : "OpenStreetMap"}
         testId="settings-active-providers"
       />
     )

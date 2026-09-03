@@ -264,6 +264,30 @@
     height: var(--control-h-sm);
   }
 
+  /* A finger needs 44 px; the interface does not. On a phone the small icon button keeps its
+     32 px look — the state layer is what the eye reads as the button — while its box grows to
+     the tap target, so a row of icons stays compact without being fiddly to hit. */
+  @media (max-width: 899px) {
+    .kit-icon-button[data-size="sm"]::after {
+      inset: calc((var(--tap-min) - var(--control-visual-sm)) / 2);
+    }
+
+    /* The ring has to follow the visible circle rather than the hit area, or the button would
+       look 44 px only while focused. */
+    .kit-icon-button[data-size="sm"]:focus-visible {
+      outline: none;
+    }
+
+    .kit-icon-button[data-size="sm"]:focus-visible::before {
+      content: "";
+      position: absolute;
+      inset: calc((var(--tap-min) - var(--control-visual-sm)) / 2);
+      border-radius: inherit;
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+  }
+
   .kit-icon-button[data-size="lg"] {
     width: var(--control-h-lg);
     height: var(--control-h-lg);
@@ -271,6 +295,32 @@
 
   .kit-icon-button[data-round] {
     border-radius: var(--radius-pill);
+  }
+
+  /* A round 32 px target has nothing to give, and squeezed to 18 px it stops being reliably
+     clickable. Scoped to the info trigger rather than every icon button: rows elsewhere — the
+     activity popover's, for one — do rely on their buttons shrinking to fit. */
+  .kit-infotip-trigger {
+    flex: none;
+  }
+
+  /* Eight info icons down a list of rows is the same clutter as eight paragraphs, only quieter:
+     §21.1 moved the explanations behind the icon, and then the icons became the wall. Where
+     there is a pointer the icon waits until its row is under it; a keyboard brings it back on
+     focus, and touch — which has no hover to reveal anything — keeps it. */
+  @media (hover: hover) {
+    .layer-row .kit-infotip-trigger,
+    .settings-row .kit-infotip-trigger {
+      opacity: 0;
+      transition: opacity var(--dur-fast) var(--ease-standard);
+    }
+
+    .layer-row:hover .kit-infotip-trigger,
+    .layer-row:focus-within .kit-infotip-trigger,
+    .settings-row:hover .kit-infotip-trigger,
+    .settings-row:focus-within .kit-infotip-trigger {
+      opacity: 1;
+    }
   }
 
   .kit-icon-button:hover {
@@ -309,14 +359,18 @@
     display: inline-grid;
     grid-template-columns: repeat(var(--segment-count, 2), minmax(0, 1fr));
     align-items: stretch;
-    min-height: var(--control-h);
+    /* The height token has to size the *segments*, not the track: the 3 px inset the indicator
+       floats in was otherwise taken out of them, leaving 26 px buttons in a 32 px control, and
+       the segment is what gets tapped. Adding the inset to `min-height` rather than switching
+       to `content-box`, which would also push the padding outside `[data-block]`'s 100 %. */
+    min-height: calc(var(--control-h) + 2 * 3px);
     padding: 3px;
     border-radius: var(--radius-sm);
     background: var(--surface-sunken);
   }
 
   .kit-segmented[data-size="sm"] {
-    min-height: var(--control-h-sm);
+    min-height: calc(var(--control-h-sm) + 2 * 3px);
   }
 
   .kit-segmented[data-block] {

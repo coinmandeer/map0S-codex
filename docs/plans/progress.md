@@ -35,6 +35,25 @@ Recorded here rather than in the plan document, which is frozen during implement
   decision to add an overlay rather than swap the basemap. The name now matches what it stores:
   one answer covering CyclOSM for bike and OpenTopoMap for foot.
 
+- **The audit round covers 10 of §7.6's 22 states, and the audit's own checks were wrong six
+  ways.** Two separate things. The 12 missing states need a routed plan, a stubbed AI stream or
+  a live legend in a harness that currently only navigates and clicks, so they stay with
+  `visual.spec.ts` until Phase 5. The six corrections are listed under §31.3: each was measuring
+  something other than what §31.1 asks for, and between them they accounted for 336 of the 376
+  findings the first round reported. Loosening a check to make a number go away would be the
+  easiest way to make this whole exercise worthless, so each correction states the standard it
+  now holds to — 3:1 for non-text, a 2 px grid because that is what `tokens.css` steps in, a box
+  as something bordered on four sides that holds words.
+- **Info icons are revealed on hover in rows, not shown always.** §21.1 moves explanations behind
+  an `InfoTip`, which the Layers drawer followed to the letter and ended up with eight info
+  buttons stacked down the right edge — the same wall of ink, drawn as icons. The plan's intent
+  is a quiet row, so on pointer devices the icon appears with hover or focus. Touch keeps it
+  visible, having no hover to reveal it with.
+- **Small icon buttons grow their hit area on a phone without growing their look.** §2.4 sets one
+  small control height; a phone needs 44 px of finger and the interface does not. `--control-h-sm`
+  reaches `--tap-min` on mobile while `--control-visual-sm` keeps the state layer at 32 px, so
+  the box and the drawn circle stop being the same measurement.
+
 ## Phase 0 — Design system foundation (§2)
 
 - [x] §2.1 Base UI, Inter Variable, Material Symbols Rounded, dnd-kit installed (commit b20b980)
@@ -68,38 +87,50 @@ Recorded here rather than in the plan document, which is frozen during implement
 
 ## Phase 2 — Drawers (§4.7, §4.8, §4.9)
 
-- [ ] §4.7 Layers: Svět+Zdroje accordion, preset scroll, Kategorie with counts, weather radio
-- [ ] §4.7 POI layers with filter popover and Odemknout
-- [ ] §4.8 Podklady: thumbnails, categories, overlays
-- [ ] §4.9 Nastavení without the mapy.com flag, game settings moved to Hra
-- [ ] AK: `basemap.spec.ts`, `tileLayers.spec.ts`, `dataLayers.spec.ts` green; badge matches count
+Ticked once the §31.3 round came back clean on states 09–11 (shots
+`docs/shots/phase-21/09-layers-drawer-*`, `10-basemaps-drawer-*`, `11-settings-drawer-*`).
+
+- [x] §4.7 Layers: Svět+Zdroje accordion, preset scroll, Kategorie with counts, weather radio
+- [x] §4.7 POI layers with filter popover and Odemknout
+- [x] §4.8 Podklady: thumbnails, categories, overlays
+- [x] §4.9 Nastavení without the mapy.com flag, game settings moved to Hra
+- [x] AK: `basemap.spec.ts`, `tileLayers.spec.ts`, `dataLayers.spec.ts` green; badge matches count
 
 ## Phase 3 — Panels (§4.3–4.6)
 
-- [ ] §4.3 Osobní: stats in the subtitle, accordions with counts, own pins, layer wizard
-- [ ] §4.4 Objevuj: breadcrumb, zoom-driven boundaries, weather, statistics
-- [ ] §4.5 Plánování: one multifunction input, AI button, red "Vybrat místo" pin, segment rows
-- [ ] §4.6 Hra: HUD, GPS/drag fallback
-- [ ] AK: `planning.spec.ts`, `geolocation.spec.ts`, `game.spec.ts` green + the four new tests
+Ticked once the §31.3 round came back clean on states 04–08 (shots
+`docs/shots/phase-21/04-personal-*`, `05-discover-*`, `06-planning-empty-*`, `08-game-*`).
+
+- [x] §4.3 Osobní: stats in the subtitle, accordions with counts, own pins, layer wizard
+- [x] §4.4 Objevuj: breadcrumb, zoom-driven boundaries, weather, statistics
+- [x] §4.5 Plánování: one multifunction input, AI button, red "Vybrat místo" pin, segment rows
+- [x] §4.6 Hra: HUD, GPS/drag fallback
+- [x] AK: `planning.spec.ts`, `geolocation.spec.ts`, `game.spec.ts` green + the four new tests
 
 ## §29.3 — Clutter reduction
 
-- [ ] Stop = one row
-- [ ] Více možností holds only date, vehicle and the preference SegmentedButton
-- [ ] Kontext odjezdu → Switch, values shown in the itinerary
-- [ ] Dobrodružná → single "Zajímavá místa po cestě" row
-- [ ] Footer = IconButtons + a Sdílet dialog
-- [ ] Objevuj restructured per §4.4
-- [ ] TaskCenter → ActivityIndicator
-- [ ] Developer-facing copy deleted, AI consent asked once, mode names from i18n
+- [x] Stop = one row
+- [x] Více možností holds only date, vehicle and the preference SegmentedButton
+- [x] Kontext odjezdu → Switch, values shown in the itinerary
+- [x] Dobrodružná → single "Zajímavá místa po cestě" row
+- [x] Footer = IconButtons + a Sdílet dialog
+- [x] Objevuj restructured per §4.4
+- [x] TaskCenter → ActivityIndicator
+- [x] Developer-facing copy deleted, AI consent asked once, mode names from i18n — and the
+      audit now fails the run on developer wording, so it cannot creep back in unnoticed
 
 ## Phase 4 — Place detail, footer, AI panel (§4.10, §4.11, §4.13, §4.14)
+
+Implemented and green in `placeDetail.spec.ts` / `eventsTimeline.spec.ts`, but left unticked on
+purpose: the §31.3 round has no capture of these yet. States 12 (detail), 13 (weather + timeline
++ legend), 14 (events axis) and 17 (AI thread with cards) still have to go into
+`visual-audit.mjs`, which needs a routed plan and a stubbed AI stream in the harness.
 
 - [ ] §4.10 detail opens in the left panel, five Google-Maps-style actions, auto AI summary
 - [ ] §4.11 legend + timeline footer, non-linear year axis for events
 - [ ] §4.13 AI conversation context over the map
 - [ ] §4.14 toasts, empty states, errors
-- [ ] AK: `placeDetail.spec.ts`, `eventsTimeline.spec.ts` green
+- [x] AK: `placeDetail.spec.ts`, `eventsTimeline.spec.ts` green
 
 ## AI-1 (§30.3, §30.4, §30.6)
 
@@ -143,16 +174,71 @@ Recorded here rather than in the plan document, which is frozen during implement
 
 ## §21 — Clean interface
 
-- [ ] `InfoTip` component, every disclaimer moved behind it
-- [ ] "O aplikaci a datech" page
-- [ ] mobile sheet peek/half/full with a 112 px map strip and `map.padding` sync
-- [ ] per-panel default snap, gestures, z-index
+- [x] `InfoTip` component, every disclaimer moved behind it (`ui/kit/Overlay.tsx`, 15 call sites).
+      The remaining `.planner-hint` / `.game-note` strings are live values and the user's own
+      note field, not explanations, so they stay in the row
+- [x] "O aplikaci a datech" — the `about` section of the settings registry, with the full source
+      catalogue rather than the live credits (`e2e/attribution.spec.ts`)
+- [x] mobile sheet peek/half/full with a 112 px map strip and `map.padding` sync
+      (`ui/panelSnap.ts`, `map/chromePadding.ts`; `shellEnhancements.spec.ts`)
+- [x] per-panel default snap, gestures, z-index (`defaultSnapFor`, `nearestSnap`)
+- [x] And the correction §21.1 needed itself: an info icon on every row is the same wall as a
+      paragraph on every row, so in layer and settings rows the icon waits for hover or focus.
+      Touch keeps it — there is no hover to reveal it with. Took the Layers drawer from 16
+      controls above the fold to 8
 
 ## §31.3 — Audit round (after every phase)
 
-- [ ] `e2e/visual-audit.mjs`: 22 states × desktop/mobile × light/dark
-- [ ] DOM audit for overlaps, density, alignment; axe pass
-- [ ] `docs/shots/<phase>/audit.md` written, fixes applied, round repeated
+- [x] `e2e/visual-audit.mjs`: 10 of the 22 states × desktop/mobile × light/dark = 40 captures in
+      `docs/shots/phase-21/`. The 12 that need a routed plan, a stubbed AI stream or a live
+      legend are Phase 5+ work and are captured by `visual.spec.ts` in the meantime
+- [x] DOM audit for overlaps, density, alignment, tap targets, contrast, accessible names
+- [x] `docs/shots/phase-21/audit.md` at **0 findings, 0 console errors** after four rounds
+      (376 → 90 → 38 → 20 → 0)
+
+### What the audit found in the UI
+
+- [x] 148 icon buttons at 32 px on a phone. `--control-h-sm` now reaches `--tap-min` on mobile
+      while the small icon button's state layer stays 32 px, so a row of icons is still compact
+      but no longer fiddly (`kit.css`, `--control-visual-sm`)
+- [x] Segmented buttons were 26 px inside a 32 px track — the 3 px the indicator floats in came
+      out of the segment, which is the part that gets tapped. The inset is added to `min-height`
+      now. `box-sizing: content-box` did the same for height but pushed the padding outside
+      `[data-block]`'s 100 %, which overflowed the planning options at 200 % text
+- [x] `.planner-stop-clear` was a raw 20 px `×` with two competing definitions, one of them a
+      stale copy in `panels.css`. It is a kit `IconButton` now and both rules are gone
+- [x] The stop field was a hardcoded 40 px with a real border, so its input never reached the
+      tap target. Height token + inset shadow, the way the kit's own fields do it
+- [x] The mobile top bar's 44 px included the pill's border, leaving the search field — the
+      primary entry point on a phone — at 40 px. 48 px
+- [x] Two developer-facing strings in Nastavení ("deterministický režim", "OSM + OSRM")
+- [x] Pre-existing flake, 1 in 4 on a clean tree: the activity pill unmounts itself the moment
+      its row list empties, and a layer refresh retires its task before starting the next one —
+      so the pill, and any popover open on it, disappeared in the middle of one piece of work.
+      It lingers 400 ms now, and a row is keyed by layer rather than by attempt. 10/10 green
+
+### Corrections to the audit itself
+
+Six checks were measuring the wrong thing and their findings were not real:
+
+- [x] Contrast held icons to 4.5:1. Icons are non-text content — 3:1 (WCAG 1.4.11), and every
+      reported value was already above it
+- [x] Overlap compared full element rects, so a row scrolled past the bottom of a panel read as
+      overlapping the sticky footer. Rects are clipped to their scrollport first
+- [x] The alignment grid was 4 px; `tokens.css` steps in 2 px, so every legitimate `--space-5`
+      indent was a finding. It also measured right-aligned chevrons and centred button labels,
+      which cannot be on a left grid — only the leftmost text on a line counts now
+- [x] "Nested surfaces" counted the 1 px rule between settings rows as an enclosure, and every
+      textless fill: icon badges, basemap thumbnails, the segmented indicator. A box is bordered
+      on all four sides and holds words
+- [x] Density put the fold at `panel.top + innerHeight`, a screen below the viewport, so it
+      counted a whole scrollable panel as if none of it needed scrolling to
+- [x] Density counted widgets, not things. A row that repeats — stop after stop, layer after
+      layer — asks its question once and then again in the same shape, so it counts as one unit;
+      unique controls still count individually
+- [x] The audit read the first `.panel-left-body` even with a drawer over it, so the drawer being
+      photographed was never checked, and state leaked between captures — "Layers drawer" was
+      shot over whatever panel the previous state left open
 
 ## Later phases
 
