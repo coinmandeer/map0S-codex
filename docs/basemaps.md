@@ -28,6 +28,15 @@ prohlížeč tahá sám.
 | EOX Terrain Light              | Reliéf bez silnic                 | CC-BY-SA-4.0                                         |
 | NASA GIBS (VIIRS)              | Dnešní satelitní snímek planety   | Public domain, nízké rozlišení                       |
 | Esri World Imagery             | Ostré letecké snímky              | Veřejná služba Esri; pro provoz si zařiď účet (níže) |
+| OpenFreeMap Dark               | Tmavý vektorový styl bez klíče    | Stejná infra jako OpenFreeMap výše                   |
+| OSM France                     | Francouzský komunitní OSM styl    | CC-BY-SA-2.0, fair use                               |
+| ÖPNV-Karte                     | Mapa veřejné dopravy              | CC-BY-SA-2.0, do zoomu 18                            |
+| OSM Humanitarian (HOT)         | Vysoký kontrast pro krizové mapy  | CC-BY-SA-2.0                                         |
+| CyclOSM                        | Cyklomapa (trasy, povrchy, pásy)  | CC-BY-SA-2.0                                         |
+
+Náhledy karet vykresluje `npm run basemap-thumbs` do `apps/web/public/basemaps/*.webp` — jen
+pro podklady, jejichž licence dovoluje šířit vykreslený vzorek; ostatní karty mají schematický
+fallback.
 
 ## Kde se zaregistrovat — bez placení
 

@@ -42,6 +42,7 @@ export type MapAiToolHandler = (
 export type MapAiToolHandlers = Record<DelegatedMapAiToolName, MapAiToolHandler>;
 
 export interface AiNearestPoiRecord {
+  sourceFeatureId?: string;
   id: string;
   layerId: string;
   title: string;
@@ -185,6 +186,12 @@ const contracts: readonly CatalogContract[] = [
       required: ["center", "zoom", "activeLayerIds"],
       properties: {
         center: pointSchema,
+        bbox: {
+          type: "array",
+          minItems: 4,
+          maxItems: 4,
+          items: { type: "number", minimum: -180, maximum: 180 }
+        },
         zoom: { type: "number", minimum: 0, maximum: 24 },
         activeLayerIds: stringArray(100)
       }
@@ -194,9 +201,9 @@ const contracts: readonly CatalogContract[] = [
     requiredPermissions: ["map:read"],
     dataClasses: ["public"],
     requiresPreciseLocation: true,
-    outputFields: ["center", "zoom", "activeLayerIds"],
+    outputFields: ["center", "bbox", "zoom", "activeLayerIds"],
     redactInputPaths: [],
-    redactOutputPaths: ["center"],
+    redactOutputPaths: ["center", "bbox"],
     timeoutMs: 1_000,
     maxResponseBytes: 16_384,
     quotaCost: 1
@@ -289,6 +296,7 @@ const contracts: readonly CatalogContract[] = [
             properties: {
               id: identifierSchema,
               layerId: identifierSchema,
+              sourceFeatureId: { type: "string", minLength: 1, maxLength: 256 },
               title: { type: "string", minLength: 1, maxLength: 500 },
               longitude: longitudeSchema,
               latitude: latitudeSchema,
@@ -360,6 +368,7 @@ const contracts: readonly CatalogContract[] = [
             properties: {
               id: identifierSchema,
               layerId: identifierSchema,
+              sourceFeatureId: { type: "string", minLength: 1, maxLength: 256 },
               title: { type: "string", minLength: 1, maxLength: 500 },
               category: { type: "string", minLength: 1, maxLength: 128 },
               longitude: longitudeSchema,
@@ -675,6 +684,7 @@ const contracts: readonly CatalogContract[] = [
             properties: {
               id: identifierSchema,
               layerId: identifierSchema,
+              sourceFeatureId: { type: "string", minLength: 1, maxLength: 256 },
               title: { type: "string", minLength: 1, maxLength: 500 },
               category: { type: "string", minLength: 1, maxLength: 128 },
               longitude: longitudeSchema,
@@ -813,6 +823,7 @@ const contracts: readonly CatalogContract[] = [
             properties: {
               id: identifierSchema,
               layerId: identifierSchema,
+              sourceFeatureId: { type: "string", minLength: 1, maxLength: 256 },
               title: { type: "string", minLength: 1, maxLength: 500 },
               startsAt: { type: "string", minLength: 1, maxLength: 64 },
               sourceId: identifierSchema
@@ -1304,6 +1315,7 @@ async function findNearestPoi(
     )
     .map((record) => ({
       id: record.id,
+      ...(record.sourceFeatureId ? { sourceFeatureId: record.sourceFeatureId } : {}),
       layerId: record.layerId,
       title: record.title,
       category: record.category,

@@ -133,6 +133,7 @@ export function SegmentedButton<T extends string>({
   size = "md",
   block = false,
   iconsOnly = false,
+  stacked = false,
   ariaLabel,
   testId
 }: {
@@ -141,6 +142,8 @@ export function SegmentedButton<T extends string>({
   onChange: (next: T) => void;
   size?: "sm" | "md";
   block?: boolean;
+  /** Puts the icon above the label. Four choices in a narrow panel fit as columns, not rows. */
+  stacked?: boolean;
   /** Collapses to icons plus tooltips. The caller decides, because the width at which the
    *  labels stop fitting depends on how much else shares the row. */
   iconsOnly?: boolean;
@@ -158,6 +161,7 @@ export function SegmentedButton<T extends string>({
       data-size={size}
       data-block={block || undefined}
       data-icons-only={iconsOnly || undefined}
+      data-stacked={stacked || undefined}
       aria-label={ariaLabel}
       data-testid={testId}
       value={[value]}

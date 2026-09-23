@@ -34,6 +34,12 @@ interface AiGatewayOptions {
   onTrace?: (trace: AiRunTrace) => void;
 }
 
+interface SharedRun {
+  promise: Promise<AiRunOutcome<unknown>>;
+  controller: AbortController;
+  subscribers: Set<symbol>;
+}
+
 interface QueueWaiter {
   signal?: AbortSignal;
   resolve: (result: "acquired" | "aborted") => void;
@@ -132,7 +138,7 @@ export class AiGateway {
   private readonly maxQueuedRuns: number;
   private readonly onTrace?: (trace: AiRunTrace) => void;
   private readonly cache = new Map<string, CacheEntry>();
-  private readonly inFlight = new Map<string, Promise<AiRunOutcome<unknown>>>();
+  private readonly inFlight = new Map<string, SharedRun>();
   private readonly queue: QueueWaiter[] = [];
   private activeExecutions = 0;
 
@@ -142,13 +148,14 @@ export class AiGateway {
       throw new Error("Duplicate AI adapter id");
     }
     this.adapters = new Map(entries);
-    this.maxConcurrentRuns = Math.max(1, Math.floor(options.maxConcurrentRuns ?? 3));
-    this.maxQueuedRuns = Math.max(0, Math.floor(options.maxQueuedRuns ?? 20));
+    this.maxConcurrentRuns = Math.max(1, Math.floor(options.maxConcurrentRuns ?? 2));
+    this.maxQueuedRuns = Math.max(0, Math.floor(options.maxQueuedRuns ?? 8));
     this.onTrace = options.onTrace;
   }
 
   reset(): void {
     this.cache.clear();
+    for (const run of this.inFlight.values()) run.controller.abort();
     this.inFlight.clear();
   }
 
@@ -316,40 +323,87 @@ export class AiGateway {
     }
     if (hit) this.cache.delete(key);
 
-    const pending = this.inFlight.get(key);
-    if (pending) {
-      const shared = (await pending) as AiRunOutcome<T>;
-      return shared.status === "succeeded"
-        ? { ...shared, meta: { ...shared.meta, runId, cached: true } }
-        : shared;
+    let shared = this.inFlight.get(key);
+    const joined = Boolean(shared && !shared.controller.signal.aborted);
+    if (!shared || shared.controller.signal.aborted) {
+      const controller = new AbortController();
+      const entry: SharedRun = {
+        controller,
+        subscribers: new Set(),
+        promise: Promise.resolve({ status: "aborted", meta: baseMeta(request, runId) })
+      };
+      entry.promise = this.executeQueued(
+        { ...request, signal: controller.signal },
+        adapter,
+        sources,
+        combinedPrompt,
+        runId,
+        startedAt
+      )
+        .then((outcome) => {
+          if (outcome.status === "succeeded" && !controller.signal.aborted) {
+            if (this.cache.size >= MAX_CACHE_ENTRIES) {
+              const oldest = this.cache.keys().next().value;
+              if (oldest) this.cache.delete(oldest);
+            }
+            this.cache.set(key, {
+              expiresAt: Date.now() + Math.max(0, request.ttlMs ?? DEFAULT_TTL_MS),
+              outcome: outcome as AiRunOutcome<unknown> & { status: "succeeded" }
+            });
+          }
+          return outcome;
+        })
+        .finally(() => {
+          if (this.inFlight.get(key) === entry) this.inFlight.delete(key);
+        });
+      this.inFlight.set(key, entry);
+      shared = entry;
     }
-
-    const execution = this.executeQueued(
-      request,
-      adapter,
-      sources,
-      combinedPrompt,
-      runId,
-      startedAt
-    );
-    this.inFlight.set(key, execution as Promise<AiRunOutcome<unknown>>);
-    let outcome: AiRunOutcome<T>;
-    try {
-      outcome = await execution;
-    } finally {
-      this.inFlight.delete(key);
-    }
-    if (outcome.status === "succeeded") {
-      if (this.cache.size >= MAX_CACHE_ENTRIES) {
-        const oldest = this.cache.keys().next().value;
-        if (oldest) this.cache.delete(oldest);
-      }
-      this.cache.set(key, {
-        expiresAt: Date.now() + Math.max(0, request.ttlMs ?? DEFAULT_TTL_MS),
-        outcome: outcome as AiRunOutcome<unknown> & { status: "succeeded" }
-      });
-    }
-    return outcome;
+    const entry = shared;
+    return new Promise<AiRunOutcome<T>>((resolve, reject) => {
+      const subscriber = Symbol();
+      entry.subscribers.add(subscriber);
+      let settled = false;
+      const detach = () => {
+        request.signal?.removeEventListener("abort", abort);
+        entry.subscribers.delete(subscriber);
+      };
+      const abort = () => {
+        if (settled) return;
+        settled = true;
+        detach();
+        if (!entry.subscribers.size) {
+          entry.controller.abort();
+          if (this.inFlight.get(key) === entry) this.inFlight.delete(key);
+        }
+        resolve(failure(request, runId, "aborted", startedAt));
+      };
+      request.signal?.addEventListener("abort", abort, { once: true });
+      entry.promise.then(
+        (result) => {
+          if (settled) return;
+          settled = true;
+          detach();
+          const outcome = result as AiRunOutcome<T>;
+          resolve(
+            outcome.status === "succeeded"
+              ? {
+                  ...outcome,
+                  meta: { ...outcome.meta, runId, cached: joined || outcome.meta.cached }
+                }
+              : outcome
+          );
+        },
+        (error) => {
+          if (!settled) {
+            settled = true;
+            detach();
+            reject(error);
+          }
+        }
+      );
+      if (request.signal?.aborted) abort();
+    });
   }
 
   private trace<T>(request: AiGatewayRequest<T>, outcome: AiRunOutcome<T>): void {

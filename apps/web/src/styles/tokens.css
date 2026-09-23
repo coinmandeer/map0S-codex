@@ -101,6 +101,10 @@
     --sidebar-w-open: 0px;
     --drawer-w-open: 0px;
     --bottom-nav-h: 0px;
+    /* Vertical space the floating desktop mode switcher occupies, gap included, published by
+       `DesktopModeBar` while it is on screen. Zero on a phone, where `--bottom-nav-h` is the
+       same measurement for the navigation bar. */
+    --modebar-bottom-h: 0px;
     /* Height of the open mobile sheet, published by PanelShell while it is on screen (§21.2).
        The map's bottom chrome rides on top of it. */
     --sheet-h: 0px;
@@ -159,9 +163,13 @@
     --surface: rgba(255, 255, 255, 0.92);
     --surface-solid: #ffffff;
     --surface-elevated: #ffffff;
+    --surface-raised: #ffffff;
     --surface-sunken: #f1f3f4;
+    --surface-inverse: #101114;
     --surface-hover: rgba(31, 31, 31, 0.06);
     --text: #1f1f1f;
+    --text-primary: #1f1f1f;
+    --text-inverse: #ffffff;
     --text-muted: #5f6368;
     /* The lightest text in the system, and still 4.5:1 on `--surface-solid`. The previous
        #9aa0a6 was 2.4:1, which the audit caught on every supporting line in a panel — a
@@ -216,9 +224,13 @@
     --surface: rgba(26, 29, 33, 0.92);
     --surface-solid: #1a1d21;
     --surface-elevated: #22262b;
+    --surface-raised: #22262b;
     --surface-sunken: #15181b;
+    --surface-inverse: #050608;
     --surface-hover: rgba(255, 255, 255, 0.08);
     --text: #e8eaed;
+    --text-primary: #e8eaed;
+    --text-inverse: #ffffff;
     --text-muted: #9aa0a6;
     --text-faint: #878c92;
     --accent: #8ab4f8;

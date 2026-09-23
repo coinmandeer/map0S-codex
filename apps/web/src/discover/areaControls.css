@@ -1,0 +1,194 @@
+.area-controls {
+  position: absolute;
+  z-index: 25;
+  top: calc(env(safe-area-inset-top, 0px) + 76px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(420px, calc(100vw - 112px));
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface-solid, #fff);
+  color: var(--text, #172033);
+  box-shadow: 0 3px 18px #0002;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  pointer-events: auto;
+}
+.area-controls label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.area-controls select,
+.area-controls button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid #8885;
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-height: 36px;
+}
+.area-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.area-controls details,
+.area-controls p {
+  flex-basis: 100%;
+  margin: 0;
+}
+.area-controls summary {
+  cursor: pointer;
+}
+.area-controls button:hover {
+  background: #2563eb18;
+}
+.area-controls button:focus-visible,
+.area-controls select:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+@media (max-width: 600px) {
+  .area-controls {
+    top: calc(env(safe-area-inset-top, 0px) + 64px);
+    max-width: calc(100vw - 100px);
+    font-size: 12px;
+  }
+  .area-controls button {
+    min-height: 44px;
+  }
+}
+
+.area-guide {
+  max-height: 35vh;
+  overflow: auto;
+  flex-basis: 100%;
+  overscroll-behavior: contain;
+}
+.area-guide p {
+  margin: 6px 0;
+}
+
+.cluster-choices {
+  top: auto;
+  bottom: 96px;
+  z-index: 30;
+}
+
+.area-layer-notices {
+  flex-basis: 100%;
+  max-height: 88px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.area-layer-notices .layer-notice {
+  box-shadow: none;
+  padding: 6px 0;
+  background: transparent;
+  border: 0;
+  font-size: 12px;
+}
+
+.chrome-bar .borders-control {
+  position: relative;
+  inset: auto;
+  transform: none;
+  max-width: none;
+  flex: none;
+  padding: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.borders-control .borders-options {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: min(300px, calc(100vw - 32px));
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  background: var(--surface-solid, #fff);
+  border-radius: 14px;
+  box-shadow: 0 4px 24px #0003;
+}
+.borders-control .borders-options button {
+  min-height: 44px;
+}
+.borders-control .borders-options small {
+  line-height: 1.5;
+}
+@media (max-width: 760px) {
+  .borders-label {
+    display: none;
+  }
+  .chrome-bar .borders-control > button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+.chrome-top:has(.borders-options) {
+  z-index: var(--z-popover);
+}
+@media (max-width: 600px) {
+  .chrome-top .chrome-bar-slot {
+    left: calc(12px + var(--safe-left));
+    right: calc(72px + var(--safe-right));
+  }
+  .chrome-top:has(.chrome-hamburger) .chrome-bar-slot {
+    left: calc(64px + var(--safe-left));
+  }
+  .chrome-top .borders-control .borders-options {
+    width: min(280px, calc(100vw - 112px));
+  }
+}
+
+/* Borders owns a map-corner control; panels publish their occupied space. */
+.area-controls.borders-control {
+  position: absolute;
+  top: auto;
+  right: auto;
+  left: calc(var(--sidebar-w-open, 0px) + 16px + var(--safe-left, 0px));
+  bottom: calc(88px + var(--safe-bottom, 0px));
+  transform: none;
+  padding: 0;
+  max-width: none;
+  border-radius: 12px;
+  z-index: var(--z-topbar, 25);
+}
+.area-controls.borders-control > button {
+  width: 44px;
+  height: 44px;
+  font-size: 24px;
+}
+.area-controls.borders-control .borders-options {
+  top: auto;
+  bottom: 56px;
+  left: 0;
+  right: auto;
+  width: min(300px, calc(100vw - 48px));
+}
+@media (max-width: 600px) {
+  .area-controls.borders-control {
+    left: calc(12px + var(--safe-left, 0px));
+    bottom: calc(var(--sheet-h, 0px) + 80px + var(--safe-bottom, 0px));
+  }
+}
+.area-controls.borders-control:has(.borders-options) {
+  z-index: var(--z-popover, 60);
+}
+@media (max-width: 600px) {
+  .area-controls.borders-control .borders-options {
+    position: fixed;
+    top: calc(72px + var(--safe-top, 0px));
+    bottom: auto;
+    left: 12px;
+    width: calc(100vw - 84px);
+    max-height: calc(100dvh - 160px);
+    overflow: auto;
+  }
+}

@@ -2,6 +2,7 @@ import { type ReactNode } from "react";
 import { Toast as BaseToast } from "@base-ui/react/toast";
 import { Icon, type IconName } from "./Icon";
 import { IconButton } from "./Button";
+import { t } from "../../i18n";
 
 /** Toasts live outside React state so non-component code — a failed layer fetch, a finished
  *  import job — can raise one without a hook. */
@@ -67,7 +68,9 @@ function ToastList() {
               <BaseToast.Description className="kit-toast-description" />
             </div>
             {toast.actionProps && <BaseToast.Action className="kit-toast-action" />}
-            <BaseToast.Close render={<IconButton icon="close" label="Zavřít" size="sm" round />} />
+            <BaseToast.Close
+              render={<IconButton icon="close" label={t("panel.close")} size="sm" round />}
+            />
           </BaseToast.Root>
         );
       })}

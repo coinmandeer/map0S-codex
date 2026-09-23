@@ -150,6 +150,62 @@ describe("manifest-driven place detail", () => {
     );
   });
 
+  // Commons, iNaturalist, Park4Night and the fused OSM places all send one URL on the feature
+  // rather than a structured media list, which is why a card for a photograph used to show
+  // everything about the photograph except the photograph.
+  it("treats a plain photo URL on the feature as the hero image, with its credit", () => {
+    const photo: GeoFeature = {
+      ...feature,
+      properties: {
+        ...feature.properties,
+        photo: "https://upload.example/thumb.jpg",
+        author: "Jane Mapper",
+        license: "CC-BY-SA-4.0",
+        website: "https://commons.example/File:Thumb.jpg"
+      }
+    };
+    const [asset, ...rest] = detailMediaFromFeature(photo, manifest);
+    assert.equal(rest.length, 0);
+    assert.equal(asset!.url, "https://upload.example/thumb.jpg");
+    assert.equal(asset!.attribution, "Jane Mapper");
+    assert.equal(asset!.license, "CC-BY-SA-4.0");
+    assert.equal(asset!.sourceUrl, "https://commons.example/File:Thumb.jpg");
+    assert.equal(asset!.sourceLabel, "Trail Partner");
+  });
+
+  it("prefers a structured media list, and never invents one from a bad URL", () => {
+    const structured: GeoFeature = {
+      ...feature,
+      properties: {
+        ...feature.properties,
+        photo: "https://upload.example/flat.jpg",
+        media: [
+          {
+            id: "ok",
+            type: "image",
+            url: "https://cdn.example/ok.jpg",
+            sourceId: "trail-partner",
+            sourceLabel: "Trail Partner",
+            license: "CC-BY-4.0",
+            moderationStatus: "approved",
+            transformStatus: "ready"
+          }
+        ]
+      }
+    };
+    assert.deepEqual(
+      detailMediaFromFeature(structured, manifest).map((item) => item.url),
+      ["https://cdn.example/ok.jpg"]
+    );
+    assert.deepEqual(
+      detailMediaFromFeature(
+        { ...feature, properties: { ...feature.properties, photo: "javascript:alert(1)" } },
+        manifest
+      ),
+      []
+    );
+  });
+
   it("blocks executable URLs and only creates exact OSM correction links", () => {
     assert.equal(safeExternalUrl("javascript:alert(1)"), null);
     assert.equal(osmCorrectionUrl("node/123"), "https://www.openstreetmap.org/edit?node=123");

@@ -57,20 +57,24 @@ function cleanGeometry(value: unknown): ContentDraft["geometry"] {
   throw new ClientError("Koncept potřebuje platnou polohu");
 }
 
+const DEFAULT_SOURCE_LABELS: Record<ContentDraftProvenance["source"], string> = {
+  create: "MapOS · vytvořit",
+  discover: "Objevuj · aktuální výřez",
+  feed: "Feed · aktuální výřez"
+};
+
 function cleanProvenance(
   value: ContentDraft["provenance"],
   now: Date,
   preserveCapturedAt = false
 ): ContentDraftProvenance {
-  const source = value?.source === "discover" ? "discover" : "create";
+  const source = value?.source === "discover" || value?.source === "feed" ? value.source : "create";
   const regionId = cleanText(value?.regionId, 220);
   const regionName = cleanText(value?.regionName, 180);
   return {
     kind: "user-contribution",
     source,
-    sourceLabel:
-      cleanText(value?.sourceLabel, 180) ||
-      (source === "discover" ? "Objevuj · aktuální výřez" : "MapOS · vytvořit"),
+    sourceLabel: cleanText(value?.sourceLabel, 180) || DEFAULT_SOURCE_LABELS[source],
     ...(regionId ? { regionId } : {}),
     ...(regionName ? { regionName } : {}),
     capturedAt:

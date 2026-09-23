@@ -47,6 +47,7 @@ const VOLTAGE_WIDTH = [
 ] as const;
 
 registerLayer({
+  minQueryZoom: 7,
   kind: "raster",
   manifest: {
     id: "openinframap",
@@ -171,11 +172,15 @@ registerLayer({
         },
         // Telecoms.
         {
-          id: "telecoms-line",
+          id: "telecoms-lines",
           type: "line",
           sourceLayer: "telecoms_communication_line",
           group: "telecoms",
-          paint: { "line-color": "#8b5cf6", "line-width": 1.2, "line-dasharray": [3, 2] }
+          paint: {
+            "line-color": "#8b5cf6",
+            "line-width": ["interpolate", ["linear"], ["zoom"], 7, 1.2, 14, 3],
+            "line-opacity": 0.9
+          }
         },
         {
           id: "telecoms-mast",
@@ -192,10 +197,15 @@ registerLayer({
         },
         {
           id: "telecoms-data-center",
-          type: "fill",
+          type: "circle",
           sourceLayer: "telecoms_data_center",
           group: "telecoms",
-          paint: { "fill-color": "#8b5cf6", "fill-opacity": 0.4 }
+          paint: {
+            "circle-color": "#7c3aed",
+            "circle-radius": 5,
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 1.5
+          }
         },
         // Oil and gas. `substance` distinguishes the two, and which one a pipeline carries is
         // the first thing anyone wants to know about it.

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mapos.dev/schemas/v2/theme.schema.json",
+  "title": "MapOS theme manifest v2",
+  "description": "A question a user can switch on, and the sources that answer it. A theme is not a dataset: the same theme is drawn from Eurostat across Europe and from a national register inside one country, and the renderer picks per territory. See §23 of the roadmap.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schemaVersion", "id", "name", "unit", "sources"],
+  "properties": {
+    "schema": { "const": "mapos.theme" },
+    "schemaVersion": { "const": "2.0.0" },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,40}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "icon": {
+      "type": "string",
+      "description": "Material Symbols name (§23.3).",
+      "pattern": "^[a-z][a-z0-9_]{1,40}$"
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "The unit the theme is expressed in after normalisation, not the unit any one source publishes."
+    },
+    "normalization": {
+      "enum": ["raw", "per_100k", "per_km2", "percent"],
+      "default": "raw",
+      "description": "How a source value is converted onto the theme's unit. A source that already publishes in the theme's unit is not converted again."
+    },
+    "directionGoodBad": {
+      "enum": ["higher-is-worse", "higher-is-better", "neutral"],
+      "default": "neutral",
+      "description": "Chooses the colour ramp direction rather than a per-theme palette."
+    },
+    "classBreaks": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 12,
+      "items": { "type": "number" },
+      "description": "Fixed global bounds, when comparability across viewports matters more than local contrast. Absent means quantiles computed over the whole series."
+    },
+    "sources": {
+      "type": "array",
+      "maxItems": 40,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["datasetId", "role"],
+        "properties": {
+          "datasetId": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "role": {
+            "enum": ["primary", "detail", "point"],
+            "description": "`primary` is the continental fill, `detail` a finer source that takes over where it exists, `point` is drawn on top at high zoom instead of being coloured in."
+          },
+          "themeMapping": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "How this source's field becomes the theme's unit.",
+            "properties": {
+              "valueField": { "type": "string", "maxLength": 80 },
+              "multiplier": { "type": "number" },
+              "perCapitaDatasetId": {
+                "type": "string",
+                "maxLength": 80,
+                "description": "Population series to divide by when the theme is per-capita and the source publishes counts."
+              }
+            }
+          }
+        }
+      }
+    },
+    "legend": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "maxLength": 80 },
+        "classes": { "type": "integer", "minimum": 3, "maximum": 9, "default": 5 },
+        "method": { "enum": ["quantile", "equal-interval", "manual"], "default": "quantile" }
+      }
+    },
+    "disclosure": {
+      "type": "string",
+      "maxLength": 400,
+      "description": "The caveat that belongs behind an InfoTip: what makes a comparison across this theme unsafe."
+    },
+    "i18n": {
+      "type": "object",
+      "description": "Translations of the reader-facing strings, keyed by two-letter language. The top-level fields are the English fallback.",
+      "propertyNames": { "pattern": "^[a-z]{2}$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "unit": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "disclosure": { "type": "string", "maxLength": 400 }
+        }
+      }
+    }
+  }
+}

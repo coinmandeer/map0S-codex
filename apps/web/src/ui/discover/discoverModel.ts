@@ -1,4 +1,5 @@
 import type { DiscoverContext, DiscoverRegionLevel } from "../../discover/context";
+import { intlLocale } from "../../i18n";
 
 const LEVEL_LABELS: Record<DiscoverRegionLevel, string> = {
   country: "země",
@@ -14,17 +15,18 @@ export function discoverRegionLevelLabel(level: DiscoverRegionLevel): string {
 
 export function formatStatisticValue(value: number, unit: string): string {
   if (unit === "eur-per-person") {
-    return value.toLocaleString("cs-CZ", {
+    return value.toLocaleString(intlLocale(), {
       style: "currency",
       currency: "EUR",
       maximumFractionDigits: 0
     });
   }
-  if (unit === "people-per-km2") return `${value.toLocaleString("cs-CZ")} obyv./km²`;
-  if (unit === "km2") return `${value.toLocaleString("cs-CZ")} km²`;
-  if (unit === "m") return `${value.toLocaleString("cs-CZ")} m n. m.`;
-  if (unit === "people") return `${value.toLocaleString("cs-CZ")} obyv.`;
-  return value.toLocaleString("cs-CZ");
+  if (unit === "people-per-km2" || unit === "people/km²")
+    return `${value.toLocaleString(intlLocale())} obyv./km²`;
+  if (unit === "km2") return `${value.toLocaleString(intlLocale())} km²`;
+  if (unit === "m") return `${value.toLocaleString(intlLocale())} m n. m.`;
+  if (unit === "people") return `${value.toLocaleString(intlLocale())} obyv.`;
+  return `${value.toLocaleString(intlLocale(), { maximumFractionDigits: 2 })}${unit ? ` ${unit}` : ""}`;
 }
 
 /** The one-line fact strip under the region name.

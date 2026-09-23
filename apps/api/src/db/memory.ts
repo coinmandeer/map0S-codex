@@ -1,6 +1,7 @@
 import type {
   FeatureCollection,
   Bbox,
+  LayerManifestV2,
   OsmPoiCategoryId,
   PlanDocumentV2,
   TripPlan
@@ -28,6 +29,11 @@ export interface MemoryUserLayer {
   color: string;
   slug: string;
   isPublic: number;
+  /** Set for a layer built from a pasted URL rather than from pins. Mirrors the three columns
+   *  migration 0013 adds, so the offline server and Postgres answer `/user-layers` alike. */
+  sourceUrl?: string;
+  sourceManifest?: LayerManifestV2;
+  sourceAdapterId?: string;
 }
 
 export interface MemoryPin {
@@ -242,6 +248,67 @@ export function memoryUserFeatures(bbox: Bbox, userId?: string): FeatureCollecti
       };
     });
   return { type: "FeatureCollection", features };
+}
+
+/**
+ * Mirrors `socialFeed`: public pins, ranked with the ones from followed layers and followed
+ * people first, and narrowed to only those when `scope` is `following`.
+ *
+ * Returning an empty list here instead would let the Feed panel pass its e2e while showing
+ * nothing, which is exactly the failure the panel exists to avoid.
+ */
+export function memoryFeed(
+  userId: string | null,
+  scope: "all" | "following" = "all",
+  bbox?: Bbox,
+  tag?: string
+) {
+  const publicLayers = memoryDb.userLayers.filter((layer) => layer.isPublic);
+  const followed = new Set(
+    memoryDb.follows
+      .filter((entry) => entry.userId === userId)
+      .map((entry) => `${entry.targetType}:${entry.targetId}`)
+  );
+  const items = memoryDb.pins
+    .flatMap((pin) => {
+      const layer = publicLayers.find((entry) => entry.id === pin.layerId);
+      if (!layer) return [];
+      if (tag && !(pin.tags ?? []).some((entry) => entry.toLowerCase() === tag.toLowerCase())) {
+        return [];
+      }
+      if (bbox) {
+        const [w, s, e, n] = bbox;
+        if (pin.lng < w || pin.lng > e || pin.lat < s || pin.lat > n) return [];
+      }
+      const followedLayer = followed.has(`layer:${layer.id}`);
+      const followedAuthor = followed.has(`user:${layer.userId}`);
+      if (scope === "following" && !followedLayer && !followedAuthor) return [];
+      return [
+        {
+          id: pin.id,
+          name: pin.name,
+          description: pin.description ?? null,
+          lng: pin.lng,
+          lat: pin.lat,
+          tags: pin.tags ?? [],
+          kind: pin.kind ?? "place",
+          authorName: memoryDb.users.find((user) => user.id === layer.userId)?.displayName ?? null,
+          layerId: layer.id,
+          layerName: layer.name,
+          layerColor: layer.color,
+          layerUserId: layer.userId,
+          followed: followedLayer || followedAuthor,
+          score: (followedLayer ? 3 : 0) + (followedAuthor ? 2 : 0),
+          reason: followedLayer
+            ? "Vrstva, kterou sleduješ"
+            : followedAuthor
+              ? "Od člověka, kterého sleduješ"
+              : "Nové komunitní místo v oblasti"
+        }
+      ];
+    })
+    .sort((left, right) => right.score - left.score);
+  return { items, nextCursor: null };
 }
 
 // Partial on purpose: a category with no fixture is simply empty, so adding one to the SDK

@@ -16,6 +16,7 @@ const EMPTY_MAP_STYLE = JSON.stringify({
 const BROWSER_FIXTURES = new Map([
   ["https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json", EMPTY_MAP_STYLE],
   ["https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json", EMPTY_MAP_STYLE],
+  ["https://basemaps.cartocdn.com/gl/positron-gl-style/style.json", EMPTY_MAP_STYLE],
   [
     "https://api.rainviewer.com/public/weather-maps.json",
     JSON.stringify({ radar: { past: [], nowcast: [] } })
@@ -34,7 +35,7 @@ const EMPTY_TILEJSON = JSON.stringify({
 // no provider data. It is intentionally tiny because E2E verifies MapOS behavior, not
 // third-party cartography or flag artwork.
 const TRANSPARENT_PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+T0YvWQAAAABJRU5ErkJggg==",
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg==",
   "base64"
 );
 
@@ -73,6 +74,52 @@ const ASSET_FIXTURES: Array<{
   body: Buffer;
   contentType: string;
 }> = [
+  {
+    origin: /^https:\/\/services\.cuzk\.gov\.cz$/,
+    path: /^\/wms\/local-km-wms\.asp$/,
+    search: /(?:\?|&)request=GetMap(?:&|$)/i,
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
+  {
+    origin: /^https:\/\/dmvs\.cuzk\.gov\.cz$/,
+    path: /^\/api\/wms\/dtm_(?:ti_ver|pripojky)$/,
+    search: /(?:\?|&)request=Get(?:Map|LegendGraphic)(?:&|$)/i,
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
+  {
+    origin: /^https:\/\/webmap\.dppcr\.cz$/,
+    path: /^\/dpp_cr\/wms\.dll$/,
+    search: /(?:\?|&)(?:request=GetMap|GEN=OGSICON)(?:&|$)/i,
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
+  {
+    origin: /^https:\/\/ags\.cuzk\.gov\.cz$/,
+    path: /^\/arcgis1\/rest\/services\/ORTOFOTO_WM\/MapServer\/tile\/\d+\/\d+\/\d+$/,
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
+  {
+    origin: /^https:\/\/example\.wmts$/,
+    path: /^\/tiles\/(?:snow|clouds)\/\d+\/\d+\/\d+\.png$/,
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
+  // Catalogue previews use the same tile lifecycle as their selected backgrounds.
+  {
+    origin: /^https:\/\/tileserver\.memomaps\.de$/,
+    path: new RegExp(String.raw`^\/tilegen\/${XYZ}\.png$`),
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
+  {
+    origin: /^https:\/\/basemaps\.cartocdn\.com$/,
+    path: new RegExp(String.raw`^\/light_all\/${XYZ}\.png$`),
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
   // Basemap label overlays and the OSM raster background.
   {
     origin: /^https:\/\/[a-c]\.basemaps\.cartocdn\.com$/,
@@ -100,7 +147,14 @@ const ASSET_FIXTURES: Array<{
   // five networks are matched rather than only the default.
   {
     origin: /^https:\/\/[a-c]\.tile-cyclosm\.openstreetmap\.fr$/,
-    path: new RegExp(String.raw`^\/cyclosm\/${XYZ}\.png$`),
+    path: new RegExp(String.raw`^\/cyclosm(?:-lite)?\/${XYZ}\.png$`),
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
+  // OSM Humanitarian, one of the keyless backgrounds.
+  {
+    origin: /^https:\/\/[a-b]\.tile\.openstreetmap\.fr$/,
+    path: new RegExp(String.raw`^\/hot\/${XYZ}\.png$`),
     body: TRANSPARENT_PNG,
     contentType: "image/png"
   },
@@ -125,6 +179,14 @@ const ASSET_FIXTURES: Array<{
   {
     origin: /^https:\/\/[a-c]\.tile\.opentopomap\.org$/,
     path: new RegExp(String.raw`^\/${XYZ}\.png$`),
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
+  {
+    origin: /^https:\/\/gibs\.earthdata\.nasa\.gov$/,
+    path: new RegExp(
+      String.raw`^\/wmts\/epsg3857\/best\/[^/]+\/default\/[^/]+\/[^/]+\/${XYZ}\.(?:jpg|png)$`
+    ),
     body: TRANSPARENT_PNG,
     contentType: "image/png"
   },
@@ -162,6 +224,22 @@ const ASSET_FIXTURES: Array<{
     origin: /^https:\/\/bio\.discomap\.eea\.europa\.eu$/,
     path: /^\/arcgis\/services\/ProtectedSites\/Natura2000Sites\/MapServer\/WMSServer$/,
     search: /(?:\?|&)request=GetMap(?:&|$)/,
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
+  // The fixture WMS behind the "add source from URL" wizard. The probe is answered by the API
+  // offline (see apps/api/src/services/sourceFixtures.ts); what reaches the browser is the tile
+  // request the adapter built, which is the half of that flow worth asserting here.
+  {
+    origin: /^https:\/\/example\.wms$/,
+    path: /^\/service$/,
+    search: /(?:\?|&)request=GetMap(?:&|$)/,
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
+  {
+    origin: /^https:\/\/example\.wms$/,
+    path: /^\/legend\.png$/,
     body: TRANSPARENT_PNG,
     contentType: "image/png"
   },

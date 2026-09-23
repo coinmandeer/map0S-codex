@@ -1,4 +1,4 @@
-name: mapos-v3
+name: ${MAPOS_COMPOSE_PROJECT:-mapos-v3}
 
 services:
   postgres:
@@ -26,6 +26,8 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      MAPOS_GOTCHI_CACHE_DIR: /data/gotchi
+      MAPOS_BOUNDARY_CACHE_DIR: /data/boundaries
       NODE_ENV: production
       PORT: 4033
       DATABASE_URL: postgres://mapos:${POSTGRES_PASSWORD}@postgres:5432/mapos
@@ -39,6 +41,9 @@ services:
       # Synthetic USD staking is a game prototype, not a production financial feature.
       MAPOS_PROTOTYPE_STAKING_ENABLED: ${MAPOS_PROTOTYPE_STAKING_ENABLED:-}
       # A provider key never enables outbound model calls implicitly.
+      MAPOS_AI_OVERVIEW_V2: ${MAPOS_AI_OVERVIEW_V2:-1}
+      MAPOS_AI_BUDGET_MODE: ${MAPOS_AI_BUDGET_MODE:-allocation}
+      MAPOS_AI_BUDGET_ACCOUNT: ${MAPOS_AI_BUDGET_ACCOUNT:-}
       MAPOS_AI_GATEWAY_ENABLED: ${MAPOS_AI_GATEWAY_ENABLED:-}
       # The exact public origin is bound into every SIWE message. Signature verification is local
       # and enabled separately; demo identities require two explicit production gates.
@@ -53,9 +58,19 @@ services:
       # Weather tiles degrade to the keyless forecast/grid paths when this optional key is absent.
       OWM_API_KEY: ${OWM_API_KEY:-}
       FSQ_API_KEY: ${FSQ_API_KEY:-}
+      FSQ_PLACES_ENABLED: ${FSQ_PLACES_ENABLED:-}
+      FSQ_BUDGET_ACCOUNT: ${FSQ_BUDGET_ACCOUNT:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       MAPY_API_KEY: ${MAPY_API_KEY:-}
+      # MapTiler is exposed by GET /config as a browser key. Restrict the production key to the
+      # public mapOS origin in MapTiler Cloud; map content is requested directly by end clients.
+      MAPTILER_API_KEY: ${MAPTILER_API_KEY:-}
+      # Live ships worldwide. Without it the vessel layer covers Finnish waters (keyless).
+      AISSTREAM_API_KEY: ${AISSTREAM_API_KEY:-}
+      OSRM_CAR_URL: ${OSRM_CAR_URL:-}
+      OSRM_FOOT_URL: ${OSRM_FOOT_URL:-}
+      OSRM_BIKE_URL: ${OSRM_BIKE_URL:-}
       WINDY_API_KEY: ${WINDY_API_KEY:-}
       CML_PROVIDER: ${CML_PROVIDER:-ollama}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com/v1}
@@ -63,6 +78,12 @@ services:
       # Ollama Cloud retires models on a few months' notice, and a retired one answers 410 on
       # every call — which is how the previous default stopped working without a single error in
       # our logs. `GET /v1/models` lists what the account can currently reach.
+      OLLAMA_REASONING_EFFORT: ${OLLAMA_REASONING_EFFORT:-low}
+      OLLAMA_MODEL_FAST: ${OLLAMA_MODEL_FAST:-glm-5.3-flash}
+      OLLAMA_MODEL_STRONG: ${OLLAMA_MODEL_STRONG:-glm-5.3}
+      OLLAMA_MODEL_FAST_FALLBACK: ${OLLAMA_MODEL_FAST_FALLBACK:-deepseek-v4-flash:0731}
+      OLLAMA_MODEL_STRONG_FALLBACK: ${OLLAMA_MODEL_STRONG_FALLBACK:-glm-5.3-flash}
+      MAPILLARY_ACCESS_TOKEN: ${MAPILLARY_ACCESS_TOKEN:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-deepseek-v4-flash:0731}
       # Nominatim, Overpass and the Wikimedia APIs rate-limit by User-Agent and block generic
       # ones, so a deployment that doesn't identify itself shares a bucket with everyone else.
@@ -75,8 +96,10 @@ services:
       # re-download a fresh 24h of tiles from RainViewer, which is exactly the kind of avoidable
       # upstream/mobile-data cost this project is trying to minimize.
       - mapos-v3-radar:/data/radar
+      - mapos-v3-gotchi:/data/gotchi
+      - mapos-v3-boundaries:/data/boundaries
     ports:
-      - "127.0.0.1:4033:4033"
+      - "127.0.0.1:${MAPOS_API_PORT:-4033}:4033"
     healthcheck:
       test:
         [
@@ -95,8 +118,10 @@ services:
       dockerfile: Dockerfile
       target: web
       args:
+        MAPOS_RELEASE: ${MAPOS_RELEASE:-unknown-release}
         VITE_API_BASE_URL: /api
         VITE_MAP_RUNTIME_V2: ${VITE_MAP_RUNTIME_V2:-}
+        VITE_DISCOVER_BOUNDARIES: ${VITE_DISCOVER_BOUNDARIES:-}
     restart: unless-stopped
     depends_on:
       api:
@@ -108,7 +133,7 @@ services:
       # mounts a release-local empty directory by default; missing assets use procedural fallback.
       - ${MODELS_HOST_DIR:-./models}:/usr/share/nginx/html/models:ro
     ports:
-      - "127.0.0.1:4032:4032"
+      - "127.0.0.1:${MAPOS_WEB_PORT:-4032}:4032"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4032"]
       interval: 10s
@@ -118,3 +143,5 @@ services:
 volumes:
   mapos-v3-postgres:
   mapos-v3-radar:
+  mapos-v3-gotchi:
+  mapos-v3-boundaries:

@@ -25,6 +25,9 @@ function routedPlan(stopCount = 3): PlanDocumentV2 {
     },
     { now: "2026-09-02T09:00:00.000Z" }
   );
+  // These tests exercise the weather path, which is opt-in since a plan is usually just a
+  // route — so the fixture asks for it explicitly.
+  plan.routePolicy.weatherAlongRoute = true;
   plan.segments = plan.segments.map((segment) => {
     const alternativeId = `route-${segment.id}`;
     return {
@@ -82,8 +85,8 @@ describe("dated plan temporal context", () => {
     assert.equal(context.weather.status, "ready");
     assert.equal(context.weather.sampledStops, PLAN_WEATHER_STOP_BUDGET);
     assert.equal(context.dataBudget.upstreamWeatherRequests, 1);
-    assert.equal(context.traffic.status, "unavailable");
-    assert.match(context.traffic.reason ?? "", /nic se nesimuluje/i);
+    // Traffic stays off unless the plan asks for it; only the weather path was enabled above.
+    assert.equal(context.traffic.status, "disabled");
     assert.equal(context.segments[0]!.departureAt, "2026-09-02T10:00:00.000Z");
     assert.equal(context.segments[0]!.arrivalAt, "2026-09-02T11:00:00.000Z");
     assert.equal(context.segments[1]!.departureAt, "2026-09-02T11:30:00.000Z");

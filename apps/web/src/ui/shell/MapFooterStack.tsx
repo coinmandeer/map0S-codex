@@ -1,7 +1,9 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import type { FooterContributionState } from "../../store/shellState";
+import { t } from "../../i18n";
+import type { FooterContributionState, MinimizableFooterKind } from "../../store/shellState";
 import { getShellStore } from "../../store/shellStore";
 import { useShellStoreSnapshot } from "../../store/useShellStoreSnapshot";
+import { Icon } from "../kit";
 
 export interface FooterContributionView {
   descriptor: FooterContributionState;
@@ -11,6 +13,7 @@ export interface FooterContributionView {
 export function MapFooterStack({ entries }: { entries: FooterContributionView[] }) {
   const shell = getShellStore();
   const registered = useShellStoreSnapshot((state) => state.footerContributions);
+  const minimized = useShellStoreSnapshot((state) => state.footerMinimized);
   const leftOpen = useShellStoreSnapshot((state) => state.leftContext.type !== "closed");
   const rightOpen = useShellStoreSnapshot((state) => state.rightUtility.type !== "closed");
   const signature = entries
@@ -49,6 +52,10 @@ export function MapFooterStack({ entries }: { entries: FooterContributionView[] 
   }, [registered.length]);
 
   const contentById = new Map(entries.map((entry) => [entry.descriptor.id, entry.content]));
+  const shown = registered.filter((descriptor) => contentById.get(descriptor.id) !== undefined);
+  const chips = shown
+    .map((descriptor) => minimizableKind(descriptor.kind))
+    .filter((kind): kind is MinimizableFooterKind => kind !== null && minimized[kind]);
 
   return (
     <div
@@ -58,19 +65,46 @@ export function MapFooterStack({ entries }: { entries: FooterContributionView[] 
       data-left-open={leftOpen}
       data-right-open={rightOpen}
     >
-      {registered.map((descriptor) => {
-        const content = contentById.get(descriptor.id);
-        return content === undefined ? null : (
+      {shown.map((descriptor) => {
+        const kind = minimizableKind(descriptor.kind);
+        if (kind && minimized[kind]) return null;
+        return (
           <div
             className="map-footer-contribution"
             data-footer-id={descriptor.id}
             data-footer-kind={descriptor.kind}
             key={descriptor.id}
           >
-            {content}
+            {contentById.get(descriptor.id)}
           </div>
         );
       })}
+
+      {/* Rolled-up trays become one row of chips, so the map is clear but nothing has silently
+          disappeared: what is off screen is still named and one click away. */}
+      {chips.length > 0 && (
+        <div className="map-footer-chips" data-testid="footer-chips">
+          {chips.map((kind) => (
+            <button
+              type="button"
+              key={kind}
+              className="map-footer-chip"
+              data-testid={`footer-restore-${kind}`}
+              onClick={() => shell.setFooterMinimized(kind, false)}
+            >
+              <Icon name={kind === "legend" ? "info" : "schedule"} size={18} />
+              <span>{t(kind === "legend" ? "layers.legend" : "footer.timeline")}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+/** Legends and timelines can be rolled up; a route summary or a status line cannot. */
+function minimizableKind(kind: FooterContributionState["kind"]): MinimizableFooterKind | null {
+  if (kind === "legend") return "legend";
+  if (kind === "timeline") return "timeline";
+  return null;
 }

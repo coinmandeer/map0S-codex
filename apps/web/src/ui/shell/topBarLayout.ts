@@ -2,49 +2,56 @@
  *
  *  The pill is centred over the map area, so the space it has is not the viewport width: the
  *  left panel and the right drawer eat into it, and the hamburger and the Podklady/Vrstvy rail
- *  sit in the same strip. Deciding label visibility from `window.innerWidth` — what the first
- *  pass did — is why the 1440 px screenshot showed "Plánov" under the basemap button: the
- *  viewport was wide, the strip between the open sidebar and the rail was not.
+ *  sit in the same strip. Deciding from `window.innerWidth` — what the first pass did — is why
+ *  the 1440 px screenshot showed a clipped label under the basemap button: the viewport was
+ *  wide, the strip between the open sidebar and the rail was not.
  *
- *  Things are given up in order of how much work they do. The wordmark and then the logo go
- *  first (the phone layout has no brand at all, per the brief), and the mode labels only after
- *  that, because a named mode is the one thing in the pill a newcomer can read.
+ *  Since the modes moved to their own pill at the bottom edge, this row holds the brand, the
+ *  search field and the settings button. That is 340 px less than it used to need, so the
+ *  wordmark now survives window sizes that previously dropped it. Things are still given up in
+ *  order of how much work they do: the trailing location label, then the wordmark, then the logo.
  *
  *  Widths are measured from a rendered bar at 1600 px (Inter, 15/14 px): brand 98 · search 280 ·
- *  modes 363 with labels / 188 icon-only · settings 40 · dividers and gaps ≈ 56 · padding 24.
+ *  settings 40 · dividers and gaps ≈ 56 · padding 24.
  */
 
 export type BrandDisplay = "full" | "logo" | "none";
 
-/** Pill width with the wordmark, the logo and every mode label. */
-export const TOP_BAR_FULL_W = 864;
+/** Pill width with the wordmark and an uncompressed search field. */
+export const TOP_BAR_FULL_W = 498;
 /** …without the "MapOS" wordmark. */
-export const TOP_BAR_LOGO_ONLY_W = 804;
-/** …without the brand entirely, mode labels still shown. */
-export const TOP_BAR_NO_BRAND_W = 757;
+export const TOP_BAR_LOGO_ONLY_W = 438;
+/** …without the brand entirely. */
+export const TOP_BAR_NO_BRAND_W = 391;
 /** The trailing "Poloha" label inside the search field. */
 export const LOCATION_LABEL_W = 56;
 
+/**
+ * How much the search field can hand back before it hits the 168 px floor in `chrome.css` — the
+ * only elastic part of the pill.
+ *
+ * Spending it is what keeps the brand on screen at narrow desktop widths: below the intrinsic
+ * width the field narrows first, and only once it has nothing left does the wordmark go.
+ */
+export const SEARCH_GIVE_W = 112;
+
 export interface TopBarLayout {
   brand: BrandDisplay;
-  showModeLabels: boolean;
   showLocationLabel: boolean;
 }
 
-const MIN_FOR_LABELS: Record<BrandDisplay, number> = {
-  full: TOP_BAR_FULL_W,
-  logo: TOP_BAR_LOGO_ONLY_W,
-  none: TOP_BAR_NO_BRAND_W
-};
-
 export function topBarLayout({ available }: { available: number }): TopBarLayout {
+  // The search field narrows before the brand is given up, so each brand threshold is its
+  // intrinsic width minus everything the field can hand back.
   const brand: BrandDisplay =
-    available >= TOP_BAR_FULL_W ? "full" : available >= TOP_BAR_LOGO_ONLY_W ? "logo" : "none";
-  const showModeLabels = available >= MIN_FOR_LABELS[brand];
+    available >= TOP_BAR_FULL_W - SEARCH_GIVE_W
+      ? "full"
+      : available >= TOP_BAR_LOGO_ONLY_W - SEARCH_GIVE_W
+        ? "logo"
+        : "none";
   return {
     brand,
-    showModeLabels,
-    // The least useful of the three, so it only appears when the pill is comfortably wide.
+    // The least useful of the two, so it only appears when the pill is comfortably wide.
     showLocationLabel: brand === "full" && available >= TOP_BAR_FULL_W + LOCATION_LABEL_W
   };
 }
@@ -79,9 +86,9 @@ export function chromeStripWidth({
   return Math.max(0, viewport - left - right);
 }
 
-/** The narrowest honest pill on a desktop: a search field down to its 168 px floor, icon-only
- *  modes, the settings button, dividers, gaps and padding. */
-export const PILL_FLOOR_W = 430;
+/** The narrowest honest pill on a desktop: a search field down to its 168 px floor, the
+ *  settings button, one divider, gaps and padding. */
+export const PILL_FLOOR_W = 270;
 /** The Podklady/Vrstvy rail as a row with both labels. */
 export const RAIL_ROW_W = 256;
 /** …and as a vertical column of icon-only buttons, the phone composition (§3.2). */

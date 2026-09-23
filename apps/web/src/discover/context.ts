@@ -1,10 +1,13 @@
 import type { Bbox, Guide, MapViewState } from "@mapos/layer-sdk";
 import { apiGet } from "../lib/api";
+import { activeLocale } from "../i18n";
 
 export type DiscoverRegionLevel = "country" | "admin1" | "admin2" | "locality" | "neighbourhood";
 
 export interface DiscoverViewport extends MapViewState {
   bbox?: Bbox;
+  areaId?: string;
+  boundaryRevision?: string;
   useCase?: string;
   activeLayerIds?: string[];
   allowModelFallback?: boolean;
@@ -36,6 +39,7 @@ export interface DiscoverContext {
     kind: "model" | "structured" | "extract" | "none";
     label: string;
     lead: string;
+    leadSourceIds?: string[];
     highlights: Array<{
       title: string;
       text: string;
@@ -64,14 +68,14 @@ export interface DiscoverContext {
     sourceIds: string[];
   }>;
   regionCatalogue: null | {
-    nutsLevel: 0 | 1 | 2 | 3;
+    nutsLevel: 0 | 1 | 2 | 3 | "lau";
     truncated: boolean;
     sourceId: string;
     regions: Array<{
       id: string;
       code: string;
       name: string;
-      nutsLevel: 0 | 1 | 2 | 3;
+      nutsLevel: 0 | 1 | 2 | 3 | "lau";
       geometry:
         | { type: "Polygon"; coordinates: number[][][] }
         | { type: "MultiPolygon"; coordinates: number[][][][] };
@@ -117,11 +121,15 @@ export function loadDiscoverContext(
   return apiGet<DiscoverContext>("/v2/discover/context", {
     signal,
     query: {
+      areaId: viewport.areaId,
+      boundaryRevision: viewport.boundaryRevision,
       lng: viewport.lng,
       lat: viewport.lat,
       zoom: viewport.zoom,
       bbox: viewport.bbox?.join(","),
-      lang: "cs",
+      // The server picks which Wikipedia and which summary language to answer in, so the
+      // guide follows the interface language rather than always speaking Czech.
+      lang: activeLocale(),
       useCase: viewport.useCase,
       layers: viewport.activeLayerIds,
       model: viewport.allowModelFallback ? 1 : undefined

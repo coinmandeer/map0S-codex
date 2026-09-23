@@ -39,15 +39,17 @@ test.describe("basemap picker", () => {
     });
 
     await page.goto("/");
-    await page.getByTestId("basemap-btn").click();
-    await expect(page.getByTestId("tiles-sheet")).toBeVisible();
+    await page.getByTestId("layers-btn").click();
+    await page.getByRole("tab", { name: /basemaps|Mapové podklady/i }).click();
+    await expect(page.getByTestId("right-utility-drawer")).toBeVisible();
 
     await selectBasemap(page, "eox-s2cloudless", "satellite");
     await expect.poll(() => tileRequests.length, { timeout: 15_000 }).toBeGreaterThan(0);
 
     // The choice is the user's, so it outlives the tab.
     await page.reload();
-    await page.getByTestId("basemap-btn").click();
+    await page.getByTestId("layers-btn").click();
+    await page.getByRole("tab", { name: /basemaps|Mapové podklady/i }).click();
     await expect(page.getByTestId("basemap-eox-s2cloudless")).toHaveAttribute(
       "aria-checked",
       "true"
@@ -57,7 +59,8 @@ test.describe("basemap picker", () => {
   test("credits follow the background that is actually drawn", async ({ page }) => {
     await stubTiles(page);
     await page.goto("/");
-    await page.getByTestId("basemap-btn").click();
+    await page.getByTestId("layers-btn").click();
+    await page.getByRole("tab", { name: /basemaps|Mapové podklady/i }).click();
     await selectBasemap(page, "eox-s2cloudless", "satellite");
     await page.keyboard.press("Escape");
 
@@ -69,7 +72,8 @@ test.describe("basemap picker", () => {
   test("labels and 3D buildings are offered only where they mean something", async ({ page }) => {
     await stubTiles(page);
     await page.goto("/");
-    await page.getByTestId("basemap-btn").click();
+    await page.getByTestId("layers-btn").click();
+    await page.getByRole("tab", { name: /basemaps|Mapové podklady/i }).click();
 
     // A vector street map: no imagery to label, but buildings to extrude.
     await selectBasemap(page, "carto-voyager", "street");
@@ -89,7 +93,8 @@ test.describe("basemap picker", () => {
     await page.goto("/");
     const pitch = () => page.evaluate(() => window.__maposMap?.getPitch() ?? 0);
 
-    await page.getByTestId("basemap-btn").click();
+    await page.getByTestId("layers-btn").click();
+    await page.getByRole("tab", { name: /basemaps|Mapové podklady/i }).click();
     await page.getByTestId("toggle-buildings-3d").click();
     // Extrusions are invisible from straight above, so switching them on has to supply the view.
     await expect.poll(pitch).toBeGreaterThan(30);
@@ -103,7 +108,8 @@ test.describe("basemap picker", () => {
   }) => {
     await stubTiles(page);
     await page.goto("/");
-    await page.getByTestId("basemap-btn").click();
+    await page.getByTestId("layers-btn").click();
+    await page.getByRole("tab", { name: /basemaps|Mapové podklady/i }).click();
 
     await expect(page.getByTestId("layer-source-osm")).toHaveCount(0);
 
@@ -117,7 +123,8 @@ test.describe("basemap picker", () => {
 
     await page.keyboard.press("Escape");
     await page.getByTestId("layers-btn").click();
-    await page.getByTestId("layers-accordion-world").click();
+    await page.getByRole("tab", { name: "Layers", exact: true }).click();
+    await page.getByTestId("layers-sources").click();
     const osm = page.getByTestId("layer-source-osm");
     const wikipedia = page.getByTestId("layer-source-wikipedia");
     await expect(osm).toHaveAttribute("aria-checked", "true");
@@ -133,7 +140,8 @@ test.describe("basemap picker", () => {
   test("a background whose key the server lacks is not offered", async ({ page }) => {
     await stubTiles(page);
     await page.goto("/");
-    await page.getByTestId("basemap-btn").click();
+    await page.getByTestId("layers-btn").click();
+    await page.getByRole("tab", { name: /basemaps|Mapové podklady/i }).click();
 
     // The e2e server runs without tile keys, so the keyed providers must be absent rather than
     // present and failing tile by tile.
@@ -148,8 +156,12 @@ test.describe("basemap picker", () => {
       .poll(() => page.evaluate(() => window.__maposMap?.isStyleLoaded() ?? false))
       .toBe(true);
 
-    await page.getByTestId("basemap-btn").click();
-    await page.getByTestId("overflow-cyclosm").click();
+    await page.getByTestId("layers-btn").click();
+    await page.getByRole("tab", { name: /basemaps|Mapové podklady/i }).click();
+    await page.evaluate(async () => {
+      const path = "/src/store/mapStore.ts";
+      (await import(path)).getMapStore().toggleLayer("cyclosm");
+    });
     await expect
       .poll(() => page.evaluate(() => Boolean(window.__maposMap?.getLayer("raster-tile-cyclosm"))))
       .toBe(true);
@@ -176,12 +188,16 @@ test.describe("basemap picker", () => {
   // so a card prefers its rendered screenshot — but only some backgrounds have one, because a
   // thumbnail is a copy of the provider's cartography and most keyed providers' terms do not
   // let us ship it. Both halves of that matter, so both are checked.
-  test("a card shows its rendered picture, and falls back to a schematic without one", async ({
+  test("a card shows its rendered picture and explains an unavailable preview", async ({
     page
   }) => {
     await stubTiles(page);
+    await page.route("**/basemaps/cyclosm.webp", (route) =>
+      route.fulfill({ status: 404, body: "preview unavailable" })
+    );
     await page.goto("/");
-    await page.getByTestId("basemap-btn").click();
+    await page.getByTestId("layers-btn").click();
+    await page.getByRole("tab", { name: /basemaps|Mapové podklady/i }).click();
 
     const rendered = page.getByTestId("basemap-osm-carto").locator(".basemap-preview-image");
     await expect(rendered).toBeVisible();
@@ -193,12 +209,10 @@ test.describe("basemap picker", () => {
       )
       .toBe(true);
 
-    // NASA's daily mosaic stops at z8, so it renders nothing at the shared viewport the cards
-    // are shot over and deliberately ships no thumbnail. Its card draws the schematic rather
-    // than a black rectangle, which is what the fallback is for.
-    await page.getByTestId("basemap-group-satellite").click();
-    const fallback = page.getByTestId("basemap-gibs-viirs");
-    await expect(fallback.locator(".basemap-preview-water")).toBeVisible();
+    // An unavailable preview explains its state without showing a broken image.
+    await page.getByTestId("basemap-group-outdoor").click();
+    const fallback = page.getByTestId("basemap-cyclosm");
+    await expect(fallback).toContainText("Náhled není dostupný");
     await expect(fallback.locator(".basemap-preview-image")).toHaveCount(0);
   });
 });

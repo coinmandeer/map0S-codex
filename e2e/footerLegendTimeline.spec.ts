@@ -21,13 +21,13 @@ test.describe("map footer", () => {
 
     const timeline = page.getByTestId("global-timeline");
     await expect(timeline).toBeVisible({ timeout: 20_000 });
-    await expect(timeline.locator(".timeline-head-label")).toContainText("Počasí");
+    await expect(timeline.locator(".timeline-head-label")).toContainText("Weather");
     // One heading, then the cursor: never three levels of title.
     await expect(timeline.locator("h2, h3")).toHaveCount(0);
     await expect(page.getByTestId("timeline-scrubber")).toBeVisible();
   });
 
-  test("play advances the cursor and Živě puts it back on now", async ({ page }) => {
+  test("play advances the cursor and Live puts it back on now", async ({ page }) => {
     await page.goto("/?layers=weather&lng=13.3775&lat=49.7475&z=10");
     const scrubber = page.getByTestId("timeline-scrubber");
     await expect(scrubber).toBeVisible({ timeout: 30_000 });
@@ -42,7 +42,7 @@ test.describe("map footer", () => {
     await page.getByTestId("timeline-live").click();
     // Back to the hour the map opened on, whatever the playback reached in between.
     await expect.poll(async () => Number(await scrubber.inputValue())).toBe(start);
-    await expect(page.getByTestId("global-timeline")).toContainText("Teď");
+    await expect(page.getByTestId("global-timeline")).toContainText("Now");
   });
 
   test("a numeric legend is a compact row before it is a list of values", async ({ page }) => {
@@ -101,6 +101,32 @@ test.describe("map footer", () => {
     if (await expand.count()) await expand.click();
     await expect(legend).toContainText("Mezozoikum");
     await expect(legend).toContainText("Odstín se liší podle služby");
+  });
+
+  // Rolling a tray up is not the same as turning the layer off: the colours stay on the map,
+  // only the key that explains them steps aside, and it says where it went.
+  test("a legend rolls up into a chip and comes back from it", async ({ page }) => {
+    await page.goto("/?layers=earthquakes&lng=13.3775&lat=49.7475&z=6");
+    await expect(page.getByTestId("legend-stack")).toBeVisible({ timeout: 30_000 });
+
+    await page.getByTestId("footer-minimize-legend").click();
+    await expect(page.getByTestId("legend-stack")).toHaveCount(0);
+    const chip = page.getByTestId("footer-restore-legend");
+    await expect(chip).toBeVisible();
+
+    await chip.click();
+    await expect(page.getByTestId("legend-stack")).toBeVisible();
+    await expect(page.getByTestId("footer-restore-legend")).toHaveCount(0);
+  });
+
+  test("the timeline rolls up the same way and keeps running underneath", async ({ page }) => {
+    await page.goto("/?layers=weather&lng=13.3775&lat=49.7475&z=10");
+    await expect(page.getByTestId("timeline-scrubber")).toBeVisible({ timeout: 30_000 });
+
+    await page.getByTestId("footer-minimize-timeline").click();
+    await expect(page.getByTestId("global-timeline")).toHaveCount(0);
+    await page.getByTestId("footer-restore-timeline").click();
+    await expect(page.getByTestId("timeline-scrubber")).toBeVisible();
   });
 
   test("more legends than the footer can hold defer the rest to a dialog", async ({ page }) => {

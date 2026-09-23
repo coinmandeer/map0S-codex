@@ -21,6 +21,7 @@ export interface WeatherRenderFeature {
     unit: string;
     validAt: string;
     color: string;
+    interpolated: boolean;
   };
 }
 
@@ -39,6 +40,36 @@ function selectedIndices(total: number, limit: number): number[] {
 function labelFor(value: number, unit: string): string {
   const digits = Math.abs(value) < 10 && unit !== "%" ? 1 : 0;
   return `${value.toFixed(digits)} ${unit}`;
+}
+
+/** Resample presentation, not meteorological measurements. Every output cell has neighbours;
+ * dropping every nth polygon would leave holes in the coverage. Null samples remain unknown. */
+function presentationGrid(grid: WeatherGrid, limit: number): WeatherGrid {
+  if (limit <= 0 || limit === grid.cols * grid.rows) return grid;
+  const cols = Math.max(2, Math.floor(Math.sqrt((limit * grid.cols) / grid.rows)));
+  const rows = Math.max(2, Math.floor(limit / cols));
+  if (cols * rows > limit) return grid;
+  const values = Array.from({ length: cols * rows }, (_, index) => {
+    const x = ((index % cols) / (cols - 1)) * (grid.cols - 1);
+    const y = (Math.floor(index / cols) / (rows - 1)) * (grid.rows - 1);
+    const left = Math.floor(x),
+      right = Math.min(grid.cols - 1, left + 1);
+    const top = Math.floor(y),
+      bottom = Math.min(grid.rows - 1, top + 1);
+    const samples = [
+      grid.values[top * grid.cols + left],
+      grid.values[top * grid.cols + right],
+      grid.values[bottom * grid.cols + left],
+      grid.values[bottom * grid.cols + right]
+    ];
+    if (samples.some((value) => value == null || !Number.isFinite(value))) return null;
+    const [a, b, c, d] = samples as number[];
+    return (
+      (a! * (1 - (x - left)) + b! * (x - left)) * (1 - (y - top)) +
+      (c! * (1 - (x - left)) + d! * (x - left)) * (y - top)
+    );
+  });
+  return { ...grid, cols, rows, values };
 }
 
 function sectorGeometry(grid: WeatherGrid, index: number) {
@@ -75,6 +106,8 @@ export function weatherGridFeatures(
     return { type: "FeatureCollection", features: [] };
   }
 
+  const original = grid;
+  grid = presentationGrid(grid, strategy.maxRenderedCells);
   const palette = paletteFor(grid.variable);
   const valid = grid.values.flatMap((value, index) => (value === null ? [] : [{ index, value }]));
   const sectorSelection = new Set(
@@ -95,6 +128,7 @@ export function weatherGridFeatures(
       label: labelFor(value, grid.unit),
       unit: grid.unit,
       validAt: grid.validAt,
+      interpolated: grid !== original,
       color: `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`
     };
     if (sectorSelection.has(index)) {
@@ -105,7 +139,11 @@ export function weatherGridFeatures(
         properties: { ...properties, kind: "sector" }
       });
     }
-    if (strategy.representation === "numeric-sectors" && labelSelection.has(index)) {
+    if (
+      (strategy.representation === "numeric-sectors" ||
+        strategy.representation === "smooth-field") &&
+      labelSelection.has(index)
+    ) {
       features.push({
         type: "Feature",
         id: `label-${index}`,
@@ -127,6 +165,23 @@ export interface AdaptiveWeatherOverlay {
    *  picture find them noisy, so the layers drawer can turn them off (§4.7 ⑤). */
   setValueLabels(enabled: boolean): void;
   detach(): void;
+}
+
+/** A font the current basemap can actually render.
+ *
+ * Symbol layers silently draw nothing when the style's glyph set lacks the requested font,
+ * which is why the temperature pins vanished on some basemaps: "Open Sans Semibold" exists in
+ * OSM's glyphs but not in CARTO's. Any font already used by the style's own labels is
+ * guaranteed to be in its glyph set, so we borrow one. */
+function styleTextFont(map: maplibregl.Map): string[] {
+  for (const layer of map.getStyle().layers ?? []) {
+    if (layer.type !== "symbol") continue;
+    const font = (layer.layout as { "text-font"?: unknown } | undefined)?.["text-font"];
+    if (Array.isArray(font) && font.every((name) => typeof name === "string") && font.length) {
+      return font as string[];
+    }
+  }
+  return ["Noto Sans Regular"];
 }
 
 export function createAdaptiveWeatherOverlay(
@@ -176,7 +231,10 @@ export function createAdaptiveWeatherOverlay(
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", next ? "visible" : "none");
   };
 
-  const labelsVisible = () => visible && valueLabels && representation === "numeric-sectors";
+  const labelsVisible = () =>
+    visible &&
+    valueLabels &&
+    (representation === "numeric-sectors" || representation === "smooth-field");
 
   function ensureVectorLayers(data: WeatherRenderFeatureCollection) {
     const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
@@ -214,14 +272,15 @@ export function createAdaptiveWeatherOverlay(
           layout: {
             "text-field": ["get", "label"],
             "text-size": 12,
-            "text-font": ["Open Sans Semibold"],
+            "text-font": styleTextFont(map),
             "text-allow-overlap": false,
             "text-padding": 4
           },
           paint: {
+            // Dark ink in a bright halo reads over light streets and dark satellite alike.
             "text-color": "#111827",
             "text-halo-color": "rgba(255,255,255,0.92)",
-            "text-halo-width": 1.5,
+            "text-halo-width": 2,
             "text-opacity": opacity
           }
         },
@@ -246,9 +305,17 @@ export function createAdaptiveWeatherOverlay(
         return 1;
       }
 
-      continuous.setVisible(false);
+      if (representation === "smooth-field") continuous.render(grid);
+      continuous.setVisible(visible && representation === "smooth-field");
       const data = weatherGridFeatures(grid, strategy);
       ensureVectorLayers(data);
+      // Smooth colour comes from the canvas; transparent sectors remain queryable for
+      // hover and touch. Hiding their layout also disables MapLibre hit testing.
+      map.setPaintProperty(
+        fillLayerId,
+        "fill-opacity",
+        representation === "smooth-field" ? 0 : opacity
+      );
       setLayerVisibility(fillLayerId, visible);
       setLayerVisibility(labelLayerId, labelsVisible());
       return data.features.length;
@@ -261,7 +328,9 @@ export function createAdaptiveWeatherOverlay(
     },
     setVisible(next) {
       visible = next;
-      continuous.setVisible(next && representation === "continuous-grid");
+      continuous.setVisible(
+        next && (representation === "continuous-grid" || representation === "smooth-field")
+      );
       setLayerVisibility(
         fillLayerId,
         next && representation !== null && representation !== "continuous-grid"
@@ -271,7 +340,12 @@ export function createAdaptiveWeatherOverlay(
     setOpacity(next) {
       opacity = next;
       continuous.setOpacity(Math.min(1, next + 0.15));
-      if (map.getLayer(fillLayerId)) map.setPaintProperty(fillLayerId, "fill-opacity", next);
+      if (map.getLayer(fillLayerId))
+        map.setPaintProperty(
+          fillLayerId,
+          "fill-opacity",
+          representation === "smooth-field" ? 0 : next
+        );
       if (map.getLayer(labelLayerId)) map.setPaintProperty(labelLayerId, "text-opacity", next);
     },
     setValueLabels(enabled) {

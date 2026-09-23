@@ -1,3 +1,12 @@
+import { OverviewService } from "./services/ai/overviewService.js";
+import { registerEnvironmentEditionRoutes } from "./routes/environmentEditionRoutes.js";
+import { createThreadSaver } from "./world/savedThreads.js";
+import { WorldQuestSources } from "./world/questIntegration.js";
+import { registerWorldRoutes } from "./routes/worldRoutes.js";
+import { SocialWorld } from "./world/socialWorld.js";
+import { MemoryWorldRepository } from "./world/repository.js";
+import { verifyGotchiOwner, LiveGotchiInventory } from "./world/gotchi.js";
+import { querySourceFeatures } from "./services/sourceFeatures.js";
 import Fastify from "fastify";
 import { pathToFileURL } from "node:url";
 import cors from "@fastify/cors";
@@ -19,6 +28,7 @@ import { memoryGameRoads } from "./services/gameRoadService.js";
 import {
   memoryDb,
   seedMemory,
+  memoryFeed,
   memoryUserFeatures,
   memoryOsmFeatures,
   memoryPoiFixtures,
@@ -30,6 +40,9 @@ import { earthquakeFixtureResult } from "./services/dataSources/earthquakeFixtur
 import { registerMapyRoutes } from "./routes/mapyRoutes.js";
 import { registerBasemapRoutes } from "./routes/basemapRoutes.js";
 import { registerWeatherGridRoutes } from "./routes/weatherGridRoutes.js";
+import { registerBathymetryGridRoutes } from "./routes/bathymetryGridRoutes.js";
+import { registerSatelliteRoutes } from "./routes/satelliteRoutes.js";
+import { registerStreetObjectRoutes } from "./routes/streetObjectRoutes.js";
 import { registerInfoRoutes } from "./routes/infoRoutes.js";
 import { registerSavedPlaceRoutes } from "./routes/savedPlaceRoutes.js";
 import { registerPlanV2Routes } from "./routes/planV2Routes.js";
@@ -37,6 +50,17 @@ import { buildPlanTemporalContext } from "./services/planTemporalContextService.
 import { registerIdentityRoutes } from "./routes/identityRoutes.js";
 import { registerEventRoutes } from "./routes/eventRoutes.js";
 import { registerLayerExtensionRoutes } from "./routes/layerExtensionRoutes.js";
+import { registerSourceRoutes } from "./routes/sourceRoutes.js";
+import { registerThemeRoutes } from "./routes/themeRoutes.js";
+import { registerTableRoutes } from "./routes/tableRoutes.js";
+import { fixtureThemeQueries } from "./themes/themeFixtures.js";
+import {
+  fixtureTableById,
+  fixtureTableIngestDeps,
+  fixtureTablesForOwner
+} from "./themes/tableFixtures.js";
+import { fixtureAdapterIo } from "./services/sourceFixtures.js";
+import { probeSource } from "./services/sourceService.js";
 import { registerCommerceRoutes } from "./routes/commerceRoutes.js";
 import { registerOperationalRoutes } from "./routes/operationalRoutes.js";
 import { registerDataRightsRoutes } from "./routes/dataRightsRoutes.js";
@@ -44,6 +68,7 @@ import { registerAiRoutes } from "./routes/aiRoutes.js";
 import { createAiPlanProposalCoordinator } from "./services/ai/planEditor.js";
 import { registerGuideRoutes } from "./routes/guideRoutes.js";
 import { registerDiscoverContextRoutes } from "./routes/discoverContextRoutes.js";
+import { registerDiscoverBoundaryRoutes } from "./routes/discoverBoundaryRoutes.js";
 import { registerOfflineFixtureRoutes } from "./routes/offlineFixtureRoutes.js";
 import { installOfflineFetchGuard, isOfflineFixtureMode } from "./offlineFixtureMode.js";
 import {
@@ -205,6 +230,28 @@ function publicMemoryUser(user: MemoryUser) {
   };
 }
 
+/**
+ * A fixture leg that bends, so an offline route does not look like a routing bug.
+ *
+ * Production routes come from OSRM/Mapy/BRouter and follow roads. The offline server has no road
+ * graph, so it fakes the *shape* rather than pretending to know the network: a deterministic
+ * dogleg offset perpendicular to the leg. It is not a road, and it is not claimed to be one.
+ */
+function fixtureLegShape(
+  from: readonly [number, number],
+  to: readonly [number, number]
+): [number, number][] {
+  const dLng = to[0] - from[0];
+  const dLat = to[1] - from[1];
+  const bend = 0.12;
+  return [
+    [from[0], from[1]],
+    [from[0] + dLng * 0.34 - dLat * bend, from[1] + dLat * 0.34 + dLng * bend],
+    [from[0] + dLng * 0.68 - dLat * bend * 0.5, from[1] + dLat * 0.68 + dLng * bend * 0.5],
+    [to[0], to[1]]
+  ];
+}
+
 function memoryTripPlanResult(input: Partial<TripPlan>, _provider: DataProvider): TripPlanResult {
   const plan = normalizeTripPlan(input);
   const speedKmh = plan.vehicle.profile === "foot" ? 5 : plan.vehicle.profile === "bike" ? 18 : 70;
@@ -230,17 +277,16 @@ function memoryTripPlanResult(input: Partial<TripPlan>, _provider: DataProvider)
       index,
       fromStopId: from.id,
       toStopId: stop.id,
-      coordinates: [
-        [from.lng, from.lat],
-        [stop.lng, stop.lat]
-      ] as [number, number][],
+      coordinates: fixtureLegShape([from.lng, from.lat], [stop.lng, stop.lat]),
       distanceM,
       durationS,
       departureAt,
       arrivalAt
     };
   });
-  const coordinates = plan.stops.map((stop) => [stop.lng, stop.lat] as [number, number]);
+  const coordinates = legs.length
+    ? legs.flatMap((leg, index) => (index === 0 ? leg.coordinates : leg.coordinates.slice(1)))
+    : plan.stops.map((stop) => [stop.lng, stop.lat] as [number, number]);
   const distanceM = legs.reduce((sum, leg) => sum + leg.distanceM, 0);
   const durationS = legs.reduce((sum, leg) => sum + leg.durationS, 0);
   const variants = (["fast", "short", "nohwy"] as const).map((variant) => ({
@@ -296,7 +342,7 @@ function memoryRouteResult(fromRaw: string, toRaw: string, profile: "foot" | "bi
   const distanceM = Math.round(6371_000 * 2 * Math.asin(Math.min(1, Math.sqrt(h))));
   const speedKmh = profile === "foot" ? 5 : profile === "bike" ? 18 : 70;
   return {
-    coordinates: [from, to],
+    coordinates: fixtureLegShape(from, to),
     distanceM,
     durationS: Math.max(60, Math.round((distanceM / 1000 / speedKmh) * 3600)),
     provider: "osm" as const,
@@ -354,6 +400,28 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
     repository: memoryPlanDocumentRepository
   });
   registerAiRoutes(app, {
+    overview: new OverviewService({
+      detail: async (input) => {
+        const fixture = memoryPoiFixtures().find((row) => row.osmId === input.featureId);
+        if (!fixture) throw new Error("Offline profil nemá tento zdrojový záznam.");
+        return {
+          place: {
+            id: fixture.osmId,
+            name: fixture.name,
+            lng: fixture.lng,
+            lat: fixture.lat,
+            category: fixture.category,
+            sources: []
+          },
+          fields: { name: fixture.name, category: fixture.category },
+          source: {
+            sourceId: `fixture:${fixture.osmId}`,
+            label: fixture.name,
+            providerId: "fixture"
+          }
+        };
+      }
+    }),
     orchestrator: aiRuntime.orchestrator,
     planProposals,
     resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null,
@@ -409,6 +477,38 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
     ),
     resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null
   });
+  registerThemeRoutes(app, { queries: fixtureThemeQueries });
+  registerTableRoutes(app, {
+    resolveUserId: async (request) => getSessionUser(request.cookies.session)?.id ?? null,
+    ingest: fixtureTableIngestDeps,
+    loadTable: fixtureTableById,
+    listTables: fixtureTablesForOwner,
+    queries: fixtureThemeQueries
+  });
+  registerSourceRoutes(app, {
+    resolveUserId: async (request) => getSessionUser(request.cookies.session)?.id ?? null,
+    probe: (url) => probeSource(url, fixtureAdapterIo),
+    loadManifest: async (layerId, userId) =>
+      memoryDb.userLayers.find((layer) => layer.id === layerId && layer.userId === userId)
+        ?.sourceManifest ?? null,
+    features: (manifest, layerId, bbox, signal) =>
+      querySourceFeatures(manifest, layerId, bbox, signal, fixtureAdapterIo),
+    createLayer: async (userId, input) => {
+      const layer = {
+        id: nanoid(),
+        userId,
+        name: input.name,
+        color: input.color ?? "#0ea5e9",
+        slug: input.name.toLowerCase().replace(/\s+/g, "-"),
+        isPublic: input.isPublic ? 1 : 0,
+        sourceUrl: input.sourceUrl,
+        sourceManifest: input.sourceManifest,
+        sourceAdapterId: input.sourceAdapterId
+      };
+      memoryDb.userLayers.push(layer);
+      return { ...layer, pinCount: 0 };
+    }
+  });
   registerLayerExtensionRoutes(app, {
     importService: new LayerImportService(new MemoryLayerImportRepository()),
     // Explicitly empty: memory/offline profiles never make a declarative upstream request.
@@ -428,7 +528,58 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
       simulationEnabled: true
     }
   );
-  const gatedInventory = new GatedAavegotchiInventoryAdapter();
+  const world = new SocialWorld(
+    new MemoryWorldRepository((grant) => {
+      if (grant.mode === "gps") {
+        const u = memoryDb.users.find((u) => u.id === grant.userId);
+        if (u) u.xpTotal += Number(grant.xp);
+      }
+    }),
+    {
+      externalQuests: new WorldQuestSources(),
+      testEnabled: process.env.MAPOS_GAME_TEST_MOVEMENT !== "0",
+      async profile(id) {
+        const u = memoryDb.users.find((u) => u.id === id);
+        return u ? { id: u.id, displayName: u.displayName } : null;
+      },
+      async initialXp(id) {
+        return memoryDb.users.find((u) => u.id === id)?.xpTotal ?? 0;
+      },
+      async verifyToken(userId, tokenId) {
+        const identities = await identityService.list(userId);
+        await verifyGotchiOwner(
+          identities
+            .filter((i) => i.type === "wallet" && i.verifiedAt && !i.revokedAt && !i.simulated)
+            .map((i) => i.subject),
+          tokenId
+        );
+      }
+    }
+  );
+  await registerWorldRoutes(app, {
+    world,
+    enabled: process.env.MAPOS_WORLD_ENABLED !== "0",
+    moderator: async (request) =>
+      (process.env.MAPOS_WORLD_MODERATORS ?? "")
+        .split(",")
+        .filter(Boolean)
+        .includes(getSessionUser(request.cookies.session)?.id ?? ""),
+    saveThread: createThreadSaver(savedPlaceService),
+    resolveUser: async (request) => {
+      const u = getSessionUser(request.cookies.session);
+      return u ? { id: u.id, displayName: u.displayName } : null;
+    },
+    origins: [
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "http://localhost:4173",
+      config.siweOrigin,
+      ...(process.env.MAPOS_WORLD_ORIGIN ? [process.env.MAPOS_WORLD_ORIGIN] : [])
+    ]
+  });
+  const gatedInventory = offlineFixture
+    ? new GatedAavegotchiInventoryAdapter()
+    : new LiveGotchiInventory();
   const simulatedInventory = new SimulatedAavegotchiInventoryAdapter(
     [{ tokenId: "42", name: "MapOS fixture Gotchi", wearableIds: [], metadataSourceUrl: null }],
     true
@@ -461,6 +612,8 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
     displayMetadata: new TtlWalletDisplayMetadataResolver(null)
   });
   registerDataRightsRoutes(app, {
+    eraseWorld: (id) => world.eraseUser(id),
+    exportWorld: (id) => world.exportUser(id),
     service: new DataRightsService(new MemoryDataRightsRepository(memoryIdentityRepository)),
     resolveUserId: (request) => getSessionUser(request.cookies.session)?.id ?? null,
     clearSession(reply) {
@@ -475,6 +628,7 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
   app.get("/health", async () => ({
     status: "ok",
     service: "mapos-v3-memory",
+    release: process.env.MAPOS_RELEASE ?? "development",
     ...(offlineFixture ? { fixtureMode: "offline" } : {})
   }));
 
@@ -515,10 +669,18 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
     registerMapyRoutes(app);
     registerBasemapRoutes(app);
     registerWeatherGridRoutes(app);
+    registerBathymetryGridRoutes(app);
+    registerSatelliteRoutes(app);
+    registerStreetObjectRoutes(app);
+    registerEnvironmentEditionRoutes(app);
     registerInfoRoutes(app);
     registerGuideRoutes(app);
   }
   registerDiscoverContextRoutes(app, { service: discoverContext });
+  registerDiscoverBoundaryRoutes(app, {
+    coverage: async () => [],
+    tile: async () => new Uint8Array()
+  });
 
   // Shared with the real server so a new provider can't show up in one and not the other. The
   // feature route below still answers from memory — the point of this server is not touching
@@ -1144,7 +1306,23 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
     return reply.code(204).send();
   });
 
-  app.get("/feed", async () => ({ items: [], nextCursor: null }));
+  app.get<{ Querystring: { scope?: string; bbox?: string; tag?: string } }>(
+    "/feed",
+    async (request) => {
+      let bbox: Bbox | undefined;
+      try {
+        bbox = request.query.bbox ? parseBbox(request.query.bbox) : undefined;
+      } catch {
+        bbox = undefined;
+      }
+      return memoryFeed(
+        getSessionUser(request.cookies.session)?.id ?? null,
+        request.query.scope === "following" ? "following" : "all",
+        bbox,
+        request.query.tag
+      );
+    }
+  );
 
   // The game endpoints below run the *same* deterministic spawner as production (game/spawn.ts)
   // rather than returning empty stubs. That parity is the point: e2e runs and local dev
@@ -1185,6 +1363,41 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
       completedQuestIds: completed ? [...completed] : []
     };
   });
+
+  // Quests bound to a place: same anchor source as `/game/zones`, scoped to a small radius.
+  // Offline fixture mode already serves a deterministic `/game/quests/near`, so this only
+  // registers for the live memory composition to avoid a duplicate route.
+  if (!offlineFixture)
+    app.get<{ Querystring: { lng?: string; lat?: string; radiusKm?: string } }>(
+      "/game/quests/near",
+      async (request, reply) => {
+        const lng = Number(request.query.lng);
+        const lat = Number(request.query.lat);
+        if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+          return reply.code(400).send({ message: "lng and lat required" });
+        }
+        const radiusKm = Math.min(Math.max(Number(request.query.radiusKm) || 3, 0.25), 10);
+        const dy = radiusKm / 111.32;
+        const dx = dy / Math.max(0.01, Math.cos((lat * Math.PI) / 180));
+        const bbox: Bbox = [lng - dx, lat - dy, lng + dx, lat + dy];
+        const anchored = await anchoredQuestsForBbox(bbox, 40);
+        const rad = Math.PI / 180;
+        const quests = anchored
+          .map((quest) => {
+            const a =
+              Math.sin(((quest.lat - lat) * rad) / 2) ** 2 +
+              Math.cos(lat * rad) *
+                Math.cos(quest.lat * rad) *
+                Math.sin(((quest.lng - lng) * rad) / 2) ** 2;
+            const distanceM = Math.round(6371000 * 2 * Math.asin(Math.sqrt(Math.min(1, a))));
+            return { ...quest, distanceM };
+          })
+          .filter((quest) => quest.distanceM <= radiusKm * 1000)
+          .sort((left, right) => left.distanceM - right.distanceM)
+          .slice(0, 12);
+        return { quests };
+      }
+    );
 
   app.get<{ Querystring: { bbox?: string } }>("/game/roads", async (request, reply) => {
     try {
@@ -1400,7 +1613,7 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
     ]
   }));
 
-  app.get("/geocode/reverse", async () => ({ country: "CZ" }));
+  app.get("/geocode/reverse", async () => ({ country: "CZ", name: "Offline test area" }));
 
   app.get("/places/enrich", async () => ({
     fsqId: null,

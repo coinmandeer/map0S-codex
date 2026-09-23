@@ -393,7 +393,12 @@ export function assertPlanDocumentV2(value: unknown): asserts value is PlanDocum
     throw new TypeError("visibility is not supported.");
   }
   assertRoutePolicy(value.routePolicy);
-  if (!Array.isArray(value.stops) || value.stops.length < 2) {
+  const collecting =
+    value.status === "draft" &&
+    typeof value.metadata === "object" &&
+    value.metadata !== null &&
+    (value.metadata as Record<string, unknown>)["dev.mapos.collectingStops"] === true;
+  if (!Array.isArray(value.stops) || value.stops.length < (collecting ? 1 : 2)) {
     throw new TypeError("stops must contain at least two items.");
   }
   const stops = value.stops;

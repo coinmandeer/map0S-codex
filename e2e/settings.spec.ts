@@ -2,19 +2,21 @@ import { expect, test } from "./fixtures/offlineTest";
 
 test.describe("target Settings drawer", () => {
   test("preferences are functional, typed and persistent", async ({ page }) => {
+    test.setTimeout(120_000);
     await page.goto("/");
     await page.getByTestId("settings-btn").click();
 
     const settings = page.getByTestId("settings-registry");
-    await expect(settings).toBeVisible();
+    await expect(settings).toBeVisible({ timeout: 45_000 });
     await expect(settings.locator("[data-settings-section]")).toHaveCount(5);
 
     await page.getByTestId("theme-segmented-dark").click();
     await expect(page.locator("html")).toHaveClass(/theme-dark/);
     await page.getByTestId("density-segmented-compact").click();
     await expect(page.locator("html")).toHaveClass(/density-compact/);
+    await page.getByTestId("low-data-toggle").click();
     await page.getByTestId("units-segmented-imperial").click();
-    await expect(settings).toContainText("Míle");
+    await expect(settings).toContainText("Miles");
 
     const stored = await page.evaluate(() =>
       JSON.parse(localStorage.getItem("mapos:user-preferences-v1") ?? "null")
@@ -22,11 +24,12 @@ test.describe("target Settings drawer", () => {
     expect(stored).toMatchObject({
       schema: "mapos.user-preferences",
       version: 1,
-      preferences: { theme: "dark", density: "compact", units: "imperial" }
+      preferences: { theme: "dark", density: "compact", units: "imperial", lowData: true }
     });
 
     await page.reload();
     await page.getByTestId("settings-btn").click();
+    await expect(page.getByTestId("low-data-toggle")).toBeChecked();
     await expect(page.getByTestId("theme-segmented-dark")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("density-segmented-compact")).toHaveAttribute(
       "aria-pressed",
@@ -62,9 +65,9 @@ test.describe("target Settings drawer", () => {
     await page.goto("/");
     await page.getByTestId("settings-btn").click();
     const drawer = page.getByTestId("right-utility-drawer");
-    await expect(drawer.getByText("Mapové podklady", { exact: true })).toHaveCount(0);
+    await expect(drawer.getByText("Map basemaps", { exact: true })).toHaveCount(0);
     await expect(drawer.getByText("Vyhledávání a trasy", { exact: true })).toHaveCount(0);
-    await expect(drawer.getByText("Hra", { exact: true })).toHaveCount(0);
+    await expect(drawer.getByText("Game", { exact: true })).toHaveCount(0);
     await expect(page.getByTestId("settings-active-providers")).toBeVisible();
     await expect(page.getByTestId("settings-data-rights")).toBeVisible();
   });

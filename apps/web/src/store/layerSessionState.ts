@@ -1,13 +1,14 @@
 import type { FilterValues } from "@mapos/layer-sdk";
 
-export const LAYER_SESSION_STORAGE_KEY = "mapos:layer-session-v1";
-const MAX_BYTES = 32_768;
-const MAX_LAYERS = 64;
+export const LAYER_SESSION_STORAGE_KEY = "mapos:layer-session-v2";
+const MAX_BYTES = 524_288;
+const MAX_LAYERS = 1024;
 const SENSITIVE_KEY =
   /(?:^|[-_])(bbox|center|coord|geometry|lat|latitude|lng|location|longitude|owner|user)(?:$|[-_])/i;
 
 export interface LayerSessionEntry {
-  visible: true;
+  visible: boolean;
+  selected?: boolean;
   opacity: number;
   filters: FilterValues;
 }
@@ -43,7 +44,8 @@ function safeFilters(value: unknown): FilterValues {
 export function readLayerSessionState(storage: Pick<Storage, "getItem"> | null): LayerSessionState {
   if (!storage) return {};
   try {
-    const raw = storage.getItem(LAYER_SESSION_STORAGE_KEY);
+    const raw =
+      storage.getItem(LAYER_SESSION_STORAGE_KEY) ?? storage.getItem("mapos:layer-session-v1");
     if (!raw || raw.length > MAX_BYTES) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
@@ -53,10 +55,11 @@ export function readLayerSessionState(storage: Pick<Storage, "getItem"> | null):
         continue;
       }
       const candidate = entry as Record<string, unknown>;
-      if (candidate.visible !== true) continue;
+      if (typeof candidate.visible !== "boolean") continue;
       const opacity = Number(candidate.opacity);
       result[id] = {
-        visible: true,
+        visible: candidate.visible,
+        selected: candidate.selected !== false,
         opacity: Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 1,
         filters: safeFilters(candidate.filters)
       };
@@ -69,14 +72,18 @@ export function readLayerSessionState(storage: Pick<Storage, "getItem"> | null):
 
 export function writeLayerSessionState(
   storage: Pick<Storage, "setItem"> | null,
-  activeLayers: Record<string, { visible: boolean; opacity: number; filters: FilterValues }>
+  activeLayers: Record<
+    string,
+    { visible: boolean; selected?: boolean; opacity: number; filters: FilterValues }
+  >
 ): void {
   if (!storage) return;
   const safe: LayerSessionState = {};
   for (const [id, entry] of Object.entries(activeLayers).slice(0, MAX_LAYERS)) {
-    if (!entry.visible || !/^[a-z0-9][a-z0-9._-]{0,79}$/i.test(id)) continue;
+    if (entry.selected === false || !/^[a-z0-9][a-z0-9._-]{0,79}$/i.test(id)) continue;
     safe[id] = {
-      visible: true,
+      visible: entry.visible,
+      selected: true,
       opacity: Number.isFinite(entry.opacity) ? Math.min(1, Math.max(0, entry.opacity)) : 1,
       filters: safeFilters(entry.filters)
     };

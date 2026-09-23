@@ -1,10 +1,12 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef } from "react";
-import { t } from "../../i18n/cs";
+import { UnifiedLayers } from "../layers/UnifiedLayers";
+import { on } from "../../lib/events";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { t } from "../../i18n";
 import type { RightUtility } from "../../store/shellState";
 import { getShellStore } from "../../store/shellStore";
 import { useShellStoreSnapshot } from "../../store/useShellStoreSnapshot";
 import { IconButton, ProgressCircular } from "../kit";
-import { LayersClearAll, LayersDrawer } from "../layers/LayersDrawer";
+
 import { useIsMobile } from "../useIsMobile";
 import { captureFocusedElement, restoreFocus } from "./focusRestore";
 
@@ -15,20 +17,60 @@ const SettingsContent = lazy(() =>
   import("../SettingsSheet").then((module) => ({ default: module.SettingsContent }))
 );
 
-const TITLES: Record<Exclude<RightUtility["type"], "closed">, string> = {
-  layers: t("topbar.layers"),
-  basemaps: t("topbar.basemaps.full"),
-  settings: t("topbar.settings")
-};
-
 export function RightUtilityDrawer() {
   const utility = useShellStoreSnapshot((state) => state.rightUtility);
   if (utility.type === "closed") return null;
-  return <OpenRightUtilityDrawer key={utility.type} type={utility.type} />;
+  return (
+    <OpenRightUtilityDrawer
+      key={utility.type === "settings" ? "settings" : "map"}
+      type={utility.type}
+    />
+  );
 }
 
 function OpenRightUtilityDrawer({ type }: { type: Exclude<RightUtility["type"], "closed"> }) {
+  const titles = {
+    layers: t("topbar.layers"),
+    basemaps: t("topbar.basemaps.full"),
+    settings: t("topbar.settings")
+  };
   const shell = getShellStore();
+  const [tab, setTab] = useState(() => {
+    try {
+      return type === "basemaps" ? "basemaps" : sessionStorage.getItem("mapos:map-tab") || "layers";
+    } catch {
+      return "layers";
+    }
+  });
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (type === "basemaps") setTab("basemaps");
+  }, [type]);
+  useEffect(() => on("layer-settings-request", () => setTab("layers")), []);
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    try {
+      body.scrollTop = Number(sessionStorage.getItem(`mapos:map-scroll-${tab}`) || 0);
+    } catch {
+      /* Optional browser state may be unavailable. */
+    }
+    return () => {
+      try {
+        sessionStorage.setItem(`mapos:map-scroll-${tab}`, String(body.scrollTop));
+      } catch {
+        /* Optional browser state may be unavailable. */
+      }
+    };
+  }, [tab]);
+  const selectTab = (value: string) => {
+    setTab(value);
+    try {
+      sessionStorage.setItem("mapos:map-tab", value);
+    } catch {
+      /* Optional browser state may be unavailable. */
+    }
+  };
   const mobile = useIsMobile();
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -54,7 +96,12 @@ function OpenRightUtilityDrawer({ type }: { type: Exclude<RightUtility["type"], 
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        document.querySelector(".kit-dialog, .kit-popover, .kit-menu")
+      )
+        return;
       event.preventDefault();
       shell.closeRightUtility();
     };
@@ -70,26 +117,39 @@ function OpenRightUtilityDrawer({ type }: { type: Exclude<RightUtility["type"], 
       className="shell-right-drawer"
       role="dialog"
       aria-modal="false"
-      aria-label={TITLES[type]}
+      aria-label={titles[type]}
       data-testid="right-utility-drawer"
       data-utility={type}
     >
       <div className="shell-right-drawer-header">
-        <h2>{TITLES[type]}</h2>
-        {type === "layers" && <LayersClearAll />}
+        {type === "settings" ? (
+          <h2>{titles[type]}</h2>
+        ) : (
+          <div className="map-panel-tabs" role="tablist" aria-label={t("topbar.layers")}>
+            <button role="tab" aria-selected={tab === "layers"} onClick={() => selectTab("layers")}>
+              {t("topbar.layers")}
+            </button>
+            <button
+              role="tab"
+              aria-selected={tab === "basemaps"}
+              onClick={() => selectTab("basemaps")}
+            >
+              {t("topbar.basemaps.full")}
+            </button>
+          </div>
+        )}
         <IconButton
           ref={closeRef}
           icon="close"
           size="sm"
-          label={`${t("panel.close")}: ${TITLES[type]}`}
+          label={`${t("panel.close")}: ${titles[type]}`}
           testId="right-utility-close"
           onClick={() => shell.closeRightUtility()}
         />
       </div>
-      <div className="shell-right-drawer-body" data-testid={compatibilityTestId}>
+      <div ref={bodyRef} className="shell-right-drawer-body" data-testid={compatibilityTestId}>
         <Suspense fallback={<ProgressCircular label={t("status.loading")} />}>
-          {type === "layers" && <LayersDrawer />}
-          {type === "basemaps" && <BasemapsDrawer />}
+          {type !== "settings" && (tab === "layers" ? <UnifiedLayers /> : <BasemapsDrawer />)}
           {type === "settings" && <SettingsContent />}
         </Suspense>
       </div>

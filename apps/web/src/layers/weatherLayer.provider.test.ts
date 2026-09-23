@@ -33,3 +33,26 @@ test("RainViewer metadata failure is negative-cached instead of retried on every
     browserProviderHealth.reset();
   }
 });
+
+test("weather grid failures remain failures and cancellation reaches the transport", async (t) => {
+  const { loadGrid } = await import("./weatherLayer.js");
+  t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 503 }));
+  await assert.rejects(loadGrid([0, 0, 1, 1], "temperature", null, 2, 2, "best_match"), /503/);
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ cols: 2, rows: 2, values: [], sampleCount: 0 })
+  );
+  await assert.rejects(
+    loadGrid([0, 0, 1, 1], "temperature", null, 2, 2, "best_match"),
+    /nejsou dostupné/
+  );
+  const controller = new AbortController();
+  t.mock.method(globalThis, "fetch", async (_url: unknown, options?: RequestInit) => {
+    assert.equal(options?.signal, controller.signal);
+    throw new DOMException("Cancelled", "AbortError");
+  });
+  controller.abort();
+  await assert.rejects(
+    loadGrid([0, 0, 1, 1], "temperature", null, 2, 2, "best_match", controller.signal),
+    { name: "AbortError" }
+  );
+});

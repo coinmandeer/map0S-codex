@@ -1,3 +1,8 @@
+import { answerStatisticalQuestion } from "./statisticalQuestion.js";
+import { projectAiLayerCatalog } from "./layerCatalog.js";
+import { AI_PLACE_FIELDS } from "./sourceDetail.js";
+import type { LayerManifestV2 } from "@mapos/layer-sdk";
+import { sourcePlaceDetail } from "./sourceDetail.js";
 /**
  * What the assistant is allowed to reach, in production and offline.
  *
@@ -52,12 +57,50 @@ function layerCatalog(): readonly AiChatLayerDescriptor[] {
   const poiCategories = Object.entries(OSM_POI_CATEGORIES).map(
     ([id, definition]) => `${definition.group}.${id as OsmPoiCategoryId}`
   );
-  return FEATURE_PROVIDERS.map((provider) => ({
-    layerId: provider.id,
+  // Derived from the existing provider registry; no parallel list of data sources.
+  const manifests: LayerManifestV2[] = FEATURE_PROVIDERS.map((provider) => ({
+    schema: "mapos.layer-manifest",
+    schemaVersion: "2.0.0",
+    sdkRange: "^2.0.0",
+    id: provider.id,
     name: provider.name,
+    description: provider.name,
+    category: "travel",
+    geometryKinds: ["Point"],
+    renderer: { type: "symbols" },
+    source: { type: "server-adapter", adapterId: provider.id },
+    queryPolicy: { strategy: "viewport" },
+    attribution: [],
+    capabilities: ["query"],
+    permissions: { defaultVisibility: provider.id === "user-layers" ? "private" : "public" },
+    ai: {
+      discoverable: true,
+      permissionProjection: provider.id === "user-layers" ? "disabled" : "public-features",
+      tools: ["query_layer", "get_feature_detail"],
+      searchableFields: ["name", "category"],
+      semanticProfile: {
+        version: "1",
+        fields: (["osm-poi", "vanlife", "park4night"].includes(provider.id)
+          ? AI_PLACE_FIELDS
+          : ["name", "category"]
+        ).map((field) => ({
+          field,
+          meaning: field === "name" ? "identity" : field === "category" ? "category" : "description"
+        })),
+        spatial: ["point", "bbox"]
+      }
+    }
+  }));
+  return projectAiLayerCatalog(manifests, {
+    authenticated: false,
+    ownedLayerIds: new Set(),
+    entitlementIds: new Set()
+  }).map((entry) => ({
+    layerId: entry.layerId,
+    name: entry.name,
     categories:
-      provider.id === "osm-poi" || provider.id === "vanlife" ? poiCategories.slice(0, 20) : [],
-    access: provider.id === "user-layers" ? "owner" : "public"
+      entry.layerId === "osm-poi" || entry.layerId === "vanlife" ? poiCategories.slice(0, 20) : [],
+    access: "public"
   }));
 }
 
@@ -86,8 +129,22 @@ export function createProductionChatToolProviders(
   const eventLayerId = options.eventLayerId ?? "events";
 
   const providers: AiChatToolProviders = {
+    statisticalAnswer: answerStatisticalQuestion,
     placeSearch: createFusedPlaceSearchSource((query) => getFusedPlaces(query)),
     layers: layerCatalog,
+    async featureDetail(input, context) {
+      const detail = await sourcePlaceDetail(input, context.signal);
+      return {
+        feature: {
+          id: input.featureId,
+          layerId: input.layerId,
+          fields: Object.fromEntries(
+            Object.entries(detail.fields).filter(([key]) => input.fields.includes(key))
+          )
+        },
+        sources: [detail.source]
+      };
+    },
 
     async queryLayer(input, context) {
       context.signal.throwIfAborted();
@@ -95,7 +152,19 @@ export function createProductionChatToolProviders(
       if (!provider?.features) return { features: [], sources: [] };
       const collection = await provider.features({
         bbox: input.bbox,
-        query: { limit: String(input.limit) }
+        signal: context.signal,
+        userId: context.actor.userId,
+        query: {
+          limit: String(input.limit),
+          ...(input.area ? { areaId: input.area.id, boundaryRevision: input.area.revision } : {}),
+          ...(input.filters?.openNow !== undefined
+            ? { openNow: String(input.filters.openNow) }
+            : {}),
+          ...(input.filters?.minRating !== undefined
+            ? { minRating: String(input.filters.minRating) }
+            : {}),
+          ...(input.filters?.tags ? { tags: input.filters.tags.join(",") } : {})
+        }
       });
       const features = collection.features
         .filter((feature) => feature.geometry?.type === "Point")
@@ -383,6 +452,8 @@ export type AiChatTurnFactory = (mapContext: AiChatMapContext) => AiChatService;
  */
 export function createAiChatTurnFactory(options: {
   conversations: AiConversationStore;
+  persistence?: import("./conversationPersistence.js").ConversationPersistence;
+  overview?: import("./overviewService.js").OverviewService;
   providers: AiChatToolProviders;
   onToolTrace?: (trace: AiToolTrace) => void;
   /** Where an `edit_plan` turn sends its proposals; absent means the chat only talks about plans. */
@@ -396,7 +467,10 @@ export function createAiChatTurnFactory(options: {
     });
     return new AiChatService({
       registry,
+      statistics: options.providers.statisticalAnswer,
       conversations: options.conversations,
+      persistence: options.persistence,
+      overview: options.overview,
       availableTools: available,
       ...(options.planEditor ? { planEditor: options.planEditor } : {})
     });

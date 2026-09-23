@@ -1,6 +1,6 @@
 import { BasemapsDrawer } from "./basemaps/BasemapsDrawer";
 import { getMapStore } from "../store/mapStore";
-import { t } from "../i18n/cs";
+import { t } from "../i18n";
 import { Sheet } from "./primitives";
 
 /** Compatibility shell for `VITE_APP_SHELL_V2=0`, which still opens surfaces as modal sheets.

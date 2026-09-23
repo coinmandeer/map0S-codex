@@ -40,7 +40,7 @@ const KEY_ENV = {
 /** Charging stations, with connector types and power — far richer than the OSM tag. */
 export const chargingStations: DataSource = {
   id: "charging-stations",
-  async load(bbox) {
+  async load(bbox, _query, signal) {
     const key = requireKey("ocm");
     const [west, south, east, north] = bbox;
     const rows = await fetchJson<
@@ -60,7 +60,7 @@ export const chargingStations: DataSource = {
     >(
       `https://api.openchargemap.io/v3/poi?output=json&maxresults=300&compact=true&verbose=false` +
         `&boundingbox=(${north},${west}),(${south},${east})&key=${encodeURIComponent(key)}`,
-      { providerId: "openchargemap", ttlMs: 30 * 60_000 }
+      { providerId: "openchargemap", signal, ttlMs: 30 * 60_000 }
     );
 
     return rows.flatMap((row): GeoFeature[] => {
@@ -99,22 +99,32 @@ export const mapillary: DataSource = {
   id: "mapillary",
   tooLarge: (bbox) =>
     bboxSpanKm(bbox) > 30 ? "Přibliž mapu — snímky se načítají pro menší výřez." : null,
-  async load(bbox) {
+  async load(bbox, query, signal) {
     const token = requireKey("mapillary");
+    const panoOnly = query?.pano === "1" || query?.pano === "true";
     const data = await fetchJson<{
       data?: Array<{
         id: string;
         thumb_256_url?: string;
         captured_at?: number;
         compass_angle?: number;
+        is_pano?: boolean;
         computed_geometry?: { coordinates?: [number, number] };
         geometry?: { coordinates?: [number, number] };
       }>;
     }>(
-      `https://graph.mapillary.com/images?access_token=${encodeURIComponent(token)}` +
-        `&bbox=${bbox.join(",")}&limit=200` +
-        `&fields=id,thumb_256_url,captured_at,compass_angle,computed_geometry,geometry`,
-      { providerId: "mapillary", ttlMs: 30 * 60_000 }
+      `https://graph.mapillary.com/images` +
+        `?bbox=${bbox.join(",")}&limit=200` +
+        `&fields=id,thumb_256_url,captured_at,compass_angle,is_pano,computed_geometry,geometry` +
+        (panoOnly ? `&is_pano=true` : ""),
+      // The token travels in a header, never in the query string: a URL ends up in logs, in
+      // `Referer` and in any error message that echoes the request, and the key must not.
+      {
+        providerId: "mapillary",
+        signal,
+        ttlMs: 30 * 60_000,
+        headers: { Authorization: `OAuth ${token}` }
+      }
     );
 
     return (data.data ?? []).flatMap((img): GeoFeature[] => {
@@ -126,6 +136,7 @@ export const mapillary: DataSource = {
           category: "street-photo",
           photo: img.thumb_256_url,
           bearing: img.compass_angle,
+          isPano: img.is_pano === true,
           capturedAt: img.captured_at ? new Date(img.captured_at).toISOString() : undefined,
           website: `https://www.mapillary.com/app/?pKey=${img.id}`
         })
@@ -137,7 +148,7 @@ export const mapillary: DataSource = {
 /** Active fire detections from VIIRS. The API answers in CSV, not JSON. */
 export const activeFires: DataSource = {
   id: "active-fires",
-  async load(bbox, query) {
+  async load(bbox, query, signal) {
     const key = requireKey("firms");
     const days = Math.min(Math.max(Number(query.days) || 1, 1), 7);
     const [west, south, east, north] = bbox;
@@ -147,6 +158,7 @@ export const activeFires: DataSource = {
 
     const text = await fetchText(url, {
       providerId: "nasa-firms",
+      signal,
       ttlMs: 5 * 60_000,
       timeoutMs: 15_000,
       maxResponseBytes: 4 * 1024 * 1024,
@@ -185,7 +197,7 @@ export const activeFires: DataSource = {
 /** Reference-grade air quality stations, complementing Sensor.Community's citizen sensors. */
 export const openAq: DataSource = {
   id: "openaq",
-  async load(bbox) {
+  async load(bbox, _query, signal) {
     const key = requireKey("openaq");
     const data = await fetchJson<{
       results?: Array<{
@@ -198,6 +210,7 @@ export const openAq: DataSource = {
       }>;
     }>(`https://api.openaq.org/v3/locations?bbox=${bbox.join(",")}&limit=200`, {
       providerId: "openaq",
+      signal,
       ttlMs: 30 * 60_000,
       headers: { "X-API-Key": key }
     });
@@ -226,7 +239,7 @@ export const birdSightings: DataSource = {
   id: "ebird",
   tooLarge: (bbox) =>
     bboxSpanKm(bbox) > 100 ? "Přibliž mapu — pozorování se hledají v okruhu do 50 km." : null,
-  async load(bbox, query) {
+  async load(bbox, query, signal) {
     const token = requireKey("ebird");
     const { lng, lat } = bboxCenter(bbox);
     const dist = Math.min(50, Math.max(2, Math.round(bboxSpanKm(bbox) / 2)));
@@ -247,7 +260,7 @@ export const birdSightings: DataSource = {
     >(
       `https://api.ebird.org/v2/data/obs/geo/recent?lat=${lat.toFixed(4)}&lng=${lng.toFixed(4)}` +
         `&dist=${dist}&back=${back}&maxResults=200`,
-      { providerId: "ebird", ttlMs: 20 * 60_000, headers: { "X-eBirdApiToken": token } }
+      { providerId: "ebird", signal, ttlMs: 20 * 60_000, headers: { "X-eBirdApiToken": token } }
     );
 
     return rows.flatMap((obs, i): GeoFeature[] => {

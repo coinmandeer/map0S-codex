@@ -1,17 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  planV1ToV2,
-  type LayerManifestV2,
-  type PlanDocumentV2,
-  type TripPlan
-} from "@mapos/layer-sdk";
-import { ApiError, apiPost, apiPostEventStream } from "../lib/api";
-import { emit } from "../lib/events";
+import { useEffect, useState } from "react";
+import { planV1ToV2, type PlanDocumentV2, type TripPlan } from "@mapos/layer-sdk";
+import { ApiError, apiPost } from "../lib/api";
+import { emit, on } from "../lib/events";
 import { getLayerManifestV2 } from "../layers";
-import { registerInlineLayer } from "../layers/inlineLayers";
+import { answerResultManifest, answerBounds, AI_RESULT_PREFIX } from "../layers/aiMapResults";
 import { saveInlineLayerAsUserLayer } from "../layers/saveInlineLayer";
 import { formatDistance } from "../lib/units";
-import { t } from "../i18n/cs";
+import { t } from "../i18n";
 import { getMapStore } from "../store/mapStore";
 import { getShellStore } from "../store/shellStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
@@ -29,97 +24,10 @@ import {
   TextArea
 } from "./kit";
 
-interface AiPlace {
-  id: string;
-  layerId: string;
-  title: string;
-  category: string;
-  longitude: number;
-  latitude: number;
-  distanceMeters?: number;
-  sourceId: string;
-}
-
-interface AiCitation {
-  sourceId: string;
-  label: string;
-  url?: string;
-}
-
-interface AiPlanStop {
-  title: string;
-  longitude: number;
-  latitude: number;
-  day?: number;
-  note?: string;
-  sourceId: string;
-}
-
-interface AiPlanDiff {
-  baseRevision: number;
-  previewRevision: number;
-  changedPlanFields: string[];
-  addedStopIds: string[];
-  removedStopIds: string[];
-  movedStopIds: string[];
-  updatedStopIds: string[];
-  affectedSegmentIds: string[];
-}
-
-type AiCard =
-  | { type: "places"; title: string; places: AiPlace[]; layerIds: string[] }
-  | { type: "link"; title: string; url: string; excerpt?: string }
-  | {
-      type: "layer";
-      title: string;
-      layerIds: string[];
-      filters?: { openNow?: boolean; minRating?: number; tags?: string[] };
-    }
-  | {
-      type: "facts";
-      title: string;
-      items: { label: string; value: string; note?: string; sourceIds: string[] }[];
-    }
-  | {
-      type: "layer-draft";
-      title: string;
-      layerId: string;
-      manifest: LayerManifestV2;
-      featureCount: number;
-    }
-  | { type: "plan"; title: string; summary: string; stops: AiPlanStop[] }
-  | { type: "plan-edit"; title: string; proposalId: string; planId: string; diff: AiPlanDiff };
-
-interface AiAnswer {
-  execution: "model-tool-loop" | "deterministic";
-  intent: string;
-  text: string;
-  cards: AiCard[];
-  sources: AiCitation[];
-  followUps: string[];
-  model?: string;
-}
-
-type AiChatEvent =
-  | { type: "intent"; intent: string; execution: AiAnswer["execution"] }
-  | { type: "token"; text: string }
-  | { type: "tool_start"; tool: string; title: string }
-  | { type: "tool_result"; tool: string; status: string }
-  | { type: "card"; card: AiCard }
-  | { type: "done"; answer: AiAnswer; conversation: { id: string; revision: number } }
-  | { type: "error"; code: string; message: string };
-
-interface Turn {
-  id: string;
-  question: string;
-  text: string;
-  step: string | null;
-  cards: AiCard[];
-  sources: AiCitation[];
-  followUps: string[];
-  done: boolean;
-  error: string | null;
-}
+import type { AiPlace, AiCitation, AiCard, AiPlanDiff } from "./ai/chatTypes";
+import { runChatTurn } from "./ai/runChatTurn";
+import { showStatisticAnswer } from "./ai/statisticAnswer";
+import { chatSession, useChatField } from "./ai/chatSession";
 
 const PRIVACY_DISMISSED_KEY = "mapos:ai-privacy-ack";
 
@@ -151,19 +59,29 @@ export function AiPanel() {
   const store = getMapStore();
   const shell = getShellStore();
   const leftContext = useShellStoreSnapshot((state) => state.leftContext);
+  const viewportBbox = useMapStoreSnapshot((state) => state.viewportBbox);
+  const area = useMapStoreSnapshot((state) => state.areaSelection);
+  const world = useMapStoreSnapshot((state) => state.experienceId);
+
   const view = useMapStoreSnapshot((state) => state.view);
   const activeLayers = useMapStoreSnapshot((state) => state.activeLayers);
-  const mode = useShellStoreSnapshot((state) => state.mode);
   const units = useMapStoreSnapshot((state) => state.preferences.units);
-  const aiEnabled = useMapStoreSnapshot((state) => state.preferences.aiEnabled);
-  const activePlanId = useMapStoreSnapshot((state) => state.activePlanDocument?.id ?? null);
   const seeded = leftContext.type === "ai" ? leftContext.prompt : undefined;
+  const seedKey =
+    leftContext.type === "ai" ? JSON.stringify([leftContext.prompt, leftContext.requestKey]) : null;
 
-  const [prompt, setPrompt] = useState("");
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const [revision, setRevision] = useState(0);
+  const [hoveredPlace, setHoveredPlace] = useState<string | null>(null);
+  useEffect(
+    () =>
+      on("ai-pin-hover", (ref) =>
+        setHoveredPlace(ref ? JSON.stringify([ref.layerId, ref.featureId]) : null)
+      ),
+    []
+  );
+  useEffect(() => () => emit("ai-result-hover", null), []);
+  const [prompt, setPrompt] = useChatField("prompt");
+  const [turns] = useChatField("turns");
+  const [busy] = useChatField("busy");
   const [privacyAck, setPrivacyAck] = useState(
     () =>
       typeof window !== "undefined" && window.localStorage.getItem(PRIVACY_DISMISSED_KEY) === "1"
@@ -173,112 +91,38 @@ export function AiPanel() {
   const [proposals, setProposals] = useState<
     Record<string, "busy" | "confirmed" | "rejected" | "undone" | "failed">
   >({});
-  const askedSeed = useRef<string | null>(null);
+
   /** Only "Zastavit" aborts a turn. Aborting on unmount would also abort the seeded question,
    *  because a StrictMode mount runs the cleanup between the two effect passes. */
-  const running = useRef<AbortController | null>(null);
+  const running = chatSession.running;
 
   const visibleLayerIds = Object.entries(activeLayers)
-    .filter(([, state]) => state.visible)
+    .filter(([id, state]) => state.visible && !id.startsWith(AI_RESULT_PREFIX))
     .map(([layerId]) => layerId);
 
-  const ask = async (question: string) => {
-    const trimmed = question.trim();
-    if (!trimmed || busy) return;
-    const id = `turn-${Date.now()}`;
-    const patch = (change: (turn: Turn) => Turn) =>
-      setTurns((current) => current.map((turn) => (turn.id === id ? change(turn) : turn)));
+  const featureRef = leftContext.type === "ai" ? leftContext.featureRef : undefined;
+  const scopeKey = JSON.stringify([
+    viewportBbox,
+    area?.id,
+    area?.revision,
+    world,
+    featureRef,
+    visibleLayerIds.map((id) => [id, activeLayers[id]?.filters]),
+    store.temporal,
+    store.activePlanDocument?.revision
+  ]);
 
-    setBusy(true);
-    setTurns((current) => [
-      ...current,
-      {
-        id,
-        question: trimmed,
-        text: "",
-        step: null,
-        cards: [],
-        sources: [],
-        followUps: [],
-        done: false,
-        error: null
-      }
-    ]);
-    setPrompt("");
-
-    const controller = new AbortController();
-    running.current = controller;
-    try {
-      await apiPostEventStream<AiChatEvent>(
-        "/v2/ai/chat",
-        {
-          message: trimmed,
-          ...(conversationId ? { conversationId, baseRevision: revision } : {}),
-          context: {
-            mapCenter: { longitude: view.lng, latitude: view.lat },
-            zoom: view.zoom,
-            activeLayerIds: visibleLayerIds.slice(0, 20),
-            mode,
-            // The open plan is what "add a stop on day two" refers to; without it the assistant
-            // is not offered the edit tool at all.
-            ...(activePlanId ? { planId: activePlanId } : {})
-          },
-          consent: { externalModel: aiEnabled, preciseLocation: false }
-        },
-        (event) => {
-          if (event.type === "tool_start") patch((turn) => ({ ...turn, step: event.title }));
-          if (event.type === "token") {
-            patch((turn) => ({ ...turn, text: turn.text + event.text }));
-          }
-          if (event.type === "card") {
-            patch((turn) => ({ ...turn, cards: [...turn.cards, event.card] }));
-          }
-          if (event.type === "done") {
-            setConversationId(event.conversation.id);
-            setRevision(event.conversation.revision);
-            patch((turn) => ({
-              ...turn,
-              text: event.answer.text,
-              step: null,
-              cards: event.answer.cards,
-              sources: event.answer.sources,
-              followUps: event.answer.followUps,
-              done: true
-            }));
-          }
-          if (event.type === "error") {
-            patch((turn) => ({ ...turn, step: null, error: event.message, done: true }));
-          }
-        },
-        { signal: controller.signal, auth: true }
-      );
-    } catch (cause) {
-      if (!controller.signal.aborted) {
-        patch((turn) => ({
-          ...turn,
-          step: null,
-          done: true,
-          error:
-            cause instanceof Error
-              ? cause.message
-              : "Odpověď se nepodařilo získat. Zkus dotaz zopakovat."
-        }));
-      }
-    } finally {
-      running.current = null;
-      setBusy(false);
-    }
-  };
+  const ask = (question: string) => runChatTurn(question, featureRef);
 
   // A question typed into search opens this panel already asked, so the user does not have to
   // retype it here.
   useEffect(() => {
-    if (!seeded || askedSeed.current === seeded) return;
-    askedSeed.current = seeded;
+    if (!seeded || chatSession.askedSeed === seedKey) return;
+    chatSession.askedSeed = seedKey;
     void ask(seeded);
     // `ask` closes over state that changes with every turn; re-running on it would re-ask.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seeded]);
+  }, [seeded, seedKey]);
 
   const openPlace = (place: AiPlace) => {
     emit("fly-to", { lng: place.longitude, lat: place.latitude, zoom: Math.max(view.zoom, 15) });
@@ -286,40 +130,54 @@ export function AiPanel() {
       feature: {
         type: "Feature",
         geometry: { type: "Point", coordinates: [place.longitude, place.latitude] },
-        properties: { id: place.id, name: place.title, layerId: place.layerId }
+        properties: {
+          id: place.sourceFeatureId ?? place.id,
+          name: place.title,
+          layerId: place.layerId
+        }
       },
       layerId: place.layerId
     });
   };
 
-  /** "Zobrazit v mapě": switch on whatever the answer needs and fly to the first result. No gate
-   *  dialog before the answer, no layer switched on that the answer did not use (§30.4 point 3). */
-  const showOnMap = (card: Extract<AiCard, { type: "places" }>) => {
-    const missing = card.layerIds.filter((layerId) => !activeLayers[layerId]?.visible);
-    for (const layerId of missing) store.toggleLayer(layerId);
-    const first = card.places[0];
-    if (first) {
-      emit("fly-to", { lng: first.longitude, lat: first.latitude, zoom: Math.max(view.zoom, 13) });
-    }
-    if (missing.length) {
-      store.showToast(`Zapnuto: ${missing.join(", ")}`, {
-        action: {
-          label: "Vrátit",
-          onSelect: () => missing.forEach((layerId) => store.toggleLayer(layerId))
-        }
-      });
-    }
+  const fitResults = (points: readonly { longitude: number; latitude: number }[]) => {
+    const bbox = answerBounds(points);
+    if (bbox) emit("fit-bounds", { bbox });
+  };
+  const showOnMap = (card: Extract<AiCard, { type: "places" }>, sources: AiCitation[]) => {
+    store.showAnswerResults(answerResultManifest(card.title, card.places, sources));
   };
 
   /** "Zapni mi vrstvy pro…" (§4.13). `set_layer_selection_draft` is a draft on purpose: the
    *  model names the layers, the user is the one who switches them on. */
   const applyLayerSelection = (card: Extract<AiCard, { type: "layer" }>) => {
     const missing = card.layerIds.filter((layerId) => !activeLayers[layerId]?.visible);
-    if (!missing.length) {
-      store.showToast("Tyhle vrstvy už v mapě máš");
-      return;
-    }
     for (const layerId of missing) store.toggleLayer(layerId);
+    for (const layerId of card.layerIds) {
+      const manifest = getLayerManifestV2(layerId);
+      const allowed = Object.fromEntries(
+        Object.entries(card.filters ?? {}).filter(([key, value]) => {
+          const facet = manifest?.filters?.find((f) => f.id === key);
+          if (!facet) return false;
+          if (facet.kind === "toggle") return typeof value === "boolean";
+          if (facet.kind === "range" || facet.kind === "distance")
+            return (
+              typeof value === "number" &&
+              Number.isFinite(value) &&
+              value >= (facet.min ?? -Infinity) &&
+              value <= (facet.max ?? Infinity)
+            );
+          if (facet.kind === "multi-select")
+            return (
+              Array.isArray(value) &&
+              value.every((v) => facet.options?.some((option) => option.id === v))
+            );
+          return false;
+        })
+      );
+      if (Object.keys(allowed).length)
+        store.setLayerFilters(layerId, { ...store.activeLayers[layerId]?.filters, ...allowed });
+    }
     store.showToast(`Zapnuto: ${missing.map(layerSelectionName).join(", ")}`, {
       action: {
         label: "Vrátit",
@@ -328,18 +186,8 @@ export function AiPanel() {
     });
   };
 
-  /** A drafted layer becomes a real one only here: the manifest is registered for this session
-   *  and switched on, so it behaves like any other layer — including switching it back off. */
   const showLayerDraft = (card: Extract<AiCard, { type: "layer-draft" }>) => {
-    const layerId = registerInlineLayer(card.manifest);
-    if (!activeLayers[layerId]?.visible) store.toggleLayer(layerId);
-    const first = card.manifest.source.inline?.features[0];
-    if (first) {
-      emit("fly-to", { lng: first.longitude, lat: first.latitude, zoom: Math.max(view.zoom, 11) });
-    }
-    store.showToast(`Vrstva ${card.manifest.name} je v mapě`, {
-      action: { label: "Vrátit", onSelect: () => store.toggleLayer(layerId) }
-    });
+    store.showAnswerResults(card.manifest);
   };
 
   /** Saving turns the session layer into a personal one, provenance and all (§30.7). */
@@ -350,14 +198,14 @@ export function AiPanel() {
       setSavedLayers((current) => ({ ...current, [card.layerId]: true }));
       store.showToast(
         result.failed
-          ? `Uloženo ${result.saved} míst, ${result.failed} se nepodařilo`
-          : `Vrstva uložená v Moje vrstvy (${result.saved} míst)`
+          ? t("ai.layerDraft.toastPartial", { saved: result.saved, failed: result.failed })
+          : t("ai.layerDraft.toastSaved", { count: result.saved })
       );
     } catch (cause) {
       store.showToast(
         cause instanceof ApiError && cause.status === 401
-          ? "Uložení vyžaduje přihlášení"
-          : "Vrstvu se nepodařilo uložit"
+          ? t("ai.layerDraft.toastAuth")
+          : t("ai.layerDraft.toastFailed")
       );
     } finally {
       setSavingLayer(null);
@@ -450,9 +298,8 @@ export function AiPanel() {
             size="sm"
             testId="ai-panel-clear"
             onClick={() => {
-              setTurns([]);
-              setConversationId(null);
-              setRevision(0);
+              chatSession.clear();
+              chatSession.askedSeed = seedKey;
             }}
           />
         ) : undefined
@@ -510,25 +357,45 @@ export function AiPanel() {
         </form>
       }
     >
+      {Object.keys(activeLayers).some(
+        (id) => id.startsWith(AI_RESULT_PREFIX) && activeLayers[id]?.visible
+      ) && (
+        <Button
+          variant="text"
+          size="sm"
+          icon="close"
+          testId="ai-results-hide"
+          onClick={() => store.hideAnswerResults()}
+        >
+          Skrýt výsledky AI
+        </Button>
+      )}
       {/* What the assistant can see, in one line and one click — this replaces the disclosure
           paragraphs that used to repeat under every answer (§30.6). */}
       <Popover
         trigger={
           <Chip
-            label={`Kontext: ${visibleLayerIds.length} ${visibleLayerIds.length === 1 ? "vrstva" : "vrstev"}`}
+            label={t("ai.context.chip", { count: visibleLayerIds.length })}
             icon="layers"
             testId="ai-panel-context"
           />
         }
-        title="Co AI vidí"
+        title={t("ai.context.title")}
       >
         <ul className="ai-panel-context-list">
           <li>
-            Střed mapy zaokrouhlený na ~1 km ({view.lat.toFixed(2)}, {view.lng.toFixed(2)})
+            {t("ai.context.centre", {
+              lat: view.lat.toFixed(2),
+              lng: view.lng.toFixed(2)
+            })}
           </li>
-          <li>Aktivní vrstvy: {visibleLayerIds.length ? visibleLayerIds.join(", ") : "žádné"}</li>
-          <li>Text dotazu a předchozí zprávy v tomto vláknu</li>
-          <li>Ne: přesná poloha, tvoje uložená místa ani poznámky v plánech</li>
+          <li>
+            {t("ai.context.layers", {
+              layers: visibleLayerIds.length ? visibleLayerIds.join(", ") : t("ai.context.none")
+            })}
+          </li>
+          <li>{t("ai.context.thread")}</li>
+          <li>{t("ai.context.never")}</li>
         </ul>
       </Popover>
 
@@ -545,11 +412,11 @@ export function AiPanel() {
                 setPrivacyAck(true);
               }}
             >
-              Rozumím
+              {t("ai.consent.accept")}
             </Button>
           }
         >
-          Odesílá se dotaz, střed mapy a názvy aktivních vrstev — ne přesná poloha.
+          {t("ai.privacy.notice")}
         </InlineNotice>
       )}
 
@@ -565,11 +432,31 @@ export function AiPanel() {
         {turns.map((turn) => (
           <article key={turn.id} className="ai-turn">
             <p className="ai-turn-question">{turn.question}</p>
-            {turn.error ? (
+            <p className="ai-turn-step">
+              {turn.scopeLabel} · dotaz {turn.requestedAt}
+            </p>
+            {turn.scopeKey !== scopeKey &&
+              !turn.cards.some((card) => card.type === "statistic") && (
+                <Button
+                  variant="text"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void ask(turn.question)}
+                >
+                  Obnovit pro tento výřez
+                </Button>
+              )}
+            {turn.error && (
               <InlineNotice tone="warning" testId="ai-panel-error">
                 {turn.error}
               </InlineNotice>
-            ) : !turn.text ? (
+            )}
+            {!turn.done && turn.step && (
+              <p className="ai-turn-step" data-testid="ai-panel-progress">
+                {turn.step}…
+              </p>
+            )}
+            {!turn.text && !turn.cards.length && !turn.done ? (
               <>
                 {turn.step && (
                   <p className="ai-turn-step" data-testid="ai-panel-step">
@@ -592,18 +479,39 @@ export function AiPanel() {
                       <p className="ai-turn-card-head">{card.title}</p>
                       <div className="ai-turn-places">
                         {card.places.map((place, position) => (
-                          <ListItem
-                            key={place.id}
-                            title={`${position + 1}. ${place.title}`}
-                            subtitle={
-                              place.distanceMeters === undefined
-                                ? undefined
-                                : formatDistance(place.distanceMeters, units)
+                          <div
+                            key={`${place.layerId}:${place.id}`}
+                            onPointerEnter={() =>
+                              emit("ai-result-hover", {
+                                layerId: place.layerId,
+                                featureId: place.sourceFeatureId ?? place.id
+                              })
                             }
-                            icon="place"
-                            ariaLabel={`Otevřít detail místa ${place.title}`}
-                            onClick={() => openPlace(place)}
-                          />
+                            onPointerLeave={() => emit("ai-result-hover", null)}
+                            onFocus={() =>
+                              emit("ai-result-hover", {
+                                layerId: place.layerId,
+                                featureId: place.sourceFeatureId ?? place.id
+                              })
+                            }
+                            onBlur={() => emit("ai-result-hover", null)}
+                          >
+                            <ListItem
+                              active={
+                                hoveredPlace ===
+                                JSON.stringify([place.layerId, place.sourceFeatureId ?? place.id])
+                              }
+                              title={`${position + 1}. ${place.title}`}
+                              subtitle={
+                                place.distanceMeters === undefined
+                                  ? undefined
+                                  : formatDistance(place.distanceMeters, units)
+                              }
+                              icon="place"
+                              ariaLabel={`Otevřít detail místa ${place.title}`}
+                              onClick={() => openPlace(place)}
+                            />
+                          </div>
                         ))}
                       </div>
                       <Button
@@ -611,9 +519,28 @@ export function AiPanel() {
                         size="sm"
                         icon="map"
                         testId="ai-card-places-show"
-                        onClick={() => showOnMap(card)}
+                        disabled={!turn.sources.length}
+                        onClick={() => showOnMap(card, turn.sources)}
                       >
                         Zobrazit v mapě
+                      </Button>
+                      <Button
+                        variant="text"
+                        size="sm"
+                        onClick={() => fitResults(card.places.slice(0, 100))}
+                      >
+                        Přiblížit výsledky
+                      </Button>
+                    </section>
+                  ) : card.type === "statistic" ? (
+                    <section key={`statistic-${index}`} className="ai-turn-card">
+                      <p>
+                        {card.title} · {card.period} · {card.geoLevel.toUpperCase()}
+                      </p>
+                      <Button onClick={() => showStatisticAnswer(card)}>
+                        {card.available
+                          ? "Zobrazit statistiku v mapě"
+                          : "Přiblížit požadovanou zemi"}
                       </Button>
                     </section>
                   ) : card.type === "facts" ? (
@@ -632,6 +559,16 @@ export function AiPanel() {
                             <dd>
                               {item.value}
                               {item.note ? <span>{item.note}</span> : null}
+                              {item.sourceIds.map((id) => {
+                                const source = turn.sources.find((s) => s.sourceId === id);
+                                return source?.url ? (
+                                  <a key={id} href={source.url} target="_blank" rel="noreferrer">
+                                    [{source.label}]
+                                  </a>
+                                ) : source ? (
+                                  <small key={id}>[{source.label}]</small>
+                                ) : null;
+                              })}
                             </dd>
                           </div>
                         ))}
@@ -681,8 +618,8 @@ export function AiPanel() {
                     >
                       <p className="ai-turn-card-head">{card.title}</p>
                       <p className="ai-turn-card-note">
-                        {card.featureCount} míst ze zdrojů, které odpověď cituje. Vrstva platí do
-                        zavření aplikace.
+                        {Math.min(card.featureCount, 100)} míst ze zdrojů, které odpověď cituje.
+                        Nový výběr nahradí předchozí dočasné výsledky.
                       </p>
                       <div className="ai-turn-card-actions">
                         <Button
@@ -697,14 +634,23 @@ export function AiPanel() {
                         <Button
                           variant="text"
                           size="sm"
+                          onClick={() =>
+                            fitResults(card.manifest.source.inline?.features.slice(0, 100) ?? [])
+                          }
+                        >
+                          Přiblížit výsledky
+                        </Button>
+                        <Button
+                          variant="text"
+                          size="sm"
                           icon="bookmark"
                           disabled={savingLayer === card.layerId || savedLayers[card.layerId]}
                           testId="ai-card-layer-draft-save"
                           onClick={() => void saveLayerDraft(card)}
                         >
                           {savedLayers[card.layerId]
-                            ? "Uloženo v Moje vrstvy"
-                            : "Uložit do Moje vrstvy"}
+                            ? t("ai.layerDraft.saved")
+                            : t("ai.layerDraft.save")}
                         </Button>
                       </div>
                     </section>
@@ -795,10 +741,16 @@ export function AiPanel() {
                 {turn.sources.length > 0 && (
                   <div className="ai-turn-sources">
                     {[
-                      ...new Map(turn.sources.map((source) => [source.label, source])).values()
-                    ].map((source) => (
-                      <Chip key={source.label} label={source.label} />
-                    ))}
+                      ...new Map(turn.sources.map((source) => [source.sourceId, source])).values()
+                    ].map((source) =>
+                      source.url && /^https?:\/\//.test(source.url) ? (
+                        <a key={source.sourceId} href={source.url} target="_blank" rel="noreferrer">
+                          {source.label}
+                        </a>
+                      ) : (
+                        <Chip key={source.sourceId} label={source.label} />
+                      )
+                    )}
                   </div>
                 )}
               </>

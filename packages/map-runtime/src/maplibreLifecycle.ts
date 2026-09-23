@@ -51,11 +51,9 @@ export class MapLibreDataLayerLifecycle implements MapDataLayerLifecycle {
     const current = attachment.create();
     const entry = {} as ManagedAttachment;
     const proxy: LayerHandle = {
-      update: async (bbox, filters, signal) => {
-        const data = await entry.current.update(bbox, filters, signal);
-        if (data) entry.lastData = data;
-        return data;
-      },
+      // Loading is not a commit: the owning engine may reject this response as stale.
+      // Only setData records the accepted snapshot restored after a style replacement.
+      update: (bbox, filters, signal) => entry.current.update(bbox, filters, signal),
       setData: (data) => {
         entry.lastData = data;
         entry.current.setData?.(data);

@@ -47,6 +47,7 @@ describe("MapLibreDataLayerLifecycle", () => {
     const lifecycle = new MapLibreDataLayerLifecycle(map as never);
     const stable = lifecycle.attach({ id: "fixture", create });
     await stable.update([-1, -1, 1, 1], {});
+    stable.setData?.(data);
     stable.setVisible(false);
     stable.setOpacity(0.4);
     map.reloadStyle();
@@ -63,5 +64,50 @@ describe("MapLibreDataLayerLifecycle", () => {
     stable.detach();
     assert.equal(lifecycle.has("fixture"), false);
     lifecycle.destroy();
+  });
+
+  it("does not restore a late uncommitted response after a style replacement", async () => {
+    const map = new FakeMap();
+    const restored: FeatureCollection[] = [];
+    let finish!: (value: FeatureCollection) => void;
+    const stale = {
+      ...data,
+      features: [
+        {
+          ...data.features[0]!,
+          properties: {
+            ...data.features[0]!.properties,
+            id: "stale"
+          }
+        }
+      ]
+    };
+    const lifecycle = new MapLibreDataLayerLifecycle(map as never);
+    const handle = lifecycle.attach({
+      id: "fixture",
+      create: () => ({
+        update: () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+        setData: (value) => restored.push(value),
+        setVisible() {},
+        setOpacity() {},
+        detach() {}
+      })
+    });
+    try {
+      const pending = handle.update([-1, -1, 1, 1], {});
+      handle.setData?.(data);
+      finish(stale);
+      await pending; // The owner rejects this response and deliberately never commits it.
+      map.reloadStyle();
+      assert.deepEqual(
+        restored.map((value) => value.features[0]?.properties.id),
+        ["one", "one"]
+      );
+    } finally {
+      lifecycle.destroy();
+    }
   });
 });

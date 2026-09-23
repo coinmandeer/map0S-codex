@@ -1,3 +1,5 @@
+import { ensureDataPinImage } from "../map/pinIcons";
+import { registerInteractivePins, unregisterInteractivePins } from "../map/interactivePins";
 import type maplibregl from "maplibre-gl";
 import type { Bbox, FeatureCollection, FilterValues, LayerHandle } from "@mapos/layer-sdk";
 
@@ -13,7 +15,7 @@ import type { Bbox, FeatureCollection, FilterValues, LayerHandle } from "@mapos/
  * Sublayers go in below the first symbol layer so the basemap's labels stay legible on top.
  */
 
-export type VectorSublayerType = "line" | "fill" | "circle";
+export type VectorSublayerType = "line" | "fill" | "circle" | "symbol";
 
 export interface VectorSublayerSpec {
   /** Suffix for the MapLibre layer id; unique within the overlay. */
@@ -27,6 +29,9 @@ export interface VectorSublayerSpec {
   minzoom?: number;
   maxzoom?: number;
   paint: Record<string, unknown>;
+  layout?: Record<string, unknown>;
+  pin?: { color: string; glyph: string };
+  interactive?: boolean;
 }
 
 export interface VectorTileOverlaySpec {
@@ -45,7 +50,8 @@ export interface VectorTileOverlaySpec {
 const OPACITY_KEY: Record<VectorSublayerType, string> = {
   line: "line-opacity",
   fill: "fill-opacity",
-  circle: "circle-opacity"
+  circle: "circle-opacity",
+  symbol: "icon-opacity"
 };
 
 function readGroups(filters: FilterValues, spec: VectorTileOverlaySpec): Set<string> | null {
@@ -87,6 +93,7 @@ export function createVectorTileOverlay(
   function removeAll() {
     for (const sublayer of spec.sublayers) {
       const id = idFor(sublayer);
+      unregisterInteractivePins(map, [id]);
       if (map.getLayer(id)) map.removeLayer(id);
     }
     if (map.getSource(sourceId)) map.removeSource(sourceId);
@@ -110,6 +117,8 @@ export function createVectorTileOverlay(
     const before = firstSymbolLayerId();
     for (const sublayer of spec.sublayers) {
       const id = idFor(sublayer);
+      if (sublayer.pin) ensureDataPinImage(map, id, sublayer.pin.color, sublayer.pin.glyph);
+      if (sublayer.interactive) registerInteractivePins(map, layerId, [id]);
       if (map.getLayer(id)) continue;
       map.addLayer(
         {
@@ -120,7 +129,18 @@ export function createVectorTileOverlay(
           ...(sublayer.filter ? { filter: sublayer.filter } : {}),
           ...(sublayer.minzoom != null ? { minzoom: sublayer.minzoom } : {}),
           ...(sublayer.maxzoom != null ? { maxzoom: sublayer.maxzoom } : {}),
-          layout: { visibility: shouldDraw(sublayer) ? "visible" : "none" },
+          layout: {
+            ...(sublayer.pin
+              ? {
+                  "icon-image": `pin-${id}`,
+                  "icon-size": 0.85,
+                  "icon-allow-overlap": false,
+                  "icon-padding": 3
+                }
+              : {}),
+            ...sublayer.layout,
+            visibility: shouldDraw(sublayer) ? "visible" : "none"
+          },
           paint: {
             ...sublayer.paint,
             [OPACITY_KEY[sublayer.type]]: baseOpacity(sublayer) * opacity

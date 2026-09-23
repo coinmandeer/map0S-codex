@@ -16,6 +16,7 @@ import type {
   FilterFacetV2,
   GeometryKindV2,
   LayerManifestV2,
+  LayerCapabilityV2,
   LayerModeV2,
   LegendManifestV2,
   RendererDescriptorV2
@@ -33,6 +34,10 @@ export interface LayerV1AdapterOptions {
   /** Likewise for the detail sheet: without a field order the sheet falls back to the generic
    *  place layout and drops everything the provider actually sent. */
   detail?: DetailManifestV2;
+  /** Capabilities the layer has beyond what the kind implies — `media` for a layer whose
+   *  features carry photos, `detail` for one worth opening. The derived set covers query,
+   *  filter and temporal, which are the only ones the v1 shape can prove on its own. */
+  capabilities?: LayerCapabilityV2[];
 }
 
 const modeV1ToV2: Partial<Record<LayerMode, LayerModeV2>> = {
@@ -87,9 +92,13 @@ export function layerV1ToV2(
       (entry) => ({ ...entry })
     ),
     capabilities: [
-      ...(options.kind === "pins" ? (["query"] as const) : []),
-      ...(filters?.length ? (["filter"] as const) : []),
-      ...(manifest.temporal ? (["temporal"] as const) : [])
+      ...new Set<LayerCapabilityV2>([
+        ...(options.kind === "pins" ? (["query"] as const) : []),
+        ...(filters?.length ? (["filter"] as const) : []),
+        ...(manifest.temporal ? (["temporal"] as const) : []),
+        ...(options.detail ? (["detail"] as const) : []),
+        ...(options.capabilities ?? [])
+      ])
     ],
     ...(manifest.requiresCapability
       ? { requiresServerCapabilities: [manifest.requiresCapability] }

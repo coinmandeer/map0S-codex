@@ -1,3 +1,6 @@
+import { registerAiOverviewRoutes } from "./aiOverviewRoutes.js";
+import { AI_PLACE_FIELDS } from "../services/ai/sourceDetail.js";
+import type { AreaSelection } from "@mapos/layer-sdk";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   FixedWindowRateLimiter,
@@ -183,6 +186,9 @@ export const AI_CHAT_ROUTE_SCHEMA = {
             required: ["layerId", "featureId"],
             properties: { layerId: identifierSchema, featureId: identifierSchema }
           },
+          areaId: { type: "string", minLength: 1, maxLength: 1024 },
+          boundaryRevision: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          worldId: identifierSchema,
           regionRef: { type: "string", minLength: 1, maxLength: 240 }
         }
       },
@@ -215,11 +221,17 @@ export interface AiChatRouteBody {
     planId?: string;
     featureRef?: { layerId: string; featureId: string };
     regionRef?: string;
+    areaId?: string;
+    boundaryRevision?: string;
+    worldId?: string;
   };
   consent: { externalModel: boolean; preciseLocation: boolean; savedPlaces?: boolean };
 }
 
 export interface AiRouteDependencies {
+  overviewSnapshots?: import("../services/ai/overviewSnapshots.js").OverviewSnapshotRepository;
+  overview?: import("../services/ai/overviewService.js").OverviewService;
+  resolveArea?: (query: Record<string, string | undefined>) => Promise<AreaSelection | null>;
   orchestrator: ProviderNeutralAiOrchestrator;
   resolveUserId(request: FastifyRequest): string | null | Promise<string | null>;
   allowedLayerIds: ReadonlySet<string>;
@@ -241,6 +253,7 @@ function privateResponse(reply: FastifyReply) {
 
 /** Authenticated HTTP boundary shared by the production and deterministic memory compositions. */
 export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDependencies) {
+  registerAiOverviewRoutes(app, dependencies);
   const limiter = dependencies.rateLimiter ?? new FixedWindowRateLimiter();
   app.post<{ Body: AiOrchestrationRouteBody }>(
     "/v2/ai/orchestrate",
@@ -259,6 +272,9 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
         return privateResponse(reply).code(401).send({ message: "Přihlášení je vyžadováno" });
       }
 
+      const allowedLayerIds = request.body.activeLayerIds.filter(
+        (id) => dependencies.allowedLayerIds.has(id) && !id.startsWith("ai-answer-")
+      );
       const outcome = await dependencies.orchestrator.run({
         ownerUserId: userId,
         conversation: request.body.conversation,
@@ -271,9 +287,11 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
           entitlementIds: new Set()
         },
         projection: {
-          allowedLayerIds: new Set(dependencies.allowedLayerIds),
+          allowedLayerIds: new Set(allowedLayerIds),
           allowedPlanIds: new Set(),
-          allowedFeatureFieldsByLayer: new Map(),
+          allowedFeatureFieldsByLayer: new Map(
+            allowedLayerIds.map((id) => [id, new Set(AI_PLACE_FIELDS)])
+          ),
           allowedDataClasses: new Set(["public"]),
           allowPreciseLocation: request.body.preciseLocationConsent === true
         },
@@ -360,11 +378,50 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
       }
 
       const { context, consent } = request.body;
-      const allowedLayerIds = context.activeLayerIds.filter((layerId) =>
-        dependencies.allowedLayerIds.has(layerId)
+      if (
+        context.bbox &&
+        (context.bbox[0] >= context.bbox[2] ||
+          context.bbox[1] >= context.bbox[3] ||
+          context.bbox[1] < -90 ||
+          context.bbox[3] > 90)
+      ) {
+        return privateResponse(reply).code(400).send({ message: "Neplatný výřez mapy" });
+      }
+      let selectedArea: AreaSelection | null = null;
+      if (context.areaId || context.boundaryRevision) {
+        if (!context.areaId || !context.boundaryRevision || !dependencies.resolveArea)
+          return privateResponse(reply)
+            .code(409)
+            .send({ message: "Vybranou oblast nelze ověřit. Obnovte výběr nebo jej zrušte." });
+        try {
+          selectedArea = await dependencies.resolveArea({
+            areaId: context.areaId,
+            boundaryRevision: context.boundaryRevision
+          });
+        } catch {
+          return privateResponse(reply).code(409).send({
+            message: "Oblast nebo vydání hranic není dostupné. Obnovte výběr nebo jej zrušte."
+          });
+        }
+        if (!selectedArea)
+          return privateResponse(reply)
+            .code(409)
+            .send({ message: "Vybraná oblast nebyla nalezena." });
+      }
+      const allowedLayerIds = [
+        ...new Set([
+          ...context.activeLayerIds,
+          ...(context.featureRef ? [context.featureRef.layerId] : [])
+        ])
+      ].filter(
+        (layerId) => !layerId.startsWith("ai-answer-") && dependencies.allowedLayerIds.has(layerId)
       );
+      if (context.featureRef && !allowedLayerIds.includes(context.featureRef.layerId))
+        return privateResponse(reply).code(403).send({ message: "Vrstva cíle není dostupná." });
       const service = dependencies.chatTurn({
+        area: selectedArea,
         center: context.mapCenter,
+        ...(context.bbox ? { bbox: context.bbox } : {}),
         zoom: context.zoom,
         activeLayerIds: allowedLayerIds
       });
@@ -375,7 +432,7 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
       reply.hijack();
       reply.raw.writeHead(200, {
         "content-type": "text/event-stream; charset=utf-8",
-        "cache-control": "private, no-store",
+        "cache-control": "private, no-store, no-transform",
         connection: "keep-alive",
         "x-accel-buffering": "no"
       });
@@ -384,7 +441,8 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
         reply.raw.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
       };
       const abort = new AbortController();
-      request.raw.on("close", () => abort.abort());
+      const disconnect = () => abort.abort();
+      reply.raw.on("close", disconnect);
 
       try {
         await service.run(
@@ -401,7 +459,15 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
               ...(context.mode ? { mode: context.mode } : {}),
               ...(context.planId ? { planId: context.planId } : {}),
               ...(context.featureRef ? { featureRef: context.featureRef } : {}),
-              ...(context.regionRef ? { regionRef: context.regionRef } : {})
+              ...(selectedArea
+                ? {
+                    regionRef: selectedArea.name,
+                    areaRef: { areaId: selectedArea.id, boundaryRevision: selectedArea.revision }
+                  }
+                : context.regionRef
+                  ? { regionRef: context.regionRef }
+                  : {}),
+              ...(context.worldId ? { worldId: context.worldId } : {})
             },
             consent: {
               externalModel: consent.externalModel === true,
@@ -432,9 +498,11 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
               entitlementIds: new Set()
             },
             projection: {
-              allowedLayerIds: new Set(dependencies.allowedLayerIds),
+              allowedLayerIds: new Set(allowedLayerIds),
               allowedPlanIds: new Set(context.planId ? [context.planId] : []),
-              allowedFeatureFieldsByLayer: new Map(),
+              allowedFeatureFieldsByLayer: new Map(
+                allowedLayerIds.map((id) => [id, new Set(AI_PLACE_FIELDS)])
+              ),
               allowedDataClasses: new Set(
                 consent.savedPlaces ? ["public", "account-private"] : ["public"]
               ),
@@ -451,6 +519,7 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
           message: "Odpověď se teď nepodařilo připravit"
         });
       } finally {
+        reply.raw.off("close", disconnect);
         if (!reply.raw.writableEnded) reply.raw.end();
       }
     }
@@ -733,10 +802,7 @@ function proposalStatus(error: unknown): number {
   ) {
     return 404;
   }
-  if (
-    error instanceof AiPlanProposalStateError ||
-    error instanceof AiPlanProposalRevisionError
-  ) {
+  if (error instanceof AiPlanProposalStateError || error instanceof AiPlanProposalRevisionError) {
     return 409;
   }
   return statusForClient(error);

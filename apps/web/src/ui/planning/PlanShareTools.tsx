@@ -1,5 +1,6 @@
 import { Button, ListItem, Skeleton, TextField } from "../kit";
 import type { PlanShareLink } from "./types";
+import { intlLocale } from "../../i18n";
 
 /** Contents of the footer's share popover: the two copy actions and the real revocable link. */
 export function PlanShareTools({
@@ -83,7 +84,7 @@ export function PlanShareTools({
               key={share.id}
               icon={share.revokedAt ? "lock" : "link"}
               title={share.revokedAt ? "Odvolaný odkaz" : "Aktivní odkaz"}
-              subtitle={`Jen pro čtení · ${new Date(share.createdAt).toLocaleDateString("cs-CZ")}`}
+              subtitle={`Jen pro čtení · ${new Date(share.createdAt).toLocaleDateString(intlLocale())}`}
               trailing={
                 share.revokedAt ? undefined : (
                   <Button

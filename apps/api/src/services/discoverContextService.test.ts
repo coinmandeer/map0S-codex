@@ -7,9 +7,11 @@ import {
   giscoNutsLevelForZoom,
   latestEurostatGdpPerCapita,
   latestWikidataPopulation,
+  normalizeGiscoLauCatalogue,
   normalizeGiscoRegionCatalogue,
   normalizeNominatimBoundary,
   normalizeNominatimRegion,
+  resolveDiscoverRegion,
   type ResolvedDiscoverRegion
 } from "./discoverService.js";
 
@@ -82,6 +84,8 @@ test("zoom-selected Nominatim hierarchy carries only a valid simplified polygon"
     {
       osm_type: "relation",
       osm_id: 456,
+      name: "Plzeňský kraj",
+      addresstype: "state",
       address: {
         country: "Česko",
         country_code: "cz",
@@ -123,6 +127,125 @@ test("zoom-selected Nominatim hierarchy carries only a valid simplified polygon"
     }),
     null
   );
+});
+
+test("a parent address never inherits the returned district's identity or statistics", () => {
+  const district = {
+    osm_type: "relation",
+    osm_id: 99,
+    name: "Praha 1",
+    addresstype: "city_district",
+    address: { country: "Czechia", country_code: "cz", city: "Prague", city_district: "Praha 1" },
+    extratags: { wikidata: "Q163405", population: "22967", "ref:nuts:3": "CZ010" },
+    geojson: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [14, 50],
+          [15, 50],
+          [15, 51],
+          [14, 50]
+        ]
+      ]
+    }
+  };
+  const parent = normalizeNominatimRegion(district, "locality")!;
+  assert.equal(parent.name, "Prague");
+  assert.match(parent.id, /^nominatim:hierarchy:/);
+  assert.equal(parent.wikidataId, undefined);
+  assert.equal(parent.populationSeed, undefined);
+  assert.equal(parent.boundary, undefined);
+  assert.equal(parent.nutsCode, undefined);
+  const own = normalizeNominatimRegion(district, "neighbourhood")!;
+  assert.equal(own.id, "nominatim:relation:99");
+  assert.equal(own.wikidataId, "Q163405");
+  assert.equal(own.populationSeed?.value, 22967);
+  assert.ok(own.boundary);
+  assert.equal(
+    normalizeNominatimRegion({ ...district, osm_id: 100, name: "Praha 2" }, "locality")!.id,
+    parent.id
+  );
+  assert.notEqual(
+    normalizeNominatimRegion(
+      { ...district, address: { ...district.address, country_code: "us" } },
+      "locality"
+    )!.id,
+    parent.id
+  );
+});
+
+test("matching localized names retain object metadata only at its own address level", () => {
+  const city = {
+    name: "Praha",
+    namedetails: { "name:en": "Prague" },
+    addresstype: "city",
+    osm_type: "relation",
+    osm_id: 1,
+    address: { country: "Czechia", city: "Prague" },
+    extratags: { wikidata: "Q1085" }
+  };
+  assert.equal(normalizeNominatimRegion(city, "locality")!.wikidataId, "Q1085");
+  assert.equal(
+    normalizeNominatimRegion({ ...city, addresstype: "country" }, "locality")!.wikidataId,
+    undefined
+  );
+  assert.equal(
+    normalizeNominatimRegion({ ...city, name: undefined, namedetails: undefined }, "locality")!
+      .wikidataId,
+    undefined
+  );
+});
+
+test("reverse child is resolved to one matching parent without borrowing the child's data", async () => {
+  const child = {
+    name: "Praha 1",
+    addresstype: "city_district",
+    osm_type: "relation",
+    osm_id: 99,
+    address: { country: "Czechia", country_code: "cz", city: "Prague", city_district: "Praha 1" },
+    extratags: { wikidata: "Q163405", population: "22967" }
+  };
+  const parent = {
+    name: "Prague",
+    addresstype: "city",
+    osm_type: "relation",
+    osm_id: 435514,
+    address: { country: "Czechia", country_code: "cz", city: "Prague" },
+    boundingbox: ["49.9", "50.3", "14.2", "14.8"],
+    extratags: { wikidata: "Q1085" }
+  };
+  const calls: string[] = [];
+  const io = (async (url: string) => {
+    calls.push(url);
+    return url.includes("/reverse?") ? child : [parent];
+  }) as Parameters<typeof resolveDiscoverRegion>[2];
+  const result = await resolveDiscoverRegion(
+    { lng: 14.42, lat: 50.08, zoom: 12, lang: "en" },
+    undefined,
+    io
+  );
+  assert.equal(result?.wikidataId, "Q1085");
+  assert.equal(result?.id, "nominatim:relation:435514");
+  assert.equal(result?.populationSeed, undefined);
+  assert.equal(calls.length, 2);
+  assert.equal(new URL(calls[1]!).searchParams.get("countrycodes"), "cz");
+  for (const candidates of [
+    [parent, { ...parent, osm_id: 2 }],
+    [{ ...parent, boundingbox: ["40", "41", "14", "15"] }],
+    [{ ...parent, name: "Other", address: { ...parent.address, city: "Other" } }]
+  ]) {
+    const fallbackIo = (async (url: string) =>
+      url.includes("/reverse?") ? child : candidates) as Parameters<
+      typeof resolveDiscoverRegion
+    >[2];
+    const fallback = await resolveDiscoverRegion(
+      { lng: 14.42, lat: 50.08, zoom: 12 },
+      undefined,
+      fallbackIo
+    );
+    assert.match(fallback!.id, /^nominatim:hierarchy:/);
+    assert.equal(fallback?.wikidataId, undefined);
+  }
 });
 
 test("latest Wikidata population keeps the newest dated non-deprecated statement", () => {
@@ -171,8 +294,42 @@ test("Eurostat parser accepts exactly one filtered regional GDP cell with its ye
   );
 });
 
+test("LAU catalogue offers municipalities at city zoom", () => {
+  const geometry = {
+    type: "Polygon",
+    coordinates: [
+      [
+        [13.3, 49.7],
+        [13.5, 49.7],
+        [13.5, 49.8],
+        [13.3, 49.8],
+        [13.3, 49.7]
+      ]
+    ]
+  };
+  const catalogue = normalizeGiscoLauCatalogue({
+    numberMatched: 2,
+    features: [
+      { properties: { gisco_id: "CZ_558371", lau_name: "Starý Plzenec" }, geometry },
+      { properties: { gisco_id: "CZ_558834" }, geometry },
+      { properties: { gisco_id: "not a code" }, geometry },
+      { properties: { gisco_id: "CZ_999999", lau_name: "Bez geometrie" } }
+    ]
+  });
+
+  assert.equal(catalogue?.nutsLevel, "lau");
+  assert.equal(catalogue?.sourceId, "eurostat-gisco-lau-2024");
+  assert.deepEqual(
+    catalogue?.regions.map((region) => [region.code, region.name]),
+    [
+      ["CZ_558371", "Starý Plzenec"],
+      ["CZ_558834", "CZ_558834"]
+    ]
+  );
+});
+
 test("GISCO catalogue exposes one zoom-selected NUTS level and drops the selected region", () => {
-  assert.deepEqual([4, 5, 6, 7, 11].map(giscoNutsLevelForZoom), [0, 1, 2, 3, null]);
+  assert.deepEqual([4, 5, 6, 7, 11].map(giscoNutsLevelForZoom), [0, 1, 2, 3, "lau"]);
   const geometry = {
     type: "MultiPolygon",
     coordinates: [
@@ -509,4 +666,35 @@ test("cache key absorbs small viewport jitter and requests are deduplicated", as
   const cached = await service.get(input);
   assert.equal(cached.cache.hit, true);
   assert.equal(resolveCalls, 1);
+});
+
+test("selected immutable area bypasses reverse geocoding and partitions the context cache", async () => {
+  let reverseCalls = 0;
+  const service = createDiscoverContextService({
+    resolveRegion: async () => {
+      reverseCalls++;
+      return region;
+    },
+    resolveGuide: async () => null,
+    capabilities: []
+  });
+  const area = {
+    id: '["gisco-lau-es","ES","lau","ES_43148"]',
+    revision: "a".repeat(64),
+    source: "gisco-lau-es",
+    country: "ES",
+    level: "lau" as const,
+    code: "ES_43148",
+    name: "Tarragona",
+    bbox: [1, 41, 1.5, 41.5] as [number, number, number, number]
+  };
+  const result = await service.get({ ...input, area });
+  assert.equal(result.region?.id, area.id);
+  assert.equal(result.region?.name, "Tarragona");
+  assert.equal(reverseCalls, 0);
+  assert.notEqual(
+    discoverContextKey({ ...input, area }),
+    discoverContextKey({ ...input, area: { ...area, revision: "b".repeat(64) } })
+  );
+  assert.notEqual(discoverContextKey({ ...input, area }), discoverContextKey(input));
 });

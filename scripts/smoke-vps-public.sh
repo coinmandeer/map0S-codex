@@ -29,6 +29,10 @@ grep -Eiq '^x-content-type-options:[[:space:]]*nosniff' "${MAPOS_SMOKE_TMP}/web.
 curl -fsS --max-time 15 --max-filesize 4096 \
   "${MAPOS_SMOKE_ORIGIN}/api/health" > "${MAPOS_SMOKE_TMP}/health.json"
 grep -q '"status":"ok"' "${MAPOS_SMOKE_TMP}/health.json"
+curl -fsS --max-time 15 --max-filesize 4096 \
+  "${MAPOS_SMOKE_ORIGIN}/release.json" > "${MAPOS_SMOKE_TMP}/release.json"
+node "$(dirname "${BASH_SOURCE[0]}")/check-release-identity.mjs" "${2:-}" \
+  "$(cat "${MAPOS_SMOKE_TMP}/health.json")" "$(cat "${MAPOS_SMOKE_TMP}/release.json")"
 
 curl -sS --max-time 15 -X OPTIONS -o /dev/null -D "${MAPOS_SMOKE_TMP}/cors.headers" \
   -H 'Origin: https://attacker.invalid' \

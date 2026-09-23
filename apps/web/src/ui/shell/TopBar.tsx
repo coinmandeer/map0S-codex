@@ -1,16 +1,18 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { t } from "../../i18n/cs";
+import { QuickLayers } from "../layers/QuickLayers";
+import { t } from "../../i18n";
 import type { Fix } from "../../lib/geolocation";
 import { availableLayerPlugins, getLayerManifestV2 } from "../../layers";
 import { isStructuralTileOverlayId } from "../../layers/plugins/tileLayers";
-import { resolveBasemap } from "../../map/basemapStyle";
+
 import { getShellStore } from "../../store/shellStore";
 import { useMapStoreSnapshot } from "../../store/useMapStoreSnapshot";
 import { useShellStoreSnapshot } from "../../store/useShellStoreSnapshot";
-import { BrandLogo } from "../BrandLogo";
+import { MapStatus } from "./MapStatus";
+
 import { CommandSearch } from "../CommandSearch";
-import { Icon, IconButton, Tooltip, useElementWidth } from "../kit";
-import { activeLayerSummary, basemapInitials, compactBasemapLabel } from "../modeBarPresentation";
+import { Icon, IconButton, useElementWidth } from "../kit";
+import { activeLayerSummary } from "../modeBarPresentation";
 import { LAYER_MODES } from "../modes";
 import { useIsMobile } from "../useIsMobile";
 import { chromeComposition, topBarLayout } from "./topBarLayout";
@@ -18,9 +20,13 @@ import { chromeComposition, topBarLayout } from "./topBarLayout";
 /** The top bar (§3.1): one floating pill over the map, plus a hamburger on the left and the
  *  Podklady/Vrstvy pair on the right.
  *
+ *  The bar holds three things — brand, search, settings. The modes moved to a floating pill at
+ *  the bottom (`DesktopModeBar`), which is what took this row from crowded to legible; what is
+ *  left is "where am I going" and "how does this look", and those belong at the top.
+ *
  *  The pill lives in a slot whose left and right edges follow the open panel, the open drawer
  *  and the utility rail, and is centred inside it. Measuring that slot rather than the window
- *  is what keeps the mode labels from ending up underneath the Podklady button.
+ *  is why the search field never ends up underneath the Podklady button.
  */
 export function TopBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> }) {
   const shell = getShellStore();
@@ -30,8 +36,6 @@ export function TopBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> }) 
   const activeLayers = useMapStoreSnapshot((state) => state.activeLayers);
   const capabilities = useMapStoreSnapshot((state) => state.capabilities);
   const experienceId = useMapStoreSnapshot((state) => state.experienceId);
-  const basemapId = useMapStoreSnapshot((state) => state.basemapId);
-  const theme = useMapStoreSnapshot((state) => state.theme);
   const mobile = useIsMobile();
   const slotRef = useRef<HTMLDivElement | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
@@ -41,7 +45,7 @@ export function TopBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> }) 
   // The strip is everything the panel and the drawer left over, rail included; the pill's own
   // slot is what remains after the rail, so the composition has to be decided on the strip.
   const stripWidth = useElementWidth(stripRef);
-  const { brand, showModeLabels, showLocationLabel } = topBarLayout({ available: slotWidth });
+  const { brand, showLocationLabel } = topBarLayout({ available: slotWidth });
   const { railStacked, compact } = chromeComposition({
     strip: stripWidth,
     hamburger: leftContext.type === "closed",
@@ -71,13 +75,13 @@ export function TopBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> }) 
     experienceId,
     isStructuralTileOverlayId
   );
-  const layersStatus = `${layerActivity.total} aktivní: ${layerActivity.poi} POI, ${layerActivity.thematic} tematické`;
-  const currentBasemap = resolveBasemap(basemapId, theme);
-  // The button shows the basemap's name, so its accessible name has to say what the name is of.
-  const basemapControlLabel = `${t("topbar.basemaps.full")}: ${currentBasemap.label}`;
+  const layersStatus = t("layers.status", {
+    total: layerActivity.total,
+    poi: layerActivity.poi,
+    thematic: layerActivity.thematic
+  });
 
-  const layersOpen = rightUtility.type === "layers";
-  const basemapsOpen = rightUtility.type === "basemaps";
+  const layersOpen = rightUtility.type === "layers" || rightUtility.type === "basemaps";
   const settingsOpen = rightUtility.type === "settings";
 
   const toggleUtility = (type: "layers" | "basemaps" | "settings") => {
@@ -119,70 +123,29 @@ export function TopBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> }) 
           data-testid="command-center"
           data-compact={compact || undefined}
         >
-          {!mobile && brand !== "none" && (
-            <>
-              <span className="chrome-brand" data-testid="brand-pill">
-                <BrandLogo size={24} />
-                {brand === "full" && <span className="chrome-brand-name">MapOS</span>}
-              </span>
-              <span className="chrome-divider" aria-hidden="true" />
-            </>
-          )}
+          <MapStatus compact={mobile || brand !== "full"} />
 
           <CommandSearch onFlyToMe={onFlyToMe} mode={mode} showLocationLabel={showLocationLabel} />
 
-          {!mobile && (
+          {!mobile && !settingsInRail && (
             <>
               <span className="chrome-divider" aria-hidden="true" />
-              <nav
-                className="chrome-modes"
-                aria-label={t("topbar.modes")}
-                data-labels={showModeLabels || undefined}
-              >
-                {LAYER_MODES.map((item) => {
-                  const active = mode === item.id;
-                  const button = (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="chrome-mode"
-                      data-active={active || undefined}
-                      aria-current={active ? "page" : undefined}
-                      aria-label={item.label}
-                      data-testid={item.testId}
-                      onClick={() => shell.setMode(item.id)}
-                    >
-                      <Icon name={item.icon} size={20} filled={active} />
-                      {showModeLabels && <span className="chrome-mode-label">{item.label}</span>}
-                    </button>
-                  );
-                  return showModeLabels ? (
-                    button
-                  ) : (
-                    <Tooltip key={item.id} content={item.label}>
-                      {button}
-                    </Tooltip>
-                  );
-                })}
-              </nav>
-              {!settingsInRail && (
-                <>
-                  <span className="chrome-divider" aria-hidden="true" />
-                  <IconButton
-                    icon="settings"
-                    label={t("topbar.settings")}
-                    active={settingsOpen}
-                    aria-expanded={settingsOpen}
-                    testId="settings-btn"
-                    onClick={() => toggleUtility("settings")}
-                  />
-                </>
-              )}
+              <IconButton
+                icon="settings"
+                label={t("topbar.settings")}
+                active={settingsOpen}
+                aria-expanded={settingsOpen}
+                testId="settings-btn"
+                onClick={() => toggleUtility("settings")}
+              />
             </>
           )}
         </div>
       </div>
 
+      <div className="quick-layers-slot">
+        <QuickLayers />
+      </div>
       <div className="chrome-utility-slot" ref={stripRef}>
         <div
           className="chrome-utility"
@@ -190,26 +153,6 @@ export function TopBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> }) 
           data-stacked={!mobile && railStacked ? "" : undefined}
           ref={railRef}
         >
-          <Tooltip content={currentBasemap.label}>
-            <button
-              type="button"
-              className="chrome-utility-btn"
-              data-active={basemapsOpen || undefined}
-              data-testid="basemap-btn"
-              title={basemapControlLabel}
-              aria-label={basemapControlLabel}
-              aria-expanded={basemapsOpen}
-              onClick={() => toggleUtility("basemaps")}
-            >
-              <Icon name="map" size={20} />
-              <span className="chrome-utility-label" data-testid="basemap-current-label">
-                {mobile
-                  ? basemapInitials(currentBasemap.label)
-                  : compactBasemapLabel(currentBasemap.label)}
-              </span>
-            </button>
-          </Tooltip>
-
           <button
             type="button"
             className="chrome-utility-btn"
@@ -218,7 +161,7 @@ export function TopBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> }) 
             title={`${t("topbar.layers")} · ${layersStatus}`}
             aria-label={`${t("topbar.layers")}, ${layersStatus}`}
             aria-expanded={layersOpen}
-            onClick={() => toggleUtility("layers")}
+            onClick={() => (layersOpen ? shell.closeRightUtility() : toggleUtility("layers"))}
           >
             <Icon name="layers" size={20} />
             <span className="chrome-utility-label">{t("topbar.layers")}</span>

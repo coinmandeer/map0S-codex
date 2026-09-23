@@ -18,6 +18,14 @@ export interface MaposSocialSummary {
   empty: boolean;
 }
 
+/**
+ * Aggregate only MapOS reviews (§2.11).
+ *
+ * An external provider's rating is a different number about a slightly different thing, so it is
+ * never mixed in here; the provider panel states its own value under its own name. With no
+ * reviews the average is `null`, which the panel renders as "Zatím bez hodnocení" — zero reviews
+ * is not a rating of zero.
+ */
 export function maposSocialSummary(
   reviews: MaposReview[],
   comments: MaposComment[]

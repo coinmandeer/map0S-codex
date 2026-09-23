@@ -20,6 +20,28 @@ const grid: WeatherGrid = {
 };
 
 describe("adaptive weather features", () => {
+  it("covers the whole bbox when changing cell density, without adding provider samples", () => {
+    const complete = { ...grid, values: Array.from({ length: 12 }, () => 10) };
+    for (const limit of [6, 24]) {
+      const result = weatherGridFeatures(complete, {
+        representation: "cells",
+        maxRenderedCells: limit,
+        maxNumericLabels: 0
+      });
+      let area = 0;
+      for (const feature of result.features) {
+        assert.equal(feature.geometry.type, "Polygon");
+        if (feature.geometry.type !== "Polygon") continue;
+        const ring = feature.geometry.coordinates[0]!;
+        area += (ring[1]![0] - ring[0]![0]) * (ring[0]![1] - ring[2]![1]);
+        assert.equal(feature.properties.value, 10);
+        assert.equal(feature.properties.interpolated, true);
+      }
+      assert.ok(Math.abs(area - 4) < 1e-8, `Expected entire bbox, got ${area}`);
+      assert.ok(result.features.length <= limit);
+    }
+    assert.equal(complete.values.length, 12);
+  });
   it("uses no vector features for the regional continuous representation", () => {
     assert.deepEqual(
       weatherGridFeatures(grid, {

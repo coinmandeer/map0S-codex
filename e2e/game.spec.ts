@@ -1,16 +1,14 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures/offlineTest";
-
-/** Unlike the smoke test, these run against the real memory server so the deterministic spawner,
- *  the guest auto-login and the quest loop are all exercised end to end. */
-
-/**
- * Three ghosts per z12 cell, scattered inside it and then clipped to the requested box — so a box
- * that only clips the corners of a few cells can legitimately come back empty, and does, on some
- * of the half-hourly respawn buckets. This one swallows whole cells, which makes "is the world
- * populated?" a question about the spawner rather than about what time it is.
- */
-const PRAGUE_WHOLE_CELLS = "14.2,49.9,14.7,50.3";
+import {
+  actWorld,
+  collectEssence,
+  snapshotWorld,
+  startExplore,
+  winSoloFight,
+  worldRequest
+} from "./fixtures/worldTest";
+import type { GameSession, WorldSnapshot } from "@mapos/layer-sdk";
 
 /** Movement, camera, avatar and which games are running are settings, so they sit behind the
  *  panel header's popover instead of on the HUD itself (§4.6). */
@@ -19,98 +17,66 @@ async function openGameSettings(page: Page) {
   await expect(page.getByTestId("game-settings")).toBeVisible();
 }
 
-test.describe("Hra", () => {
-  test("herní deep link otevře standardní panel, který lze skrýt a znovu zobrazit", async ({
-    page
-  }) => {
+test.describe("Game", () => {
+  test("herní panel se otevírá samostatně a HUD zůstává dostupný", async ({ page }) => {
     await page.goto("/?mode=game");
-
-    const gameHud = page.getByTestId("game-hud");
-    await expect(gameHud).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId("hamburger-btn")).toHaveCount(0);
-
-    await page.getByTestId("game-panel").getByRole("button", { name: "Zavřít" }).click();
-    await expect(gameHud).toBeHidden();
-    const panelToggle = page.getByTestId("hamburger-btn");
-    await expect(panelToggle).toHaveAttribute("aria-expanded", "false");
-
-    await panelToggle.click();
-    await expect(gameHud).toBeVisible();
-    await expect(page.getByTestId("hamburger-btn")).toHaveCount(0);
+    await expect(page.getByTestId("game-hud")).toBeVisible();
+    await expect(page.getByTestId("game-panel")).toHaveCount(0);
+    await page.getByTestId("game-hud-panel").click();
+    await expect(page.getByTestId("game-panel")).toBeVisible();
+    await page.getByTestId("game-panel").getByRole("button", { name: "Close" }).click();
+    await expect(page.getByTestId("game-panel")).toHaveCount(0);
+    await expect(page.getByTestId("game-hud")).toBeVisible();
+    await page.getByTestId("hamburger-btn").click();
+    await expect(page.getByTestId("game-panel")).toBeVisible();
   });
 
-  test("guest players get ghosts and quests without ever logging in", async ({ page }) => {
-    const pageErrors: Error[] = [];
-    page.on("pageerror", (err) => pageErrors.push(err));
-
-    await page.goto("/");
-    await page.getByTestId("mode-game").click();
-    await expect(page.getByTestId("game-hud")).toBeVisible({ timeout: 20_000 });
-
-    const ghosts = await page.evaluate(async (bbox) => {
-      const res = await fetch(`http://localhost:4033/game/ghosts?bbox=${bbox}`);
-      return ((await res.json()) as { ghosts: unknown[] }).ghosts.length;
-    }, PRAGUE_WHOLE_CELLS);
-    expect(ghosts).toBeGreaterThan(0);
-
-    await expect(page.getByTestId("orb-count")).toBeVisible();
-    expect(pageErrors).toHaveLength(0);
-  });
-
-  test("a quest can be claimed once and then reads as done", async ({ page }) => {
-    await page.goto("/");
-    await page.getByTestId("mode-game").click();
-    await expect(page.getByTestId("game-hud")).toBeVisible({ timeout: 20_000 });
-
-    const quest = page.getByTestId("quest-q1");
-    const claim = quest.getByRole("button");
-    await expect(quest).toBeVisible({ timeout: 15_000 });
-
-    if (await claim.isDisabled()) return; // already claimed by an earlier run against the same server
-
-    await claim.click();
-    await expect(quest).toContainText("hotovo");
-    await expect(claim).toBeDisabled();
-  });
-
-  test("catching a ghost removes it from the world for this player", async ({ page }) => {
-    await page.goto("/");
-
-    const result = await page.evaluate(async (box) => {
-      const base = "http://localhost:4033";
-      const bbox = `bbox=${box}`;
-      await fetch(`${base}/auth/guest`, { method: "POST", credentials: "include" });
-
-      const list = async () =>
-        (
-          (await (
-            await fetch(`${base}/game/ghosts?${bbox}`, { credentials: "include" })
-          ).json()) as {
-            ghosts: { id: string }[];
-          }
-        ).ghosts;
-
-      const before = await list();
-      const target = before[0]!.id;
-      const caught = await fetch(`${base}/game/ghosts/${target}/catch`, {
-        method: "POST",
-        credentials: "include"
+  test("game mode suspends other layers and restores them on exit", async ({ page }) => {
+    await page.route("**/layers/commons-photos/features**", (route) =>
+      route.fulfill({ json: { type: "FeatureCollection", features: [] } })
+    );
+    await page.goto("/?mode=personal");
+    const photosVisible = () =>
+      page.evaluate(async () => {
+        const { getMapStore } = await import("/src/store/mapStore.ts");
+        return Boolean(getMapStore().activeLayers["commons-photos"]?.visible);
       });
-      const again = await fetch(`${base}/game/ghosts/${target}/catch`, {
-        method: "POST",
-        credentials: "include"
-      });
-      const after = await list();
-      return {
-        catchStatus: caught.status,
-        repeatStatus: again.status,
-        stillThere: after.some((g) => g.id === target)
-      };
-    }, PRAGUE_WHOLE_CELLS);
+    await page.evaluate(async () => {
+      const { getMapStore } = await import("/src/store/mapStore.ts");
+      getMapStore().activateLayer("commons-photos");
+    });
+    await expect.poll(photosVisible).toBe(true);
+    await page.getByTestId("mode-game").click();
+    await expect.poll(photosVisible).toBe(false);
+    await page.getByTestId("mode-personal").click();
+    await expect.poll(photosVisible).toBe(true);
+  });
 
-    expect(result.catchStatus).toBe(200);
-    expect(result.repeatStatus).not.toBe(200);
-    expect(result.stillThere).toBe(false);
+  test("guest World rewards are idempotent and survive reconnection", async ({ page }) => {
+    await page.goto("/");
+    const session = await startExplore(page);
+    const earned = await collectEssence(page, session.id);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const reconnected = await startExplore(page);
+    expect((await snapshotWorld(page, reconnected.id)).progress).toEqual(earned.progress);
+    const gps = await worldRequest<GameSession>(page, "session", { mode: "gps" });
+    const physical = await worldRequest<WorldSnapshot>(page, "snapshot", { sessionId: gps.id });
+    expect(physical.progress.xp).toBe(0);
+    expect(physical.physicalPosition).toBeNull();
+  });
+
+  test("combat loot upgrades once and persists after a reload", async ({ page }) => {
+    await page.goto("/");
+    const session = await startExplore(page);
+    for (let i = 0; i < 3; i++) await winSoloFight(page, session.id);
+    const action = { type: "upgrade" as const, targetId: "weapon", actionId: crypto.randomUUID() };
+    const upgraded = await actWorld(page, session.id, action);
+    expect(upgraded.progress.weaponLevel).toBe(1);
+    expect(upgraded.progress.items["Úlomek strážce"]).toBe(0);
+    expect((await actWorld(page, session.id, action)).progress).toEqual(upgraded.progress);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const reconnected = await startExplore(page);
+    expect((await snapshotWorld(page, reconnected.id)).progress).toEqual(upgraded.progress);
   });
 });
 
@@ -121,15 +87,12 @@ test.describe("Hra", () => {
  * is there anything in front of it.
  */
 test.describe("herní scéna", () => {
-  test("rasterový podklad nezamrzne a hned ukáže Gotchiho i silniční pole", async ({ page }) => {
+  test("rasterový podklad ukáže hráče i autoritativní svět bez povinného GLB", async ({ page }) => {
     const pageErrors: Error[] = [];
-    const genericAvatarRequests: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error));
-    page.on("request", (request) => {
-      if (request.url().includes("/models/cube-guy-character.glb")) {
-        genericAvatarRequests.push(request.url());
-      }
-    });
+    await page.route("**/models/cube-guy-character.glb", (route) =>
+      route.fulfill({ status: 404, body: "optional model unavailable" })
+    );
     await page.addInitScript(() => {
       localStorage.setItem("mapos:basemap", "osm-carto");
       localStorage.setItem("mapos:avatar-style", "aavegotchi");
@@ -146,18 +109,18 @@ test.describe("herní scéna", () => {
           page.evaluate(() => {
             const game = window.__maposGame?.contents;
             return Boolean(
-              game?.hasGotchiAvatar &&
-              !game.playerVisible &&
-              game.orbs > 0 &&
-              window.__maposMap?.getSource("mapos-game-road-geometry")
+              game?.hasPlayer &&
+              JSON.parse(window.render_game_to_text!()).world.snapshot?.entities.length > 0 &&
+              window.__maposMap?.getLayer("custom-gl-game")
             );
           }),
         { timeout: 15_000 }
       )
       .toBe(true);
 
-    expect(await page.evaluate(() => window.__maposGame?.contents.orbs ?? 0)).toBeGreaterThan(0);
-    expect(genericAvatarRequests).toHaveLength(0);
+    expect(
+      await page.evaluate(() => JSON.parse(window.render_game_to_text!()).world.error)
+    ).toBeNull();
     await page.getByTestId("mode-planning").click();
     await expect
       .poll(() =>
@@ -221,7 +184,7 @@ test.describe("herní scéna", () => {
       .toBe(true);
   });
 
-  test("puts the player and their dots into the scene", async ({ page }) => {
+  test("puts the player and server world into the scene", async ({ page }) => {
     await page.goto("/?mode=game");
     await expect(page.getByTestId("game-hud")).toBeVisible({ timeout: 20_000 });
     await page.waitForFunction(() => Boolean(window.__maposGame), null, { timeout: 20_000 });
@@ -232,7 +195,13 @@ test.describe("herní scéna", () => {
       .poll(() => page.evaluate(() => window.__maposGame?.contents.hasPlayer), { timeout: 20_000 })
       .toBe(true);
     await expect
-      .poll(() => page.evaluate(() => window.__maposGame?.contents.orbs ?? 0), { timeout: 20_000 })
+      .poll(
+        () =>
+          page.evaluate(
+            () => JSON.parse(window.render_game_to_text!()).world.snapshot?.entities.length ?? 0
+          ),
+        { timeout: 20_000 }
+      )
       .toBeGreaterThan(0);
   });
 
@@ -276,7 +245,7 @@ test.describe("herní scéna", () => {
     expect(await page.evaluate(() => window.__maposGame?.contents.hasPlayer)).toBe(true);
   });
 
-  test("frames a kilometre board and switches avatars without leaving both behind", async ({
+  test("moves through the public world and switches cameras and avatars without duplicates", async ({
     page
   }) => {
     await page.goto("/?mode=game&lng=14.4378&lat=50.0755&z=16");
@@ -284,54 +253,24 @@ test.describe("herní scéna", () => {
     await page.waitForFunction(() => Boolean(window.__maposGame), null, { timeout: 20_000 });
 
     await expect
-      .poll(
-        () =>
-          page.evaluate(() => {
-            if (!window.render_game_to_text) return 0;
-            return (JSON.parse(window.render_game_to_text()) as { counts: { orbs: number } }).counts
-              .orbs;
-          }),
-        { timeout: 20_000 }
+      .poll(() =>
+        page.evaluate(
+          () => JSON.parse(window.render_game_to_text!()).world.snapshot?.entities.length ?? 0
+        )
       )
-      .toBeGreaterThanOrEqual(80);
-
-    const state = await page.evaluate(() => JSON.parse(window.render_game_to_text!()));
-    expect(state.counts.orbs).toBeGreaterThanOrEqual(80);
-    expect(
-      Math.max(...state.visibleOrbs.map((orb: { distanceM: number }) => orb.distanceM))
-    ).toBeGreaterThan(400);
-    expect(
-      state.visibleOrbs.every((orb: { id: string }) =>
-        orb.id.includes(`:${state.orbField.dayKey}:${state.orbField.fieldKey.split(":").at(-1)}:`)
-      )
-    ).toBe(true);
-
-    const beforeMove = {
-      player: state.player,
-      fieldKey: state.orbField.fieldKey,
-      total: state.orbField.total,
-      orbIds: state.visibleOrbs.map((orb: { id: string }) => orb.id)
-    };
+      .toBeGreaterThan(0);
+    const before = await page.evaluate(() => JSON.parse(window.render_game_to_text!()).player);
+    await page.locator(".maplibregl-canvas").focus();
     await page.keyboard.down("ArrowRight");
     await expect
-      .poll(
-        () =>
-          page.evaluate(() => {
-            const current = JSON.parse(window.render_game_to_text!());
-            return current.player.lng;
-          }),
-        { timeout: 10_000 }
-      )
-      .toBeGreaterThan(beforeMove.player.lng);
+      .poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text!()).player.lng))
+      .toBeGreaterThan(before.lng);
     await page.keyboard.up("ArrowRight");
-    const afterMove = await page.evaluate(() => JSON.parse(window.render_game_to_text!()));
-    expect(afterMove.player.lng).toBeGreaterThan(beforeMove.player.lng);
-    expect(afterMove.orbField.fieldKey).toBe(beforeMove.fieldKey);
-    expect(afterMove.orbField.total).toBe(beforeMove.total);
-    expect(afterMove.visibleOrbs.map((orb: { id: string }) => orb.id)).toEqual(beforeMove.orbIds);
-    expect(new Set(afterMove.zones.map((zone: { kind: string }) => zone.kind))).toEqual(
-      new Set(["standard", "event", "staker_gate"])
-    );
+    const moved = await page.evaluate(() => JSON.parse(window.render_game_to_text!()));
+    expect(moved.host.avatarOwners).toBe(1);
+    expect(moved.host.renderLoops).toBe(1);
+    expect(moved.world.session.mode).toBe("explore");
+    expect(moved.world.snapshot.physicalPosition).toBeNull();
 
     // Movement, camera and avatar all live in the header's settings popover, so it stays open
     // for the rest of the test rather than being reopened per control.
@@ -342,7 +281,7 @@ test.describe("herní scéna", () => {
       .toBeLessThan(1);
     await expect
       .poll(() => page.evaluate(() => window.__maposMap?.getZoom()), { timeout: 10_000 })
-      .toBeCloseTo(15.8, 1);
+      .toBeCloseTo(17.2, 1);
 
     await page.getByTestId("game-camera-follow").click();
     await expect

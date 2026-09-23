@@ -10,7 +10,10 @@ export default tseslint.config(
       "apps/web/public/**",
       "e2e/screenshots/**",
       "test-results/**",
-      "playwright-report/**"
+      "playwright-report/**",
+      ".cache/**",
+      ".playwright-cli/**",
+      "output/**"
     ]
   },
   js.configs.recommended,
@@ -50,7 +53,24 @@ export default tseslint.config(
     // Scripts and servers are the places where writing to stdout *is* the interface.
     files: ["scripts/**/*.mjs", "apps/api/src/**/*.ts", "**/*.test.ts", "e2e/**/*.ts"],
     languageOptions: {
-      globals: { process: "readonly", console: "readonly", Buffer: "readonly", fetch: "readonly" }
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        Buffer: "readonly",
+        fetch: "readonly",
+        URL: "readonly",
+        URLSearchParams: "readonly",
+        performance: "readonly",
+        AbortSignal: "readonly",
+        AbortController: "readonly",
+        crypto: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        TextDecoder: "readonly",
+        TextDecoderStream: "readonly",
+        TextEncoder: "readonly",
+        structuredClone: "readonly"
+      }
     },
     rules: { "no-console": "off" }
   },
@@ -58,7 +78,7 @@ export default tseslint.config(
     // Playwright driver scripts straddle two runtimes: the file runs in Node, but the callbacks
     // passed to `page.evaluate` are serialised and run in the browser, so both sets of globals
     // legitimately appear in the same source file.
-    files: ["e2e/**/*.mjs", "scripts/render-basemap-thumbs.mjs"],
+    files: ["e2e/**/*.mjs", "scripts/render-basemap-thumbs.mjs", "scripts/*browser*.mjs"],
     languageOptions: {
       globals: {
         process: "readonly",
@@ -70,7 +90,8 @@ export default tseslint.config(
         getComputedStyle: "readonly",
         innerWidth: "readonly",
         innerHeight: "readonly",
-        matchMedia: "readonly"
+        matchMedia: "readonly",
+        CustomEvent: "readonly"
       }
     },
     rules: { "no-console": "off" }

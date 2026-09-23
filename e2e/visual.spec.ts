@@ -196,7 +196,7 @@ test.describe("visual snapshots", () => {
       await page.getByTestId("save-plan").click();
       await expect(page.getByTestId("toast")).toContainText("uložený v Moje");
       // §29.3: share, export and hand-off are one dialog with tabs, not three footer surfaces.
-      await page.getByRole("button", { name: "Sdílet", exact: true }).click();
+      await page.getByRole("button", { name: "Share", exact: true }).click();
       const shareDialog = page.getByTestId("plan-share-dialog");
       await expect(shareDialog.getByTestId("plan-share-manager")).toBeVisible();
       await expect(page.getByTestId("create-plan-share")).toBeEnabled();
@@ -206,7 +206,7 @@ test.describe("visual snapshots", () => {
         path: `${DIR}/${width}-planning-share.png`,
         fullPage: true
       });
-      await shareDialog.getByRole("button", { name: "Zavřít" }).click();
+      await shareDialog.getByRole("button", { name: "Close" }).click();
       await expect(shareDialog).toHaveCount(0);
       await page.getByTestId("plan-ai-toggle").click();
       await page
@@ -262,7 +262,7 @@ test.describe("visual snapshots", () => {
       await page.goto("/?mode=discover&layers=events&lng=13.3775&lat=49.7475&z=10");
       const explorer = page.getByTestId("event-explorer");
       if (width === 390) {
-        await page.getByRole("slider", { name: "Výška panelu" }).press("ArrowUp");
+        await page.getByRole("slider", { name: "Panel height" }).press("ArrowUp");
         await explorer.scrollIntoViewIfNeeded();
         await explorer.getByTestId("events-explorer-preset-year").click();
       } else {
@@ -313,7 +313,7 @@ test.describe("visual snapshots", () => {
       await expect
         .poll(() => page.evaluate(() => window.__maposMap?.isMoving() ?? true))
         .toBe(false);
-      await panel.getByRole("button", { name: "Zavřít" }).click();
+      await panel.getByRole("button", { name: "Close" }).click();
       await expect(panel).toHaveCount(0);
       await page.screenshot({ path: `${DIR}/${width}-discover-boundary-map.png`, fullPage: true });
     }

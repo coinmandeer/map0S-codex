@@ -286,6 +286,12 @@ export const config = {
   /** Two slots rather than one model (§30.2): the intent router and the tool loop run dozens of
    *  short calls where latency is the whole experience, while a multi-day plan is one slow call
    *  that has to be right. `OLLAMA_MODEL` stays the alias for the fast slot. */
+  get ollamaModelFastFallback() {
+    return process.env.OLLAMA_MODEL_FAST_FALLBACK ?? "deepseek-v4-flash:0731";
+  },
+  get ollamaModelStrongFallback() {
+    return process.env.OLLAMA_MODEL_STRONG_FALLBACK ?? "glm-5.3-flash";
+  },
   get ollamaModelFast() {
     return env("OLLAMA_MODEL_FAST") ?? env("OLLAMA_MODEL") ?? "glm-5.3-flash";
   },
@@ -317,7 +323,10 @@ export const config = {
       openaq: env("OPENAQ_API_KEY"),
       ebird: env("EBIRD_API_TOKEN"),
       ticketmaster: env("TICKETMASTER_API_KEY"),
-      opentripmap: env("OPENTRIPMAP_API_KEY")
+      opentripmap: env("OPENTRIPMAP_API_KEY"),
+      // Live ships worldwide. Digitraffic covers Finnish waters without a key; this key
+      // upgrades the same layer to the global AISstream feed.
+      aisstream: env("AISSTREAM_API_KEY")
     };
   },
   /**
@@ -358,6 +367,12 @@ export const config = {
   get park4nightEnabled() {
     return env("PARK4NIGHT_ENABLED") === "1";
   },
+  /** Overture ships as a bounded self-hosted PMTiles extract rather than the global archives,
+   *  which are far too large to draw live. The operator enables this once the import exists and
+   *  is served at `/overture/`. */
+  get overtureEnabled() {
+    return env("OVERTURE_ENABLED") === "1";
+  },
   get contact() {
     return env("MAPOS_CONTACT");
   },
@@ -395,9 +410,12 @@ export function capabilities(): ServerCapabilities {
     ...advertisedCmlCapability(config.aiGatewayEnabled, config.cmlProvider),
     owm: Boolean(config.owmKey),
     windy: Boolean(config.windyKey),
-    fsq: Boolean(config.fsqKey),
+    fsq:
+      process.env.FSQ_PLACES_ENABLED === "1" &&
+      Boolean(config.fsqKey && process.env.FSQ_BUDGET_ACCOUNT),
     opencaching: config.okapiInstances.length > 0,
     park4night: config.park4nightEnabled,
+    overture: config.overtureEnabled,
     // Derived, so adding a keyed layer means adding its key to `layerKeys` and nothing else —
     // the flag the browser needs follows automatically.
     ...Object.fromEntries(

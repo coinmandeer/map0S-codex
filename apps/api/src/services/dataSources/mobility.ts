@@ -1,7 +1,7 @@
 import { isPointFeature, type Bbox, type GeoFeature } from "@mapos/layer-sdk";
 import { fetchJson, fetchText } from "../../utils/upstream.js";
 import { countriesForPoint } from "../../data/euCountries.js";
-import { bboxCenter, point, withinBbox, type DataSource } from "./types.js";
+import { bboxCenter, point, withinBbox, type DataSource, type DataSourceResult } from "./types.js";
 
 /**
  * Shared bikes and scooters via GBFS (General Bikeshare Feed Specification).
@@ -72,11 +72,12 @@ function parseCsvLine(line: string): string[] {
   return out.map((f) => f.trim());
 }
 
-async function loadSystems(): Promise<GbfsSystem[]> {
+async function loadSystems(signal?: AbortSignal): Promise<GbfsSystem[]> {
   if (systemsCache && systemsCache.expiresAt > Date.now()) return systemsCache.value;
 
   const text = await fetchText(SYSTEMS_CSV, {
     providerId: "gbfs-registry",
+    signal,
     ttlMs: 24 * 3600_000,
     timeoutMs: 15_000,
     maxResponseBytes: 2 * 1024 * 1024,
@@ -144,9 +145,10 @@ interface Station {
   capacity?: number;
 }
 
-async function loadStations(system: GbfsSystem): Promise<GeoFeature[]> {
+async function loadStations(system: GbfsSystem, signal?: AbortSignal): Promise<GeoFeature[]> {
   const discovery = await fetchJson<GbfsFeedList>(system.discoveryUrl, {
     providerId: "gbfs-discovery",
+    signal,
     ttlMs: 6 * 3600_000,
     timeoutMs: 8000
   });
@@ -156,6 +158,7 @@ async function loadStations(system: GbfsSystem): Promise<GeoFeature[]> {
 
   const stations = await fetchJson<{ data?: { stations?: Station[] } }>(stationUrl, {
     providerId: "gbfs-stations",
+    signal,
     ttlMs: 10 * 60_000,
     timeoutMs: 8000
   });
@@ -205,16 +208,24 @@ function covers(systemId: string, bbox: Bbox): boolean {
 
 export const sharedMobility: DataSource = {
   id: "shared-mobility",
-  async load(bbox) {
+  async load(bbox, _query, signal) {
+    signal?.throwIfAborted();
     const { lng, lat } = bboxCenter(bbox);
     const countries = countriesForPoint(lng, lat).map((c) => c.iso);
-    const candidates = (await loadSystems()).filter((s) => countries.includes(s.countryCode));
+    const candidates = (await loadSystems(signal)).filter((s) => countries.includes(s.countryCode));
 
     // Once a system's coverage is known, a repeat visit costs exactly the feeds that city
     // needs — no searching at all.
     const known = candidates.filter((s) => covers(s.systemId, bbox));
     if (known.length) {
-      return inBbox(bbox, await fetchAll(known));
+      const result = await fetchAll(known, signal);
+      // An incomplete registry cannot establish complete geographic coverage.
+      return {
+        ...result,
+        features: inBbox(bbox, result.features),
+        status: "partial",
+        notice: result.notice ?? "Načtené známé systémy; úplné pokrytí poskytovatelů není ověřené."
+      } as DataSourceResult;
     }
 
     // Cold cache: systems.csv gives a country but no coordinates, so coverage has to be
@@ -227,22 +238,35 @@ export const sharedMobility: DataSource = {
 
     const found: GeoFeature[] = [];
     for (let i = 0; i < unexplored.length; i += PROBE_BATCH) {
+      signal?.throwIfAborted();
       const wave = unexplored.slice(i, i + PROBE_BATCH);
-      const features = await fetchAll(wave);
-      const hits = inBbox(bbox, features);
+      const features = await fetchAll(wave, signal);
+      const hits = inBbox(bbox, features.features);
       if (hits.length) {
         found.push(...hits);
         break;
       }
     }
-    return found;
+    return {
+      features: found,
+      status: "partial",
+      notice: "Průzkum poskytovatelů je omezený; výsledky nejsou úplným přehledem oblasti."
+    };
   }
 };
 
-async function fetchAll(systems: GbfsSystem[]): Promise<GeoFeature[]> {
+async function fetchAll(systems: GbfsSystem[], signal?: AbortSignal): Promise<DataSourceResult> {
   // One operator's broken feed must not empty the layer for the others sharing the viewport.
-  const results = await Promise.allSettled(systems.map((s) => loadStations(s)));
-  return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  const results = await Promise.allSettled(systems.map((s) => loadStations(s, signal)));
+  signal?.throwIfAborted();
+  if (results.length && results.every((r) => r.status === "rejected"))
+    throw (results[0] as PromiseRejectedResult).reason;
+  const failed = results.filter((r) => r.status === "rejected").length;
+  return {
+    features: results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
+    status: failed ? "partial" : "complete",
+    notice: failed ? `${failed} z ${results.length} poskytovatelů neodpovědělo.` : undefined
+  };
 }
 
 function inBbox(bbox: Bbox, features: GeoFeature[]): GeoFeature[] {

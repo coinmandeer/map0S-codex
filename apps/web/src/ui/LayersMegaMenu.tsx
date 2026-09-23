@@ -1,5 +1,5 @@
 import { LayersDrawer } from "./layers/LayersDrawer";
-import { t } from "../i18n/cs";
+import { t } from "../i18n";
 
 /** Compatibility shell for `VITE_APP_SHELL_V2=0`, where the layers drawer still opens as a
  *  floating menu from the old top bar. The content is the real drawer; this wrapper only

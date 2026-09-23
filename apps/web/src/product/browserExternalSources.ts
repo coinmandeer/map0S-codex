@@ -64,6 +64,77 @@ export const MAPILLARY_RIGHTS = source({
   evidenceUrl: "https://www.mapillary.com/terms"
 });
 
+export const PANORAMAX_RIGHTS = source({
+  id: "panoramax",
+  label: "Panoramax",
+  hosts: ["api.panoramax.xyz", "panoramax.xyz", "*.panoramax.fr", "panoramax.fr"],
+  uses: ["api", "media", "outbound-link"],
+  attribution: "Panoramax (CC BY-SA / licence per instance)",
+  terms: "Panoramax instance licence, stated per picture",
+  evidenceUrl: "https://panoramax.fr/"
+});
+
+const NASA_EONET_RIGHTS = source({
+  id: "nasa-eonet",
+  label: "NASA EONET",
+  hosts: ["eonet.gsfc.nasa.gov"],
+  uses: ["api", "outbound-link"],
+  attribution: "NASA EONET and its underlying event sources",
+  terms: "NASA EONET terms; underlying event sources retain their own licences",
+  evidenceUrl: "https://eonet.gsfc.nasa.gov/"
+});
+
+const OPEN_DATA_HUB_RIGHTS = source({
+  id: "open-data-hub",
+  label: "Open Data Hub",
+  hosts: ["docs.opendatahub.com"],
+  uses: ["api", "outbound-link"],
+  attribution: "Open Data Hub",
+  terms: "Open Data Hub instance licence, stated per record",
+  evidenceUrl: "https://docs.opendatahub.com/licensing/"
+});
+
+const DIGITRAFFIC_RIGHTS = source({
+  id: "digitraffic",
+  label: "Fintraffic / digitraffic.fi",
+  hosts: ["www.digitraffic.fi"],
+  uses: ["api", "outbound-link"],
+  attribution: "Fintraffic / digitraffic.fi",
+  terms: "CC-BY-4.0",
+  evidenceUrl: "https://www.digitraffic.fi/en/terms-of-service/"
+});
+
+const BOOKING_RIGHTS = source({
+  id: "booking",
+  label: "Booking.com",
+  hosts: ["www.booking.com"],
+  uses: ["outbound-link"],
+  attribution: "Booking.com",
+  terms: "Booking.com terms of service; the link opens a search, not a booking",
+  evidenceUrl: "https://www.booking.com/content/terms.html"
+});
+
+const CELESTRAK_RIGHTS = source({
+  id: "celestrak",
+  label: "CelesTrak",
+  hosts: ["celestrak.org"],
+  uses: ["api", "outbound-link"],
+  attribution: "CelesTrak GP data",
+  terms: "CelesTrak GP data is public; positions are computed with SGP4 in the browser",
+  evidenceUrl: "https://celestrak.org/NORAD/documentation/gp-data-formats.php"
+});
+
+const OVERTURE_RIGHTS = source({
+  id: "overture",
+  label: "Overture Maps",
+  hosts: ["docs.overturemaps.org", "overturemaps-extras-us-west-2.s3.us-west-2.amazonaws.com"],
+  uses: ["tile", "outbound-link"],
+  attribution: "Overture Maps Foundation",
+  terms:
+    "Overture Maps data is released under ODbL and CDLA-Permissive; per-source attribution applies",
+  evidenceUrl: "https://docs.overturemaps.org/attribution/"
+});
+
 export const WINDY_RIGHTS = source({
   id: "windy",
   label: "Windy.com",
@@ -207,7 +278,7 @@ const HERE_RIGHTS = source({
 const MAPTILER_RIGHTS = source({
   id: "maptiler",
   label: "MapTiler",
-  hosts: ["www.maptiler.com"],
+  hosts: ["www.maptiler.com", "api.maptiler.com"],
   uses: ["outbound-link", "tile"],
   attribution: "MapTiler",
   terms: "MapTiler Cloud Terms",
@@ -337,8 +408,8 @@ const INATURALIST_RIGHTS = source({
 const GBIF_RIGHTS = source({
   id: "gbif",
   label: "GBIF",
-  hosts: ["www.gbif.org"],
-  uses: ["api", "outbound-link"],
+  hosts: ["www.gbif.org", "api.gbif.org"],
+  uses: ["api", "tile", "outbound-link"],
   attribution: "GBIF",
   terms: "CC-BY-4.0",
   evidenceUrl: "https://www.gbif.org/"
@@ -436,12 +507,193 @@ const MOBILITYDATA_GITHUB_RIGHTS = source({
 
 /** Complete advisory inventory for literal external hosts shipped in browser source. */
 export const BROWSER_EXTERNAL_SOURCE_RIGHTS: readonly ExternalSourceRights[] = [
+  source({
+    id: "cuzk-public",
+    label: "ČÚZK / Zeměměřický úřad / DMVS",
+    hosts: ["cuzk.gov.cz", "*.cuzk.gov.cz"],
+    uses: ["tile", "media", "outbound-link"],
+    attribution: "© ČÚZK; DMVS: příslušné krajské DTM",
+    terms:
+      "Podmínky poskytování síťových služeb ČÚZK; veřejné prohlížení DMVS; podmínky ZÚ pro ortofoto",
+    evidenceUrl:
+      "https://cuzk.gov.cz/Predpisy/Podminky-poskytovani-prostor-dat-a-sitovych-sluzeb.aspx"
+  }),
+  source({
+    id: "dpp-cr",
+    label: "Digitální povodňový plán ČR",
+    hosts: ["webmap.dppcr.cz"],
+    uses: ["tile", "media", "outbound-link"],
+    attribution: "© MŽP / Hydrosoft Veleslavín",
+    terms: "Veřejná prohlížecí WMS dPP ČR; informativní zobrazení s atribucí",
+    evidenceUrl: "https://webmap.dppcr.cz/dpp_cr/wms.dll?MAP=4870&TMPL=AJAX_MAIN"
+  }),
+  source({
+    id: "copernicus-drought",
+    label: "Copernicus CEMS drought",
+    hosts: ["drought.emergency.copernicus.eu"],
+    uses: ["tile", "outbound-link"],
+    attribution: "European Union, Copernicus Emergency Management Service",
+    terms: "Copernicus CEMS terms and conditions",
+    evidenceUrl: "https://drought.emergency.copernicus.eu/terms%26conditions/"
+  }),
+  source({
+    id: "emodnet-bathymetry",
+    label: "EMODnet Bathymetry",
+    hosts: ["ows.emodnet-bathymetry.eu", "emodnet.ec.europa.eu"],
+    uses: ["tile", "outbound-link"],
+    attribution: "EMODnet Bathymetry consortium",
+    terms: "EMODnet Bathymetry DTM terms of use",
+    evidenceUrl: "https://emodnet.ec.europa.eu/en/bathymetry"
+  }),
+  source({
+    id: "osm-france",
+    label: "OpenStreetMap France",
+    hosts: ["www.openstreetmap.fr", "*.tile.openstreetmap.fr"],
+    uses: ["tile", "outbound-link"],
+    attribution: "OpenStreetMap France; © OpenStreetMap contributors",
+    terms: "OSM France usage policy; map and data licences are distinct",
+    evidenceUrl: "https://www.openstreetmap.fr/usage/"
+  }),
+  source({
+    id: "hot",
+    label: "Humanitarian OpenStreetMap Team",
+    hosts: ["www.hotosm.org"],
+    uses: ["outbound-link"],
+    attribution: "Humanitarian OpenStreetMap Team",
+    terms: "Attribution link; tile hosting is provided separately by OpenStreetMap France",
+    evidenceUrl: "https://www.hotosm.org/"
+  }),
+  source({
+    id: "opnvkarte",
+    label: "ÖPNVKarte / MeMoMaps",
+    hosts: ["tileserver.memomaps.de", "memomaps.de", "www.xn--pnvkarte-m4a.de"],
+    uses: ["tile", "outbound-link"],
+    attribution: "Map © MeMoMaps; data © OpenStreetMap contributors",
+    terms: "CC-BY-SA map, ODbL data; high-traffic services require own tile hosting",
+    evidenceUrl: "https://www.xn--pnvkarte-m4a.de/"
+  }),
+  source({
+    id: "geoboundaries",
+    label: "geoBoundaries",
+    hosts: ["www.geoboundaries.org"],
+    uses: ["outbound-link"],
+    attribution: "geoBoundaries and original boundary contributors",
+    terms: "gbOpen CC-BY-4.0; preserve individual boundary licence metadata",
+    evidenceUrl: "https://www.geoboundaries.org/api.html"
+  }),
+  source({
+    id: "natural-earth",
+    label: "Natural Earth",
+    hosts: ["www.naturalearthdata.com"],
+    uses: ["outbound-link"],
+    attribution: "Natural Earth",
+    terms: "Public domain map data",
+    evidenceUrl: "https://www.naturalearthdata.com/about/terms-of-use/"
+  }),
+  source({
+    id: "opencaching",
+    label: "Opencaching",
+    hosts: ["www.opencaching.de"],
+    uses: ["outbound-link"],
+    attribution: "Opencaching contributors",
+    terms: "Attribution link; API and listing rights remain source-specific",
+    evidenceUrl: "https://www.opencaching.de/"
+  }),
+  source({
+    id: "heritage",
+    label: "Wikimedia Heritage",
+    hosts: ["heritage.toolforge.org"],
+    uses: ["outbound-link"],
+    attribution: "Wikimedia Heritage contributors",
+    terms: "Attribution link; individual monument and media source terms apply",
+    evidenceUrl: "https://heritage.toolforge.org/"
+  }),
+  source({
+    id: "turf",
+    label: "Turf",
+    hosts: ["turfgame.com"],
+    uses: ["outbound-link"],
+    attribution: "Turf",
+    terms: "Attribution link; Turf API and content terms require separate review",
+    evidenceUrl: "https://turfgame.com/"
+  }),
+  source({
+    id: "openinframap",
+    label: "OpenInfraMap",
+    hosts: ["openinframap.org"],
+    uses: ["outbound-link"],
+    attribution: "OpenInfraMap; OpenStreetMap contributors",
+    terms: "Attribution link; underlying OpenStreetMap data under ODbL",
+    evidenceUrl: "https://openinframap.org/"
+  }),
+  source({
+    id: "eea",
+    label: "European Environment Agency",
+    hosts: ["www.eea.europa.eu", "bio.discomap.eea.europa.eu"],
+    uses: ["api", "outbound-link"],
+    attribution: "European Environment Agency and dataset contributors",
+    terms: "Dataset-specific reuse conditions; preserve published Natura 2000 attribution",
+    evidenceUrl: "https://www.eea.europa.eu/"
+  }),
+  source({
+    id: "eurostat",
+    label: "Eurostat",
+    hosts: ["ec.europa.eu"],
+    uses: ["outbound-link"],
+    attribution: "Eurostat / European Commission",
+    terms: "Attribution link; dataset-specific European Commission reuse conditions",
+    evidenceUrl: "https://ec.europa.eu/eurostat/"
+  }),
+  source({
+    id: "tilezen-terrain",
+    label: "Tilezen Terrain Tiles",
+    hosts: ["s3.amazonaws.com", "registry.opendata.aws"],
+    uses: ["tile", "outbound-link"],
+    attribution: "Tilezen / Mapzen and contributing elevation datasets",
+    terms:
+      "Only elevation-tiles-prod bucket is used; per-dataset attribution from Tilezen joerd applies, not a licence for arbitrary S3 data",
+    evidenceUrl: "https://registry.opendata.aws/terrain-tiles/"
+  }),
+  source({
+    id: "adsblol",
+    label: "ADSB.lol",
+    hosts: ["adsb.lol"],
+    uses: ["outbound-link"],
+    attribution: "ADSB.lol",
+    terms: "ODbL 1.0",
+    evidenceUrl: "https://www.adsb.lol/docs/open-data/api/"
+  }),
+  source({
+    id: "aisstream",
+    label: "AISstream",
+    hosts: ["aisstream.io"],
+    uses: ["outbound-link"],
+    attribution: "AISstream",
+    terms: "Server-side stream; wider-use licence must be confirmed with the operator",
+    evidenceUrl: "https://aisstream.io/documentation"
+  }),
+  source({
+    id: "meshcore",
+    label: "MeshCore analyzer",
+    hosts: ["analyzer.meshcore.cz"],
+    uses: ["outbound-link"],
+    attribution: "MeshCore community",
+    terms: "Community data; reuse rights not independently verified",
+    evidenceUrl: "https://analyzer.meshcore.cz"
+  }),
   OPENSTREETMAP_RIGHTS,
   WIKIPEDIA_RIGHTS,
   WIKIDATA_RIGHTS,
   OPEN_METEO_RIGHTS,
   MACROSTRAT_RIGHTS,
   MAPILLARY_RIGHTS,
+  PANORAMAX_RIGHTS,
+  NASA_EONET_RIGHTS,
+  OPEN_DATA_HUB_RIGHTS,
+  DIGITRAFFIC_RIGHTS,
+  BOOKING_RIGHTS,
+  CELESTRAK_RIGHTS,
+  OVERTURE_RIGHTS,
   WINDY_RIGHTS,
   FOURSQUARE_RIGHTS,
   GOOGLE_MAPS_RIGHTS,
@@ -484,7 +736,10 @@ export const BROWSER_EXTERNAL_SOURCE_RIGHTS: readonly ExternalSourceRights[] = [
 /** Reserved documentation/parser fixtures which can never make a network request. */
 export const NON_NETWORK_BROWSER_HOST_LITERALS = [
   "mapos.example",
-  "relative.mapos.invalid"
+  "relative.mapos.invalid",
+  // The SVG/XML namespace passed to `document.createElementNS`. It is an identifier, never a
+  // host anything is fetched from, so it is not an external source.
+  "www.w3.org"
 ] as const;
 
 function normalizedHost(host: string): string {

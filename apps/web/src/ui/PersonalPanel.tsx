@@ -1,14 +1,19 @@
+import { addDiscoveredPlace } from "../info/appendDiscoveredPlace";
+import { SavedOverviews } from "./ai/SavedOverviews";
+import { WorldSocialEntry } from "../world/WorldSocial";
+import { worldRuntime } from "../world/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   featureAnchor,
   planV1ToV2,
+  type LayerManifestV2,
   type SavedPlaceCollectionV2,
   type SavedPlaceV2,
   type TripPlan
 } from "@mapos/layer-sdk";
 import { apiGet, apiSend } from "../lib/api";
 import { emit } from "../lib/events";
-import { t } from "../i18n/cs";
+import { t, intlLocale } from "../i18n";
 import { formatDistance } from "../lib/units";
 import {
   createSavedPlaceFromFeature,
@@ -16,15 +21,20 @@ import {
   loadSavedPlaceCollections,
   savedPlaceToFeature
 } from "../lib/savedPlaces";
-import { addPlaceToPlanDocument } from "../info/placePlanAction";
+
 import { createBlankPlanDocument } from "../planning/planDraft";
 import {
   exportPlanDocument,
   PLAN_EXPORT_LABELS,
   type PlanExportFormat
 } from "../planning/planExport";
+import { readableLayerColor } from "../lib/layerColor";
+import { syncSourceLayers } from "../layers/sourceLayers";
+import { refreshTableLayers } from "../layers/themes/tableLayers";
 import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
+import { AddSourceDialog } from "./AddSourceDialog";
+import { AddTableDialog } from "./AddTableDialog";
 import { LayerTransferTools } from "./LayerTransferTools";
 import { PanelShell } from "./PanelShell";
 import {
@@ -36,6 +46,7 @@ import {
   Dialog,
   EmptyState,
   IconButton,
+  InfoTip,
   InlineNotice,
   ListItem,
   Menu,
@@ -50,9 +61,20 @@ import {
   filterPersonalPlaces,
   personalCategoryCounts,
   personalSummaryLine,
-  savedPlaceSubtitle
+  savedPlaceSubtitle,
+  walletSubtitle
 } from "./personalModel";
 import { poiCategoryIcon } from "./layers/layerPresentation";
+import type { PublicIdentityLink } from "../lib/linkedIdentity";
+import {
+  listWalletIdentities,
+  mobileWalletsAvailable,
+  readWalletChainState,
+  revokeWalletIdentity,
+  walletConnectors,
+  walletDisplayName,
+  type WalletChainState
+} from "../lib/wallet";
 
 interface UserLayerSummary {
   id: string;
@@ -60,9 +82,13 @@ interface UserLayerSummary {
   color: string;
   isPublic: number;
   pinCount: number;
+  /** Present when the layer is a remote source rather than a collection of pins — a WMS, an
+   *  ArcGIS service, a PMTiles archive. `syncSourceLayers` turns it into a drawable layer. */
+  sourceManifest?: LayerManifestV2 | null;
+  sourceUrl?: string | null;
 }
 
-type PersonalSection = "plans" | "places" | "layers" | "games";
+type PersonalSection = "plans" | "places" | "layers" | "games" | "wallet";
 
 interface PersonalSummary {
   plans: number;
@@ -97,7 +123,7 @@ function planSubtitle(plan: TripPlan): string {
     `${plan.stops.length} ${plural(plan.stops.length, "zastávka", "zastávky", "zastávek")}`
   );
   parts.push(
-    new Intl.DateTimeFormat("cs", { day: "numeric", month: "numeric" }).format(
+    new Intl.DateTimeFormat(intlLocale(), { day: "numeric", month: "numeric" }).format(
       new Date(plan.departureAt)
     )
   );
@@ -129,6 +155,7 @@ export function PersonalPanel() {
   const view = useMapStoreSnapshot((state) => state.view);
   const activeGames = useMapStoreSnapshot((state) => state.activeGameIds);
   const activeLayers = useMapStoreSnapshot((state) => state.activeLayers);
+  const theme = useMapStoreSnapshot((state) => state.theme);
 
   const [plans, setPlans] = useState<TripPlan[]>([]);
   const [places, setPlaces] = useState<SavedPlaceV2[]>([]);
@@ -144,6 +171,11 @@ export function PersonalPanel() {
   const [exportPlan, setExportPlan] = useState<TripPlan | null>(null);
   const [noteDraft, setNoteDraft] = useState<{ place: SavedPlaceV2; note: string } | null>(null);
   const [confirm, setConfirm] = useState<PersonalConfirm | null>(null);
+  const [wallets, setWallets] = useState<PublicIdentityLink[]>([]);
+  const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
+  const [tableDialogOpen, setTableDialogOpen] = useState(false);
+  const [walletChain, setWalletChain] = useState<WalletChainState | null>(null);
+  const [walletBusy, setWalletBusy] = useState(false);
   const loaded = useRef(new Set<PersonalSection>());
   const requestEpoch = useRef(0);
 
@@ -154,6 +186,8 @@ export function PersonalPanel() {
     setPlaces([]);
     setCollections([]);
     setLayers([]);
+    setWallets([]);
+    setWalletChain(null);
     setSummary(null);
     setErrors({});
     setLoading({});
@@ -174,6 +208,55 @@ export function PersonalPanel() {
         if (epoch === requestEpoch.current) setSummaryLoading(false);
       });
   }, [mode, open, session]);
+
+  /** Chain state is read for the real wallet only: a simulated identity has no chain behind it,
+   *  and showing it a network and a zero balance would be inventing facts. */
+  const chainStateFor = async (linked: PublicIdentityLink[]) => {
+    const real = linked.find((identity) => identity.type === "wallet");
+    const provider = real ? walletConnectors()[0]?.provider() : null;
+    return real && provider ? readWalletChainState(provider, real.subject) : null;
+  };
+
+  const connectWallet = async () => {
+    const connector = walletConnectors()[0];
+    const blocked = connector?.unavailableReason();
+    if (!connector || blocked) {
+      store.showToast(blocked ?? "Peněženku teď nelze připojit.");
+      return;
+    }
+    setWalletBusy(true);
+    try {
+      await connector.connect();
+      const linked = await listWalletIdentities();
+      setWallets(linked);
+      setWalletChain(await chainStateFor(linked));
+      store.showToast("Peněženka je připojená ke stejnému MapOS profilu");
+    } catch (error) {
+      store.showToast(error instanceof Error ? error.message : "Peněženku se nepodařilo připojit.");
+    } finally {
+      setWalletBusy(false);
+    }
+  };
+
+  const disconnectWallet = (identity: PublicIdentityLink) => {
+    setConfirm({
+      title: "Odpojit peněženku?",
+      description: `${walletDisplayName(identity)} přestane být propojená s tímhle profilem. Účet ani uložená data se nemažou.`,
+      confirmLabel: "Odpojit",
+      run: () => {
+        setWalletBusy(true);
+        void revokeWalletIdentity(identity.id)
+          .then(async () => {
+            const linked = await listWalletIdentities();
+            setWallets(linked);
+            setWalletChain(await chainStateFor(linked));
+            store.showToast("Peněženka odpojená");
+          })
+          .catch(() => store.showToast("Peněženku se nepodařilo odpojit."))
+          .finally(() => setWalletBusy(false));
+      }
+    });
+  };
 
   const loadSection = async (section: PersonalSection) => {
     if (!session || loaded.current.has(section)) return;
@@ -210,11 +293,23 @@ export function PersonalPanel() {
         const data = await apiGet<{ layers: UserLayerSummary[] }>("/user-layers", { auth: true });
         if (epoch === requestEpoch.current) {
           setLayers(data.layers);
+          // A layer built from a pasted URL is not a module, so it only becomes drawable once
+          // its manifest has arrived with the list.
+          if (syncSourceLayers(data.layers).length) emit("layers-changed");
+          void refreshTableLayers().then((added) => {
+            if (added.length) emit("layers-changed");
+          });
           setSummary((current) => ({
             plans: current?.plans ?? plans.length,
             places: current?.places ?? places.length,
             layers: data.layers.length
           }));
+        }
+      } else if (section === "wallet") {
+        const linked = await listWalletIdentities();
+        if (epoch === requestEpoch.current) {
+          setWallets(linked);
+          setWalletChain(await chainStateFor(linked));
         }
       }
       // Game progress is already session state, so opening that section makes no request.
@@ -254,6 +349,13 @@ export function PersonalPanel() {
   };
 
   const openPlace = (savedPlace: SavedPlaceV2) => {
+    if (
+      savedPlace.target.type === "external-feature" &&
+      savedPlace.target.externalFeatureRef.startsWith("social-thread:")
+    ) {
+      worldRuntime.openThread(savedPlace.target.externalFeatureRef.slice(14));
+      return;
+    }
     const feature = savedPlaceToFeature(savedPlace);
     const [lng, lat] = featureAnchor(feature);
     emit("fly-to", { lng, lat, zoom: 15 });
@@ -309,7 +411,8 @@ export function PersonalPanel() {
     plans: Math.max(summary?.plans ?? 0, plans.length),
     places: Math.max(summary?.places ?? 0, places.length),
     layers: Math.max(summary?.layers ?? 0, layers.length),
-    games: activeGames.length
+    games: activeGames.length,
+    wallet: wallets.length
   };
 
   const countBadge = (section: PersonalSection) =>
@@ -320,7 +423,7 @@ export function PersonalPanel() {
   const sections: AccordionSection[] = [
     {
       id: "plans",
-      title: "Uložené plány",
+      title: t("personal.plans"),
       icon: "route",
       testId: "personal-section-plans",
       action: countBadge("plans"),
@@ -398,7 +501,7 @@ export function PersonalPanel() {
     },
     {
       id: "places",
-      title: "Moje místa",
+      title: t("personal.places"),
       icon: "bookmark",
       testId: "personal-section-places",
       action: countBadge("places"),
@@ -506,7 +609,7 @@ export function PersonalPanel() {
     },
     {
       id: "layers",
-      title: "Moje vrstvy",
+      title: t("personal.layers"),
       icon: "layers",
       testId: "personal-section-layers",
       action: countBadge("layers"),
@@ -519,7 +622,7 @@ export function PersonalPanel() {
               key={layer.id}
               testId="user-layer-row"
               icon="layers"
-              iconColor={layer.color}
+              iconColor={readableLayerColor(layer.color, theme)}
               title={layer.name}
               subtitle={`${layer.pinCount} ${plural(layer.pinCount, "místo", "místa", "míst")} · ${layer.isPublic ? "veřejná" : "soukromá"}`}
               onClick={() => store.setEditMode(true, layer.id)}
@@ -569,6 +672,47 @@ export function PersonalPanel() {
           {layers.length === 0 && !loading.layers && !errors.layers && (
             <EmptyState icon="layers" title="Zatím žádná vlastní vrstva." />
           )}
+          <Button
+            variant="tonal"
+            size="sm"
+            icon="add_link"
+            block
+            testId="add-source-open"
+            onClick={() => setSourceDialogOpen(true)}
+          >
+            Přidat zdroj z URL
+          </Button>
+          <Button
+            variant="tonal"
+            size="sm"
+            icon="table_chart"
+            block
+            testId="add-table-open"
+            onClick={() => setTableDialogOpen(true)}
+          >
+            Importovat tabulku
+          </Button>
+          <AddTableDialog
+            open={tableDialogOpen}
+            onOpenChange={setTableDialogOpen}
+            onCreated={() => {
+              // The layer is drawn from the server's classification, so it appears once the
+              // table list is re-read rather than from the create response.
+              void refreshTableLayers().then((added) => {
+                if (added.length) emit("layers-changed");
+              });
+            }}
+          />
+          <AddSourceDialog
+            open={sourceDialogOpen}
+            onOpenChange={setSourceDialogOpen}
+            onCreated={() => {
+              // Re-read rather than splice in the response: the list row needs the pin count and
+              // the manifest, and `syncSourceLayers` runs on the same path.
+              loaded.current.delete("layers");
+              void loadSection("layers");
+            }}
+          />
           <LayerTransferTools
             layers={layers}
             onImported={(layer) => {
@@ -616,7 +760,7 @@ export function PersonalPanel() {
     },
     {
       id: "games",
-      title: "Herní ranky",
+      title: t("personal.ranks"),
       icon: "stadia_controller",
       testId: "personal-section-games",
       action: countBadge("games"),
@@ -648,29 +792,77 @@ export function PersonalPanel() {
           })}
         </div>
       )
+    },
+    {
+      id: "wallet",
+      title: t("personal.wallet"),
+      icon: "account_balance_wallet",
+      testId: "personal-section-wallet",
+      // The caveat belongs to the section, not to any one row, so it sits in the header next to
+      // the count instead of floating under the last thing in the body.
+      action: (
+        <>
+          {countBadge("wallet")}
+          {!mobileWalletsAvailable() && (
+            <InfoTip label="Mobilní peněženky" title="Mobilní peněženky">
+              Připojení přes QR kód (WalletConnect) není v tomhle nasazení zapnuté — chybí
+              projektový klíč Reown. Rozšíření v prohlížeči, jako MetaMask nebo Rabby, fungují
+              normálně.
+            </InfoTip>
+          )}
+        </>
+      ),
+      children: (
+        <div className="personal-list" data-testid="personal-wallet">
+          {loading.wallet && <Skeleton count={2} />}
+          {errors.wallet && <InlineNotice tone="warning">{errors.wallet}</InlineNotice>}
+
+          {!loading.wallet && wallets.length === 0 && (
+            <EmptyState
+              icon="account_balance_wallet"
+              title="Žádná připojená peněženka."
+              actionLabel="Připojit peněženku"
+              onAction={() => void connectWallet()}
+            />
+          )}
+
+          {wallets.map((identity) => (
+            <ListItem
+              key={identity.id}
+              testId={`personal-wallet-${identity.id}`}
+              icon={identity.simulated ? "science" : "account_balance_wallet"}
+              title={walletDisplayName(identity)}
+              subtitle={walletSubtitle(identity, walletChain)}
+              trailing={
+                <IconButton
+                  icon="link_off"
+                  label="Odpojit peněženku"
+                  disabled={walletBusy}
+                  onClick={() => disconnectWallet(identity)}
+                />
+              }
+            />
+          ))}
+
+          {wallets.length > 0 && (
+            <Button
+              variant="text"
+              size="sm"
+              icon="add"
+              disabled={walletBusy}
+              onClick={() => void connectWallet()}
+            >
+              Připojit další
+            </Button>
+          )}
+        </div>
+      )
     }
   ];
 
   function addPlaceToPlan(place: SavedPlaceV2) {
-    const document = store.activePlanDocument;
-    if (!document) {
-      store.setMode("planning");
-      store.showToast("Nejdřív vytvoř plán; místo pak přidej znovu");
-      return;
-    }
     const [lng, lat] = place.snapshot.position;
-    try {
-      store.setActivePlanDocument(
-        addPlaceToPlanDocument(
-          document,
-          { id: place.id, name: place.snapshot.title, lng, lat },
-          (prefix) => `${prefix}-${place.id}-${document.stops.length}`
-        )
-      );
-      store.showToast(`${place.snapshot.title} přidáno do plánu`);
-    } catch {
-      store.showToast("Interaktivní plán už má maximum zastávek");
-    }
+    addDiscoveredPlace({ id: place.id, name: place.snapshot.title, lng, lat });
   }
 
   async function duplicatePlan(plan: TripPlan) {
@@ -769,6 +961,8 @@ export function PersonalPanel() {
       }
     >
       <div className="personal-stack">
+        <WorldSocialEntry />
+        <SavedOverviews />
         <section className="personal-profile" data-testid="personal-overview">
           <span className="personal-avatar" aria-hidden>
             {(session?.displayName ?? "M").slice(0, 1).toLocaleUpperCase("cs")}
@@ -791,7 +985,10 @@ export function PersonalPanel() {
               variant="text"
               size="sm"
               icon="account_balance_wallet"
-              onClick={() => store.showToast("Peněženku připravujeme")}
+              disabled={walletBusy}
+              // A guest account is a real account, so connecting a wallet upgrades it in place
+              // rather than asking them to sign up first and lose what they have collected.
+              onClick={() => void connectWallet()}
             >
               Připojit peněženku
             </Button>

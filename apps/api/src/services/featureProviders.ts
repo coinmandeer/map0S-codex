@@ -1,3 +1,5 @@
+import { resolveAreaSelection, filterAreaFeatures } from "../geo/areaSelection.js";
+import type { AreaSelection } from "@mapos/layer-sdk";
 /**
  * Server-side counterpart to the browser's layer registry: what `GET /layers/:layerId/features`
  * can serve.
@@ -25,9 +27,12 @@ import {
 } from "./placesPresentation.js";
 import { dataSourceProviders } from "./dataSources/index.js";
 import { questAnchorFeatures } from "../game/questAnchorCache.js";
+import { featurePage, featurePageV2 } from "./featurePages.js";
 
 export interface FeatureRequest {
+  signal?: AbortSignal;
   bbox: Bbox;
+  area?: AreaSelection | null;
   query: Record<string, string | undefined>;
   /** Resolved from the session cookie; undefined for anonymous callers. */
   userId?: string;
@@ -58,31 +63,33 @@ export function withFeatureQueryBudget(provider: FeatureProvider): FeatureProvid
     ...(legacy
       ? {
           async features(request: FeatureRequest): Promise<FeatureCollection> {
-            const result = await legacy(request);
             const limit = normalizeFeatureLimit(request.query.limit);
-            return { ...result, features: result.features.slice(0, limit) };
+            const area = await resolveAreaSelection(request.query);
+            if (area && !["osm-poi", "user-layers"].includes(provider.id))
+              throw new Error("Layer does not support area filtering");
+            const bbox: Bbox = area
+              ? [
+                  Math.max(request.bbox[0], area.bbox[0]),
+                  Math.max(request.bbox[1], area.bbox[1]),
+                  Math.min(request.bbox[2], area.bbox[2]),
+                  Math.min(request.bbox[3], area.bbox[3])
+                ]
+              : request.bbox;
+            if (bbox[0] > bbox[2] || bbox[1] > bbox[3])
+              return { type: "FeatureCollection", features: [] };
+            const scoped = { ...request, bbox, area };
+            return featurePage(provider.id, request, limit, async () => {
+              const data = await legacy(scoped);
+              return area ? filterAreaFeatures(data, area) : data;
+            });
           }
         }
       : {}),
     ...(v2
       ? {
           async featuresV2(request: FeatureRequest): Promise<FeatureQueryResultV2> {
-            const result = await v2(request);
             const limit = normalizeFeatureLimit(request.query.limit);
-            const features = result.data.features.slice(0, limit);
-            const truncated =
-              result.meta.truncated || result.data.features.length > features.length;
-            return {
-              ...result,
-              data: { ...result.data, features },
-              meta: {
-                ...result.meta,
-                limit,
-                returned: features.length,
-                truncated,
-                nextCursor: truncated ? result.meta.nextCursor : null
-              }
-            };
+            return featurePageV2(provider.id, request, limit, () => v2(request));
           }
         }
       : {})
@@ -94,27 +101,34 @@ const RAW_FEATURE_PROVIDERS: FeatureProvider[] = [
     id: "osm-poi",
     name: "OSM POI",
     kind: "pins",
-    async features({ bbox, query }) {
+    async features({ bbox, query, area }) {
       const sources = parsePlaceSources(query.sources);
       // A plain OSM request skips fusion entirely — no reason to pay for merging when there is
       // only one source to merge.
       if (sources.length === 1 && sources[0] === "osm") {
-        return getOsmPoiFeatures(bbox, query.categories);
+        return getOsmPoiFeatures(bbox, query.categories, area);
       }
-      const fused = await getFusedPlaces({
-        bbox,
-        categories: parsePoiCategories(query.categories),
-        sources
-      });
-      return placesToFeatureCollection(fused);
+      const fused = await getFusedPlaces(
+        {
+          bbox,
+          area,
+          categories: parsePoiCategories(query.categories),
+          sources
+        },
+        { progressive: true }
+      );
+      const collection = placesToFeatureCollection(fused);
+      if (area)
+        collection.query = { ...collection.query, status: "partial", bbox, truncated: true };
+      return collection;
     }
   },
   {
     id: "user-layers",
     name: "Moje vrstvy",
     kind: "pins",
-    features: ({ bbox, query, userId }) =>
-      getUserLayerFeatures(bbox, userId, query.tag, query.country)
+    features: ({ bbox, query, userId, area }) =>
+      getUserLayerFeatures(bbox, userId, query.tag, query.country, area)
   },
   {
     id: "park4night",
@@ -130,11 +144,14 @@ const RAW_FEATURE_PROVIDERS: FeatureProvider[] = [
     async features({ bbox, query }) {
       const categories = parsePoiCategories(query.categories);
       const wanted = categories.length ? categories : [...VANLIFE_CATEGORIES];
-      const fused = await getFusedPlaces({
-        bbox,
-        categories: wanted,
-        sources: parsePlaceSources(query.sources)
-      });
+      const fused = await getFusedPlaces(
+        {
+          bbox,
+          categories: wanted,
+          sources: parsePlaceSources(query.sources)
+        },
+        { progressive: true }
+      );
       return placesToFeatureCollection(fused);
     }
   },

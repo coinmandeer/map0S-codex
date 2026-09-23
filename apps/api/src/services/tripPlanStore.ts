@@ -161,6 +161,7 @@ export async function createPlanDocument(
   input: PlanDocumentV2
 ): Promise<PlanDocumentV2> {
   assertPlanDocumentV2(input);
+  if (input.stops.length < 2) throw new ClientError("Před uložením plánu přidejte cíl", 400);
   return db.transaction(async (tx) => {
     const now = new Date();
     const candidate = markPersisted({
@@ -198,6 +199,7 @@ export async function replacePlanDocument(
   expectedRevision: number
 ): Promise<PlanDocumentV2> {
   assertPlanDocumentV2(input);
+  if (input.stops.length < 2) throw new ClientError("Před uložením plánu přidejte cíl", 400);
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select()

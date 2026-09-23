@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Place } from "@mapos/layer-sdk";
 import { readPrivatePlaceNote, writePrivatePlaceNote } from "../lib/privatePlaceNote";
 import { getMapStore } from "../store/mapStore";
+import { intlLocale } from "../i18n";
 
 export function PrivatePlaceNote({ place }: { place: Place }) {
   const store = getMapStore();
@@ -76,7 +77,7 @@ export function PrivatePlaceNote({ place }: { place: Place }) {
         <>
           <p>{note?.body}</p>
           <p className="meta">
-            Uloženo v tomto zařízení · {new Date(note!.updatedAt).toLocaleString("cs-CZ")}
+            Uloženo v tomto zařízení · {new Date(note!.updatedAt).toLocaleString(intlLocale())}
           </p>
           <button className="btn" type="button" onClick={() => setEditing(true)}>
             Upravit

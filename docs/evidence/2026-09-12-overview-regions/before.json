@@ -1,0 +1,359 @@
+{
+  "revision": "26dd406168ebf8da1fe35d8a4df280d18408ec3fa44b9eca23c070fb4b861ed9",
+  "output": [
+    {
+      "kind": "context",
+      "code": "CZ_554782",
+      "pass": 0,
+      "status": 200,
+      "ms": 131,
+      "cache": false,
+      "name": "Praha",
+      "statistics": [
+        {
+          "id": "published:lau-population-density-2024",
+          "value": 2789.5903205111345,
+          "region": "Praha",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:lau-population-2024",
+          "value": 1384732,
+          "region": "Praha",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:eurostat-birth-rate-country",
+          "value": 7.1,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-crim-gen-reg-country",
+          "value": 0.63,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-death-rate-country",
+          "value": 10.4,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-gdp-per-capita-country",
+          "value": 29400,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-life-expectancy-country",
+          "value": 80.1,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-poverty-country",
+          "value": 11.5,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-renewable-energy",
+          "value": 19.1,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-tourism-nights-country",
+          "value": 59101998,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-tran-r-acci-country",
+          "value": 494,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-unemployment-country",
+          "value": 2.8,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        }
+      ],
+      "guide": "extract"
+    },
+    {
+      "kind": "context",
+      "code": "CZ_554782",
+      "pass": 1,
+      "status": 200,
+      "ms": 82,
+      "cache": true,
+      "name": "Praha",
+      "statistics": [
+        {
+          "id": "published:lau-population-density-2024",
+          "value": 2789.5903205111345,
+          "region": "Praha",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:lau-population-2024",
+          "value": 1384732,
+          "region": "Praha",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:eurostat-birth-rate-country",
+          "value": 7.1,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-crim-gen-reg-country",
+          "value": 0.63,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-death-rate-country",
+          "value": 10.4,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-gdp-per-capita-country",
+          "value": 29400,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-life-expectancy-country",
+          "value": 80.1,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-poverty-country",
+          "value": 11.5,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-renewable-energy",
+          "value": 19.1,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-tourism-nights-country",
+          "value": 59101998,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-tran-r-acci-country",
+          "value": 494,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-unemployment-country",
+          "value": 2.8,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        }
+      ],
+      "guide": "extract"
+    },
+    {
+      "kind": "overview",
+      "code": "CZ_554782",
+      "status": 200,
+      "firstMs": 236,
+      "totalMs": 236,
+      "terminal": "partial",
+      "claims": [
+        "Praha · obec · CZ.",
+        "Hustota obyvatel: 2 789,59 people/km² (2024). Vybraná oblast: Praha · LAU · poznámka zdroje: GISCO LAU 2024.",
+        "Obecní populace (2024): 1 384 732 people (2024). Vybraná oblast: Praha · LAU · poznámka zdroje: GISCO LAU 2024.",
+        "Armádní muzeum Žižkov · museum. Místo uvnitř vybrané hranice podle lokálního indexu OpenStreetMap.",
+        "Galerie u Zlatého Kohouta · museum. Místo uvnitř vybrané hranice podle lokálního indexu OpenStreetMap."
+      ],
+      "sources": 29,
+      "limitations": [
+        "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+      ]
+    },
+    {
+      "kind": "context",
+      "code": "ES_43148",
+      "pass": 0,
+      "status": 200,
+      "ms": 150,
+      "cache": false,
+      "name": "Tarragona",
+      "statistics": [
+        {
+          "id": "published:lau-population-density-2024",
+          "value": 2517.437835574865,
+          "region": "Tarragona",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:lau-population-2024",
+          "value": 141018,
+          "region": "Tarragona",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:eurostat-demo-r-pjanaggr3",
+          "value": 875530,
+          "region": "Tarragona",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-poverty",
+          "value": 21.3,
+          "region": "Cataluña",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-unemployment",
+          "value": 8.4,
+          "region": "Cataluña",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        }
+      ],
+      "guide": "extract"
+    },
+    {
+      "kind": "context",
+      "code": "ES_43148",
+      "pass": 1,
+      "status": 200,
+      "ms": 48,
+      "cache": true,
+      "name": "Tarragona",
+      "statistics": [
+        {
+          "id": "published:lau-population-density-2024",
+          "value": 2517.437835574865,
+          "region": "Tarragona",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:lau-population-2024",
+          "value": 141018,
+          "region": "Tarragona",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:eurostat-demo-r-pjanaggr3",
+          "value": 875530,
+          "region": "Tarragona",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-poverty",
+          "value": 21.3,
+          "region": "Cataluña",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-unemployment",
+          "value": 8.4,
+          "region": "Cataluña",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        }
+      ],
+      "guide": "extract"
+    },
+    {
+      "kind": "overview",
+      "code": "ES_43148",
+      "status": 200,
+      "firstMs": 414,
+      "totalMs": 415,
+      "terminal": "partial",
+      "claims": [
+        "Tarragona · obec · ES.",
+        "Hustota obyvatel: 2 517,44 people/km² (2024). Vybraná oblast: Tarragona · LAU · poznámka zdroje: INE census 2024.",
+        "Obecní populace (2024): 141 018 people (2024). Vybraná oblast: Tarragona · LAU · poznámka zdroje: INE census 2024.",
+        "Castell dels Montgons · ruins. Místo uvnitř vybrané hranice podle lokálního indexu OpenStreetMap.",
+        "Coves del Llorito · ruins. Místo uvnitř vybrané hranice podle lokálního indexu OpenStreetMap."
+      ],
+      "sources": 22,
+      "limitations": [
+        "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+      ]
+    },
+    {
+      "kind": "theme",
+      "theme": "poverty",
+      "zoom": 9,
+      "status": 200,
+      "level": "nuts2",
+      "dataset": "eurostat-poverty",
+      "period": "2025",
+      "ready": true
+    },
+    {
+      "kind": "theme",
+      "theme": "population",
+      "zoom": 6,
+      "status": 200,
+      "level": "nuts3",
+      "dataset": "eurostat-demo-r-pjanaggr3",
+      "period": "2025",
+      "ready": true
+    },
+    {
+      "kind": "theme",
+      "theme": "population",
+      "zoom": 10,
+      "status": 200,
+      "level": "lau",
+      "dataset": "lau-population-2024",
+      "period": "2024",
+      "ready": true
+    }
+  ]
+}

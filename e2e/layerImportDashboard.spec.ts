@@ -28,7 +28,7 @@ test("owner dashboard previews, publishes and rolls back a canonical layer packa
 
   const mine = page.getByTestId("personal-panel");
   await expect(mine).toBeVisible();
-  await mine.getByText("Moje vrstvy", { exact: true }).click();
+  await mine.getByText("My layers", { exact: true }).click();
 
   const layerName = `Offline owner import ${Date.now()}`;
   const layerPackage = {

@@ -123,3 +123,34 @@ test("find_nearest_poi and search cannot disagree, because it is the same source
   assert.equal(records[0]!.category, "food.bar");
   assert.ok(records[0]!.source.sourceId.startsWith("osm-fixture:"));
 });
+
+test("opaque AI identity preserves the real OSM detail reference", async () => {
+  const source = createFusedPlaceSearchSource(
+    async () =>
+      ({
+        places: [
+          place({
+            id: "fusion-123",
+            name: "Castle",
+            lng: 1.2,
+            lat: 41.1,
+            sources: [
+              {
+                source: "osm",
+                confidence: 1,
+                sourceRef: "way:12345",
+                refreshedAt: "2026-09-08T00:00:00Z"
+              }
+            ]
+          })
+        ],
+        meta: []
+      }) as unknown as PlacesResponse
+  );
+  const result = await source.search(
+    { categories: ["camp_site"], bbox: [1, 40, 2, 42], limit: 3 },
+    context
+  );
+  assert.match(result.places[0]!.id, /^poi:/);
+  assert.equal(result.places[0]!.sourceFeatureId, "osm:way:12345");
+});

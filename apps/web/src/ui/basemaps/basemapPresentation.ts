@@ -1,3 +1,4 @@
+import { API_BASE } from "../../lib/api";
 import type { BasemapDefinition } from "@mapos/layer-sdk";
 
 /** Which of the four illustrative fills a card uses when it has no rendered thumbnail.
@@ -15,6 +16,22 @@ export function thumbKind(basemap: BasemapDefinition): ThumbKind {
 /** Rendered by `scripts/render-basemap-thumbs.mjs` over one shared viewport, so the cards can
  *  be compared with each other rather than each showing a different city. */
 export function thumbSource(basemap: BasemapDefinition): string {
+  // Use the configured tile proxy, not a missing committed screenshot or an exposed key.
+  // Same Berlin tile for all four styles, loaded only when its card enters the viewport.
+  if (basemap.proxy?.provider === "mapy")
+    return `${API_BASE}/mapy/tiles/${basemap.proxy.mapset}/11/1100/671`;
+  // Use the same Berlin tile for public raster styles whose generated screenshot is absent. It
+  // makes the card an honest preview of the selected provider instead of a generic coloured
+  // placeholder (and keeps the request lazy, because the image itself is lazy-loaded).
+  const berlinTiles: Record<string, string> = {
+    opnvkarte: "https://tileserver.memomaps.de/tilegen/11/1100/671.png",
+    "carto-positron": "https://basemaps.cartocdn.com/light_all/11/1100/671.png",
+    "esri-imagery":
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/11/671/1100",
+    "esri-topo":
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/11/671/1100"
+  };
+  if (berlinTiles[basemap.id]) return berlinTiles[basemap.id];
   return basemap.thumbnail ?? `/basemaps/${basemap.id}.webp`;
 }
 

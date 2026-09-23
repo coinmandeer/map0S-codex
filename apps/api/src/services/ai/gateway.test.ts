@@ -352,3 +352,44 @@ test("context token budget is enforced before the adapter runs", async () => {
   );
   assert.equal(adapter.calls.length, 0);
 });
+
+test("shared AI generation survives first cancellation, last subscriber stops transport", async () => {
+  const adapter = new FakeAdapter();
+  adapter.delayMs = 40;
+  const gateway = new AiGateway([adapter]);
+  const first = new AbortController(),
+    second = new AbortController();
+  const a = gateway.run(request({ signal: first.signal }));
+  const b = gateway.run(request({ signal: second.signal }));
+  first.abort();
+  assert.equal((await a).status, "aborted");
+  assert.equal((await b).status, "succeeded");
+  assert.equal(adapter.calls.length, 1);
+  let aborted = false,
+    started!: () => void;
+  const ready = new Promise<void>((resolve) => (started = resolve));
+  const blocking: AiModelAdapter = {
+    id: "fake",
+    capabilities,
+    run: async (_input, signal) => {
+      started();
+      return new Promise((_resolve, reject) =>
+        signal.addEventListener(
+          "abort",
+          () => {
+            aborted = true;
+            reject(signal.reason);
+          },
+          { once: true }
+        )
+      );
+    }
+  };
+  const other = new AiGateway([blocking]);
+  const controller = new AbortController();
+  const c = other.run(request({ signal: controller.signal }));
+  await ready;
+  controller.abort();
+  assert.equal((await c).status, "aborted");
+  assert.equal(aborted, true);
+});

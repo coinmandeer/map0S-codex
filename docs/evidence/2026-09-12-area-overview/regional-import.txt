@@ -1,0 +1,17 @@
+ country |         dataset_id          | period | measured | rows
+---------+-----------------------------+--------+----------+------
+ CZ      | eurostat-demo-r-pjanaggr3   | 2025   |       14 |   14
+ CZ      | eurostat-population-density | 2024   |       14 |   14
+ ES      | eurostat-demo-r-pjanaggr3   | 2025   |       59 |   59
+ ES      | eurostat-population-density | 2024   |       59 |   59
+(4 rows)
+
+         dataset_id          | geo_code |        name        | period |  value
+-----------------------------+----------+--------------------+--------+---------
+ eurostat-demo-r-pjanaggr3   | CZ010    | Hlavní město Praha | 2025   | 1397880
+ eurostat-demo-r-pjanaggr3   | CZ020    | Středočeský kraj   | 2025   | 1466215
+ eurostat-demo-r-pjanaggr3   | ES514    | Tarragona          | 2025   |  875530
+ eurostat-population-density | CZ010    | Hlavní město Praha | 2024   |  2868.7
+ eurostat-population-density | CZ020    | Středočeský kraj   | 2024   |   136.3
+ eurostat-population-density | ES514    | Tarragona          | 2024   |     139
+(6 rows)

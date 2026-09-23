@@ -10,7 +10,7 @@ import { expect, test } from "./fixtures/offlineTest";
  * those are what these check.
  */
 
-test.describe("3D terén", () => {
+test.describe("3D terrain", () => {
   test("terrain applies over a raster background, unlike extruded buildings", async ({ page }) => {
     await page.goto("/?lng=13.3775&lat=49.7475&z=10");
     await page.getByTestId("basemap-btn").click();

@@ -1,9 +1,14 @@
+import { StatisticsPeriod } from "../statistics/StatisticsExplorer";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { API_BASE } from "../lib/api";
 import { on, type MapOsEvents } from "../lib/events";
 import { getLayerManifestV2 } from "../layers/registry";
 import {
+  isWeatherLayerId,
+  isWeatherRadarLayerId,
   resolveWeatherVisualization,
+  weatherVisualizationOfLayerId,
+  weatherVisualizationFilters,
   weatherVisualizationOption
 } from "../layers/weather/controls";
 import { paletteFor, rampCssGradient } from "../layers/weather/palettes";
@@ -15,6 +20,8 @@ import { EventTimelineContribution } from "../events/EventTimelineContribution";
 import { timelineContributions } from "./footerContributions";
 import { Chip, IconButton } from "./kit";
 import { MapTimeline } from "./MapTimeline";
+import { intlLocale, t } from "../i18n";
+import { getShellStore } from "../store/shellStore";
 
 const HOUR_MS = 3_600_000;
 const MIN_HOUR = -24;
@@ -28,9 +35,9 @@ interface GridStats {
   max: number;
   sampleCount: number;
   validAt: string;
-  representation: "continuous-grid" | "cells" | "numeric-sectors";
+  representation: "continuous-grid" | "cells" | "numeric-sectors" | "smooth-field";
   renderedCount: number;
-  targetCellAreaKm2: 50 | 20 | 10;
+  targetCellAreaKm2: 50 | 25 | 10;
 }
 
 function floorHour(date: Date): Date {
@@ -41,18 +48,13 @@ function floorHour(date: Date): Date {
 
 function formatCursor(iso: string): string {
   const date = new Date(iso);
-  return date.toLocaleString("cs-CZ", {
+  return date.toLocaleString(intlLocale(), {
     weekday: "short",
     day: "numeric",
     month: "numeric",
     hour: "2-digit",
     minute: "2-digit"
   });
-}
-
-function formatValue(value: number): string {
-  const precision = Math.abs(value) < 10 ? 1 : 0;
-  return value.toFixed(precision);
 }
 
 /** Day labels positioned along the scrubber, at local midnight. */
@@ -65,7 +67,7 @@ function dayTicks(base: Date): { offset: number; percent: number; label: string 
     ticks.push({
       offset,
       percent: ((offset - MIN_HOUR) / span) * 100,
-      label: date.toLocaleDateString("cs-CZ", { weekday: "short" })
+      label: date.toLocaleDateString(intlLocale(), { weekday: "short" })
     });
   }
   return ticks;
@@ -73,6 +75,7 @@ function dayTicks(base: Date): { offset: number; percent: number; label: string 
 
 function representationLabel(representation: GridStats["representation"]): string {
   if (representation === "continuous-grid") return "regionální pole";
+  if (representation === "smooth-field") return "plynulé pole · interpolace";
   if (representation === "cells") return "adaptivní buňky";
   return "lokální sektory";
 }
@@ -97,10 +100,26 @@ export function TimelineHost() {
     () => timelineContributions(active, activePlan, getLayerManifestV2),
     [active, activePlan]
   );
-  const weatherOn = contributions.some(({ id }) => id === "layer:weather");
+  // Weather is a family of independent layers now; the timeline keeps all of them in sync while
+  // the label and the frame scrubber follow the radar layer when it is on.
+  const weatherLayerIds = useMemo(
+    () =>
+      Object.entries(active)
+        .filter(([id, state]) => state.visible && isWeatherLayerId(id))
+        .map(([id]) => id),
+    [active]
+  );
+  const weatherOn = weatherLayerIds.length > 0;
   const eventsOn = contributions.some(({ id }) => id === "layer:events");
+  const radarLayerId = weatherLayerIds.find((id) => isWeatherRadarLayerId(id)) ?? null;
+  const primaryWeatherLayerId = radarLayerId ?? weatherLayerIds[weatherLayerIds.length - 1] ?? null;
   const cursorOn = weatherOn || contributions.some(({ kind }) => kind === "dated-plan");
-  const weatherFilters = active.weather?.filters ?? {};
+  const weatherFilters = primaryWeatherLayerId
+    ? weatherVisualizationFilters(
+        active[primaryWeatherLayerId]?.filters ?? {},
+        weatherVisualizationOfLayerId(primaryWeatherLayerId) ?? "radar"
+      )
+    : {};
   const visualization = resolveWeatherVisualization(weatherFilters);
   const cursorMs = new Date(temporal.cursor).getTime();
   const offset = Math.max(
@@ -127,7 +146,7 @@ export function TimelineHost() {
   useEffect(() => on("weather-cell-selected", setMapDetail), []);
 
   useEffect(() => {
-    if (!weatherOn || visualization !== "radar") {
+    if (!radarLayerId) {
       setFrames([]);
       return;
     }
@@ -139,12 +158,18 @@ export function TimelineHost() {
         if (!controller.signal.aborted) setFrames([]);
       });
     return () => controller.abort();
-  }, [weatherOn, visualization]);
+  }, [radarLayerId]);
 
   // Playback walks the same cursor the scrubber writes, one hour at a time, so every layer
   // follows without knowing that anything is playing.
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || document.hidden) return;
+    if (
+      weatherOn &&
+      visualization !== "radar" &&
+      (!stats || Math.floor(Date.parse(stats.validAt) / HOUR_MS) !== Math.floor(cursorMs / HOUR_MS))
+    )
+      return;
     if (offset >= MAX_HOUR) {
       setPlaying(false);
       return;
@@ -153,20 +178,33 @@ export function TimelineHost() {
       store.setTimeCursor(new Date(baseHour.current.getTime() + (offset + 1) * HOUR_MS));
     }, 700);
     return () => clearTimeout(timer);
-  }, [playing, offset, store]);
+  }, [playing, offset, store, weatherOn, visualization, stats, cursorMs]);
 
   useEffect(() => {
-    if (weatherOn) {
-      const patch = weatherTimelinePatch(weatherFilters, temporal.cursor, frames);
-      if (filterPatchChanges(weatherFilters, patch)) {
-        store.setLayerFilters("weather", { ...weatherFilters, ...patch });
+    const pause = () => {
+      if (document.hidden) setPlaying(false);
+    };
+    document.addEventListener("visibilitychange", pause);
+    return () => document.removeEventListener("visibilitychange", pause);
+  }, []);
+
+  useEffect(() => {
+    if (!weatherLayerIds.length) return;
+    for (const id of weatherLayerIds) {
+      const filters = weatherVisualizationFilters(
+        active[id]?.filters ?? {},
+        weatherVisualizationOfLayerId(id) ?? "radar"
+      );
+      const patch = weatherTimelinePatch(filters, temporal.cursor, frames);
+      if (filterPatchChanges(filters, patch)) {
+        store.setLayerFilters(id, { ...filters, ...patch });
       }
     }
 
     // Filter writes are outputs of this synchronization. Comparing the patch above keeps the
     // host from feeding its own layer-change event back into another refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [temporal.cursor, weatherOn, frames]);
+  }, [temporal.cursor, weatherLayerIds.join(","), frames]);
 
   if (contributions.length === 0) return null;
 
@@ -190,68 +228,84 @@ export function TimelineHost() {
     visualization !== "radar" && stats?.variable === visualization ? stats : null;
 
   const contextLabel = [
-    weatherOn ? `Počasí · ${visualization === "radar" ? "Srážkový radar" : selected.label}` : null,
-    contributions.some((contribution) => contribution.kind === "dated-plan")
-      ? `Plán${activePlan?.departureAt ? ` · odjezd ${formatCursor(activePlan.departureAt)}` : ""}`
+    weatherOn
+      ? `${t("discover.weather")} · ${
+          visualization === "radar" ? t("weather.radar") : selected.label
+        }`
       : null,
-    eventsOn ? "Události" : null
+    contributions.some((contribution) => contribution.kind === "dated-plan")
+      ? `${t("mode.planning.short")}${
+          activePlan?.departureAt
+            ? ` · ${t("timeline.departure")} ${formatCursor(activePlan.departureAt)}`
+            : ""
+        }`
+      : null,
+    eventsOn ? t("timeline.events") : null
   ]
     .filter(Boolean)
     .join(" · ");
 
   return (
     <MapTimeline testId="global-timeline" wide>
+      {contributions.some((c) => c.id.startsWith("layer:theme-")) && <StatisticsPeriod />}
       {/* One heading for the whole strip (§4.11): what the time cursor currently drives, then
           the cursor itself. Anything more became three competing levels of title. */}
       <div className="timeline-head">
         <span className="timeline-head-label">{contextLabel}</span>
         {cursorOn && (
           <span className="timeline-head-cursor">
-            {temporal.mode === "live" ? "Teď" : formatCursor(temporal.cursor)}
-            <small>{future ? "Předpověď" : offset < 0 ? "Historie" : "Živá mapa"}</small>
+            {temporal.mode === "live" ? t("timeline.now") : formatCursor(temporal.cursor)}
+            <small>
+              {future
+                ? t("timeline.forecast")
+                : offset < 0
+                  ? t("timeline.history")
+                  : t("timeline.liveMap")}
+            </small>
           </span>
         )}
-        {cursorOn && (
-          <span className="timeline-head-actions">
-            <Chip
-              label="Živě"
-              icon="radar"
-              active={temporal.mode === "live"}
-              testId="timeline-live"
-              onClick={() => {
-                if (timerRef.current) clearTimeout(timerRef.current);
-                timerRef.current = null;
-                setPlaying(false);
-                store.setTimeLive();
-              }}
-            />
-            <IconButton
-              icon={playing ? "pause" : "play_arrow"}
-              label={playing ? "Zastavit přehrávání" : "Přehrát čas"}
-              size="sm"
-              active={playing}
-              testId="timeline-play"
-              onClick={() => setPlaying((value) => !value)}
-            />
-          </span>
-        )}
+        <span className="timeline-head-actions">
+          {cursorOn && (
+            <>
+              <Chip
+                label={t("timeline.live")}
+                icon="radar"
+                active={temporal.mode === "live"}
+                testId="timeline-live"
+                onClick={() => {
+                  if (timerRef.current) clearTimeout(timerRef.current);
+                  timerRef.current = null;
+                  setPlaying(false);
+                  store.setTimeLive();
+                }}
+              />
+              <IconButton
+                icon={playing ? "pause" : "play_arrow"}
+                label={playing ? t("timeline.pause") : t("timeline.play")}
+                size="sm"
+                active={playing}
+                testId="timeline-play"
+                onClick={() => setPlaying((value) => !value)}
+              />
+            </>
+          )}
+          {/* The strip can be rolled up whether or not it has a cursor to scrub: while planning
+              a route it is the one footer surface nobody asked for. */}
+          <IconButton
+            icon="close"
+            label={t("footer.minimize")}
+            size="sm"
+            testId="footer-minimize-timeline"
+            onClick={() => {
+              setPlaying(false);
+              getShellStore().setFooterMinimized("timeline", true);
+            }}
+          />
+        </span>
       </div>
 
       {cursorOn ? (
         <>
-          {weatherOn && selectedStats && (
-            <div className="viewport-stat" data-testid="weather-viewport-median">
-              <span>Medián výřezu</span>
-              <strong>
-                {formatValue(selectedStats.median)} {selectedStats.unit}
-              </strong>
-              <small>
-                {formatValue(selectedStats.min)}–{formatValue(selectedStats.max)} ·{" "}
-                {selectedStats.sampleCount} vzorků
-              </small>
-            </div>
-          )}
-
           <div className="timeline-controls">
             <input
               type="range"

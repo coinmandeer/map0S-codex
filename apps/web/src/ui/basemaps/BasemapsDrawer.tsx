@@ -3,26 +3,23 @@ import {
   BASEMAP_GROUP_LABELS,
   availableBasemaps,
   labelOverlayFor,
-  type BasemapDefinition,
-  type LayerCategory
+  type BasemapDefinition
 } from "@mapos/layer-sdk";
-import { t } from "../../i18n/cs";
-import { availableLayerPlugins, type MapLayerPlugin } from "../../layers";
-import { isStructuralTileOverlayId } from "../../layers/plugins/tileLayers";
+import { t } from "../../i18n";
 import { resolveBasemap } from "../../map/basemapStyle";
 import { getMapStore } from "../../store/mapStore";
 import { useMapStoreSnapshot } from "../../store/useMapStoreSnapshot";
-import { Chip, Icon, InfoTip, Section, Slider, Switch } from "../kit";
+import { Chip, Icon, InfoTip, Section, Switch } from "../kit";
 import { groupBasemaps } from "../basemapGroups";
-import { LAYER_CATEGORY_LABELS, LAYER_CATEGORY_ORDER } from "../layerLabels";
-import { PoiLayerRow } from "../layers/PoiLayerRow";
 import { BasemapThumb } from "./BasemapThumb";
-import { hasThemeTwin, shortHint } from "./basemapPresentation";
+import { shortHint } from "./basemapPresentation";
 
-/** The one background, plus the structural overlays that only make sense on top of it (§4.8).
+/** The one background (§4.8, §2.7).
  *
- *  Basemaps are a radio group; overlays stack. They share a drawer because both answer "what
- *  does the map itself look like", while the Vrstvy drawer answers "what is drawn on it".
+ *  Basemaps are a radio group: exactly one is chosen, and they define what the map itself looks
+ *  like. Raster overlays that redraw map structure (railways, trails, CyclOSM Lite) used to live
+ *  here too; they are additive like any other layer, so they belong in Vrstvy and are only
+ *  offered there.
  */
 export function BasemapsDrawer() {
   const store = getMapStore();
@@ -32,23 +29,14 @@ export function BasemapsDrawer() {
   const terrain = useMapStoreSnapshot((s) => s.terrain3d);
   const theme = useMapStoreSnapshot((s) => s.theme);
   const capabilities = useMapStoreSnapshot((s) => s.capabilities);
-  const activeLayers = useMapStoreSnapshot((s) => s.activeLayers);
 
   const grouped = useMemo(() => groupBasemaps(availableBasemaps(capabilities)), [capabilities]);
-  const overlayGroups = useMemo(() => groupStructuralOverlays(capabilities), [capabilities]);
 
   // What is drawn can differ from what is selected: a light design paired with a dark theme
   // swaps to its dark twin, and the twin should not look like a second selected row.
   const drawn = resolveBasemap(basemapId, theme);
   const overlay = drawn.imagery ? labelOverlayFor(drawn, capabilities) : null;
   const canExtrude = Boolean(drawn.buildingSourceLayer);
-
-  const activeOverlayIds = Object.entries(activeLayers)
-    .filter(([id, state]) => state.visible && isStructuralTileOverlayId(id))
-    .map(([id]) => id);
-  const overlayOpacity = activeOverlayIds.length
-    ? (activeLayers[activeOverlayIds[0]!]?.opacity ?? 1)
-    : 1;
 
   // Not an accordion: three controls that every background choice interacts with, so a fold
   // would cost a click on the way to the thing the user already came here to change (§2.4).
@@ -90,8 +78,8 @@ export function BasemapsDrawer() {
         <div className="basemap-setting">
           <span className="basemap-setting-label">{t("basemaps.terrain3d")}</span>
           <InfoTip title={t("basemaps.terrain3d")} testId="basemap-terrain-info">
-            Výšková data jsou globální a nezávislá na podkladu, takže reliéf funguje i nad
-            leteckými snímky. Zdroj: Tilezen Terrain Tiles (NASA SRTM, ESA, USGS).
+            Výšková data jsou globální a nezávislá na podkladu, takže reliéf funguje i nad leteckými
+            snímky. Zdroj: Tilezen Terrain Tiles (NASA SRTM, ESA, USGS).
           </InfoTip>
           <Switch
             checked={terrain}
@@ -100,20 +88,6 @@ export function BasemapsDrawer() {
             onChange={(next) => store.setTerrain3d(next)}
           />
         </div>
-        {activeOverlayIds.length > 0 && (
-          <Slider
-            label="Průhlednost překryvů"
-            min={0.2}
-            max={1}
-            step={0.05}
-            value={overlayOpacity}
-            format={(value) => `${Math.round(value * 100)} %`}
-            testId="overlay-opacity"
-            onChange={(next) => {
-              for (const id of activeOverlayIds) store.setLayerOpacity(id, next);
-            }}
-          />
-        )}
       </div>
     </Section>
   );
@@ -135,17 +109,6 @@ export function BasemapsDrawer() {
           />
         ))}
       </div>
-
-      <Section title={t("basemaps.overlays")}>
-        {overlayGroups.map(([category, plugins]) => (
-          <div className="layer-group" key={category}>
-            <span className="kit-eyebrow">{LAYER_CATEGORY_LABELS[category] ?? category}</span>
-            {plugins.map((plugin) => (
-              <PoiLayerRow key={plugin.manifest.id} plugin={plugin} />
-            ))}
-          </div>
-        ))}
-      </Section>
 
       <p className="basemaps-drawer-footer" data-testid="basemap-attribution">
         {drawn.attribution.map(({ label }) => label).join(" · ")}
@@ -233,13 +196,12 @@ function BasemapCard({
         data-testid={`basemap-${basemap.id}`}
         onClick={onSelect}
       >
-        <BasemapThumb basemap={basemap} />
+        <BasemapThumb basemap={resolveBasemap(basemap.id, getMapStore().theme)} />
         <span className="basemap-card-copy">
           <span className="basemap-card-name">{basemap.label}</span>
           <span className="basemap-card-hint">{shortHint(basemap.hint)}</span>
         </span>
         <span className="basemap-card-trailing">
-          {hasThemeTwin(basemap) && <Chip label={t("basemaps.followTheme")} />}
           {selected && !drawn && <Chip label="tmavá varianta" />}
           <span className="basemap-card-radio" aria-hidden />
         </span>
@@ -251,24 +213,4 @@ function BasemapCard({
       )}
     </div>
   );
-}
-
-/** Raster overlays that redraw map structure — a railway or trail map on top of the chosen
- *  background. They belong here rather than in Vrstvy because they compete with the basemap
- *  for the same pixels, not with the data drawn on it. */
-export function groupStructuralOverlays(
-  capabilities: Parameters<typeof availableLayerPlugins>[0]
-): Array<readonly [LayerCategory, MapLayerPlugin[]]> {
-  const byCategory = new Map<LayerCategory, MapLayerPlugin[]>();
-  for (const plugin of availableLayerPlugins(capabilities)) {
-    if (!isStructuralTileOverlayId(plugin.manifest.id)) continue;
-    const list = byCategory.get(plugin.manifest.category) ?? [];
-    list.push(plugin);
-    byCategory.set(plugin.manifest.category, list);
-  }
-  const known = LAYER_CATEGORY_ORDER.filter((category) => byCategory.has(category));
-  const rest = [...byCategory.keys()].filter(
-    (category) => !LAYER_CATEGORY_ORDER.includes(category)
-  );
-  return [...known, ...rest].map((category) => [category, byCategory.get(category)!] as const);
 }

@@ -15,6 +15,7 @@ import {
   createEventPlanDocument,
   createEventPlanStopDraft
 } from "./eventPlanStop";
+import { intlLocale } from "../i18n";
 
 function statusLabel(status: EventDocumentV2["status"]): string {
   if (status === "cancelled") return "Zrušeno";
@@ -26,7 +27,7 @@ function statusLabel(status: EventDocumentV2["status"]): string {
 }
 
 function eventTime(event: EventDocumentV2): string {
-  const format = new Intl.DateTimeFormat("cs-CZ", {
+  const format = new Intl.DateTimeFormat(intlLocale(), {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: event.schedule.timezone
@@ -284,7 +285,7 @@ export function EventPinDetail({ pin }: { pin: SelectedPin }) {
               {event.sources.map((source) => (
                 <li key={`${source.providerId}:${source.sourceId}`}>
                   <span>{source.attribution ?? source.providerId}</span>
-                  <small>ověřeno {new Date(source.retrievedAt).toLocaleString("cs-CZ")}</small>
+                  <small>ověřeno {new Date(source.retrievedAt).toLocaleString(intlLocale())}</small>
                 </li>
               ))}
             </ul>

@@ -1,13 +1,29 @@
 import { OSM_POI_CATEGORIES, VANLIFE_CATEGORIES } from "@mapos/layer-sdk";
 import { registerLayer } from "./registry";
 import "./plugins/tileLayers";
+import "./plugins/czechLayers";
+import "./plugins/snowCoverLayer";
+import "./plugins/roadsLayer";
+import "./plugins/landCoverLayer";
+import "./plugins/overtureLayers";
+import "./plugins/streetObjectsLayer";
+import "./plugins/liveTraffic";
+import "./plugins/mapNotesLayer";
 import "./plugins/dataLayers";
 import "./plugins/geologyLayer";
 import "./plugins/infrastructureLayer";
 import "./plugins/protectedAreasLayer";
+import "./plugins/europeEnvironmentLayers";
+import "./plugins/skyLayers";
 import "./savedPlacesLayer";
 import { createPinsLayerHandle } from "./pinsLayer";
 import { createWeatherLayerHandle } from "./weatherLayer";
+import {
+  WEATHER_VISUALIZATIONS,
+  weatherLayerId,
+  weatherVisualizationFilters
+} from "./weather/controls";
+import { createSatelliteLayer } from "./satelliteLayer";
 import { LazyHandle } from "./lazyHandle";
 import { GAME_ROAD_SOURCE } from "./game/roadSource";
 import { PIN_STYLES } from "../ui/presets";
@@ -24,6 +40,8 @@ const OSM_ATTRIBUTION = {
 };
 
 registerLayer({
+  minQueryZoom: 8,
+  areaFilter: "geometry",
   kind: "pins",
   manifest: {
     id: "osm-poi",
@@ -55,6 +73,7 @@ registerLayer({
 });
 
 registerLayer({
+  areaFilter: "geometry",
   kind: "pins",
   manifest: {
     id: "user-layers",
@@ -76,35 +95,140 @@ registerLayer({
   attribution: [{ label: "MapOS uživatelská data", license: "per-feature owner rights" }]
 });
 
+// One registered layer per weather quantity. They share a renderer, but each is a real layer: its
+// own visibility, opacity, filters and legend, so the drawer lists them like any other overlay and
+// several can be compared at once. The exclusive radio that used to hide them behind one switch is
+// gone on purpose.
+const WEATHER_LAYER_ICONS: Record<string, string> = {
+  radar: "🌧️",
+  precipitation: "☔",
+  temperature: "🌡️",
+  wind: "💨",
+  gusts: "🌀",
+  clouds: "☁️",
+  pressure: "🧭",
+  humidity: "💧"
+};
+
+for (const option of WEATHER_VISUALIZATIONS) {
+  registerLayer({
+    kind: "raster",
+    manifest: {
+      id: weatherLayerId(option.id),
+      name: `Počasí: ${option.label}`,
+      icon: WEATHER_LAYER_ICONS[option.id] ?? "🌦️",
+      color: "#6366f1",
+      description: `${option.label} (${option.unit}). Samostatná vrstva počasí; lze zapnout více typů najednou.`,
+      category: "weather",
+      uiGroup: "environment",
+      temporal: true,
+      experienceIds: ["default", "aavegotchi"]
+    },
+    filters: [
+      { id: "opacity", label: "Průhlednost", kind: "range", min: 0.2, max: 1, default: 0.6 },
+      { id: "valueLabels", label: "Popisky hodnot při přiblížení", kind: "toggle", default: true }
+    ],
+    defaultFilters: {
+      ...weatherVisualizationFilters({}, option.id),
+      valueLabels: true,
+      model: "best_match"
+    },
+    // Radar is a picture, the analytic fields are backgrounds: the radar wants a little more
+    // presence, the fields a little less so they do not bury the map.
+    defaultOpacity: option.id === "radar" ? 0.7 : 0.55,
+    create: (ctx) => createWeatherLayerHandle(ctx.map, ctx.layerId),
+    attribution: [
+      {
+        label: "RainViewer",
+        url: "https://www.rainviewer.com/",
+        license: "RainViewer API Terms"
+      },
+      { label: "Open-Meteo", url: "https://open-meteo.com/", license: "CC-BY-4.0" }
+    ]
+  });
+}
+
+// Satellites are propagated in the browser with SGP4 from CelesTrak elements: the layer shows
+// each object's ground track and where it is right now, filtered by category. It is `cheap` for
+// panning (the elements do not depend on the viewport) and keeps its own one-second clock.
 registerLayer({
-  kind: "raster",
+  kind: "custom-gl",
   manifest: {
-    id: "weather",
-    name: "Počasí",
-    icon: "🌧️",
-    color: "#6366f1",
-    description: "Radar, teplota, vítr a další vrstvy",
-    category: "weather",
-    uiGroup: "environment",
-    temporal: true,
-    experienceIds: ["default", "aavegotchi"]
+    id: "satellites",
+    name: "Družice",
+    icon: "🛰️",
+    color: "#38bdf8",
+    description:
+      "Oběžné dráhy a aktuální poloha družic z CelesTrak. Poloha je vypočtená (SGP4) z prvků, jejichž epocha je uvedena u objektu.",
+    category: "transport",
+    performance: { maxEntities: 600, refreshIntervalMs: 60 * 60_000 }
+  },
+  detail: {
+    fieldOrder: ["altitudeKm", "epoch"]
   },
   filters: [
-    { id: "opacity", label: "Průhlednost", kind: "range", min: 0.2, max: 1, default: 0.6 },
-    { id: "valueLabels", label: "Popisky hodnot při přiblížení", kind: "toggle", default: true }
+    {
+      id: "categories",
+      label: "Kategorie družic",
+      kind: "multi-select",
+      options: [
+        { id: "stations", label: "Stanice" },
+        { id: "starlink", label: "Starlink" },
+        { id: "oneweb", label: "OneWeb" },
+        { id: "gps", label: "Navigace (GPS)" },
+        { id: "glonass", label: "Navigace (GLONASS)" },
+        { id: "galileo", label: "Navigace (Galileo)" },
+        { id: "beidou", label: "Navigace (BeiDou)" },
+        { id: "gnss", label: "Navigace (GNSS)" },
+        { id: "geo", label: "Geostacionární" },
+        { id: "weather", label: "Počasí" },
+        { id: "resource", label: "Snímkování Země" },
+        { id: "planet", label: "Planet" },
+        { id: "iridium", label: "Iridium" },
+        { id: "globalstar", label: "Globalstar" },
+        { id: "communication", label: "Komunikační" },
+        { id: "science", label: "Věda" },
+        { id: "military", label: "Vojenské" },
+        { id: "sarsat", label: "Záchranná služba" },
+        { id: "tdrss", label: "Relé a spojení" },
+        { id: "amateur", label: "Amatérské" },
+        { id: "visual", label: "Viditelné okem" },
+        { id: "cubesat", label: "CubeSaty" },
+        { id: "engineering", label: "Technologické" },
+        { id: "education", label: "Výukové" },
+        { id: "radar", label: "Radarové" }
+      ],
+      default: ["stations"]
+    }
   ],
-  // One exclusive visualization. Legacy keys remain so old weather URLs still resolve safely.
-  defaultFilters: { visualization: "radar", radar: true, variable: null, valueLabels: true },
-  // Weather is an overlay: at full opacity it hides the map it is supposed to describe.
-  defaultOpacity: 0.6,
-  create: (ctx) => createWeatherLayerHandle(ctx.map, ctx.layerId),
+  defaultFilters: { categories: ["stations"] },
+  legend: {
+    type: "categorical",
+    title: "Kategorie družic",
+    items: [
+      { label: "Stanice", color: "#f59e0b" },
+      { label: "Starlink", color: "#8b5cf6" },
+      { label: "OneWeb", color: "#6366f1" },
+      { label: "Navigace", color: "#22c55e" },
+      { label: "Geostacionární", color: "#eab308" },
+      { label: "Počasí", color: "#0284c7" },
+      { label: "Snímkování Země", color: "#a3e635" },
+      { label: "Iridium / Globalstar", color: "#f472b6" },
+      { label: "Věda", color: "#a855f7" },
+      { label: "Vojenské", color: "#64748b" },
+      { label: "Záchranná služba", color: "#ef4444" },
+      { label: "Amatérské", color: "#ec4899" },
+      { label: "Viditelné okem", color: "#fde047" },
+      { label: "CubeSaty a malé", color: "#94a3b8" }
+    ]
+  },
+  create: (ctx) => createSatelliteLayer(ctx.map, ctx.apiBaseUrl, ctx.layerId),
   attribution: [
     {
-      label: "RainViewer",
-      url: "https://www.rainviewer.com/",
-      license: "RainViewer API Terms"
-    },
-    { label: "Open-Meteo", url: "https://open-meteo.com/", license: "CC-BY-4.0" }
+      label: "CelesTrak GP (SGP4, vypočtená poloha)",
+      url: "https://celestrak.org/NORAD/documentation/gp-data-formats.php",
+      license: "CelesTrak GP data — see CelesTrak usage policy"
+    }
   ]
 });
 
@@ -125,8 +249,8 @@ registerLayer({
   },
   create: (ctx) =>
     new LazyHandle(async () => {
-      const { createGameLayerHandle } = await import("./game/gameLayer");
-      return createGameLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId);
+      const { createWorldLayer } = await import("../world/worldLayer");
+      return createWorldLayer(ctx.map, ctx.apiBaseUrl, ctx.layerId);
     }),
   attribution: [...GAME_ROAD_SOURCE.attribution]
 });

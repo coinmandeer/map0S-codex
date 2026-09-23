@@ -8,7 +8,7 @@ export const commonsPhotos: DataSource = {
   id: "commons-photos",
   tooLarge: (bbox) =>
     bboxSpanKm(bbox) > 20 ? "Přibliž mapu — fotky se hledají v okruhu do 10 km." : null,
-  async load(bbox) {
+  async load(bbox, _query, signal) {
     const { lng, lat } = bboxCenter(bbox);
     const radius = Math.min(10_000, Math.max(1000, (bboxSpanKm(bbox) / 2) * 1000));
     const params = new URLSearchParams({
@@ -46,6 +46,7 @@ export const commonsPhotos: DataSource = {
       };
     }>(`https://commons.wikimedia.org/w/api.php?${params}`, {
       providerId: "wikimedia-commons",
+      signal,
       ttlMs: 30 * 60_000
     });
 
@@ -80,7 +81,7 @@ export const refugeRestrooms: DataSource = {
   id: "refuge-restrooms",
   tooLarge: (bbox) =>
     bboxSpanKm(bbox) > 100 ? "Přibliž mapu — toalety se hledají v okolí středu výřezu." : null,
-  async load(bbox, query) {
+  async load(bbox, query, signal) {
     const { lng, lat } = bboxCenter(bbox);
     const params = new URLSearchParams({
       lat: lat.toFixed(5),
@@ -108,6 +109,7 @@ export const refugeRestrooms: DataSource = {
       }>
     >(`https://www.refugerestrooms.org/api/v1/restrooms/by_location.json?${params}`, {
       providerId: "refuge-restrooms",
+      signal,
       ttlMs: 60 * 60_000,
       // Their instance is a small volunteer deployment that regularly takes ten seconds or
       // more to answer; the default timeout turns a slow success into a failure.
@@ -142,4 +144,73 @@ export const refugeRestrooms: DataSource = {
   }
 };
 
-export const communitySources: DataSource[] = [commonsPhotos, refugeRestrooms];
+/** Street-level photographs from Panoramax, the open, federated alternative to Mapillary.
+ *
+ *  Reading is keyless: the STAC search endpoint answers a bbox with picture metadata. The
+ *  federated aggregator (`api.panoramax.xyz`) fans out to national instances, so one request
+ *  finds pictures wherever they were uploaded. Uploading would need an account, which is why
+ *  this is read-only. */
+export const panoramax: DataSource = {
+  id: "panoramax",
+  tooLarge: (bbox) =>
+    bboxSpanKm(bbox) > 20 ? "Přibliž mapu — snímky ulic se načítají pro menší výřez." : null,
+  async load(bbox, query, signal) {
+    const panoOnly = query?.pano === "1" || query?.pano === "true";
+    const params = new URLSearchParams({
+      bbox: bbox.join(","),
+      limit: "100",
+      // `datetime` is the capture time; the newest view of a street is what a reader wants first.
+      sortby: "datetime"
+    });
+    if (panoOnly) params.set("filter", "pers:interior_orientation.camera_model IS NOT NULL");
+
+    const data = await fetchJson<{
+      features?: Array<{
+        id?: string;
+        collection?: string;
+        geometry?: { coordinates?: number[] };
+        properties?: {
+          datetime?: string;
+          license?: string;
+          "view:azimuth"?: number;
+          "geovisio:producer"?: string;
+          "geovisio:thumbnail"?: string;
+          "geovisio:status"?: string;
+        };
+        assets?: { hd?: { href?: string }; sd?: { href?: string }; thumb?: { href?: string } };
+        links?: Array<{ rel?: string; href?: string; type?: string }>;
+      }>;
+    }>(`https://api.panoramax.xyz/api/search?${params}`, {
+      providerId: "panoramax",
+      signal,
+      ttlMs: 30 * 60_000
+    });
+
+    return (data.features ?? []).flatMap((feature): GeoFeature[] => {
+      const coords = feature.geometry?.coordinates;
+      if (!feature.id || !coords || coords.length < 2 || !coords.every(Number.isFinite)) return [];
+      const [lng, lat] = coords as [number, number];
+      if (!withinBbox(bbox, lng, lat)) return [];
+      // Only ready pictures: one still processing has no usable asset yet.
+      if (feature.properties?.["geovisio:status"] !== "ready") return [];
+      const thumb = feature.assets?.thumb?.href;
+      if (!thumb) return [];
+      const viewer =
+        feature.links?.find((link) => link.rel === "self")?.href ??
+        `https://api.panoramax.xyz/api/collections/${feature.collection}/items/${feature.id}`;
+      return [
+        point(`panoramax:${feature.id}`, "Snímek ulice (Panoramax)", lng, lat, "panoramax", {
+          category: "street-photo",
+          photo: thumb,
+          bearing: feature.properties?.["view:azimuth"],
+          capturedAt: feature.properties?.datetime,
+          author: feature.properties?.["geovisio:producer"],
+          license: feature.properties?.license,
+          website: viewer
+        })
+      ];
+    });
+  }
+};
+
+export const communitySources: DataSource[] = [commonsPhotos, refugeRestrooms, panoramax];

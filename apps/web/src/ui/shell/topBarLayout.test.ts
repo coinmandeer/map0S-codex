@@ -5,17 +5,16 @@ import {
   chromeComposition,
   chromeStripWidth,
   LOCATION_LABEL_W,
+  SEARCH_GIVE_W,
   topBarLayout,
   TOP_BAR_FULL_W,
-  TOP_BAR_LOGO_ONLY_W,
-  TOP_BAR_NO_BRAND_W
+  TOP_BAR_LOGO_ONLY_W
 } from "./topBarLayout";
 
 describe("topBarLayout", () => {
   it("shows every label when the strip is wide", () => {
     assert.deepEqual(topBarLayout({ available: TOP_BAR_FULL_W + LOCATION_LABEL_W }), {
       brand: "full",
-      showModeLabels: true,
       showLocationLabel: true
     });
   });
@@ -23,26 +22,23 @@ describe("topBarLayout", () => {
   it("drops the location label first", () => {
     const layout = topBarLayout({ available: TOP_BAR_FULL_W });
     assert.equal(layout.brand, "full");
-    assert.equal(layout.showModeLabels, true);
     assert.equal(layout.showLocationLabel, false);
   });
 
-  it("drops the wordmark before the mode labels", () => {
-    const layout = topBarLayout({ available: TOP_BAR_LOGO_ONLY_W });
-    assert.equal(layout.brand, "logo");
-    assert.equal(layout.showModeLabels, true);
+  it("narrows the search field before dropping the wordmark", () => {
+    const layout = topBarLayout({ available: TOP_BAR_FULL_W - SEARCH_GIVE_W });
+    assert.equal(layout.brand, "full");
   });
 
-  it("drops the whole brand before the mode labels", () => {
-    const layout = topBarLayout({ available: TOP_BAR_NO_BRAND_W });
-    assert.equal(layout.brand, "none");
-    assert.equal(layout.showModeLabels, true);
+  it("drops the wordmark once the search has nothing left to give", () => {
+    assert.equal(topBarLayout({ available: TOP_BAR_FULL_W - SEARCH_GIVE_W - 1 }).brand, "logo");
   });
 
-  it("falls back to icon-only modes only when the brand is already gone", () => {
-    const layout = topBarLayout({ available: TOP_BAR_NO_BRAND_W - 1 });
-    assert.equal(layout.brand, "none");
-    assert.equal(layout.showModeLabels, false);
+  it("drops the logo too when even that does not fit", () => {
+    assert.equal(
+      topBarLayout({ available: TOP_BAR_LOGO_ONLY_W - SEARCH_GIVE_W - 1 }).brand,
+      "none"
+    );
   });
 });
 
@@ -50,7 +46,7 @@ describe("chromeStripWidth", () => {
   const rail = 258;
   const inset = 12;
 
-  it("keeps the mode labels on a 1440 desktop with no panel", () => {
+  it("keeps the brand on a 1440 desktop with no panel", () => {
     const available = chromeStripWidth({
       viewport: 1440,
       sidebar: 0,
@@ -60,11 +56,10 @@ describe("chromeStripWidth", () => {
       inset
     });
     assert.equal(available, 1440 - (12 + 40 + 12) - (12 + 258 + 12));
-    assert.deepEqual(topBarLayout({ available }).brand, "full");
-    assert.equal(topBarLayout({ available }).showModeLabels, true);
+    assert.equal(topBarLayout({ available }).brand, "full");
   });
 
-  it("keeps the mode labels on a 1440 desktop with the panel open (§7 acceptance)", () => {
+  it("keeps the brand on a 1440 desktop with the panel open (§7 acceptance)", () => {
     const available = chromeStripWidth({
       viewport: 1440,
       sidebar: 360,
@@ -74,9 +69,9 @@ describe("chromeStripWidth", () => {
       inset
     });
     assert.equal(available, 786);
-    const layout = topBarLayout({ available });
-    assert.equal(layout.brand, "none");
-    assert.equal(layout.showModeLabels, true);
+    // With the modes gone this is comfortable rather than marginal: the whole pill is 498 px.
+    assert.equal(topBarLayout({ available }).brand, "full");
+    assert.equal(topBarLayout({ available }).showLocationLabel, true);
   });
 
   it("accounts for an open drawer as well as an open panel", () => {
@@ -100,17 +95,17 @@ describe("chromeStripWidth", () => {
     });
   });
 
-  it("stands the rail up rather than sliding the pill under it at 900 px", () => {
-    // 900 px window, 360 px sidebar open, hamburger hidden: 516 px of strip.
-    assert.deepEqual(chromeComposition({ strip: 516, hamburger: false, inset: 12 }), {
+  it("stands the rail up rather than sliding the pill under it", () => {
+    // 640 px of strip: a 256 px rail beside it would leave 372 px, under the 270 px floor only
+    // once the hamburger is also there, so the rail stands up before the pill gives anything up.
+    assert.deepEqual(chromeComposition({ strip: 500, hamburger: false, inset: 12 }), {
       railStacked: true,
       compact: false
     });
   });
 
   it("hands the settings button to the rail when even a stacked rail leaves too little", () => {
-    // 1100 px window with both the panel and the drawer open.
-    assert.deepEqual(chromeComposition({ strip: 336, hamburger: true, inset: 12 }), {
+    assert.deepEqual(chromeComposition({ strip: 300, hamburger: true, inset: 12 }), {
       railStacked: true,
       compact: true
     });

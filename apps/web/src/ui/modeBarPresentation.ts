@@ -1,3 +1,5 @@
+import { CATALOG_GROUPS } from "./layers/catalogModel";
+import type { FilterValues } from "@mapos/layer-sdk";
 export interface LayerActivityDescriptor {
   id: string;
   kind: string;
@@ -11,7 +13,14 @@ export interface LayerActivitySummary {
   total: number;
 }
 
-const THEMATIC_CATEGORIES = new Set(["weather", "events", "environment", "routing", "game"]);
+const THEMATIC_CATEGORIES = new Set([
+  "weather",
+  "events",
+  "environment",
+  "routing",
+  "game",
+  "statistics"
+]);
 
 /**
  * Badge rule: an available, visible, user-toggleable layer counts once. Structural map surfaces
@@ -19,7 +28,7 @@ const THEMATIC_CATEGORIES = new Set(["weather", "events", "environment", "routin
  * temporal, routing and game contexts (plus every non-pin renderer) are thematic.
  */
 export function activeLayerSummary(
-  activeLayers: Record<string, { visible?: boolean }>,
+  activeLayers: Record<string, { visible?: boolean; filters?: FilterValues }>,
   availableLayers: readonly LayerActivityDescriptor[],
   experienceId: string,
   isStructural: (layerId: string) => boolean
@@ -31,8 +40,23 @@ export function activeLayerSummary(
     if (seen.has(layer.id) || !activeLayers[layer.id]?.visible || isStructural(layer.id)) continue;
     if (layer.experienceIds?.length && !layer.experienceIds.includes(experienceId)) continue;
     seen.add(layer.id);
-    if (layer.kind === "pins" && !THEMATIC_CATEGORIES.has(layer.category)) poi += 1;
-    else thematic += 1;
+    const filters = activeLayers[layer.id]?.filters;
+    const rows = CATALOG_GROUPS.flatMap((g) => g.items).filter((i) => i.layer === layer.id);
+    const count =
+      filters && rows.some((i) => i.facet)
+        ? rows.filter(
+            (i) =>
+              !i.facet ||
+              i.values?.some((v) =>
+                (Array.isArray(filters[i.facet!])
+                  ? (filters[i.facet!] as unknown[])
+                  : [filters[i.facet!]]
+                ).includes(v)
+              )
+          ).length
+        : 1;
+    if (layer.kind === "pins" && !THEMATIC_CATEGORIES.has(layer.category)) poi += count;
+    else thematic += count;
   }
   return { poi, thematic, total: poi + thematic };
 }

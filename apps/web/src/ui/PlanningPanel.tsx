@@ -1,3 +1,5 @@
+import { StopLocationInput } from "./planning/StopLocationInput";
+import { Button } from "./kit/Button";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   applyPlanCommand,
@@ -11,8 +13,9 @@ import {
   type Position,
   type TripPlan
 } from "@mapos/layer-sdk";
+import { detailMediaFromFeature } from "../info/detailModel";
 import { apiGet, apiPost, apiSend } from "../lib/api";
-import { t } from "../i18n/cs";
+import { t } from "../i18n";
 import { buildExternalPlanHandoffs } from "../planning/externalHandoff";
 import { buildPlanItinerary } from "../planning/planItinerary";
 import { createBlankPlanDocument } from "../planning/planDraft";
@@ -36,15 +39,16 @@ import { getMapStore } from "../store/mapStore";
 import { getShellStore } from "../store/shellStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { PanelShell } from "./PanelShell";
-import { InlineNotice, TextField } from "./kit";
+import { InlineNotice, TextField, Select } from "./kit";
 import { PlanAdventure } from "./planning/PlanAdventure";
 import { PlanAssistant } from "./planning/PlanAssistant";
 import { PlanFooter } from "./planning/PlanFooter";
 import { PlanHeader } from "./planning/PlanHeader";
-import { PlanOptions } from "./planning/PlanOptions";
+import { PlanOptions, PLAN_PROFILE_OPTIONS } from "./planning/PlanOptions";
 import { PlanShareDialog, type PlanShareTab } from "./planning/PlanShareDialog";
 import { PlanShareTools } from "./planning/PlanShareTools";
 import { STOP_WINDOW_SIZE, StopList, type StopListHandlers } from "./planning/StopList";
+import type { StopPlacePreview } from "./planning/StopRow";
 import type { StopLocationSelection } from "./planning/StopLocationInput";
 import type {
   AdventureCandidate,
@@ -56,7 +60,6 @@ import type {
 } from "./planning/types";
 
 const MAX_UNDO_SNAPSHOTS = 50;
-const PROFILE_OVERLAY_KEY = "mapos:route-overlay-recommendation";
 
 function localId(prefix: string): string {
   const suffix =
@@ -130,6 +133,190 @@ function routePreviewForPlan(document: PlanDocumentV2) {
  *  segments between them, then the sticky footer that computes and hands the route off.
  */
 export function PlanningPanel() {
+  const plan = useMapStoreSnapshot((s) => s.activePlan);
+  const document = useMapStoreSnapshot((s) => s.activePlanDocument);
+  const shared = planShareTokenFromLocation(window.location.pathname, window.location.hash);
+  const store = getMapStore();
+  const session = useMapStoreSnapshot((state) => state.session);
+  const open = useMapStoreSnapshot((state) => state.sidebarOpen);
+  const mode = useMapStoreSnapshot((state) => state.mode);
+  const loadedPlansForOwner = useRef<string | null>(null);
+  const draftEdits = useRef(0);
+  const [loadingSavedPlan, setLoadingSavedPlan] = useState(false);
+  useEffect(() => {
+    const ownerId = session?.id;
+    if (
+      !open ||
+      mode !== "planning" ||
+      !ownerId ||
+      shared ||
+      document ||
+      loadedPlansForOwner.current === ownerId
+    ) {
+      setLoadingSavedPlan(false);
+      return;
+    }
+    loadedPlansForOwner.current = ownerId;
+    let cancelled = false;
+    const editVersion = draftEdits.current;
+    setLoadingSavedPlan(true);
+    void apiGet<{ plans: PlanDocumentV2[] }>("/v2/plans", { auth: true })
+      .then(({ plans }) => {
+        const latest = plans[0];
+        // A local edit made while the request was in flight always wins over server hydration.
+        if (cancelled || !latest || store.activePlanDocument || draftEdits.current !== editVersion)
+          return;
+        store.setActivePlanDocument(latest);
+      })
+      .catch(() => {
+        if (loadedPlansForOwner.current === ownerId) loadedPlansForOwner.current = null;
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSavedPlan(false);
+      });
+    return () => {
+      cancelled = true;
+      if (loadedPlansForOwner.current === ownerId) loadedPlansForOwner.current = null;
+    };
+  }, [document, mode, open, session?.id, shared, store]);
+  if (!shared && !document && (!plan || plan.stops.length < 2))
+    return (
+      <EmptyPlanningPanel
+        key={plan?.id ?? "empty"}
+        seed={plan}
+        onEdit={() => {
+          draftEdits.current++;
+          setLoadingSavedPlan(false);
+        }}
+      />
+    );
+  return <PlanningEditor loadingSavedPlan={loadingSavedPlan} />;
+}
+
+function EmptyPlanningPanel({ seed, onEdit }: { seed: TripPlan | null; onEdit(): void }) {
+  const store = getMapStore();
+  const provider = useMapStoreSnapshot((s) => s.dataProvider);
+  const [points, setPoints] = useState<Array<StopLocationSelection | null>>([
+    seed?.stops[0] ?? null,
+    null
+  ]);
+  const [names, setNames] = useState([seed?.stops[0]?.name ?? "", ""]);
+  const [profile, setProfile] = useState<PlanTravelProfileV2>("car");
+  const [variant, setVariant] = useState<TripPlan["variant"]>("fast");
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const choose = (index: number, point: StopLocationSelection) => {
+    onEdit();
+    const next = [...points];
+    next[index] = point;
+    setPoints(next);
+    setNames((old) => old.map((name, i) => (i === index ? point.name : name)));
+    if (next.every(Boolean))
+      store.setActivePlanDocument({
+        ...planV1ToV2({
+          id: seed?.id ?? localId("plan"),
+          name: "Nová cesta",
+          departureAt: new Date().toISOString(),
+          variant,
+          visibility: "private",
+          vehicle: { profile },
+          stops: next.map((point) => ({ ...point!, id: localId("stop"), dwellMinutes: 0 }))
+        }),
+        departureAt: null
+      });
+  };
+  const pick = (index: number) => {
+    const view = store.view;
+    getShellStore().startMapPicker(
+      {
+        caller: {
+          id: `planning-endpoint-${index}`,
+          label: index === 0 ? "Vyber start" : "Vyber cíl"
+        },
+        cancelPolicy: "restore-original-view",
+        originalView: { center: { lng: view.lng, lat: view.lat }, zoom: view.zoom }
+      },
+      (result) => {
+        if (result.status === "confirmed")
+          choose(index, {
+            name: result.location.label ?? "Místo na mapě",
+            lng: result.location.lng,
+            lat: result.location.lat
+          });
+      }
+    );
+  };
+  const locate = async (index: number) => {
+    setLocationError(null);
+    try {
+      const p = await geolocation.getPosition();
+      choose(index, { ...p, name: "Moje poloha" });
+    } catch (error) {
+      setLocationError(messageFor(error));
+    }
+  };
+  return (
+    <PanelShell title="Plánování" testId="planning-panel">
+      <div
+        className="planner-empty"
+        onInput={onEdit}
+        style={{ padding: 16, display: "grid", gap: 16 }}
+      >
+        <p>Kam vyrazíme? Vyber start a cíl, nebo přidej místo z mapy.</p>
+        <Select
+          label="Doprava"
+          options={PLAN_PROFILE_OPTIONS}
+          value={profile}
+          onChange={setProfile}
+        />
+        <Select
+          label="Preference trasy"
+          value={variant}
+          onChange={setVariant}
+          options={[
+            { value: "fast", label: "Rychlá" },
+            { value: "short", label: "Krátká" },
+            { value: "nohwy", label: "Bez poplatků" }
+          ]}
+        />
+        {names.map((name, index) => (
+          <div key={index}>
+            <label>
+              {index === 0 ? "Odkud" : "Kam"}
+              <StopLocationInput
+                index={index + 1}
+                name={name}
+                provider={provider}
+                aiEnabled={false}
+                aiBusy={false}
+                onNameChange={(value) => {
+                  setNames((old) => old.map((n, i) => (i === index ? value : n)));
+                  setPoints((old) => old.map((p, i) => (i === index ? null : p)));
+                }}
+                onSelect={(point) => choose(index, point)}
+                onAiQuery={() => {}}
+              />
+            </label>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <Button variant="outlined" size="sm" onClick={() => pick(index)}>
+                Vybrat na mapě
+              </Button>
+              <Button variant="tonal" size="sm" onClick={() => void locate(index)}>
+                Moje poloha
+              </Button>
+            </div>
+          </div>
+        ))}
+        {locationError && <p role="alert">{locationError}</p>}
+        <Button variant="filled" block disabled>
+          Vypočítat trasu
+        </Button>
+        <small>Nejdříve potvrď start a cíl.</small>
+      </div>
+    </PanelShell>
+  );
+}
+
+function PlanningEditor({ loadingSavedPlan }: { loadingSavedPlan: boolean }) {
   const store = getMapStore();
   const shell = getShellStore();
   const open = useMapStoreSnapshot((state) => state.sidebarOpen);
@@ -138,7 +325,6 @@ export function PlanningPanel() {
   const activePlan = useMapStoreSnapshot((state) => state.activePlan);
   const activeDocument = useMapStoreSnapshot((state) => state.activePlanDocument);
   const selectedRouteSegmentId = useMapStoreSnapshot((state) => state.selectedRouteSegmentId);
-  const session = useMapStoreSnapshot((state) => state.session);
   const provider = useMapStoreSnapshot((state) => state.dataProvider);
   const activeLayers = useMapStoreSnapshot((state) => state.activeLayers);
   const visibleFeatures = useMapStoreSnapshot((state) => state.visibleFeatures);
@@ -168,7 +354,6 @@ export function PlanningPanel() {
   const [shareLoadedForPlan, setShareLoadedForPlan] = useState<string | null>(null);
   const [shareLinks, setShareLinks] = useState<PlanShareLink[]>([]);
   const [newShareUrl, setNewShareUrl] = useState<string | null>(null);
-  const [loadingSavedPlan, setLoadingSavedPlan] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [locatingStopId, setLocatingStopId] = useState<string | null>(null);
   const [manual, setManual] = useState<StopManualState | null>(null);
@@ -189,11 +374,6 @@ export function PlanningPanel() {
     model: string;
     disclosure: string;
   } | null>(null);
-  const [profileOverlayDismissed, setProfileOverlayDismissed] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(PROFILE_OVERLAY_KEY) === "dismissed"
-  );
   const [adventureDetourLimit, setAdventureDetourLimit] = useState(15);
   const [adventureBusy, setAdventureBusy] = useState(false);
   const [adventureRecommendation, setAdventureRecommendation] =
@@ -201,11 +381,11 @@ export function PlanningPanel() {
   const [temporalContext, setTemporalContext] = useState<PlanTemporalContextV2 | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lastPublishedDocument = useRef<PlanDocumentV2 | null>(null);
-  const loadedPlansForOwner = useRef<string | null>(null);
+  const planRef = useRef(plan);
   const loadedThreadForPlan = useRef<string | null>(null);
   const cancelRouting = useRef<(() => boolean) | null>(null);
   const pickAlternative = useRef<((segmentId: string, alternativeId: string) => void) | null>(null);
-  const mapSuggestions = useMemo(() => {
+  const _mapSuggestions = useMemo(() => {
     const suggestions: Array<{ feature: GeoFeature; layerId: string }> = [];
     const seen = new Set<string>();
     for (const [layerId, state] of Object.entries(activeLayers)) {
@@ -222,6 +402,33 @@ export function PlanningPanel() {
     return suggestions;
   }, [activeLayers, visibleFeatures]);
 
+  /**
+   * The place each stop came from, when the map still has the pin.
+   *
+   * Best effort by design: the plan stores only `sourceFeatureId`, so once the pin is out of the
+   * viewport the row falls back to its editable name. That is better than caching a photo URL
+   * into the document, which would go stale and travel with every export.
+   */
+  const stopPlaces = useMemo(() => {
+    const wanted = new Set(
+      plan.stops.map((stop) => stop.sourceFeatureId).filter((id): id is string => Boolean(id))
+    );
+    const places = new Map<string, StopPlacePreview>();
+    if (!wanted.size) return places;
+    for (const features of Object.values(visibleFeatures)) {
+      for (const feature of features ?? []) {
+        const id = String(feature.properties.id ?? "");
+        if (!wanted.has(id) || places.has(id)) continue;
+        const name = String(feature.properties.name ?? "").trim();
+        const [asset] = detailMediaFromFeature(feature);
+        const photoUrl = asset?.thumbnailUrl ?? asset?.url;
+        if (!name && !photoUrl) continue;
+        places.set(id, { name: name || "Místo na mapě", ...(photoUrl ? { photoUrl } : {}) });
+      }
+    }
+    return places;
+  }, [plan.stops, visibleFeatures]);
+
   useEffect(() => {
     if (!selectedRouteSegmentId) return;
     const selectedRow = Array.from(
@@ -231,6 +438,8 @@ export function PlanningPanel() {
   }, [selectedRouteSegmentId]);
 
   const publishDocument = (document: PlanDocumentV2) => {
+    // Follow-up routing may start in this event, before React renders the edited document.
+    planRef.current = document;
     lastPublishedDocument.current = document;
     store.setActivePlanDocument(document);
   };
@@ -255,44 +464,6 @@ export function PlanningPanel() {
     loadedThreadForPlan.current = null;
     setError(null);
   }, [activeDocument, activePlan, plan.id, plan.revision, plan.updatedAt]);
-
-  useEffect(() => {
-    const ownerId = session?.id;
-    if (
-      !open ||
-      mode !== "planning" ||
-      !ownerId ||
-      sharedToken ||
-      activeDocument ||
-      loadedPlansForOwner.current === ownerId
-    ) {
-      return;
-    }
-    loadedPlansForOwner.current = ownerId;
-    let cancelled = false;
-    setLoadingSavedPlan(true);
-    void apiGet<{ plans: PlanDocumentV2[] }>("/v2/plans", { auth: true })
-      .then(({ plans }) => {
-        const latest = plans[0];
-        // A local edit made while the request was in flight always wins over server hydration.
-        if (cancelled || !latest || store.activePlanDocument) return;
-        setPlan(latest);
-        setSavedRevision(latest.revision);
-        setUndoStack([]);
-        lastPublishedDocument.current = latest;
-        store.setActivePlanDocument(latest);
-      })
-      .catch(() => {
-        if (loadedPlansForOwner.current === ownerId) loadedPlansForOwner.current = null;
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingSavedPlan(false);
-      });
-    return () => {
-      cancelled = true;
-      if (loadedPlansForOwner.current === ownerId) loadedPlansForOwner.current = null;
-    };
-  }, [activeDocument, mode, open, session?.id, sharedToken, store]);
 
   useEffect(() => {
     if (!sharedToken || !open || mode !== "planning") return;
@@ -383,9 +554,60 @@ export function PlanningPanel() {
   }
 
   const readOnlyShared = sharedToken !== null;
+  // Asynchronous work (a reverse geocode, a routing answer) has to write against the document
+  // as it is when the answer lands, so the latest one is kept where a stale closure can find it.
+  planRef.current = plan;
 
   const remember = (document: PlanDocumentV2) => {
     setUndoStack((current) => [...current.slice(-(MAX_UNDO_SNAPSHOTS - 1)), document]);
+  };
+
+  /**
+   * Weather and traffic along the route, and the departure they need.
+   *
+   * The switch used to be disabled until a date was set, which meant the feature was invisible
+   * to anyone who had not already gone looking for the date field. Turning it on now dates the
+   * plan at "now"; turning it off leaves the plan undated again, so the timeline goes away with
+   * the thing that needed it.
+   */
+  const toggleRouteContext = (next: boolean) => {
+    const withPolicy = applyCommand({
+      type: "replace-route-policy",
+      routePolicy: {
+        ...plan.routePolicy,
+        weatherAlongRoute: next,
+        trafficAlongRoute: next
+      }
+    });
+    if (!withPolicy) return;
+    if (next === Boolean(withPolicy.departureAt)) return;
+    applyCommandTo(withPolicy, {
+      type: "set-departure",
+      departureAt: next ? new Date().toISOString() : null
+    });
+  };
+
+  const applyCommandTo = (
+    document: PlanDocumentV2,
+    command: PlanCommandV2
+  ): PlanDocumentV2 | null => {
+    setError(null);
+    try {
+      const result = applyPlanCommand(document, {
+        id: localId("command"),
+        expectedRevision: document.revision,
+        command
+      });
+      remember(result.undoDocument);
+      setPlan(result.plan);
+      publishDocument(result.plan);
+      updatePreview(result.plan);
+      setTemporalContext(null);
+      return result.plan;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Změnu plánu nelze použít");
+      return null;
+    }
   };
 
   const applyCommand = (command: PlanCommandV2): PlanDocumentV2 | null => {
@@ -399,7 +621,9 @@ export function PlanningPanel() {
       remember(result.undoDocument);
       setPlan(result.plan);
       publishDocument(result.plan);
-      if (command.type === "select-segment-alternative") updatePreview(result.plan);
+      // The map must not keep drawing legs the command just invalidated — a drag reorder, a
+      // moved stop or a new stop all change which pairs still have geometry.
+      updatePreview(result.plan);
       if (command.type !== "select-segment-alternative") setAdventureRecommendation(null);
       if (
         command.type !== "update-plan" &&
@@ -471,9 +695,9 @@ export function PlanningPanel() {
     return index < 0 ? null : { stop: plan.stops[index]!, index };
   };
 
-  const addStop = (feature?: GeoFeature) => {
+  const addStop = (feature?: GeoFeature): PlanDocumentV2 | null => {
     const coordinates = feature?.geometry.coordinates ?? [view.lng, view.lat];
-    const insertIndex = plan.stops.length - 1;
+    const insertIndex = plan.stops.length === 1 ? 1 : plan.stops.length - 1;
     const next = applyCommand({
       type: "add-stop",
       index: insertIndex,
@@ -482,11 +706,35 @@ export function PlanningPanel() {
         name: String(feature?.properties.name ?? `Zastávka ${plan.stops.length}`),
         location: { type: "Point", coordinates: [...coordinates] as Position },
         sourceFeatureId: feature ? String(feature.properties.id) : null,
-        dwellMinutes: 20,
+        // Planning is about places and the road between them; a dwell time turns the plan into
+        // a schedule, and nobody asked for one.
+        dwellMinutes: 0,
         status: "accepted"
       }
     });
     if (next) setStopWindowStart(Math.floor(insertIndex / STOP_WINDOW_SIZE) * STOP_WINDOW_SIZE);
+    return next;
+  };
+
+  /**
+   * Fills a picked stop's name from the geocoder, without blocking the pick on it.
+   *
+   * The rename lands on whatever the document looks like when the answer arrives, not on the
+   * copy this closure was created with — otherwise it replays an old document and quietly
+   * undoes the coordinate the pick had just written.
+   */
+  const nameStopFromLocation = async (stopId: string, lng: number, lat: number) => {
+    try {
+      const answer = await apiGet<{ name?: string | null }>("/geocode/reverse", {
+        query: { lng: String(lng), lat: String(lat) }
+      });
+      const name = answer?.name?.trim();
+      const current = planRef.current;
+      if (!name || !current.stops.some((stop) => stop.id === stopId)) return;
+      applyCommandTo(current, { type: "update-stop", stopId, patch: { name } });
+    } catch {
+      // A stop named by its coordinates is still a usable stop.
+    }
   };
 
   const updateStopLocation = (stopId: string, lng: number, lat: number) => {
@@ -530,6 +778,11 @@ export function PlanningPanel() {
         if (manual?.stopId === stop.id) setManual(null);
         updateStopLocation(stop.id, result.location.lng, result.location.lat);
         store.showToast(`Poloha „${stop.name}“ byla změněna`);
+        // The coordinate is already in the plan; the name catches up when the geocoder answers,
+        // so the row never waits on the network to show that the tap registered.
+        if (!result.location.label) {
+          void nameStopFromLocation(stop.id, result.location.lng, result.location.lat);
+        }
       }
     );
     if (Math.abs(lng - view.lng) > 0.000_001 || Math.abs(lat - view.lat) > 0.000_001) {
@@ -576,7 +829,7 @@ export function PlanningPanel() {
       },
       (result) => {
         if (result.status !== "confirmed") return;
-        addStop({
+        const named = addStop({
           type: "Feature",
           geometry: {
             type: "Point",
@@ -588,6 +841,16 @@ export function PlanningPanel() {
             name: result.location.label ?? `Zastávka ${plan.stops.length}`
           }
         });
+        if (!result.location.label && named) {
+          const added = named.stops.find(
+            (candidate) =>
+              candidate.location.coordinates[0] === result.location.lng &&
+              candidate.location.coordinates[1] === result.location.lat
+          );
+          if (added) {
+            void nameStopFromLocation(added.id, result.location.lng, result.location.lat);
+          }
+        }
       }
     );
   };
@@ -718,38 +981,42 @@ export function PlanningPanel() {
     }
   };
 
-  /** §4.5: a bike or walking plan gets the matching overlay once, as a toast with an undo,
-   *  instead of a recommendation card. The basemap the user picked is never replaced — CyclOSM
-   *  and OpenTopoMap go on top of it. */
   const offerProfileOverlay = (profile: PlanTravelProfileV2) => {
-    const overlay =
+    if (profile !== "bike" && profile !== "foot") return;
+    store.showToast(
       profile === "bike"
-        ? { id: "cyclosm", label: "CyclOSM" }
-        : profile === "foot"
-          ? { id: "opentopomap", label: "OpenTopoMap" }
-          : null;
-    if (!overlay || profileOverlayDismissed || store.activeLayers[overlay.id]?.visible) return;
-    store.toggleLayer(overlay.id);
-    store.showToast(`Zapnul jsem ${overlay.label}; původní podklad zůstal zachovaný`, {
-      action: {
-        label: "Vrátit",
-        onSelect: () => {
-          if (store.activeLayers[overlay.id]?.visible) store.toggleLayer(overlay.id);
-          window.localStorage.setItem(PROFILE_OVERLAY_KEY, "dismissed");
-          setProfileOverlayDismissed(true);
+        ? "Cyklistickou trasu můžete doplnit značenými cyklotrasami"
+        : "Trasu můžete doplnit turistickým značením",
+      {
+        action: {
+          label: profile === "bike" ? "Zobrazit cyklotrasy" : "Zobrazit turistické trasy",
+          onSelect: () => {
+            store.setLayerFilters("waymarked-trails", {
+              activity: profile === "bike" ? "cycling" : "hiking"
+            });
+            if (!store.activeLayers["waymarked-trails"]?.visible)
+              store.toggleLayer("waymarked-trails");
+          }
         }
       }
-    });
+    );
   };
 
   const calculate = async (document: PlanDocumentV2 = plan) => {
+    if (document.stops.length < 2) {
+      setError("Přidejte cíl nebo další zastávku.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setTemporalContext(null);
+    cancelRouting.current?.();
+    const sourcePlan = planRef.current;
     const run = startRoutingPlanTask(document, provider);
     cancelRouting.current = run.cancel;
     try {
       const data = await run.result;
+      if (planRef.current !== sourcePlan || cancelRouting.current !== run.cancel) return;
       setPlan(data.plan);
       publishDocument(data.plan);
       updatePreview(data.plan);
@@ -815,6 +1082,10 @@ export function PlanningPanel() {
   };
 
   const save = async (): Promise<PlanDocumentV2 | null> => {
+    if (plan.stops.length < 2) {
+      setError("Před uložením plánu přidejte cíl. Jednotlivé místo můžete uložit z jeho detailu.");
+      return null;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -1060,10 +1331,10 @@ export function PlanningPanel() {
     onManual: (stopId) => setManual({ stopId, reason: "manual" }),
     onManualClose: closeManual,
     onCoordinateChange: updateStopLocation,
-    onDwellChange: (stopId, dwellMinutes) =>
-      applyCommand({ type: "update-stop", stopId, patch: { dwellMinutes } }),
     onMove: (stopId, toIndex) => applyCommand({ type: "move-stop", stopId, toIndex }),
     onRemove: (stopId) => applyCommand({ type: "remove-stop", stopId }),
+    onDwellChange: (stopId, dwellMinutes) =>
+      applyCommand({ type: "update-stop", stopId, patch: { dwellMinutes } }),
     onAdd: addStop,
     onPickNew: pickNewStop,
     onToggleMapSelection: (segmentId) => store.selectRouteSegment(segmentId),
@@ -1145,6 +1416,7 @@ export function PlanningPanel() {
             setAdventureDetourLimit(next);
             setAdventureRecommendation(null);
           }}
+          onContextToggle={toggleRouteContext}
           onCommand={(command) => applyCommand(command)}
         />
 
@@ -1161,7 +1433,7 @@ export function PlanningPanel() {
           onWindowStart={setStopWindowStart}
           selectedRouteSegmentId={selectedRouteSegmentId}
           temporalSegments={temporalSegments}
-          suggestions={readOnlyShared ? [] : mapSuggestions}
+          stopPlaces={stopPlaces}
           aiStopAnswer={aiStopAnswer}
           onOpenAiCandidate={openAiStopCandidate}
           onDismissAiAnswer={() => setAiStopAnswer(null)}

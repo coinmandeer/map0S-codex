@@ -1,4 +1,6 @@
 import type { SavedPlaceV2 } from "@mapos/layer-sdk";
+import { shortAddress } from "../lib/wallet";
+import { intlLocale } from "../i18n";
 
 const CATEGORY_LABELS: Readonly<Record<string, string>> = {
   place: "Místa",
@@ -29,7 +31,7 @@ export function personalCategoryCounts(places: readonly SavedPlaceV2[]): Persona
   }
   return [...counts.entries()]
     .map(([id, count]) => ({ id, count, label: personalCategoryLabel(id) }))
-    .sort((left, right) => left.label.localeCompare(right.label, "cs"));
+    .sort((left, right) => left.label.localeCompare(right.label, intlLocale()));
 }
 
 /** "3 plány · 2 vrstvy · 20 míst · 1 hra" (§4.3).
@@ -61,10 +63,31 @@ function part(count: number, one: string, few: string, many: string): string | n
 
 /** Second line of a saved place row: where it is filed and when it was saved. */
 export function savedPlaceSubtitle(place: SavedPlaceV2, collectionName?: string): string {
-  const saved = new Intl.DateTimeFormat("cs", { day: "numeric", month: "numeric" }).format(
+  const saved = new Intl.DateTimeFormat(intlLocale(), { day: "numeric", month: "numeric" }).format(
     new Date(place.createdAt)
   );
   return [collectionName ?? personalCategoryLabel(place.category), `uloženo ${saved}`].join(" · ");
+}
+
+/**
+ * Second line of a wallet row: the address, then whatever the chain could actually tell us.
+ *
+ * A simulated identity is labelled as such and stops there — it has no network and no balance,
+ * and printing "Ethereum · 0 ETH" beside it would be a fabrication. A real wallet that is locked
+ * or not authorised for this site also has no chain state, which is the ordinary condition of a
+ * page you opened without touching the extension, so it simply shows less.
+ */
+export function walletSubtitle(
+  identity: { subject: string; simulated: boolean; displayMetadata?: { name: string } | null },
+  chain: { networkName: string; balance: number; symbol: string } | null
+): string {
+  const address = shortAddress(identity.subject);
+  if (identity.simulated) return `${address} · simulace`;
+  if (!chain) return address;
+  const balance = new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 3 }).format(
+    chain.balance
+  );
+  return `${address} · ${chain.networkName} · ${balance} ${chain.symbol}`;
 }
 
 export function filterPersonalPlaces(

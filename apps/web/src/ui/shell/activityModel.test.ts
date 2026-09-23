@@ -86,27 +86,32 @@ describe("activitySummary", () => {
     assert.equal(activitySummary([]), null);
   });
 
-  it("names a single running task and counts several", () => {
+  it("names a single running source and counts progress once there are several", () => {
     assert.equal(
-      activitySummary([{ id: "a", label: "Načítám kempy", tone: "running", icon: "layers" }]),
-      "Načítám kempy"
+      activitySummary([{ id: "a", label: "Loading campsites", tone: "running", icon: "layers" }]),
+      "Loading campsites"
     );
+    // Five sources asked, three still working: the reader wants the progress, not five pills.
     assert.equal(
-      activitySummary([
-        { id: "a", label: "Načítám kempy", tone: "running", icon: "layers" },
-        { id: "b", label: "Načítám radar", tone: "running", icon: "cloud" }
-      ]),
-      "2 úlohy běží"
+      activitySummary(
+        [
+          { id: "a", label: "Loading campsites", tone: "running", icon: "layers" },
+          { id: "b", label: "Loading radar", tone: "running", icon: "cloud" },
+          { id: "c", label: "Loading trails", tone: "running", icon: "route" }
+        ],
+        5
+      ),
+      "Loading 2/5 sources"
     );
   });
 
   it("prefers the failure over anything still running", () => {
     assert.equal(
       activitySummary([
-        { id: "b", label: "Vrstva se nepodařila načíst", tone: "error", icon: "error" },
-        { id: "a", label: "Načítám kempy", tone: "running", icon: "layers" }
+        { id: "b", label: "A layer failed to load", tone: "error", icon: "error" },
+        { id: "a", label: "Loading campsites", tone: "running", icon: "layers" }
       ]),
-      "Vrstva se nepodařila načíst"
+      "A layer failed to load"
     );
   });
 });

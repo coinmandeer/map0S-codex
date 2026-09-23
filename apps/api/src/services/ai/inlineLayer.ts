@@ -17,7 +17,7 @@ import {
 import type { AiCitation } from "./contracts.js";
 import type { AiPlaceSearchRecord } from "./placeSearch.js";
 
-const MAX_INLINE_FEATURES = 200;
+const MAX_INLINE_FEATURES = 100;
 
 /** Layer ids are joined into style ids, css class names and session keys; a name is not. */
 export function inlineLayerId(name: string, seed: string): string {
@@ -56,6 +56,8 @@ export function buildInlineLayerManifest(input: InlineLayerInput): LayerManifest
     seen.add(place.id);
     features.push({
       id: place.id,
+      sourceLayerId: place.layerId,
+      sourceFeatureId: place.sourceFeatureId ?? place.id,
       title: place.title.slice(0, 240),
       longitude: place.longitude,
       latitude: place.latitude,

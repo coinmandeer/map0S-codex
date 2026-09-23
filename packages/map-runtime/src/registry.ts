@@ -101,6 +101,17 @@ export class LayerRuntimeRegistry<TValue> {
     return registration ? negotiateLayerCapabilities(registration.manifest, host) : undefined;
   }
 
+  /**
+   * Removes one layer, reporting whether it was there.
+   *
+   * Needed because not every layer is known at startup: a layer built from a URL the user
+   * pasted is registered when their layer list loads and has to be removable when they delete
+   * it, without clearing the built-ins alongside it.
+   */
+  unregister(id: string): boolean {
+    return this.registrations.delete(id);
+  }
+
   clear(): void {
     this.registrations.clear();
   }

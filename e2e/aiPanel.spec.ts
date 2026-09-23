@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, test, type Page } from "./fixtures/offlineTest";
 
 /** One orchestrator answer with a single place, so the search popover has something to offer
@@ -215,13 +216,13 @@ test.describe("AI panel", () => {
     await openPanel(page);
 
     const privacy = page.getByTestId("ai-panel-privacy");
-    await expect(privacy).toContainText("střed mapy");
-    await privacy.getByRole("button", { name: "Rozumím" }).click();
+    await expect(privacy).toContainText("map centre");
+    await privacy.getByRole("button", { name: "Got it" }).click();
     await expect(privacy).toHaveCount(0);
 
     // Dismissing the one-time line does not hide what the assistant can see.
     await page.getByTestId("ai-panel-context").click();
-    await expect(page.getByText("Aktivní vrstvy: osm-poi")).toBeVisible();
+    await expect(page.getByText("Active layers: osm-poi")).toBeVisible();
 
     await openPanel(page);
     await expect(page.getByTestId("ai-panel-privacy")).toHaveCount(0);
@@ -283,7 +284,10 @@ test.describe("AI panel", () => {
     await expect(page.getByTestId("toast")).toHaveCount(0);
 
     await page.getByTestId("ai-card-layer-draft-show").click();
-    await expect(page.getByTestId("toast")).toContainText("AI: Kempy u vody", { timeout: 20_000 });
+    await expect(page.getByTestId("ai-results-hide")).toBeVisible();
+    await expect(page).toHaveURL(/layers=.*ai-answer-/);
+    await page.getByTestId("ai-results-hide").click();
+    await expect(page).not.toHaveURL(/ai-answer-/);
   });
 
   test("a drafted layer can be kept, and every kept point carries its provenance", async ({
@@ -303,7 +307,7 @@ test.describe("AI panel", () => {
     await askInPanel(page, "vytvoř z toho vrstvu");
     await page.getByTestId("ai-card-layer-draft-save").click();
 
-    await expect(page.getByTestId("toast")).toContainText("Moje vrstvy", { timeout: 20_000 });
+    await expect(page.getByTestId("toast")).toContainText("My layers", { timeout: 20_000 });
     expect(pins.length).toBe(2);
     const properties = pins[0]!.properties as Record<string, Record<string, unknown>>;
     expect(properties.sourceId).toBe("osm-poi");
@@ -371,4 +375,239 @@ test.describe("AI panel", () => {
     await expect(page.getByTestId("ai-panel-thread")).toContainText("a kde se dá dolít voda?");
     await expect(page.getByTestId("ai-panel-thread")).toContainText("Nejblíž je kemp u řeky.");
   });
+});
+
+test("exact answer results replace one temporary layer without moving the camera or enabling providers", async ({
+  page
+}) => {
+  const state = await openPanel(page);
+  const places = [
+    PLACE,
+    { ...PLACE, id: "second", title: "Second", longitude: 13.6, latitude: 49.9 },
+    { ...PLACE, id: "third", layerId: "wikidata", title: "Third", longitude: 13.8, latitude: 49.8 }
+  ];
+  state.stream = cardStream("Three sourced places", {
+    type: "places",
+    title: "Exact selection",
+    places,
+    layerIds: ["osm-poi", "wikidata"]
+  });
+  await askInPanel(page, "ukaž přesně tato místa");
+  const card = page.getByTestId("ai-card-places").last();
+  await expect(card).toContainText("Exact selection");
+  let extraQueries = 0;
+  page.on("request", (r) => {
+    if (/\/layers\/(wikidata|ai-answer-)[^/]*\/features/.test(r.url())) extraQueries++;
+  });
+  const view = () =>
+    page.evaluate(() => {
+      const m = window.__maposMap!;
+      return { center: m.getCenter().toArray(), zoom: m.getZoom() };
+    });
+  const before = await view();
+  await card.getByRole("button", { name: "Zobrazit v mapě", exact: true }).click();
+  const sourceId = () =>
+    page.evaluate(() =>
+      Object.keys(window.__maposMap!.getStyle().sources).filter(
+        (id) => id.startsWith("source-ai-answer-") && !id.endsWith("-lines")
+      )
+    );
+  await expect.poll(sourceId).toHaveLength(1);
+  const ids = await sourceId();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (id) =>
+          (window.__maposMap!.getSource(id)!.serialize() as { data: { features: unknown[] } }).data
+            .features.length,
+        ids[0]!
+      )
+    )
+    .toBe(3);
+  expect(await view()).toEqual(before);
+  expect(new URL(page.url()).searchParams.get("layers")?.split(",")).not.toContain("wikidata");
+  await card.getByRole("button", { name: "Otevřít detail místa Kemp U Řeky" }).hover();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (id) => window.__maposMap!.getFeatureState({ source: id, id: "result-0" }).hover,
+        ids[0]!
+      )
+    )
+    .toBe(true);
+  for (let i = 0; i < 3; i++) {
+    await card.getByRole("button", { name: "Zobrazit v mapě", exact: true }).click();
+    await expect.poll(sourceId).toHaveLength(1);
+  }
+  await card.getByRole("button", { name: "Přiblížit výsledky", exact: true }).click();
+  await expect.poll(async () => JSON.stringify(await view())).not.toBe(JSON.stringify(before));
+  expect(extraQueries).toBe(0);
+  await page.screenshot({ path: "output/playwright/ai-exact-results-20260908.png" });
+  await page.getByTestId("ai-results-hide").click();
+  await expect.poll(sourceId).toHaveLength(0);
+});
+
+test("AI V2 preserves streamed text on EOF and clears pending work on new thread", async ({
+  page
+}) => {
+  const state = await openPanel(page);
+  state.stream = [
+    { type: "tool_start", tool: "search_places", title: "Doplňuji zdroje" },
+    { type: "token", text: "První doložená informace zůstává." }
+  ]
+    .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+    .join("");
+  await askInPanel(page, "doplň informace");
+  await expect(page.getByTestId("ai-panel-thread")).toContainText(
+    "První doložená informace zůstává."
+  );
+  await expect(page.getByTestId("ai-panel-error")).toContainText("Přenos se přerušil");
+  await expect(page.getByTestId("ai-panel-stop")).toHaveCount(0);
+  await page.getByTestId("ai-panel-clear").click();
+  await expect(page.getByTestId("ai-panel-empty")).toBeVisible();
+});
+
+test("AI V2 place excursion preserves the thread without another chat call", async ({ page }) => {
+  let calls = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/v2/ai/chat")) calls++;
+  });
+  await openPanel(page);
+  const before = calls;
+  await page
+    .getByTestId("ai-panel-thread")
+    .getByRole("button", { name: /Kemp U Řeky/ })
+    .click();
+  await expect(page.getByTestId("pin-detail")).toBeVisible();
+  await page.getByTestId("pin-detail-back").click();
+  await expect(page.getByTestId("ai-panel-thread")).toContainText("Nejblíž je kemp u řeky.");
+  expect(calls).toBe(before);
+});
+
+test("AI Overview follows automatic enrichment, retains cited facts on interruption and makes geometry available", async ({
+  page
+}) => {
+  let requests = 0;
+  await page.route("**/v2/ai/overview", async (route) => {
+    requests++;
+    const targetKey = createHash("sha256")
+      .update(JSON.stringify(route.request().postDataJSON().target))
+      .digest("hex");
+    const snapshot = {
+      targetKey,
+      scopeFingerprint: "fingerprint",
+      revision: 1,
+      geometryRevision: "three-points",
+      status: "loading",
+      sources: [
+        {
+          id: "record",
+          sourceRecordId: "osm:41",
+          providerId: "osm",
+          label: "OSM záznam",
+          url: "https://www.openstreetmap.org/node/41",
+          relation: "same_entity",
+          topic: "identity",
+          kind: "fact",
+          text: "Kemp U Řeky",
+          retrievedAt: "2026-09-09T00:00:00Z",
+          originGroup: "osm",
+          access: "public"
+        }
+      ],
+      sections: [
+        {
+          id: "facts",
+          title: "Doložené informace",
+          claims: [
+            {
+              id: "name",
+              text: "Název: Kemp U Řeky",
+              evidenceIds: ["record"],
+              support: "source-statement"
+            }
+          ]
+        }
+      ],
+      mapRefs: [
+        {
+          layerId: "osm-poi",
+          featureId: "osm:41",
+          title: "Kemp U Řeky",
+          lng: 13.3785,
+          lat: 49.7485,
+          evidenceIds: ["record"]
+        }
+      ],
+      limitations: []
+    };
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: `data: ${JSON.stringify({ type: "section_upsert", requestId: "req", runId: "run", targetKey, scopeFingerprint: "fingerprint", seq: 1, revision: 1, snapshot })}\n\n`
+    });
+  });
+  await openPanel(page);
+  await page
+    .getByTestId("ai-panel-thread")
+    .getByRole("button", { name: /Kemp U Řeky/ })
+    .click();
+  await expect(page.getByTestId("pin-detail")).toBeVisible();
+  const overview = page.getByTestId("ai-overview");
+  await expect(overview).toBeVisible();
+  await expect.poll(() => requests).toBe(1);
+  await expect(overview).toContainText("Název: Kemp U Řeky");
+  await expect(overview).toContainText("Přenos se přerušil");
+  await expect(overview.getByRole("link", { name: "Zdroj: OSM záznam" })).toHaveAttribute(
+    "href",
+    "https://www.openstreetmap.org/node/41"
+  );
+  await expect(overview.getByRole("button", { name: "Zobrazit v mapě" })).toBeEnabled();
+  await expect(overview.getByRole("button", { name: "Zastavit" })).toHaveCount(0);
+  await page.screenshot({ path: "output/playwright/ai-overview-v2-20260909.png" });
+});
+
+test("statistical answer shows its period and source and clears an unrelated area filter", async ({
+  page
+}) => {
+  const state = await openPanel(page);
+  await page.evaluate(async () => {
+    const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
+    getMapStore().setAreaSelection({
+      id: "old-city",
+      name: "Předchozí město",
+      revision: "old",
+      bbox: [13, 49, 14, 50]
+    });
+  });
+  state.stream = cardStream(
+    "Pro Česko nemáme ověřená data nezaměstnanosti za rok 2025. Hodnoty nedoplňuji odhadem.",
+    {
+      type: "statistic",
+      title: "Nezaměstnanost v Česku",
+      country: "CZ",
+      themeId: "unemployment",
+      period: "2025",
+      geoLevel: "adm1",
+      bbox: [12.09, 48.55, 18.87, 51.06],
+      excludedDatasetIds: [],
+      available: false
+    }
+  )
+    .replaceAll('"osm-poi"', '"czso"')
+    .replaceAll('"OpenStreetMap"', '"Český statistický úřad"');
+  await askInPanel(page, "Jaká byla nezaměstnanost v Česku v roce 2025?");
+  const thread = page.getByTestId("ai-panel-thread");
+  await expect(thread).toContainText("Nezaměstnanost v Česku · 2025 · ADM1");
+  await expect(thread).toContainText("Český statistický úřad");
+  await expect(thread).toContainText("Hodnoty nedoplňuji odhadem");
+  await expect(thread.getByRole("button", { name: "Přiblížit požadovanou zemi" })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
+        return getMapStore().areaSelection;
+      })
+    )
+    .toBeNull();
 });

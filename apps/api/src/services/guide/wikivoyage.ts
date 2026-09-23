@@ -53,23 +53,30 @@ async function nearestArticle(
   lang: string,
   lat: number,
   lng: number,
-  radiusM: number
+  radiusM: number,
+  io: typeof fetchJson,
+  signal?: AbortSignal
 ): Promise<GeoSearchResult | null> {
-  const data = await fetchJson<{ query?: { geosearch?: GeoSearchResult[] } }>(
+  const data = await io<{ query?: { geosearch?: GeoSearchResult[] } }>(
     `https://${lang}.wikivoyage.org/w/api.php?action=query&list=geosearch&format=json&formatversion=2` +
       `&gscoord=${lat}|${lng}&gsradius=${Math.round(radiusM)}&gslimit=5`,
-    { providerId: "wikivoyage", ttlMs: 6 * 60 * 60_000 }
+    { providerId: "wikivoyage", ttlMs: 6 * 60 * 60_000, signal }
   );
-  // The nearest article to a viewport centre is the settlement it is in; district and hotel
-  // articles sort after it because MediaWiki returns geosearch by distance.
+  // Distance does not establish territorial identity (historical countries may share city
+  // coordinates). Only use this fallback when the caller has not identified an area.
   return data.query?.geosearch?.[0] ?? null;
 }
 
-async function articleWikitext(lang: string, title: string): Promise<string | null> {
-  const data = await fetchJson<{ parse?: { wikitext?: string } }>(
+async function articleWikitext(
+  lang: string,
+  title: string,
+  io: typeof fetchJson,
+  signal?: AbortSignal
+): Promise<string | null> {
+  const data = await io<{ parse?: { wikitext?: string } }>(
     `https://${lang}.wikivoyage.org/w/api.php?action=parse&format=json&formatversion=2` +
       `&prop=wikitext&page=${encodeURIComponent(title)}`,
-    { providerId: "wikivoyage", ttlMs: 24 * 60 * 60_000 }
+    { providerId: "wikivoyage", ttlMs: 24 * 60 * 60_000, signal }
   );
   return data.parse?.wikitext ?? null;
 }
@@ -141,40 +148,93 @@ function sectionsFrom(wikitext: string, lang: string, title: string): GuideSecti
   });
 }
 
-export const wikivoyage: GuideSourceAdapter = {
-  id: "wikivoyage",
-  label: "Wikivoyage",
-  attribution: "Wikivoyage (CC BY-SA 4.0)",
+export function createWikivoyageSource(io: typeof fetchJson = fetchJson): GuideSourceAdapter {
+  return {
+    id: "wikivoyage",
+    label: "Wikivoyage",
+    attribution: "Wikivoyage (CC BY-SA 4.0)",
 
-  async fetchGuide(area: GuideArea): Promise<Guide | null> {
-    const [west, south, east, north] = area.bbox;
-    const lat = (south + north) / 2;
-    const lng = (west + east) / 2;
-    // Half the viewport's diagonal, clamped: MediaWiki caps geosearch at 10 km.
-    const radiusM = Math.min(10_000, Math.max(1_000, (north - south) * 111_320));
+    async fetchGuide(area: GuideArea, signal?: AbortSignal): Promise<Guide | null> {
+      const [west, south, east, north] = area.bbox;
+      const lat = (south + north) / 2;
+      const lng = (west + east) / 2;
+      // Half the viewport's diagonal, clamped: MediaWiki caps geosearch at 10 km.
+      const radiusM = Math.min(10_000, Math.max(1_000, (north - south) * 111_320));
 
-    for (const lang of [area.lang, ...FALLBACK_LANGS]) {
-      const article = await nearestArticle(lang, lat, lng, radiusM).catch(() => null);
-      if (!article) continue;
+      const qid = /^Q[1-9]\d*$/.test(area.wikidataId ?? "") ? area.wikidataId : undefined;
+      let sitelinks: Record<string, { title?: string }> = {};
+      if (qid) {
+        const entity = await io<{ entities?: Record<string, { sitelinks?: typeof sitelinks }> }>(
+          `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=sitelinks&format=json`,
+          { providerId: "wikidata", ttlMs: 24 * 60 * 60_000, signal }
+        );
+        sitelinks = entity.entities?.[qid]?.sitelinks ?? {};
+      }
+      for (const lang of new Set(
+        [area.lang, ...FALLBACK_LANGS].filter((lang) => /^[a-z]{2,3}$/.test(lang))
+      )) {
+        signal?.throwIfAborted();
+        let article: { title: string } | null = null;
+        if (qid) {
+          const title = sitelinks[`${lang}wikivoyage`]?.title;
+          if (title) article = { title };
+        } else if (area.name?.trim()) {
+          const lookup = await io<{
+            query?: {
+              pages?: Array<{
+                title: string;
+                missing?: boolean;
+                pageprops?: Record<string, unknown>;
+                coordinates?: Array<{ lat: number; lon: number }>;
+              }>;
+            };
+          }>(
+            `https://${lang}.wikivoyage.org/w/api.php?action=query&format=json&formatversion=2&redirects=1&prop=pageprops%7Ccoordinates&colimit=1&titles=${encodeURIComponent(area.name.trim())}`,
+            { providerId: "wikivoyage", ttlMs: 6 * 60 * 60_000, signal }
+          ).catch(() => null);
+          article =
+            lookup?.query?.pages?.find(
+              (page) =>
+                !page.missing &&
+                !("disambiguation" in (page.pageprops ?? {})) &&
+                (!area.requireCoordinatesInBbox ||
+                  (page.coordinates?.some(
+                    (c) =>
+                      Number.isFinite(c.lat) &&
+                      Number.isFinite(c.lon) &&
+                      c.lon >= west &&
+                      c.lon <= east &&
+                      c.lat >= south &&
+                      c.lat <= north
+                  ) ??
+                    false))
+            ) ?? null;
+        } else {
+          article = await nearestArticle(lang, lat, lng, radiusM, io, signal).catch(() => null);
+        }
+        if (!article) continue;
 
-      const wikitext = await articleWikitext(lang, article.title).catch(() => null);
-      if (!wikitext) continue;
+        const wikitext = await articleWikitext(lang, article.title, io, signal).catch(() => null);
+        if (!wikitext) continue;
 
-      const sections = sectionsFrom(wikitext, lang, article.title);
-      if (!sections.length) continue;
+        const sections = sectionsFrom(wikitext, lang, article.title);
+        if (!sections.length) continue;
 
-      return {
-        area: article.title,
-        lang,
-        sourceId: wikivoyage.id,
-        attribution: wikivoyage.attribution,
-        url: `https://${lang}.wikivoyage.org/wiki/${encodeURIComponent(article.title)}`,
-        sections
-      };
+        return {
+          area: article.title,
+          lang,
+          sourceId: "wikivoyage",
+          attribution: "Wikivoyage (CC BY-SA 4.0)",
+          url: `https://${lang}.wikivoyage.org/wiki/${encodeURIComponent(article.title)}`,
+          sections
+        };
+      }
+
+      return null;
     }
+  };
+}
 
-    return null;
-  }
-};
+export const wikivoyage = createWikivoyageSource();
 
 export const __testing = { sectionsFrom };

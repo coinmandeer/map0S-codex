@@ -25,10 +25,24 @@ function proxyTiles(apiBase: string, provider: string, mapset: string): string[]
   return [`${apiBase}/basemap/${provider}/${mapset}/{z}/{x}/{y}?retina=1`];
 }
 
-function tilesFor(
+export function tilesFor(
   entry: { tiles?: string[]; proxy?: { provider: string; mapset: string } },
-  apiBase: string
+  apiBase: string,
+  capabilities: Record<string, boolean | string> | null = null
 ): string[] {
+  if (entry.proxy?.provider === "maptiler") {
+    const key = capabilities?.maptilerPublicKey;
+    if (typeof key === "string" && key) {
+      const mapset = entry.proxy.mapset;
+      return mapset === "satellite-v2"
+        ? [
+            `https://api.maptiler.com/tiles/${mapset}/{z}/{x}/{y}.jpg?key=${encodeURIComponent(key)}`
+          ]
+        : [
+            `https://api.maptiler.com/maps/${mapset}/{z}/{x}/{y}@2x.png?key=${encodeURIComponent(key)}`
+          ];
+    }
+  }
   if (entry.proxy) return proxyTiles(apiBase, entry.proxy.provider, entry.proxy.mapset);
   return entry.tiles ?? [];
 }
@@ -59,7 +73,7 @@ export function styleForBasemap(
   // stack labels on imagery, and vector backgrounds already carry theirs.
   if (basemap.styleUrl && !overlay) return basemap.styleUrl;
 
-  const tiles = tilesFor(basemap, ctx.apiBase);
+  const tiles = tilesFor(basemap, ctx.apiBase, ctx.capabilities);
   const layers: StyleSpecification["layers"] = [
     {
       id: "background",
@@ -85,6 +99,8 @@ export function styleForBasemap(
       type: "raster",
       tiles,
       tileSize: basemap.tileSize ?? 256,
+      ...(basemap.bounds ? { bounds: basemap.bounds } : {}),
+      ...(basemap.minzoom != null ? { minzoom: basemap.minzoom } : {}),
       maxzoom: basemap.maxzoom ?? 19,
       attribution: basemap.attribution.map((a) => a.label).join(", ")
     }
@@ -94,7 +110,7 @@ export function styleForBasemap(
     const overlayTiles =
       ctx.theme === "dark" && overlay.darkTiles
         ? overlay.darkTiles
-        : tilesFor(overlay, ctx.apiBase);
+        : tilesFor(overlay, ctx.apiBase, ctx.capabilities);
     sources.labels = {
       type: "raster",
       tiles: overlayTiles,

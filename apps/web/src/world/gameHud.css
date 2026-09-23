@@ -1,0 +1,334 @@
+@layer game {
+  /* The arcade overlay (game mode only).
+ *
+ * A floating card, not the map panel: the board stays whole and the panel stays closed until
+ * the reader asks for it. It sits under the top bar on the left, where the map panel would be,
+ * and shrinks to a bottom bar on a phone. */
+  .game-hud-overlay {
+    position: fixed;
+    top: calc(var(--modebar-h) + var(--space-6));
+    /* Right side: the map/game panel opens from the left and the two must not cover each other. */
+    right: var(--space-6);
+    z-index: 30;
+    max-width: min(340px, calc(100vw - 24px));
+    pointer-events: none;
+  }
+
+  .game-hud-card {
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--surface-solid) 88%, transparent);
+    backdrop-filter: blur(10px);
+    box-shadow: var(--shadow-md);
+    color: var(--text);
+    font: var(--type-body-sm);
+  }
+
+  .game-hud-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .game-hud-head strong {
+    font: var(--type-title-sm);
+  }
+
+  .game-hud-spacer {
+    flex: 1;
+  }
+
+  .game-hud-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-faint);
+  }
+
+  .game-hud-dot.is-online {
+    background: var(--success, #22c55e);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--success, #22c55e) 70%, transparent);
+  }
+
+  .game-hud-vitals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    font: var(--type-label-md);
+    color: var(--text-muted);
+  }
+
+  .game-hud-vitals strong {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .game-hud-vitals strong.is-low {
+    color: var(--danger, #ef4444);
+  }
+
+  .game-hud-card progress {
+    width: 100%;
+    height: 6px;
+  }
+
+  .game-hud-zone {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+  }
+
+  .game-hud-zone-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: #21d4b4;
+  }
+
+  .game-hud-zone-dot[data-kind="event"] {
+    background: #ffc857;
+  }
+
+  .game-hud-zone-dot[data-kind="staker_gate"] {
+    background: #a855f7;
+  }
+
+  .game-hud-target {
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-sm);
+    background: var(--surface-raised, var(--surface-sunken));
+  }
+
+  .game-hud-error {
+    margin: 0;
+    color: var(--danger, #ef4444);
+    font: var(--type-body-sm);
+  }
+
+  .game-hud-actions {
+    display: flex;
+    gap: var(--space-3);
+  }
+
+  .game-hud-action {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: var(--control-h);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-solid);
+    color: var(--text);
+    font: var(--type-label-md);
+    cursor: pointer;
+  }
+
+  .game-hud-action:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
+
+  .game-hud-action:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  .game-hud-action.is-spell {
+    border-color: color-mix(in srgb, #ff7a1a 55%, var(--border));
+  }
+
+  .game-hud-action kbd {
+    font: var(--type-label-sm);
+    color: var(--text-faint);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    padding: 0 4px;
+  }
+
+  .game-hud-action em {
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-faint);
+  }
+
+  .game-hud-settings {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .game-hud-settings select {
+    flex: 1;
+    min-width: 0;
+    min-height: var(--control-h-sm);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-solid);
+    color: var(--text);
+    font: var(--type-body-sm);
+    padding: 0 var(--space-3);
+  }
+
+  .game-hud-icon {
+    display: grid;
+    place-items: center;
+    width: var(--control-h-sm);
+    height: var(--control-h-sm);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-solid);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 15px;
+  }
+
+  .game-hud-icon:hover {
+    background: var(--surface-hover);
+  }
+
+  .game-hud-hint {
+    margin: 0;
+    color: var(--text-faint);
+    font: var(--type-label-sm);
+  }
+
+  @media (max-width: 899px) {
+    .game-hud-overlay {
+      /* Top, not bottom: the thumb controls (joystick, hints) live along the bottom edge and the
+       two must not fight over the same pixels. */
+      top: calc(var(--modebar-h) + var(--space-3));
+      left: var(--space-3);
+      right: var(--space-3);
+      max-width: none;
+    }
+
+    .game-hud-hint {
+      display: none;
+    }
+  }
+
+  /* ---- World / game switcher ---- */
+
+  .game-hud-world {
+    display: flex;
+  }
+
+  .game-switcher {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    width: 100%;
+    min-width: 0;
+  }
+
+  .game-switcher-tabs {
+    display: inline-flex;
+    gap: var(--space-1);
+    background: color-mix(in srgb, var(--surface-sunken) 70%, transparent);
+    border-radius: var(--radius-pill);
+    padding: 2px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .game-switcher-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .game-switcher-tab {
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: none;
+    color: var(--text-muted);
+    font: var(--type-label-sm);
+    padding: var(--space-1) var(--space-3);
+    cursor: pointer;
+    white-space: nowrap;
+    max-width: 8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .game-switcher-tab[aria-selected="true"] {
+    background: var(--surface-solid);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .game-settings-name {
+    flex: 1;
+    min-width: 0;
+    font: var(--type-title-sm);
+  }
+
+  .game-settings-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+
+  .game-settings-label {
+    margin: var(--space-2) 0 0;
+    font: var(--type-label-sm);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .game-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .game-settings-focus {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: none;
+    padding: 0;
+    text-align: left;
+    color: var(--text);
+    font: var(--type-title-sm);
+    cursor: pointer;
+  }
+
+  .game-settings-focus[aria-pressed="true"] {
+    color: var(--accent);
+  }
+
+  .game-settings-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .game-settings-chip {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface-solid);
+    color: var(--text);
+    padding: var(--space-1) var(--space-3);
+    font: var(--type-label-md);
+    cursor: pointer;
+  }
+
+  .game-settings-chip[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+}

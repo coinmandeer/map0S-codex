@@ -2,6 +2,22 @@ import { expect, test } from "./fixtures/offlineTest";
 import type { Page } from "@playwright/test";
 import { planV1ToV2 } from "@mapos/layer-sdk";
 
+/** Build the initial draft through the same confirmed coordinates as a user. */
+async function createInitialPlan(page: Page) {
+  if (await page.getByTestId("plan-name").count()) return;
+  for (const [index, coordinates] of [
+    [1, "49.7475, 13.3775"],
+    [2, "49.7575, 13.3975"]
+  ] as const) {
+    await page.getByLabel(`Název zastávky ${index}`, { exact: true }).fill(coordinates);
+    await page.getByRole("option", { name: /Použít GPS/ }).click();
+  }
+  await expect(page.getByTestId("plan-name")).toBeVisible();
+  await page.getByLabel("Název zastávky 1", { exact: true }).fill("Start");
+  await page.getByLabel("Název zastávky 2", { exact: true }).fill("Cíl");
+  await page.getByTestId("plan-name").focus();
+}
+
 /** The options section is an accordion, so every option assertion opens it first. */
 async function openMoreOptions(page: Page) {
   await page.getByTestId("plan-options-options").click();
@@ -29,7 +45,7 @@ async function openShareDialog(page: Page, tab: "share" | "export" | "handoff") 
  *  through their own close button. */
 async function closeShareDialog(page: Page) {
   const dialog = page.getByTestId("plan-share-dialog");
-  await dialog.getByRole("button", { name: "Zavřít" }).click();
+  await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toHaveCount(0);
 }
 
@@ -45,10 +61,11 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     const aiRequests: string[] = [];
     page.on("request", (request) => {
       const pathname = new URL(request.url()).pathname;
-      if (/\/(?:ai|cml)(?:\/|$)/.test(pathname)) aiRequests.push(pathname);
+      if (/^\/api\/(?:v2\/)?(?:ai|cml)(?:\/|$)/.test(pathname)) aiRequests.push(pathname);
     });
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
 
     await page.getByTestId("plan-name").fill("Ručně po Španělsku");
     await page.getByLabel("Název zastávky 1").fill("Barcelona");
@@ -58,13 +75,13 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     const expectedDeparture = await page.evaluate(() => new Date("2026-09-18T09:30").toISOString());
     await chooseVehicle(page, "camper");
     await page.getByLabel("Výška m").fill("3.2");
-    await page.getByRole("button", { name: /Bez dálnic/ }).click();
+    await page.getByRole("button", { name: /No motorways/ }).click();
     // §29.3: the fallback is an InfoTip, and it never names a provider or a request parameter.
     await page.getByRole("button", { name: "Podpora profilu trasy" }).click();
     const profileSupport = page.getByTestId("plan-profile-support");
     await expect(profileSupport).toContainText("neumí přímo");
     await expect(profileSupport).not.toContainText("profile=");
-    await profileSupport.getByRole("button", { name: "Zavřít" }).click();
+    await profileSupport.getByRole("button", { name: "Close" }).click();
 
     const routeRequest = page.waitForRequest(
       (request) =>
@@ -144,7 +161,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(page.getByLabel("Datum odjezdu")).toHaveValue("2026-09-18T09:30");
     await expect(page.getByTestId("plan-vehicle")).toContainText("Obytné auto");
     await expect(page.getByLabel("Výška m")).toHaveValue("3.2");
-    await expect(page.getByRole("button", { name: /Bez dálnic/ })).toHaveAttribute(
+    await expect(page.getByRole("button", { name: /No motorways/ })).toHaveAttribute(
       "aria-pressed",
       "true"
     );
@@ -174,6 +191,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await page.getByTestId("mode-planning").click();
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
 
     const options = page.getByTestId("plan-more-options");
     const trigger = page.getByTestId("plan-options-options");
@@ -187,11 +205,11 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
 
     await page.keyboard.press("Tab");
     await expect(page.getByLabel("Datum odjezdu")).toBeFocused();
-    for (const label of ["Rychlá", "Krátká", "Bez dálnic", "Dobrodružná"]) {
+    for (const label of ["Fastest", "Shortest", "No motorways", "Scenic"]) {
       await expect(page.getByRole("button", { name: new RegExp(`^${label}`) })).toBeVisible();
     }
 
-    const adventure = page.getByRole("button", { name: /^Dobrodružná/ });
+    const adventure = page.getByRole("button", { name: /^Scenic/ });
     await adventure.focus();
     await page.keyboard.press("Enter");
     await expect(adventure).toHaveAttribute("aria-pressed", "true");
@@ -283,8 +301,9 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
 
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
     await openMoreOptions(page);
-    await page.getByRole("button", { name: /^Dobrodružná/ }).click();
+    await page.getByRole("button", { name: /^Scenic/ }).click();
 
     // §29.3: the detour limit is a popover on the profile, and the suggestions arrive with the
     // calculated route instead of behind their own section and button.
@@ -293,7 +312,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await page.getByRole("button", { name: "Povolená zajížďka" }).click();
     const detour = page.getByTestId("plan-detour-limit");
     await detour.getByRole("button", { name: "15 %" }).click();
-    await detour.getByRole("button", { name: "Zavřít" }).click();
+    await detour.getByRole("button", { name: "Close" }).click();
     await page.getByTestId("calculate-plan").click();
 
     const candidate = page.getByTestId("adventure-candidate-1");
@@ -304,7 +323,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     const method = page.getByTestId("adventure-method");
     await expect(method).toContainText("0.55 × zajímavost");
     await expect(method).not.toContainText("mapos-adventure-v1");
-    await method.getByRole("button", { name: "Zavřít" }).click();
+    await method.getByRole("button", { name: "Close" }).click();
     await adventure.screenshot({ path: "e2e/screenshots/1440-planning-adventure.png" });
 
     await page.getByTestId("apply-adventure-route").click();
@@ -315,41 +334,25 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     });
   });
 
-  test("bike nabídne CyclOSM bez přepsání ručního podkladu", async ({ page }) => {
+  test("bike nabídne značené cyklotrasy bez přepsání ručního podkladu", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.addInitScript(() => {
-      localStorage.setItem("mapos:basemap", "carto-voyager");
-      localStorage.removeItem("mapos:route-overlay-recommendation");
-    });
+    await page.addInitScript(() => localStorage.setItem("mapos:basemap", "carto-voyager"));
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await page.getByTestId("mode-planning").click();
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
     await openMoreOptions(page);
     await chooseVehicle(page, "bike");
-
-    // §4.5: the cycling map is offered by a toast with an undo after the calculation, not by a
-    // recommendation card — and it never replaces the basemap the user picked.
     await page.getByTestId("calculate-plan").click();
     const toast = page.getByTestId("toast");
-    await expect(toast).toContainText("původní podklad zůstal zachovaný", { timeout: 20_000 });
+    await expect(toast).toContainText("značenými cyklotrasami", { timeout: 20_000 });
     expect(await page.evaluate(() => localStorage.getItem("mapos:basemap"))).toBe("carto-voyager");
+    await toast.getByRole("button", { name: "Zobrazit cyklotrasy" }).click();
     await expect
       .poll(() => new URL(page.url()).searchParams.get("layers") ?? "")
-      .toContain("cyclosm");
-    await page.screenshot({
-      path: "e2e/screenshots/390-planning-bike-map.png",
-      fullPage: false
-    });
-
-    await toast.getByRole("button", { name: "Vrátit" }).click();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get("layers") ?? "")
-      .not.toContain("cyclosm");
-    // The offer is an overlay rather than a basemap swap, so the dismissal is remembered per
-    // route overlay — walking plans reuse the same answer for OpenTopoMap.
-    expect(
-      await page.evaluate(() => localStorage.getItem("mapos:route-overlay-recommendation"))
-    ).toBe("dismissed");
+      .toContain("waymarked-trails");
+    expect(await page.evaluate(() => localStorage.getItem("mapos:basemap"))).toBe("carto-voyager");
+    await page.screenshot({ path: "e2e/screenshots/390-planning-bike-map.png", fullPage: false });
   });
 
   test("porovná a zvolí variantu jednoho segmentu a hned překreslí trasu", async ({ page }) => {
@@ -411,6 +414,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     });
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
     await page.getByTestId("calculate-plan").click();
 
     const first = page.getByTestId("segment-1-alternative-1");
@@ -431,6 +435,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
         serialize?: () => {
           data?: {
             features?: Array<{
+              id?: string;
               properties?: Record<string, unknown>;
               geometry?: { type?: string; coordinates?: unknown[] };
             }>;
@@ -470,6 +475,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
 
     await expect(page.getByLabel("Ruční délka 1")).toBeHidden();
     await page.getByTestId("pick-stop-1").click();
@@ -530,6 +536,45 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(page.getByLabel("Název zastávky 3")).toBeVisible();
   });
 
+  // Panning the whole map under a fixed pin to nominate a place the finger is already on is a
+  // step nobody expects, and it read as "the tap did not register".
+  test("klik do mapy zapíše zastávku hned a schová ostatní vrstvu ovládání", async ({ page }) => {
+    await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
+    await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
+
+    const before = await page.getByLabel("Souřadnice zastávky 1").textContent();
+    await page.getByTestId("pick-stop-1").click();
+    await expect(page.getByTestId("map-picker-host")).toBeVisible();
+    // While a point is being picked the map carries the pick and nothing else.
+    await expect(page.getByTestId("desktop-modebar")).toBeHidden();
+
+    const box = await page.getByTestId("map-container").boundingBox();
+    await page.mouse.click(box!.x + box!.width / 2 + 120, box!.y + box!.height / 2 - 80);
+    await expect(page.getByTestId("map-picker-host")).toHaveCount(0);
+    await expect(page.getByLabel("Souřadnice zastávky 1")).not.toHaveText(before!);
+    await expect(page.getByTestId("desktop-modebar")).toBeVisible();
+  });
+
+  // Planning is about places and the road between them: an automatic departure turned every new
+  // plan into a schedule, complete with a footer timeline nobody asked for.
+  test("nový plán nemá čas ani časovou osu, dokud si o ně uživatel neřekne", async ({ page }) => {
+    await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
+    await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
+
+    await expect(page.locator('[data-footer-kind="timeline"]')).toHaveCount(0);
+    await expect(page.getByTestId("stop-dwell-1")).toHaveCount(0);
+
+    await openMoreOptions(page);
+    await expect(page.getByLabel("Datum odjezdu")).toHaveValue("");
+    const context = page.getByTestId("plan-context-switch");
+    await expect(context).toBeEnabled();
+    await context.click();
+    // Turning the context on is what dates the plan, rather than the date field gating it.
+    await expect(page.getByLabel("Datum odjezdu")).not.toHaveValue("");
+  });
+
   test("souvislá trasa zachová každý skutečný úsek a úsek se vybere přímo v mapě", async ({
     page
   }) => {
@@ -550,9 +595,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
       },
       { now: "2026-09-02T18:00:00.000Z" }
     );
-    await page.addInitScript((plan) => {
-      localStorage.setItem("mapos:active-plan-v2", JSON.stringify(plan));
-    }, mapPlan);
+
     await page.route("**/api/v2/routing/plan", async (route) => {
       const payload = route.request().postDataJSON() as { plan: typeof mapPlan };
       const segments = payload.plan.segments.map((segment, index) => {
@@ -657,6 +700,10 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
 
     await page.goto("/?mode=planning&lng=13.44&lat=49.74&z=12");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await page.evaluate(async (plan) => {
+      const path = "/src/store/mapStore.ts";
+      (await import(path)).getMapStore().setActivePlanDocument(plan);
+    }, mapPlan);
     await page.getByTestId("calculate-plan").click();
     await expect(page.getByTestId("planning-result")).toContainText("3/3", {
       timeout: 20_000
@@ -668,14 +715,14 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     const segmentTemporal = page.getByTestId("segment-2-temporal");
     await expect(segmentTemporal).toContainText("33.4 °C");
     await expect(segmentTemporal).toContainText("Déšť u C");
-    await expect(page.getByTestId("global-timeline")).toContainText("Plán");
+    await expect(page.getByTestId("global-timeline")).toHaveCount(0);
     await openMoreOptions(page);
     await page.getByRole("button", { name: "Co ukáže kontext odjezdu" }).click();
     const contextInfo = page.getByTestId("plan-context-info");
     await expect(contextInfo).toContainText("4/4 zastávek");
     await expect(contextInfo).toContainText("Open-Meteo Forecast API");
     await expect(contextInfo).toContainText("nic se nesimuluje");
-    await contextInfo.getByRole("button", { name: "Zavřít" }).click();
+    await contextInfo.getByRole("button", { name: "Close" }).click();
     await page.getByTestId("segment-2-temporal").screenshot({
       path: "e2e/screenshots/1440-planning-temporal-context.png"
     });
@@ -721,6 +768,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
         serialize?: () => {
           data?: {
             features?: Array<{
+              id?: string;
               properties?: Record<string, unknown>;
               geometry?: { type?: string };
             }>;
@@ -729,7 +777,10 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
       };
       return (source?.serialize?.().data?.features ?? [])
         .filter(
-          (feature) => feature.geometry?.type === "LineString" && feature.properties?.selected
+          (feature) =>
+            feature.geometry?.type === "LineString" &&
+            feature.id !== undefined &&
+            window.__maposMap!.getFeatureState({ source: "route-preview", id: feature.id }).selected
         )
         .map((feature) => feature.properties?.segmentId);
     });
@@ -749,6 +800,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await page.getByTestId("mode-planning").click();
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
     await page.evaluate(() => {
       navigator.geolocation.getCurrentPosition = (_success, failure) => {
         failure?.({
@@ -779,6 +831,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await context.setGeolocation({ longitude: 14.4213, latitude: 50.0874 });
     await page.reload();
     await page.getByTestId("mode-planning").click();
+    await createInitialPlan(page);
     await openStopMenu(page, 1);
     await page.getByTestId("stop-menu-1-locate").click();
     await expect(page.getByLabel("Souřadnice zastávky 1")).toContainText("50.08740, 14.42130", {
@@ -808,9 +861,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
       },
       { now: "2026-09-02T18:00:00.000Z" }
     );
-    await page.addInitScript((plan) => {
-      localStorage.setItem("mapos:active-plan-v2", JSON.stringify(plan));
-    }, largePlan);
+
     const batchSizes: number[] = [];
     await page.route("**/api/v2/routing/plan", async (route) => {
       const payload = route.request().postDataJSON() as {
@@ -856,6 +907,10 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
 
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=12");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await page.evaluate(async (plan) => {
+      const path = "/src/store/mapStore.ts";
+      (await import(path)).getMapStore().setActivePlanDocument(plan);
+    }, largePlan);
     await expect(page.getByTestId("plan-stop-count")).toHaveText("105 / ∞");
     await expect(page.getByRole("combobox", { name: "Název zastávky 1", exact: true })).toHaveValue(
       "Místo 1"
@@ -893,6 +948,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
   test("externí mapy dostanou podporované odkazy bez tichého zahození bodů", async ({ page }) => {
     await page.goto("/?mode=planning&lng=14&lat=50&z=14");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
 
     await openShareDialog(page, "handoff");
     const handoff = page.getByTestId("plan-share-dialog");
@@ -918,6 +974,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     );
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
     const input = page.getByLabel("Název zastávky 1");
 
     await input.fill("49°48′00″N 13°24′00″E");
@@ -976,6 +1033,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     });
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
     await expect(page.getByRole("heading", { name: "Přidat z mapy" })).toHaveCount(0);
 
     await openShareDialog(page, "share");
@@ -1034,6 +1092,7 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     });
     await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+    await createInitialPlan(page);
     await page.getByTestId("plan-name").fill("Sdílený plán na víkend");
     await page.getByTestId("save-plan").click();
     await expect(page.getByTestId("toast")).toContainText("uložený v Moje");
@@ -1121,4 +1180,77 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
       timeout: 20_000
     });
   });
+});
+
+test("late saved-plan hydration preserves a start being entered", async ({ page }) => {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let requested = false;
+  const saved = planV1ToV2({
+    id: "previous-saved-plan",
+    name: "Starší uložený plán",
+    departureAt: "2026-09-01T08:00:00Z",
+    variant: "fast",
+    visibility: "private",
+    vehicle: { profile: "car" },
+    stops: [
+      { id: "a", name: "A", lng: 13.3, lat: 49.7, dwellMinutes: 0 },
+      { id: "b", name: "B", lng: 13.4, lat: 49.8, dwellMinutes: 0 }
+    ]
+  });
+  await page.route("**/api/v2/plans", async (route) => {
+    requested = true;
+    await held;
+    await route.fulfill({ json: { plans: [saved] } });
+  });
+  await page.goto("/?mode=planning");
+  await expect.poll(() => requested).toBe(true);
+  await page.getByLabel("Název zastávky 1", { exact: true }).fill("Rozpracovaný start");
+  const response = page.waitForResponse("**/api/v2/plans");
+  release();
+  await response;
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+  );
+  await expect(page.getByLabel("Název zastávky 1", { exact: true })).toHaveValue(
+    "Rozpracovaný start"
+  );
+  await expect(page.getByTestId("plan-name")).toHaveCount(0);
+});
+
+test("a route response cannot overwrite a newer plan edit", async ({ page }) => {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let requested = false;
+  await page.route("**/api/v2/routing/plan", async (route) => {
+    const { plan } = route.request().postDataJSON();
+    requested = true;
+    await held;
+    await route.fulfill({
+      json: {
+        plan,
+        failedSegmentIds: [],
+        stats: { eligibleSegments: 1, providerCalls: 1, cacheHits: 0, maxConcurrency: 1 }
+      }
+    });
+  });
+  await page.goto("/?mode=planning");
+  await expect(page.getByTestId("planning-panel")).toBeVisible();
+  await createInitialPlan(page);
+  await page.getByTestId("calculate-plan").click();
+  await expect.poll(() => requested).toBe(true);
+  await page.getByTestId("plan-name").fill("Novější úprava");
+  await page.getByLabel("Název zastávky 1", { exact: true }).focus();
+  const response = page.waitForResponse("**/api/v2/routing/plan");
+  release();
+  await response;
+  await expect(page.getByTestId("calculate-plan")).toBeEnabled();
+  await expect(page.getByTestId("plan-name")).toHaveValue("Novější úprava");
 });

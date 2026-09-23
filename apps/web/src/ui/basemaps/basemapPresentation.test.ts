@@ -57,3 +57,11 @@ describe("basemap card presentation", () => {
     assert.equal(hasThemeTwin(basemap({ id: "carto-dark" })), false);
   });
 });
+
+it("Mapy cards use real same-origin Berlin tiles for each mapset", () => {
+  for (const mapset of ["basic", "outdoor", "winter", "aerial"]) {
+    const src = thumbSource(basemap({ id: `mapy-${mapset}`, proxy: { provider: "mapy", mapset } }));
+    assert.ok(src.endsWith(`/mapy/tiles/${mapset}/11/1100/671`));
+    assert.ok(!src.includes("apikey"));
+  }
+});

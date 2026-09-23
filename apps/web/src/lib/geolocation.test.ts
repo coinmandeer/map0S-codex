@@ -178,3 +178,28 @@ test("an insecure origin is reported as such rather than as a plain failure", as
     (globalThis as Record<string, unknown>).window = { isSecureContext: true };
   }
 });
+
+test("watch errors reach interested subscribers without breaking the shared watch", () => {
+  respond = (_success, failure) =>
+    failure({
+      code: 1,
+      PERMISSION_DENIED: 1,
+      POSITION_UNAVAILABLE: 2,
+      TIMEOUT: 3,
+      message: "denied"
+    });
+  const errors: string[] = [];
+  const off = geolocation.watch(
+    () => {},
+    (error) => errors.push(error.kind)
+  );
+  assert.deepEqual(errors, ["denied"]);
+  const lateErrors: string[] = [];
+  const offLate = geolocation.watch(
+    () => {},
+    (error) => lateErrors.push(error.kind)
+  );
+  assert.deepEqual(lateErrors, ["denied"], "late game subscriber sees an earlier platform denial");
+  offLate();
+  off();
+});

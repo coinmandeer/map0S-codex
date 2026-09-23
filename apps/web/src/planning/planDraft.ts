@@ -8,17 +8,23 @@ function draftId(prefix: string): string {
   return `${prefix}-${suffix}`;
 }
 
+/**
+ * A new plan is a list of places, not an appointment.
+ *
+ * It used to open with a departure fifteen minutes out, which was enough to make the plan
+ * "dated": the footer grew a timeline, every segment grew an arrival time, and none of it had
+ * been asked for. Departure is now something you set when you actually care about it — and only
+ * then does the temporal machinery appear.
+ */
 export function createBlankPlanDocument(
   lng: number,
   lat: number,
   now = new Date()
 ): PlanDocumentV2 {
-  const departure = new Date(now.getTime() + 15 * 60_000);
-  departure.setSeconds(0, 0);
   const plan: TripPlan = {
     id: draftId("plan"),
     name: "Nová cesta",
-    departureAt: departure.toISOString(),
+    departureAt: now.toISOString(),
     variant: "fast",
     stops: [
       { id: draftId("start"), name: "Start", lng, lat, dwellMinutes: 0 },
@@ -35,5 +41,5 @@ export function createBlankPlanDocument(
     },
     visibility: "private"
   };
-  return planV1ToV2(plan, { now: now.toISOString() });
+  return { ...planV1ToV2(plan, { now: now.toISOString() }), departureAt: null };
 }

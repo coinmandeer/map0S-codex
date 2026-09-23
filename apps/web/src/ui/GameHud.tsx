@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getMapStore } from "../store/mapStore";
-import { t } from "../i18n/cs";
+import { t } from "../i18n";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { loadOrbXp, persistOrbXp } from "../layers/game/orbsController";
 import {

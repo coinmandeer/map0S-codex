@@ -11,6 +11,7 @@ import { SourceStatus } from "./SourceStatus";
 import { formatDistance } from "../lib/units";
 
 function PlacePhoto({ feature, style }: { feature: GeoFeature; style?: PinStyle }) {
+  const lowData = useMapStoreSnapshot((s) => s.preferences.lowData);
   const directPhoto =
     typeof feature.properties.photo === "string" ? (feature.properties.photo as string) : null;
   const wikidata =
@@ -20,6 +21,10 @@ function PlacePhoto({ feature, style }: { feature: GeoFeature; style?: PinStyle 
   const [resolved, setResolved] = useState<string | null>(directPhoto);
 
   useEffect(() => {
+    if (lowData) {
+      setResolved(null);
+      return;
+    }
     setResolved(directPhoto);
     let cancelled = false;
     void resolvePhotoUrl({ photo: directPhoto, wikidata }).then((url) => {
@@ -28,9 +33,9 @@ function PlacePhoto({ feature, style }: { feature: GeoFeature; style?: PinStyle 
     return () => {
       cancelled = true;
     };
-  }, [wikidata, directPhoto]);
+  }, [wikidata, directPhoto, lowData]);
 
-  if (resolved) {
+  if (resolved && !lowData) {
     return <img className="place-card-photo" src={resolved} loading="lazy" alt="" />;
   }
   return (
@@ -50,6 +55,7 @@ export function PlacesTab() {
   const loadingLayers = useMapStoreSnapshot((s) => s.loadingLayers);
   const view = useMapStoreSnapshot((s) => s.view);
   const searchPending = useMapStoreSnapshot((s) => s.searchHerePending);
+  const lowData = useMapStoreSnapshot((s) => s.preferences.lowData);
   const units = useMapStoreSnapshot((s) => s.preferences.units);
 
   const places = useMemo(() => {
@@ -65,14 +71,15 @@ export function PlacesTab() {
   }, [active, visibleFeatures, view]);
 
   useEffect(() => {
+    if (lowData) return;
     preloadPlacePhotos(
-      places.slice(0, 20).map((p) => ({
+      places.slice(0, 4).map((p) => ({
         photo: typeof p.feature.properties.photo === "string" ? p.feature.properties.photo : null,
         wikidata:
           typeof p.feature.properties.wikidata === "string" ? p.feature.properties.wikidata : null
       }))
     );
-  }, [places]);
+  }, [places, lowData]);
 
   const isLoading = Object.keys(loadingLayers).length > 0;
   const hasActiveLayers = Object.values(active).some((s) => s.visible);

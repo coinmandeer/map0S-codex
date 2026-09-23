@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { getShellStore } from "../store/shellStore";
 import { useShellStoreSnapshot } from "../store/useShellStoreSnapshot";
 import { Icon } from "./kit";
@@ -17,7 +18,7 @@ export function BottomNav() {
   if (!mobile) return null;
 
   return (
-    <nav className="bottom-nav" aria-label="Režim mapy" data-testid="bottom-nav">
+    <nav className="bottom-nav" aria-label={t("topbar.modes")} data-testid="bottom-nav">
       {LAYER_MODES.map((item) => {
         const active = mode === item.id;
         return (

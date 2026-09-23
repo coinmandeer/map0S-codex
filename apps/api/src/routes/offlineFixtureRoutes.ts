@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { WEATHER_MODELS, type WeatherModelId } from "../services/weatherGridService.js";
 
 const WEATHER_VARIABLES = {
   temperature: { label: "Teplota", unit: "°C", vector: false, value: 17 },
@@ -11,6 +12,27 @@ const WEATHER_VARIABLES = {
 } as const;
 
 type WeatherVariable = keyof typeof WEATHER_VARIABLES;
+
+/** A valid 1×1 transparent PNG, so raster layers keep their normal MapLibre lifecycle offline. */
+const TRANSPARENT_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+T0YvWQAAAABJRU5ErkJggg==",
+  "base64"
+);
+
+/** MapTiler weather variables, mirroring the live catalog so the provider toggle is exercisable
+ *  offline. Frames are hourly and dated after the fixture clock so "nearest frame" is stable. */
+const MAPTILER_WEATHER_VARIABLES = [
+  ["temperature-2m:gfs", "Temperature", "c"],
+  ["pressure-msl:gfs", "Pressure", "hPa"],
+  ["precipitation-1h:gfs", "Precipitation", "mm"],
+  ["wind-10m:gfs", "Wind", "ms"],
+  ["radar-composite:gfs", "Radar", "dbz"]
+] as const;
+
+function maptilerFrames(): string[] {
+  const base = Date.UTC(2026, 8, 17, 0, 0, 0);
+  return Array.from({ length: 24 }, (_, index) => new Date(base + index * 3_600_000).toISOString());
+}
 
 function parseBbox(raw: string | undefined): [number, number, number, number] | null {
   const parts = raw?.split(",").map(Number);
@@ -42,12 +64,20 @@ function fixedForecast() {
       license: "synthetic test data"
     },
     climate: {
-      status: "unavailable",
-      normals: [],
-      extremes: [],
-      source: null,
-      gate: "climate-provider-not-configured",
-      reason: "Offline fixture neobsahuje klimatické normály ani historické extrémy."
+      status: "ready",
+      period: "1991-2020",
+      normals: Array.from({ length: 12 }, (_, index) => ({
+        month: index + 1,
+        min: -3 + index,
+        max: 2 + index * 2,
+        samples: 30
+      })),
+      source: {
+        id: "offline-fixture",
+        label: "MapOS offline climate fixture",
+        url: null,
+        license: "synthetic test data"
+      }
     }
   };
 }
@@ -109,11 +139,21 @@ export function registerOfflineFixtureRoutes(app: FastifyInstance) {
     }))
   }));
   app.get<{
-    Querystring: { bbox?: string; variable?: string; cols?: string; rows?: string; at?: string };
+    Querystring: {
+      bbox?: string;
+      variable?: string;
+      cols?: string;
+      rows?: string;
+      at?: string;
+      model?: WeatherModelId;
+    };
   }>("/weather/grid", async (request, reply) => {
     const bbox = parseBbox(request.query.bbox);
     if (!bbox) return reply.code(400).send({ message: "bbox required as w,s,e,n" });
     const variable = request.query.variable ?? "wind";
+    const model = request.query.model ?? "best_match";
+    if (!WEATHER_MODELS.includes(model))
+      return reply.code(400).send({ message: "unknown weather model" });
     if (!(variable in WEATHER_VARIABLES)) {
       return reply.code(400).send({ message: `unknown variable ${variable}` });
     }
@@ -128,6 +168,7 @@ export function registerOfflineFixtureRoutes(app: FastifyInstance) {
     );
     return reply.header("cache-control", "public, max-age=900").send({
       variable: id,
+      model,
       label: fixture.label,
       unit: fixture.unit,
       bbox,
@@ -143,6 +184,107 @@ export function registerOfflineFixtureRoutes(app: FastifyInstance) {
       generatedAt: "2026-09-01T12:00:00.000Z"
     });
   });
+
+  // MapTiler weather, offline: a catalog the provider toggle can read and proxy tiles that keep
+  // the raster source's lifecycle without any upstream call.
+  app.get("/weather/maptiler/catalog", async () => ({
+    variables: MAPTILER_WEATHER_VARIABLES.map(([id, name, unit]) => ({
+      id,
+      name,
+      unit,
+      minzoom: 0,
+      maxzoom: 3,
+      frames: maptilerFrames()
+    }))
+  }));
+  app.get<{
+    Params: { variable: string; frame: string; z: string; x: string; yfile: string };
+  }>("/weather/maptiler/:variable/:frame/:z/:x/:yfile", async (_request, reply) => {
+    reply.type("image/png");
+    return reply.send(TRANSPARENT_PNG);
+  });
+
+  // MeshCore nodes as a keyless data layer (§ keyless sources): points inside whatever bbox the
+  // engine asked for, so the layer renders deterministically in an offline run.
+  app.get<{ Querystring: { bbox?: string } }>("/layers/meshcore/features", async (request) => {
+    const bbox = parseBbox(request.query.bbox) ?? [13, 49, 15, 51];
+    const [west, south, east, north] = bbox;
+    return {
+      type: "FeatureCollection",
+      features: Array.from({ length: 3 }, (_, index) => {
+        const t = (index + 1) / 4;
+        return {
+          type: "Feature" as const,
+          geometry: {
+            type: "Point" as const,
+            coordinates: [west + (east - west) * t, south + (north - south) * t]
+          },
+          properties: {
+            id: `meshcore:fixture-${index}`,
+            name: `MeshCore ${index}`,
+            layerId: "meshcore",
+            category: "meshcore",
+            role: "repeater",
+            relayCount24h: 10 + index
+          }
+        };
+      })
+    };
+  });
+
+  app.get<{ Querystring: { lng?: string; lat?: string; radiusKm?: string } }>(
+    "/game/quests/near",
+    async (request, reply) => {
+      const lng = Number(request.query.lng);
+      const lat = Number(request.query.lat);
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+        return reply.code(400).send({ message: "lng and lat required" });
+      }
+      return {
+        quests: [
+          {
+            id: "offline:quest:1",
+            zoneId: null,
+            title: "Prozkoumej okolí",
+            description: "Syntetický quest pro offline testy.",
+            rewardPoints: 25,
+            lng,
+            lat,
+            sourceId: "offline-fixture",
+            sourceLabel: "MapOS offline fixture",
+            anchorName: "Offline kotva",
+            distanceM: 120
+          }
+        ]
+      };
+    }
+  );
+
+  app.get<{ Querystring: { bbox?: string; year?: string } }>(
+    "/info/population/area",
+    async (request, reply) => {
+      const values = (request.query.bbox ?? "").split(",").map((value) => Number(value.trim()));
+      if (values.length !== 4 || !values.every(Number.isFinite)) {
+        return reply.code(400).send({ message: "bbox musí být west,south,east,north" });
+      }
+      return {
+        status: "ready",
+        totalPopulation: 12345.6,
+        unit: "people",
+        year: 2020,
+        dataset: "wpgppop",
+        coverage: "global-land",
+        source: {
+          id: "worldpop",
+          label: "WorldPop (wpgppop) — offline fixture",
+          url: "https://www.worldpop.org/",
+          license: "CC-BY-4.0",
+          citation: "Offline fixture",
+          resolution: "100 m grid"
+        }
+      };
+    }
+  );
 
   app.get<{ Querystring: { qid?: string; title?: string } }>(
     "/info/wikipedia",
@@ -190,23 +332,40 @@ export function registerOfflineFixtureRoutes(app: FastifyInstance) {
       return reply.code(404).send({ message: "Geology not present in offline fixtures" });
     }
   );
-  app.get<{ Querystring: { lng?: string; lat?: string; name?: string } }>(
-    "/info/brief",
-    async (request, reply) => {
-      if (
-        !Number.isFinite(Number(request.query.lng)) ||
-        !Number.isFinite(Number(request.query.lat))
-      ) {
-        return reply.code(400).send({ message: "lng and lat required" });
-      }
-      return {
-        text: `${request.query.name?.trim() || "Toto místo"} je součástí syntetické offline testovací oblasti.`,
-        model: "offline-fixture",
-        nearby: [],
-        attribution: "MapOS offline fixture"
-      };
+  app.get<{
+    Querystring: {
+      lng?: string;
+      lat?: string;
+      name?: string;
+      layerId?: string;
+      layerName?: string;
+      facts?: string;
+    };
+  }>("/info/brief", async (request, reply) => {
+    if (
+      !Number.isFinite(Number(request.query.lng)) ||
+      !Number.isFinite(Number(request.query.lat))
+    ) {
+      return reply.code(400).send({ message: "lng and lat required" });
     }
-  );
+    // The fixture echoes what made the request pin-specific, so a test can tell a summary of
+    // this pin from a summary of its coordinates without reaching a model.
+    const facts = request.query.facts?.split("|").filter(Boolean) ?? [];
+    const layer = request.query.layerName?.trim() || request.query.layerId?.trim();
+    return {
+      text: [
+        `${request.query.name?.trim() || "This place"} is part of a synthetic offline test area.`,
+        layer ? `Layer: ${layer}.` : null,
+        facts.length ? `Fields: ${facts.join(", ")}.` : null
+      ]
+        .filter(Boolean)
+        .join(" "),
+      model: "offline-fixture",
+      nearby: [],
+      attribution: "MapOS offline fixture",
+      citations: [{ sourceId: "offline-fixture", label: "MapOS offline fixture" }]
+    };
+  });
   app.get<{ Querystring: { fsqId?: string } }>("/info/foursquare", async (request, reply) => {
     if (!request.query.fsqId?.trim()) return reply.code(400).send({ message: "fsqId required" });
     return reply.code(404).send({ message: "Venue not present in offline fixtures" });

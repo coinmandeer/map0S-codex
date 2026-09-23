@@ -23,7 +23,6 @@ test.describe("source-grounded shell enhancements", () => {
           document.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!.getBoundingClientRect();
         const command = rect("command-center");
         const search = rect("place-search");
-        const modes = document.querySelector<HTMLElement>(".chrome-modes")!.getBoundingClientRect();
         const settings = rect("settings-btn");
         const utility = rect("utility-rail");
         const panel = rect("planning-panel");
@@ -31,11 +30,7 @@ test.describe("source-grounded shell enhancements", () => {
           commandCentre: command.left + command.width / 2,
           // §3.1: centred over the strip between the panel and the rail, not over the window.
           mapStripCentre: (panel.right + utility.left) / 2,
-          rowCentres: [
-            search.top + search.height / 2,
-            modes.top + modes.height / 2,
-            settings.top + settings.height / 2
-          ],
+          rowCentres: [search.top + search.height / 2, settings.top + settings.height / 2],
           commandLeft: command.left,
           commandRight: command.right,
           panelRight: panel.right,
@@ -62,7 +57,7 @@ test.describe("source-grounded shell enhancements", () => {
     expect(layout.panelTop).toBe(0);
     expect(layout.panelHeight).toBe(layout.viewportHeight);
 
-    await page.getByTestId("planning-panel").getByRole("button", { name: "Zavřít" }).click();
+    await page.getByTestId("planning-panel").getByRole("button", { name: "Close" }).click();
     await expect(page.getByTestId("hamburger-btn")).toBeVisible();
   });
 
@@ -71,6 +66,7 @@ test.describe("source-grounded shell enhancements", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const modes = [
       ["personal", "personal-panel"],
+      ["feed", "feed-panel"],
       ["discover", "discover-panel"],
       ["planning", "planning-panel"],
       ["game", "game-panel"]
@@ -104,7 +100,7 @@ test.describe("source-grounded shell enhancements", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/?mode=planning");
     const panel = page.getByTestId("planning-panel");
-    const grabber = page.getByRole("slider", { name: "Výška panelu" });
+    const grabber = page.getByRole("slider", { name: "Panel height" });
     // §21.2: an empty Plánování opens half so the map stays in view.
     await expect(panel).toHaveAttribute("data-snap", "half");
 
@@ -129,7 +125,7 @@ test.describe("source-grounded shell enhancements", () => {
     await grabber.click();
     await expect(panel).toHaveAttribute("data-snap", "full");
 
-    await panel.getByRole("button", { name: "Zavřít" }).click();
+    await panel.getByRole("button", { name: "Close" }).click();
     await expect(panel).toHaveCount(0);
     await expect(page.getByTestId("hamburger-btn")).toBeVisible();
   });
@@ -140,7 +136,7 @@ test.describe("source-grounded shell enhancements", () => {
     await page.setViewportSize({ width: 900, height: 900 });
     await page.goto("/?mode=planning");
     await expect(page.getByTestId("bottom-nav")).toHaveCount(0);
-    await expect(page.locator(".chrome-modes")).toBeVisible();
+    await expect(page.getByTestId("desktop-modebar")).toBeVisible();
     await expect(page.getByTestId("planning-panel")).not.toHaveAttribute("data-snap");
     const desktopGap = await page.evaluate(() => {
       const command = document
@@ -155,7 +151,7 @@ test.describe("source-grounded shell enhancements", () => {
 
     await page.setViewportSize({ width: 899, height: 900 });
     await expect(page.getByTestId("bottom-nav")).toBeVisible();
-    await expect(page.locator(".chrome-modes")).toHaveCount(0);
+    await expect(page.getByTestId("desktop-modebar")).toHaveCount(0);
     await expect(page.getByTestId("planning-panel")).toHaveAttribute("data-snap", "half");
     // The brief drops the wordmark on a phone; the search field owns the row instead.
     await expect(page.getByTestId("brand-pill")).toHaveCount(0);
@@ -189,7 +185,7 @@ test.describe("source-grounded shell enhancements", () => {
     await page.goto("/?mode=planning");
     await page.getByTestId("plan-name").fill("Starý rozpracovaný plán");
     await page.getByTestId("mode-personal").click();
-    await page.getByText("Uložené plány", { exact: true }).click();
+    await page.getByText("Plans", { exact: true }).click();
     await page.getByTestId("new-plan").click();
 
     await expect(page.getByTestId("planning-panel")).toBeVisible();
@@ -203,7 +199,7 @@ test.describe("source-grounded shell enhancements", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=planning");
-    const resizer = page.getByRole("separator", { name: "Šířka levého panelu" });
+    const resizer = page.getByRole("separator", { name: "Left panel width" });
     await expect(resizer).toHaveAttribute("aria-valuenow", "360");
     await expect(resizer).toHaveAttribute("aria-valuemin", "320");
     await expect(resizer).toHaveAttribute("aria-valuemax", "480");
@@ -238,7 +234,7 @@ test.describe("source-grounded shell enhancements", () => {
       .toBe("336");
 
     await page.reload();
-    await expect(page.getByRole("separator", { name: "Šířka levého panelu" })).toHaveAttribute(
+    await expect(page.getByRole("separator", { name: "Left panel width" })).toHaveAttribute(
       "aria-valuenow",
       "336"
     );
@@ -263,22 +259,21 @@ test.describe("source-grounded shell enhancements", () => {
     await expect(badge).toHaveAttribute("data-thematic-count", "0");
 
     await page.getByTestId("layers-btn").click();
-    await page.getByTestId("layers-accordion-weather").click();
+    await page.getByTestId("layer-filter-btn-weather").click();
     await page.locator('label:has([data-testid="weather-visualization-temperature"])').click();
     await expect(badge).toHaveText("2");
     await expect(badge).toHaveAttribute("data-poi-count", "1");
     await expect(badge).toHaveAttribute("data-thematic-count", "1");
-    await expect(page.getByTestId("layers-btn")).toHaveAccessibleName(
-      /2 aktivní: 1 POI, 1 tematické/
-    );
+    await expect(page.getByTestId("layers-btn")).toHaveAccessibleName(/2 on: 1 POI, 1 thematic/);
 
+    await page.keyboard.press("Escape");
     const basemapButton = page.getByTestId("basemap-btn");
-    await expect(basemapButton).toHaveAccessibleName("Mapové podklady: CARTO Voyager");
+    await expect(basemapButton).toHaveAccessibleName("Map basemaps: CARTO Voyager");
     await expect(page.getByTestId("basemap-current-label")).toHaveText("CARTO Voyager");
     await basemapButton.click();
     await page.getByTestId("basemap-openfreemap-positron").click();
-    await expect(basemapButton).toHaveAccessibleName("Mapové podklady: OpenFreeMap Positron");
-    await expect(basemapButton).toHaveAttribute("title", "Mapové podklady: OpenFreeMap Positron");
+    await expect(basemapButton).toHaveAccessibleName("Map basemaps: OpenFreeMap Positron");
+    await expect(basemapButton).toHaveAttribute("title", "Map basemaps: OpenFreeMap Positron");
     // 14 code points is the budget §3.1 gives the label; the tooltip carries the full name.
     await expect(page.getByTestId("basemap-current-label")).toHaveText("OpenFreeMap P…");
   });
@@ -303,26 +298,24 @@ test.describe("source-grounded shell enhancements", () => {
     await expect(world).toHaveAttribute("data-closed", "");
     await page.getByTestId("layers-accordion-world").click();
     await expect(page.getByTestId("layer-source-osm")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "POI vrstvy", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "POI layers", exact: true })).toBeVisible();
     await expect(page.getByText("Integrace", { exact: true })).toHaveCount(0);
 
     await page.getByTestId("preset-day-trip").click();
-    const categories = page.getByTestId("category-accordion");
-    await expect(categories).toContainText("10");
-    await expect(categories).toContainText("Výlet");
-    await page.getByTestId("layers-accordion-categories").click();
+    await page.getByTestId("layer-filter-btn-osm-poi").click();
+    await page.getByTestId("category-groups-food").click();
     await page.getByTestId("filter-brewery").click();
-    await expect(categories).toContainText("11");
-    await expect(categories).toContainText("Vlastní výběr");
-
+    await expect(page.getByTestId("filter-brewery")).toHaveAttribute("aria-pressed", "true");
     await page.reload();
     await page.getByTestId("layers-btn").click();
-    await expect(page.getByTestId("category-accordion")).toContainText("11");
-    await expect(page.getByTestId("category-accordion")).toContainText("Vlastní výběr");
+    await page.getByTestId("layer-filter-btn-osm-poi").click();
+    await page.getByTestId("category-groups-food").click();
+    await expect(page.getByTestId("filter-brewery")).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Escape");
 
     await page.getByTestId("basemap-btn").click();
     const accordions = page.locator(".basemap-accordion");
-    await expect(accordions).toHaveCount(3);
+    await expect(accordions).toHaveCount(4);
     const basemapCards = page.locator(".basemap-card");
     const previewCount = await page.locator(".basemap-preview").count();
     expect(previewCount).toBe(await basemapCards.count());
@@ -336,7 +329,7 @@ test.describe("source-grounded shell enhancements", () => {
       await accordions.evaluateAll((elements) =>
         elements.map((element) => element.getAttribute("data-basemap-group"))
       )
-    ).toEqual(["street", "satellite", "terrain"]);
+    ).toEqual(["street", "outdoor", "satellite", "terrain"]);
     const street = page.locator('[data-basemap-group="street"]');
     const streetTrigger = page.getByTestId("basemap-group-street");
     await expect(street).toHaveAttribute("data-open", "true");
@@ -349,9 +342,9 @@ test.describe("source-grounded shell enhancements", () => {
     await page.getByTestId("right-utility-close").click();
     await page.getByTestId("settings-btn").click();
     await expect(
-      page.getByTestId("right-utility-drawer").getByText("Mapa", { exact: true })
+      page.getByTestId("right-utility-drawer").getByText("Layers", { exact: true })
     ).toBeVisible();
-    await expect(page.getByText("Mapové podklady", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Map basemaps", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Tiles", { exact: true })).toHaveCount(0);
   });
 
@@ -379,7 +372,7 @@ test.describe("source-grounded shell enhancements", () => {
     await page.getByTestId("layers-btn").click();
 
     const legends = page.getByTestId("legend-stack");
-    await expect(legends).toContainText("2 legendy");
+    await expect(legends).toContainText("2 legends");
     const expand = page.getByTestId("legend-expand");
     await expect(expand).toHaveAttribute("aria-expanded", "false");
     await expand.focus();

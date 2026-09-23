@@ -7,7 +7,12 @@ export type LeftContext =
   | { type: "mode"; mode: AppMode }
   /** The map-wide AI conversation (§4.13). Its own context rather than a mode, because it can
    *  be opened from search or a panel and returns there when closed. */
-  | { type: "ai"; prompt?: string }
+  | {
+      type: "ai";
+      prompt?: string;
+      requestKey?: string;
+      featureRef?: { layerId: string; featureId: string };
+    }
   | {
       type: "feature";
       featureRef: { layerId: string; featureId: string };
@@ -39,8 +44,24 @@ export interface ShellSurfaceSnapshot {
   legacySheet: SheetType;
 }
 
+/**
+ * Which footer trays the reader has rolled up.
+ *
+ * Deliberately not part of `activeLayers`: hiding a legend is not switching a layer off, and
+ * the two were conflated in the first pass — a reader who wanted the map back had to turn the
+ * theme off and then remember to turn it on again. Also deliberately not a surface snapshot,
+ * so browser-back does not un-minimise a tray somebody rolled up three pans ago.
+ */
+export interface FooterUiState {
+  legend: boolean;
+  timeline: boolean;
+}
+
+export type MinimizableFooterKind = keyof FooterUiState;
+
 export interface ShellState extends ShellSurfaceSnapshot {
   footerContributions: FooterContributionState[];
+  footerMinimized: FooterUiState;
   /** Serializable surface snapshots used by Escape/browser-back. */
   history: ShellSurfaceSnapshot[];
 }
@@ -58,6 +79,7 @@ export type ShellAction =
   | { type: "close-map-picker" }
   | { type: "register-footer"; contribution: FooterContributionState }
   | { type: "unregister-footer"; id: string }
+  | { type: "minimize-footer"; kind: MinimizableFooterKind; minimized: boolean }
   | { type: "back" }
   | {
       type: "source-sync";
@@ -99,6 +121,7 @@ export function createShellState(input: {
     mapPicker: { type: "closed" },
     legacySheet: input.legacySheet,
     footerContributions: [],
+    footerMinimized: { legend: false, timeline: false },
     history: []
   };
 }
@@ -262,6 +285,13 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
       return footerContributions.length === state.footerContributions.length
         ? state
         : { ...state, footerContributions };
+    }
+    case "minimize-footer": {
+      if (state.footerMinimized[action.kind] === action.minimized) return state;
+      return {
+        ...state,
+        footerMinimized: { ...state.footerMinimized, [action.kind]: action.minimized }
+      };
     }
     case "source-sync":
       return sourceSyncedState(state, action);

@@ -1,3 +1,6 @@
+import { addDiscoveredPlace } from "../info/appendDiscoveredPlace";
+import { OverviewView } from "./ai/OverviewView";
+import { useStatistics, showStatistics } from "../statistics/explorerStore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { featureAnchor, type GuideItem } from "@mapos/layer-sdk";
 import {
@@ -6,16 +9,15 @@ import {
   type DiscoverViewport
 } from "../discover/context";
 import { discoverMapFeatures } from "../discover/mapFeatures";
+import { weatherLayerId } from "../layers/weather/controls";
 import {
   StableViewportController,
   type StableViewportState
 } from "../discover/StableViewportController";
 import { discoverBoundaryBbox } from "../discover/boundary";
 import { EventExplorerPanel } from "../events/EventExplorerPanel";
-import { addPlaceToPlanDocument } from "../info/placePlanAction";
 import { apiGet } from "../lib/api";
 import { emit, on } from "../lib/events";
-import { createBlankPlanDocument } from "../planning/planDraft";
 import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { taskRegistry } from "../tasks/TaskRegistry";
@@ -23,7 +25,6 @@ import { PanelShell } from "./PanelShell";
 import {
   Accordion,
   Button,
-  Icon,
   Chip,
   EmptyState,
   IconButton,
@@ -45,6 +46,7 @@ import {
   discoverRegionLevelLabel,
   formatStatisticValue
 } from "./discover/discoverModel";
+import { intlLocale, t } from "../i18n";
 
 const INITIAL_STATE: StableViewportState<DiscoverContext> = {
   status: "idle",
@@ -240,11 +242,19 @@ function DiscoverWeather({
  *  invents data — a block whose source returned nothing is not rendered at all.
  */
 export function DiscoverPanel() {
+  const overviewArea = useMapStoreSnapshot((state) => state.areaSelection);
+  const overviewAi = useMapStoreSnapshot((state) => state.preferences.aiEnabled);
+
   const store = getMapStore();
   const open = useMapStoreSnapshot((state) => state.sidebarOpen);
+  const statistics = useStatistics();
   const mode = useMapStoreSnapshot((state) => state.mode);
   const view = useMapStoreSnapshot((state) => state.view);
   const activeLayers = useMapStoreSnapshot((state) => state.activeLayers);
+  const statisticsOn = Object.entries(activeLayers).some(
+    ([id, s]) => id.startsWith("theme-") && s.visible
+  );
+
   const activePresetId = useMapStoreSnapshot((state) => state.activePresetId);
   const visibleFeatures = useMapStoreSnapshot((state) => state.visibleFeatures);
   const [mapViewport, setMapViewport] = useState<DiscoverViewport | null>(null);
@@ -252,7 +262,10 @@ export function DiscoverPanel() {
     useState<StableViewportState<DiscoverContext>>(INITIAL_STATE);
   const [openSections, setOpenSections] = useState<string[]>(["guide"]);
   const [weatherSummary, setWeatherSummary] = useState<string | null>(null);
-  const [highlightBoundary, setHighlightBoundary] = useState(true);
+  // One shared switch with the map's Borders control: both drive `boundariesEnabled`, so turning
+  // borders off anywhere turns them off everywhere — including these discover-regions layers.
+  const highlightBoundary = useMapStoreSnapshot((state) => state.boundariesEnabled);
+  const setHighlightBoundary = (next: boolean) => store.setBoundariesEnabled(next);
   const controllerRef = useRef<StableViewportController<DiscoverContext> | null>(null);
   const contextTaskIdRef = useRef<string | null>(null);
   const latestViewportRef = useRef<DiscoverViewport | null>(null);
@@ -269,9 +282,11 @@ export function DiscoverPanel() {
     () => ({
       ...(mapViewport ?? view),
       activeLayerIds,
+      areaId: overviewArea?.id,
+      boundaryRevision: overviewArea?.revision,
       useCase: activePresetId ?? "discover"
     }),
-    [activeLayerIds, activePresetId, mapViewport, view]
+    [activeLayerIds, activePresetId, mapViewport, view, overviewArea]
   );
   const mapFeatures = useMemo(
     () => discoverMapFeatures(activeLayers, visibleFeatures, view),
@@ -367,12 +382,12 @@ export function DiscoverPanel() {
   useEffect(() => {
     const controller = controllerRef.current;
     if (!controller) return;
-    if (!open || mode !== "discover") {
+    if (!open || mode !== "discover" || statistics.open) {
       controller.pause();
       return;
     }
     controller.observe(viewport);
-  }, [mode, open, viewport]);
+  }, [mode, open, viewport, statistics.open]);
 
   const context = contextState.data;
 
@@ -390,6 +405,7 @@ export function DiscoverPanel() {
   useEffect(() => {
     if (
       mode !== "discover" ||
+      statisticsOn ||
       !highlightBoundary ||
       (!context?.boundary.geometry && !context?.regionCatalogue?.regions.length)
     ) {
@@ -425,10 +441,29 @@ export function DiscoverPanel() {
     emit("discover-geojson", {
       geojson: {
         type: "FeatureCollection",
-        features
+        // Hover highlighting is per feature, and MapLibre keys feature state by a numeric id,
+        // which GeoJSON regions do not carry — so the position in this list becomes the id.
+        features: features.map((feature, index) => ({ ...feature, id: index + 1 }))
       }
     });
-  }, [context, highlightBoundary, mode]);
+  }, [context, highlightBoundary, mode, statisticsOn]);
+
+  // The map asks the question and the panel answers it: the chip only makes sense while the
+  // discover panel is open, and it refreshes the context for wherever the map is now centred.
+  useEffect(() => {
+    const active = mode === "discover" && open;
+    document.documentElement.toggleAttribute("data-discover-here", active);
+    return () => document.documentElement.removeAttribute("data-discover-here");
+  }, [mode, open]);
+
+  useEffect(
+    () =>
+      on("discover-here", () => {
+        const current = latestViewportRef.current;
+        if (current) void controllerRef.current?.refresh({ ...current });
+      }),
+    []
+  );
 
   useEffect(
     () =>
@@ -467,22 +502,13 @@ export function DiscoverPanel() {
     store.openSheet("wizard");
   };
 
-  const addCentreToPlan = () => {
-    const document = store.activePlanDocument ?? createBlankPlanDocument(view.lng, view.lat);
-    const name = context?.region?.name ?? `${view.lat.toFixed(4)}, ${view.lng.toFixed(4)}`;
-    try {
-      store.setActivePlanDocument(
-        addPlaceToPlanDocument(
-          document,
-          { id: `discover-${Date.now()}`, name, lng: view.lng, lat: view.lat },
-          (prefix) => `${prefix}-${document.stops.length}-${Date.now()}`
-        )
-      );
-      store.showToast(`${name} přidáno do plánu`);
-    } catch {
-      store.showToast("Plán už má maximum zastávek");
-    }
-  };
+  const addCentreToPlan = () =>
+    addDiscoveredPlace({
+      id: `coordinate:${view.lng},${view.lat}`,
+      name: `${view.lat.toFixed(4)}, ${view.lng.toFixed(4)}`,
+      lng: view.lng,
+      lat: view.lat
+    });
 
   const zoomToLevel = (level: string) => {
     const zooms: Record<string, number> = {
@@ -514,11 +540,9 @@ export function DiscoverPanel() {
   const guideSources = [
     ...new Set(
       [
-        ...(
-          guide?.highlights.flatMap((highlight) => highlight.sourceIds) ??
-          context?.synthesis?.sourceIds ??
-          []
-        ).map((id) => sourceLabel([id])),
+        ...(guide?.leadSourceIds ?? context?.synthesis?.sourceIds ?? []).map((id) =>
+          sourceLabel([id])
+        ),
         context?.guide?.attribution
       ].filter((value): value is string => Boolean(value))
     )
@@ -654,8 +678,8 @@ export function DiscoverPanel() {
         lng={viewport.lng}
         lat={viewport.lat}
         active={openSections.includes("weather")}
-        onMap={Boolean(activeLayers.weather?.visible)}
-        onToggleMap={() => store.toggleLayer("weather")}
+        onMap={Boolean(activeLayers[weatherLayerId("radar")]?.visible)}
+        onToggleMap={() => store.toggleLayer(weatherLayerId("radar"))}
         onSummary={setWeatherSummary}
       />
     )
@@ -668,28 +692,38 @@ export function DiscoverPanel() {
       icon: "bar_chart",
       testId: "discover-statistics",
       children: (
-        <dl className="discover-stats">
-          {context.statistics.map((statistic) => (
-            <div key={statistic.id} data-testid={`discover-statistic-${statistic.id}`}>
-              <dt>{statistic.label}</dt>
-              <dd>
-                {formatStatisticValue(statistic.value, statistic.unit)}
-                <InfoTip title={statistic.label}>
-                  {[
-                    `${statistic.scope.regionName} · ${discoverRegionLevelLabel(statistic.scope.level)}`,
-                    statistic.year ? `rok ${statistic.year}` : null,
-                    statistic.uncertaintyLabel,
-                    sourceLabel(statistic.sourceIds)
-                      ? `zdroj: ${sourceLabel(statistic.sourceIds)}`
-                      : null
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </InfoTip>
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <>
+          <Button variant="text" icon="bar_chart" onClick={() => showStatistics(true)}>
+            Otevřít datový explorer
+          </Button>
+          <dl className="discover-stats">
+            {context.statistics.map((statistic) => (
+              <div key={statistic.id} data-testid={`discover-statistic-${statistic.id}`}>
+                <dt>{statistic.label}</dt>
+                <dd>
+                  {formatStatisticValue(statistic.value, statistic.unit)}
+                  <InfoTip title={statistic.label}>
+                    {[
+                      `${statistic.scope.regionName} · ${discoverRegionLevelLabel(statistic.scope.level)}`,
+                      statistic.year ? `rok ${statistic.year}` : null,
+                      statistic.uncertaintyLabel,
+                      sourceLabel(statistic.sourceIds)
+                        ? `zdroj: ${sourceLabel(statistic.sourceIds)}`
+                        : null
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </InfoTip>
+                </dd>
+                <dd className="discover-stat-scope">
+                  {statistic.uncertainty === "selected-area" ? "Vybraná oblast" : "Širší region"}:{" "}
+                  {statistic.scope.regionName}
+                  {statistic.year ? ` · ${statistic.year}` : ""}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </>
       )
     });
   }
@@ -772,7 +806,11 @@ export function DiscoverPanel() {
                   testId={`discover-region-option-${candidate.code}`}
                   icon="public"
                   title={candidate.name}
-                  subtitle={`${candidate.code} · NUTS ${candidate.nutsLevel}`}
+                  subtitle={
+                    candidate.nutsLevel === "lau"
+                      ? t("discover.regionMunicipality")
+                      : `${candidate.code} · NUTS ${candidate.nutsLevel}`
+                  }
                   onClick={() => {
                     const bbox = discoverBoundaryBbox(candidate.geometry);
                     if (!bbox) return;
@@ -805,7 +843,7 @@ export function DiscoverPanel() {
               </a>
               <span>
                 {source.license ? `${source.license} · ` : ""}
-                načteno {new Date(source.fetchedAt).toLocaleDateString("cs-CZ")}
+                načteno {new Date(source.fetchedAt).toLocaleDateString(intlLocale())}
               </span>
             </li>
           ))}
@@ -816,18 +854,6 @@ export function DiscoverPanel() {
 
   return (
     <>
-      <div
-        className="discover-context-pin"
-        data-testid="discover-context-pin"
-        data-identified={context?.region ? true : undefined}
-        aria-hidden="true"
-      >
-        <Icon
-          name={context?.region ? "place" : "help"}
-          size={20}
-          filled={Boolean(context?.region)}
-        />
-      </div>
       <PanelShell
         title="Objevuj"
         testId="discover-panel"
@@ -845,8 +871,23 @@ export function DiscoverPanel() {
         }
       >
         <div className="discover-stack" data-testid="discover-context">
+          {overviewArea && (
+            <OverviewView
+              key={overviewArea.id}
+              request={{
+                target: {
+                  type: "area",
+                  areaId: overviewArea.id,
+                  boundaryRevision: overviewArea.revision
+                },
+                language: "cs",
+                consent: { externalModel: overviewAi }
+              }}
+              localFacts={overviewArea.name}
+            />
+          )}
           <header className="discover-hero">
-            <span className="kit-eyebrow">Střed mapy</span>
+            <span className="kit-eyebrow">{overviewArea ? "Vybraná oblast" : "Střed mapy"}</span>
             <h2 className="discover-hero-title">
               {context?.region?.name ?? "Neidentifikovaná oblast"}
               {contextState.status === "loading" && !context && (
@@ -869,18 +910,6 @@ export function DiscoverPanel() {
               <p className="discover-facts">{discoverFactLine(context, placeMapFeatures.length)}</p>
             )}
             <div className="discover-actions">
-              <Button
-                variant="text"
-                size="sm"
-                icon="auto_awesome"
-                testId="discover-here"
-                disabled={contextState.status === "loading"}
-                onClick={() =>
-                  void controllerRef.current?.refresh({ ...viewport, allowModelFallback: true })
-                }
-              >
-                Zjistit co je tady
-              </Button>
               <Button
                 variant="text"
                 size="sm"

@@ -20,3 +20,7 @@ apps/web/public/models/
 # Anchored so the tracked redesign ledger in docs/plans/progress.md is not swept up with it.
 /progress.md
 *.tsbuildinfo
+
+# Reproducible validation writes evidence here; summaries belong in docs/releases.
+/.cache/
+/output/

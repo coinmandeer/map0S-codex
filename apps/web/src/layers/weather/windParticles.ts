@@ -12,7 +12,7 @@
 import type maplibregl from "maplibre-gl";
 import { sampleGrid, type WeatherGrid } from "./grid";
 
-const PARTICLE_DENSITY = 1 / 7000; // particles per CSS pixel of map area
+const PARTICLE_DENSITY = 1 / 2200; // particles per CSS pixel of map area
 const MAX_PARTICLES = 2200;
 const MIN_PARTICLES = 220;
 /** Particle lifetime in frames; respawning keeps trails from collapsing into stagnation points. */
@@ -96,17 +96,18 @@ export function createWindParticles(map: maplibregl.Map): WindParticleOverlay {
     const east = map.project([at.lng + 0.01, at.lat]);
     const north = map.project([at.lng, at.lat + 0.01]);
     const origin = map.project([at.lng, at.lat]);
-    const pxPerDegLng = (east.x - origin.x) / 0.01;
-    const pxPerDegLat = (north.y - origin.y) / 0.01;
-
     const metersPerDegLat = 111_320;
     const metersPerDegLng = metersPerDegLat * Math.max(0.1, Math.cos((at.lat * Math.PI) / 180));
-
-    return {
-      dx: ((u / metersPerDegLng) * pxPerDegLng * SPEED_SCALE) / 60,
-      dy: ((v / metersPerDegLat) * pxPerDegLat * SPEED_SCALE) / 60,
-      speed: Math.hypot(u, v)
-    };
+    // Use both projected axes so direction remains correct on rotated maps. Normalize the
+    // display speed: geographically literal motion is invisible at a continental zoom.
+    const dx =
+      (u / metersPerDegLng) * (east.x - origin.x) + (v / metersPerDegLat) * (north.x - origin.x);
+    const dy =
+      (u / metersPerDegLng) * (east.y - origin.y) + (v / metersPerDegLat) * (north.y - origin.y);
+    const length = Math.hypot(dx, dy);
+    const speed = Math.hypot(u, v);
+    const step = Math.min(80, speed * SPEED_SCALE) / 60;
+    return { dx: length ? (dx / length) * step : 0, dy: length ? (dy / length) * step : 0, speed };
   }
 
   function strokeFor(speed: number): string {
@@ -137,7 +138,7 @@ export function createWindParticles(map: maplibregl.Map): WindParticleOverlay {
         continue;
       }
       const nextX = p.x + velocity.dx;
-      const nextY = p.y - velocity.dy; // screen y grows downward, northward wind goes up
+      const nextY = p.y + velocity.dy; // project() already returns screen-space direction
 
       if (p.age < MAX_AGE && nextX >= 0 && nextX <= width && nextY >= 0 && nextY <= height) {
         ctx.strokeStyle = strokeFor(velocity.speed);

@@ -1,3 +1,5 @@
+import type { OverviewService } from "./overviewService.js";
+import type { ConversationPersistence } from "./conversationPersistence.js";
 /**
  * `POST /v2/ai/chat` behind one service (§30.3, §30.4).
  *
@@ -52,6 +54,7 @@ const SELECT_LAYERS_TOOL = "select_layers";
 /** What the browser knows about the current view. The server re-derives everything it acts on:
  *  a layer id here is a request, and the projection decides whether it is granted. */
 export interface AiChatContext {
+  worldId?: string;
   mapCenter: { longitude: number; latitude: number };
   bbox?: Bbox;
   zoom: number;
@@ -61,6 +64,8 @@ export interface AiChatContext {
   planId?: string;
   featureRef?: { layerId: string; featureId: string };
   regionRef?: string;
+  /** Resolved by the HTTP boundary, not a client-supplied place name. */
+  areaRef?: { areaId: string; boundaryRevision: string };
 }
 
 export interface AiChatConsent {
@@ -149,7 +154,20 @@ export interface AiChatFactsCard {
   items: { label: string; value: string; note?: string; sourceIds: string[] }[];
 }
 
+export interface AiChatStatisticCard {
+  type: "statistic";
+  title: string;
+  themeId: string;
+  period: string;
+  country: string;
+  geoLevel: string;
+  bbox: [number, number, number, number];
+  excludedDatasetIds: string[];
+  available: boolean;
+}
+
 export type AiChatCard =
+  | AiChatStatisticCard
   | AiChatPlaceCard
   | AiChatLinkCard
   | AiChatLayerCard
@@ -169,11 +187,13 @@ export interface AiChatAnswer {
 }
 
 export type AiChatEvent =
+  | { type: "conversation"; conversation: { id: string; revision: number } }
   | { type: "intent"; intent: AiChatIntent; execution: AiChatAnswer["execution"] }
   | { type: "token"; text: string }
   | { type: "tool_start"; tool: string; title: string }
   | { type: "tool_result"; tool: string; status: AiToolStatus }
   | { type: "card"; card: AiChatCard }
+  | { type: "sources"; sources: AiCitation[] }
   | {
       type: "done";
       answer: AiChatAnswer;
@@ -577,6 +597,9 @@ function placesFrom(value: unknown): AiPlaceSearchRecord[] {
     }
     places.push({
       id: entry.id,
+      ...(typeof entry.sourceFeatureId === "string"
+        ? { sourceFeatureId: entry.sourceFeatureId }
+        : {}),
       layerId: entry.layerId,
       title: entry.title,
       category: typeof entry.category === "string" ? entry.category : "",
@@ -673,8 +696,15 @@ function layersFrom(value: unknown): Array<{ layerId: string; name: string }> {
 }
 
 export interface AiChatServiceOptions {
+  statistics?: (
+    message: string,
+    history: readonly string[],
+    signal?: AbortSignal
+  ) => Promise<AiChatAnswer | null>;
   registry: AiToolRegistry;
   conversations: AiConversationStore;
+  persistence?: ConversationPersistence;
+  overview?: OverviewService;
   runtime?: AiModelRuntime;
   /** Tools composed in this deployment. Omitted means "everything the registry knows". */
   availableTools?: ReadonlySet<string>;
@@ -687,6 +717,9 @@ export interface AiChatServiceOptions {
 }
 
 export class AiChatService {
+  private readonly statistics?: AiChatServiceOptions["statistics"];
+  private readonly overview?: OverviewService;
+  private readonly persistence?: ConversationPersistence;
   private readonly registry: AiToolRegistry;
   private readonly conversations: AiConversationStore;
   private readonly runtime: AiModelRuntime;
@@ -696,6 +729,9 @@ export class AiChatService {
   private readonly createId: () => string;
 
   constructor(options: AiChatServiceOptions) {
+    this.statistics = options.statistics;
+    this.overview = options.overview;
+    this.persistence = options.persistence;
     this.registry = options.registry;
     this.conversations = options.conversations;
     this.runtime = options.runtime ?? aiModelRuntime();
@@ -723,6 +759,13 @@ export class AiChatService {
 
     let conversation: AiConversation;
     try {
+      if (this.persistence && request.conversation.mode === "existing") {
+        const document = await this.persistence.load(
+          request.ownerUserId,
+          request.conversation.conversationId
+        );
+        this.conversations.restore(request.ownerUserId, document);
+      }
       conversation =
         request.conversation.mode === "new"
           ? this.conversations.create(request.ownerUserId, request.conversation.scope)
@@ -732,6 +775,15 @@ export class AiChatService {
         role: "user",
         content: message,
         dataClass: request.messageDataClass
+      });
+      if (this.persistence)
+        await this.persistence.save(
+          conversation,
+          request.conversation.mode === "new" ? null : request.conversation.baseRevision
+        );
+      await emit({
+        type: "conversation",
+        conversation: { id: conversation.id, revision: conversation.revision }
       });
     } catch (error) {
       const known =
@@ -754,9 +806,31 @@ export class AiChatService {
       execution: useModel ? "model-tool-loop" : "deterministic"
     });
 
-    let answer: AiChatAnswer | null = useModel
-      ? await this.modelAnswer(request, message, intent, conversation, emit)
+    const statisticalAnswer = this.statistics
+      ? await this.statistics(
+          message,
+          conversation.messages
+            .filter((m) => m.role === "user")
+            .slice(0, -1)
+            .map((m) => m.content),
+          request.signal
+        )
       : null;
+    const featureOverview =
+      !statisticalAnswer &&
+      this.overview &&
+      (request.context.featureRef ||
+        (request.context.areaRef &&
+          /(?:této|teto|vybrané|vybrane) (?:oblasti|obce|měst|mest)|(?:\btady\b|\bzde\b)/iu.test(
+            message
+          ))) &&
+      intent === "question"
+        ? await this.featureOverviewAnswer(request, emit)
+        : null;
+    let answer: AiChatAnswer | null =
+      statisticalAnswer ??
+      featureOverview ??
+      (useModel ? await this.modelAnswer(request, message, intent, conversation, emit) : null);
     // A provider that is down, rate-limited or refused is not a reason to answer nothing: the
     // deterministic path knows how to look places up on its own.
     answer ??= await this.deterministicAnswer(request, message, intent, emit);
@@ -770,16 +844,20 @@ export class AiChatService {
       return null;
     }
 
+    await emit({ type: "sources", sources: answer.sources });
     for (const card of answer.cards) await emit({ type: "card", card });
 
     try {
+      request.signal?.throwIfAborted();
       conversation = this.conversations.append(request.ownerUserId, conversation.id, {
         baseRevision: conversation.revision,
         role: "assistant",
         content: answer.text,
-        dataClass: "public",
+        // The answer may summarize a private question or saved-place context.
+        dataClass: "account-private",
         citations: answer.sources
       });
+      if (this.persistence) await this.persistence.save(conversation, conversation.revision - 1);
     } catch {
       await emit({
         type: "error",
@@ -803,6 +881,168 @@ export class AiChatService {
 
   /** The tool loop. Bounded in rounds, in calls per round and in the bytes of each result that
    *  travel back to the model, because all three are ways for one question to cost a fortune. */
+  private async featureOverviewAnswer(
+    request: AiChatRequest,
+    emit: AiChatEmit
+  ): Promise<AiChatAnswer | null> {
+    const feature = request.context.featureRef,
+      area = request.context.areaRef;
+    const target: import("@mapos/layer-sdk").OverviewTarget | undefined = feature
+      ? { type: "poi", ...feature }
+      : area
+        ? { type: "area", ...area }
+        : undefined;
+    if (!target || !this.overview) return null;
+    let latest: import("@mapos/layer-sdk").OverviewResult | undefined;
+    let first = false;
+    let geometry = "empty";
+    const pending: Promise<void>[] = [];
+    try {
+      await this.overview.run(
+        {
+          target,
+          language: "cs",
+          intent: request.message.slice(0, 300),
+          worldId: request.context.worldId,
+          web: false,
+          consent: { externalModel: request.consent.externalModel }
+        },
+        {
+          ownerUserId: request.ownerUserId,
+          permissionRevision: "public-sources-v1",
+          allowedLayerIds: request.projection.allowedLayerIds
+        },
+        request.signal ?? new AbortController().signal,
+        (event) => {
+          latest = event.snapshot;
+          if (event.phase)
+            pending.push(
+              Promise.resolve(
+                emit({ type: "tool_start", tool: "get_feature_detail", title: event.phase })
+              )
+            );
+          const sources = event.snapshot.sources.map((source) => ({
+            sourceId: source.id,
+            label: source.label,
+            url: source.url,
+            retrievedAt: source.retrievedAt
+          }));
+          if (!first && event.snapshot.sections.some((section) => section.claims.length)) {
+            first = true;
+            pending.push(
+              Promise.resolve(
+                emit({
+                  type: "token",
+                  text: event.snapshot.sections[0]!.claims.slice(0, 3)
+                    .map((claim) => claim.text)
+                    .join(" ")
+                })
+              )
+            );
+          }
+          if (event.snapshot.mapRefs.length && event.snapshot.geometryRevision !== geometry) {
+            geometry = event.snapshot.geometryRevision;
+            pending.push(Promise.resolve(emit({ type: "sources", sources })));
+            pending.push(
+              Promise.resolve(
+                emit({
+                  type: "card",
+                  card: {
+                    type: "places",
+                    title: target.type === "area" ? "Místa vybrané oblasti" : "Vybrané místo",
+                    layerIds: [...new Set(event.snapshot.mapRefs.map((ref) => ref.layerId))],
+                    places: event.snapshot.mapRefs.map((ref) => ({
+                      id: ref.featureId,
+                      sourceFeatureId: ref.featureId,
+                      layerId: ref.layerId,
+                      title: ref.title,
+                      longitude: ref.lng,
+                      latitude: ref.lat,
+                      category: "poi",
+                      sourceId: ref.evidenceIds[0]!
+                    }))
+                  }
+                })
+              )
+            );
+          }
+        }
+      );
+      await Promise.all(pending);
+    } catch {
+      /* deterministic error below, no unrelated search or second model pipeline */
+    }
+    if (!latest?.sources.length)
+      return {
+        execution: "deterministic",
+        intent: "question",
+        text: "Zdrojové informace vybraného místa se nepodařilo ověřit.",
+        cards: [],
+        sources: [],
+        followUps: []
+      };
+    const sections = latest.sections;
+    const sources = latest.sources.map((source) => ({
+      sourceId: source.id,
+      label: source.label,
+      url: source.url,
+      retrievedAt: source.retrievedAt
+    }));
+    const cards: AiChatAnswer["cards"] = sections.map((section) => ({
+      type: "facts" as const,
+      title: section.title,
+      items: section.claims.map((claim) => ({
+        label: "Zdrojový údaj",
+        value: claim.text,
+        sourceIds: claim.evidenceIds
+      }))
+    }));
+    if (latest.mapRefs.length)
+      cards.unshift({
+        type: "places",
+        title: target.type === "area" ? "Místa vybrané oblasti" : "Vybrané místo",
+        layerIds: [...new Set(latest.mapRefs.map((ref) => ref.layerId))],
+        places: latest.mapRefs.map((ref) => ({
+          id: ref.featureId,
+          sourceFeatureId: ref.featureId,
+          layerId: ref.layerId,
+          title: ref.title,
+          longitude: ref.lng,
+          latitude: ref.lat,
+          category: "poi",
+          sourceId: ref.evidenceIds[0]!
+        }))
+      });
+    if (latest.limitations.length)
+      cards.push({
+        type: "facts",
+        title: "Omezení přehledu",
+        items: latest.limitations.map((value) => ({ label: "Dostupnost", value, sourceIds: [] }))
+      });
+    return {
+      execution: "deterministic",
+      intent: "question",
+      text:
+        (sections.find((section) => section.id === "summary") ?? sections[0])?.claims
+          .slice(0, 6)
+          .map((claim) => claim.text)
+          .join(" ") ?? "",
+      cards,
+      sources,
+      followUps:
+        target.type === "area"
+          ? [
+              ...(latest.sources.some((s) => s.topic === "highlights")
+                ? ["Co je zajímavého v této oblasti?"]
+                : []),
+              ...(latest.sources.some((s) => s.topic === "statistics")
+                ? ["Jaké jsou dostupné statistiky této oblasti?"]
+                : [])
+            ]
+          : []
+    };
+  }
+
   private async modelAnswer(
     request: AiChatRequest,
     message: string,
@@ -877,15 +1117,8 @@ export class AiChatService {
           .filter((call) => !submissionNames.has(call.name))
           .slice(0, MAX_TOOL_CALLS_PER_ROUND);
         if (!calls.length) {
-          // Prose without a submission still answers the user; the cards come from whatever the
-          // loop already gathered.
-          const text = safeText(outcome.text);
-          if (!text) break;
-          return this.assembleAnswer(
-            { text, execution: "model-tool-loop", intent, model: profile.model },
-            evidence,
-            [...evidence.places.values()]
-          );
+          // An unsubmitted paragraph has no validated evidence contract.
+          break;
         }
 
         turns.push({
@@ -934,10 +1167,15 @@ export class AiChatService {
     if (!categories.length) {
       // A question that names no category is usually about the place itself, and the guide answers
       // exactly that — without a model, from the same sources the Objevuj panel cites (§30.5).
-      const guided = await this.regionAnswer(request, message, intent, emit);
+      const guided =
+        /kde (jsem|jsme)|co (je |tu |tady |zde )|okol[ií]|t[eé]to oblasti|tuhle oblast|toto m[ií]sto|kolik (tu|tady|zde)/i.test(
+          message
+        )
+          ? await this.regionAnswer(request, message, intent, emit)
+          : null;
       if (guided) return guided;
       const text =
-        "Bez AI modelu umím spolehlivě hledat místa podle kategorie — zkus třeba „kempy poblíž“ nebo „vyhlídky do 10 km“.";
+        "Pro tento dotaz nemám ověřenou odpověď. Upřesni prosím ukazatel a zemi nebo zkus hledání míst podle kategorie. Aktuální polohu za odpověď nezaměňuji.";
       await emit({ type: "token", text });
       return {
         execution: "deterministic",
@@ -1066,7 +1304,7 @@ export class AiChatService {
     this.collect(context.value, evidence);
     const { region, guide } = context.value;
     const where = [region.name, ...(region.hierarchy ?? []).slice(0, 1)].join(", ");
-    const sentences = [`Jsi v ${safeText(where)}.`];
+    const sentences = [`Oblast ve výřezu: ${safeText(where)}.`];
     if (guide?.lead) sentences.push(safeText(guide.lead));
     for (const highlight of guide?.highlights.slice(0, 2) ?? []) {
       sentences.push(`${safeText(highlight.title)}: ${safeText(highlight.text)}`);
@@ -1464,6 +1702,9 @@ export class AiChatService {
       `Přiblížení: ${request.context.zoom.toFixed(1)}`,
       `Aktivní vrstvy: ${allowedLayers.length ? allowedLayers.join(", ") : "žádné"}`
     ];
+    if (request.context.bbox)
+      lines.push(`Výřez mapy: ${request.context.bbox.map((v) => v.toFixed(digits)).join(", ")}`);
+    if (request.context.worldId) lines.push(`Svět: ${request.context.worldId}`);
     if (request.context.mode) lines.push(`Režim: ${request.context.mode}`);
     if (request.context.regionRef) lines.push(`Oblast: ${request.context.regionRef}`);
     if (request.context.planId && request.projection.allowedPlanIds.has(request.context.planId)) {

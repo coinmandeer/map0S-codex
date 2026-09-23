@@ -12,6 +12,7 @@ import {
   MAPILLARY_RIGHTS,
   OPEN_METEO_RIGHTS,
   OPENSTREETMAP_RIGHTS,
+  PANORAMAX_RIGHTS,
   WIKIDATA_RIGHTS,
   WIKIPEDIA_RIGHTS,
   WINDY_RIGHTS
@@ -25,7 +26,13 @@ import { WikipediaPanel } from "./panels/WikipediaPanel";
 import { WikidataPanel } from "./panels/WikidataPanel";
 import { WeatherPanel } from "./panels/WeatherPanel";
 import { FoursquarePanel } from "./panels/FoursquarePanel";
-import { ExternalLinksPanel, MapillaryPanel, OsmPanel, WindyPanel } from "./panels/embedPanels";
+import {
+  ExternalLinksPanel,
+  MapillaryPanel,
+  OsmPanel,
+  PanoramaxPanel,
+  WindyPanel
+} from "./panels/embedPanels";
 
 registerInfoPanel({
   id: "prehled",
@@ -80,7 +87,7 @@ registerInfoPanel({
   sourceRights: [WIKIPEDIA_RIGHTS],
   // A QID guarantees an article exists somewhere; a name only makes one plausible, which is
   // still worth a tab because the lookup degrades to an empty state rather than an error.
-  appliesTo: ({ place }) => Boolean(place.wikidata || place.name),
+  appliesTo: ({ place, refs }) => Boolean(place.wikidata || refs.wikidata || refs.wikipedia),
   attribution: "Wikipedia (CC BY-SA)",
   render: WikipediaPanel
 });
@@ -161,6 +168,21 @@ registerInfoPanel({
 });
 
 registerInfoPanel({
+  id: "panoramax",
+  label: "Ulice (Panoramax)",
+  icon: "📷",
+  kind: "link",
+  order: 36.5,
+  surface: "more",
+  contentOwner: "provider",
+  sourceId: "panoramax",
+  sourceRights: [PANORAMAX_RIGHTS],
+  appliesTo: () => true,
+  attribution: "Panoramax (CC BY-SA / licence per instance)",
+  render: PanoramaxPanel
+});
+
+registerInfoPanel({
   id: "windy",
   label: "Windy",
   icon: "🌀",
@@ -177,7 +199,7 @@ registerInfoPanel({
 
 registerInfoPanel({
   id: "foursquare",
-  label: "Recenze",
+  label: "Foursquare",
   icon: "⭐",
   kind: "api",
   order: 40,
@@ -185,7 +207,8 @@ registerInfoPanel({
   contentOwner: "provider",
   sourceId: "fsq",
   sourceRights: [FOURSQUARE_RIGHTS],
-  appliesTo: ({ place, refs }) => Boolean(place.fsqId ?? refs.fsq),
+  appliesTo: ({ place }) =>
+    Boolean(place.name) && Number.isFinite(place.lng) && Number.isFinite(place.lat),
   attribution: "Foursquare",
   render: FoursquarePanel
 });

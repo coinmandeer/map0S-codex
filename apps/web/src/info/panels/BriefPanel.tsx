@@ -1,4 +1,5 @@
 import { EmptyState, Skeleton } from "../../ui/primitives";
+import { locationBriefRequest } from "../placeBriefRequest";
 import { useInfoData } from "../useInfoData";
 import type { InfoPanelProps } from "../registry";
 
@@ -24,13 +25,9 @@ interface Brief {
  * carry the panel on their own when the model has nothing to say.
  */
 export function BriefPanel({ place }: InfoPanelProps) {
-  const state = useInfoData<Brief>("/info/brief", {
-    lng: place.lng.toFixed(4),
-    lat: place.lat.toFixed(4),
-    name: place.name,
-    category: place.category,
-    qid: place.wikidata
-  });
+  // No pin here: this panel describes a location the reader clicked, so it sends the location
+  // and nothing more (pin-specific facts travel with PlaceAiBrief).
+  const state = useInfoData<Brief>("/info/brief", locationBriefRequest(place).query);
 
   if (state.status === "loading") return <Skeleton height={100} />;
   if (state.status !== "ready") {

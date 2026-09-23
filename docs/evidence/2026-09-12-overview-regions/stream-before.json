@@ -1,0 +1,25 @@
+{
+  "headers": {
+    "content-encoding": "zstd",
+    "content-type": "text/event-stream; charset=utf-8"
+  },
+  "chunks": [
+    {
+      "ms": 2365,
+      "bytes": 65536,
+      "events": [
+        "context_ready",
+        "section_upsert",
+        "phase",
+        "section_upsert",
+        "section_upsert",
+        "section_upsert"
+      ]
+    },
+    {
+      "ms": 2371,
+      "bytes": 140379,
+      "events": ["section_upsert", "section_upsert", "partial"]
+    }
+  ]
+}

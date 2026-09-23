@@ -286,7 +286,9 @@ export async function routePlanSegments(
       ({ segment }) =>
         segment.status !== "ready" ||
         segment.policyHash !== expectedPolicyHash ||
-        segment.selectedAlternativeId == null
+        segment.selectedAlternativeId == null ||
+        segment.alternatives.find((a) => a.id === segment.selectedAlternativeId)?.providerId !==
+          provider.id
     );
   const requestedConcurrency = options.concurrency ?? 4;
   const concurrency = Number.isFinite(requestedConcurrency)

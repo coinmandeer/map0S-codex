@@ -81,7 +81,8 @@ export function legendVisual(legend: LegendManifestV2): LegendVisual {
 
 export function legendCompactDescription(legend: LegendManifestV2): string {
   const entries = legendTextEntries(legend);
-  if (legend.unit) return `Jednotka ${legend.unit} · ${entries.length} hodnot`;
+  // Legend stops describe a scale, not the number of observations on the map.
+  if (legend.unit) return `Jednotka ${legend.unit}`;
   if (legend.type === "categorical") return `${entries.length} kategorií`;
-  return entries.length ? `${entries.length} hodnot` : "Detail vrstvy";
+  return entries.length ? "Stupnice hodnot" : "Detail vrstvy";
 }

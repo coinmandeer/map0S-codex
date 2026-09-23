@@ -1,16 +1,11 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { BasemapDefinition } from "@mapos/layer-sdk";
 import { thumbHue, thumbKind, thumbSource } from "./basemapPresentation";
 
-/** The 96×56 illustration on a basemap card.
- *
- *  Prefers the rendered screenshot from `public/basemaps/`, because nothing describes a map
- *  style like the style itself. When that file is missing — a fresh clone, or a keyed provider
- *  whose sample we may not republish — it draws a schematic map instead of an empty box, so
- *  the card never looks broken.
- */
+/** Real Berlin previews; unavailable providers have an explicit fallback. */
 export function BasemapThumb({ basemap }: { basemap: BasemapDefinition }) {
   const [rendered, setRendered] = useState(true);
+  useEffect(() => setRendered(true), [basemap.id]);
   const style = { "--basemap-thumb-hue": thumbHue(basemap.id) } as CSSProperties;
 
   return (
@@ -18,7 +13,13 @@ export function BasemapThumb({ basemap }: { basemap: BasemapDefinition }) {
       className="basemap-preview"
       data-preview-kind={thumbKind(basemap)}
       style={style}
-      aria-hidden
+      title={
+        rendered
+          ? basemap.id === "cuzk-ortofoto"
+            ? "Česko · skutečný náhled podkladu © ČÚZK"
+            : "Berlín · skutečný náhled podkladu"
+          : "Náhled není dostupný"
+      }
     >
       {rendered ? (
         <img
@@ -31,10 +32,23 @@ export function BasemapThumb({ basemap }: { basemap: BasemapDefinition }) {
         />
       ) : (
         <>
-          <span className="basemap-preview-water" />
-          <span className="basemap-preview-road road-primary" />
-          <span className="basemap-preview-road road-secondary" />
+          <small>Náhled není dostupný</small>
         </>
+      )}
+      {rendered && basemap.proxy?.provider === "mapy" && (
+        <small
+          style={{
+            position: "absolute",
+            bottom: 0,
+            right: 0,
+            background: "#fff",
+            color: "#222",
+            fontSize: 9,
+            padding: "1px 3px"
+          }}
+        >
+          © Mapy.com
+        </small>
       )}
     </span>
   );

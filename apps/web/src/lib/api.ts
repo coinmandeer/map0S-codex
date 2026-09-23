@@ -10,6 +10,7 @@ export interface ApiResponseWithMetadata<T> {
   data: T;
   /** Validated server-generated X-Request-ID; never derived from a URL or request body. */
   requestId: string | null;
+  cacheControl?: string | null;
 }
 
 export class ApiError extends Error {
@@ -66,7 +67,11 @@ export async function apiGetWithMetadata<T>(
   });
   const requestId = responseRequestId(res);
   if (!res.ok) throw new ApiError(res.status, await parseError(res), requestId);
-  return { data: (await res.json()) as T, requestId };
+  return {
+    data: (await res.json()) as T,
+    requestId,
+    cacheControl: res.headers.get("cache-control")
+  };
 }
 
 export async function apiGet<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
@@ -139,29 +144,38 @@ export async function apiPostEventStream<T>(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    // Events are separated by a blank line; the last chunk may be a partial event.
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      const block = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      const data = block
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trim())
-        .join("");
-      if (data) {
-        try {
-          onEvent(JSON.parse(data) as T);
-        } catch {
-          // A malformed frame is dropped rather than aborting a stream that is still useful.
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      if (buffer.length > 1_048_576) throw new Error("Odpověď překročila limit přenosu.");
+      let match = /\r?\n\r?\n/.exec(buffer);
+      while (match) {
+        const block = buffer.slice(0, match.index);
+        buffer = buffer.slice(match.index + match[0].length);
+        const data = block
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart())
+          .join("\n");
+        if (data) {
+          let event: T;
+          try {
+            event = JSON.parse(data) as T;
+          } catch {
+            throw new Error("Odpověď obsahuje neplatnou událost.");
+          }
+          // Handler validation errors must propagate, not silently disappear.
+          onEvent(event);
         }
+        match = /\r?\n\r?\n/.exec(buffer);
       }
-      boundary = buffer.indexOf("\n\n");
     }
+    if (buffer.trim()) throw new Error("Přenos odpovědi byl přerušen.");
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
 }
 

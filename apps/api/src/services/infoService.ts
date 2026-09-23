@@ -6,8 +6,8 @@
  *  not be a key at all.
  */
 
-import { config } from "../config.js";
 import { fetchJson } from "../utils/upstream.js";
+import { monthlyClimateNormals, type ClimateNormals } from "./climateService.js";
 
 export interface WikipediaArticle {
   lang: string;
@@ -21,7 +21,11 @@ export interface WikipediaArticle {
  *  fallback with the widest coverage; German fills gaps in Central European heritage articles. */
 const WIKI_LANGS = ["cs", "en", "de"];
 
-async function wikipediaSummary(lang: string, title: string): Promise<WikipediaArticle | null> {
+async function wikipediaSummary(
+  lang: string,
+  title: string,
+  signal?: AbortSignal
+): Promise<WikipediaArticle | null> {
   try {
     const data = await fetchJson<{
       title?: string;
@@ -31,7 +35,7 @@ async function wikipediaSummary(lang: string, title: string): Promise<WikipediaA
       thumbnail?: { source?: string };
     }>(
       `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}?redirect=true`,
-      { providerId: "wikipedia", ttlMs: 6 * 3600_000 }
+      { providerId: "wikipedia", ttlMs: 6 * 3600_000, signal }
     );
     // Disambiguation pages are technically a hit but tell the reader nothing about the place.
     if (!data.extract || data.type === "disambiguation") return null;
@@ -51,12 +55,15 @@ async function wikipediaSummary(lang: string, title: string): Promise<WikipediaA
 
 /** Wikidata knows which article in which language describes a QID, which is far more reliable
  *  than searching Wikipedia for the place's name and hoping the top hit is the right one. */
-async function titlesFromQid(qid: string): Promise<Array<{ lang: string; title: string }>> {
+async function titlesFromQid(
+  qid: string,
+  signal?: AbortSignal
+): Promise<Array<{ lang: string; title: string }>> {
   const data = await fetchJson<{
     entities?: Record<string, { sitelinks?: Record<string, { title?: string }> }>;
   }>(
     `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=sitelinks&format=json&origin=*`,
-    { providerId: "wikidata", ttlMs: 24 * 3600_000, minIntervalMs: 150, retries: 2 }
+    { providerId: "wikidata", ttlMs: 24 * 3600_000, minIntervalMs: 150, retries: 2, signal }
   );
   const sitelinks = data.entities?.[qid]?.sitelinks ?? {};
   return WIKI_LANGS.map((lang) => ({ lang, title: sitelinks[`${lang}wiki`]?.title ?? "" })).filter(
@@ -68,12 +75,13 @@ export async function getWikipediaArticle(input: {
   qid?: string;
   title?: string;
   lang?: string;
+  signal?: AbortSignal;
 }): Promise<WikipediaArticle | null> {
   const candidates: Array<{ lang: string; title: string }> = [];
 
   if (input.qid && /^Q\d+$/.test(input.qid)) {
     try {
-      candidates.push(...(await titlesFromQid(input.qid)));
+      candidates.push(...(await titlesFromQid(input.qid, input.signal)));
     } catch {
       /* fall through to the name-based attempt */
     }
@@ -84,7 +92,8 @@ export async function getWikipediaArticle(input: {
   }
 
   for (const candidate of candidates) {
-    const article = await wikipediaSummary(candidate.lang, candidate.title);
+    input.signal?.throwIfAborted();
+    const article = await wikipediaSummary(candidate.lang, candidate.title, input.signal);
     if (article) return article;
   }
   return null;
@@ -237,16 +246,9 @@ export interface PointForecast {
     url: "https://open-meteo.com/";
     license: "CC BY 4.0";
   };
-  /** Climate normals and historical records need a separate licensed historical adapter.
-   * They must never be inferred from this seven-day forecast. */
-  climate: {
-    status: "unavailable";
-    normals: [];
-    extremes: [];
-    source: null;
-    gate: "climate-provider-not-configured";
-    reason: string;
-  };
+  /** Long-term monthly temperature normals from the ERA5 archive (1991–2020). Never inferred
+   * from the seven-day forecast; the period and source are part of the payload. */
+  climate: ClimateNormals;
 }
 
 /** Open-Meteo needs no key and allows commercial use below 10k calls a day, which is why the
@@ -286,6 +288,10 @@ export async function getPointForecast(lng: number, lat: number): Promise<PointF
   const numberOrNull = (value: unknown): number | null =>
     typeof value === "number" && Number.isFinite(value) ? value : null;
 
+  // Monthly normals come from the separate archive adapter. A failure there must not cost the
+  // reader the forecast they came for, so the climate block degrades on its own.
+  const climate = await monthlyClimateNormals(lng, lat);
+
   return {
     current: data.current
       ? {
@@ -314,71 +320,8 @@ export async function getPointForecast(lng: number, lat: number): Promise<PointF
       url: "https://open-meteo.com/",
       license: "CC BY 4.0"
     },
-    climate: {
-      status: "unavailable",
-      normals: [],
-      extremes: [],
-      source: null,
-      gate: "climate-provider-not-configured",
-      reason:
-        "Klimatické normály a historické extrémy vyžadují samostatný ověřený historický zdroj."
-    }
+    climate
   };
 }
 
-export interface FoursquareDetail {
-  fsqId: string;
-  name: string | null;
-  rating: number | null;
-  ratingCount: number | null;
-  price: number | null;
-  hours: string | null;
-  categories: string[];
-  photos: string[];
-  tips: Array<{ text: string }>;
-  url: string;
-}
-
-export async function getFoursquareDetail(fsqId: string): Promise<FoursquareDetail | null> {
-  const key = config.fsqKey;
-  if (!key || !/^[\w-]+$/.test(fsqId)) return null;
-
-  const headers = { Authorization: key };
-  const [details, photos, tips] = await Promise.all([
-    fetchJson<{
-      name?: string;
-      rating?: number;
-      price?: number;
-      stats?: { total_ratings?: number };
-      hours?: { display?: string };
-      categories?: Array<{ name?: string }>;
-    }>(
-      `https://api.foursquare.com/v3/places/${fsqId}?fields=name,rating,price,stats,hours,categories`,
-      { providerId: "foursquare", headers, ttlMs: 6 * 3600_000 }
-    ).catch(() => null),
-    fetchJson<Array<{ prefix: string; suffix: string }>>(
-      `https://api.foursquare.com/v3/places/${fsqId}/photos?limit=6`,
-      { providerId: "foursquare", headers, ttlMs: 6 * 3600_000 }
-    ).catch(() => []),
-    fetchJson<Array<{ text: string }>>(
-      `https://api.foursquare.com/v3/places/${fsqId}/tips?limit=5`,
-      { providerId: "foursquare", headers, ttlMs: 6 * 3600_000 }
-    ).catch(() => [])
-  ]);
-
-  if (!details) return null;
-  return {
-    fsqId,
-    name: details.name ?? null,
-    rating: details.rating ?? null,
-    ratingCount: details.stats?.total_ratings ?? null,
-    price: details.price ?? null,
-    hours: details.hours?.display ?? null,
-    categories: (details.categories ?? [])
-      .map((c) => c.name)
-      .filter((n): n is string => Boolean(n)),
-    photos: (photos ?? []).map((p) => `${p.prefix}400x400${p.suffix}`),
-    tips: (tips ?? []).filter((t) => t.text).map((t) => ({ text: t.text })),
-    url: `https://foursquare.com/v/${fsqId}`
-  };
-}
+export { getFoursquareDetail, type FoursquareDetail } from "./foursquarePlaces.js";

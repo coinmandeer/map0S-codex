@@ -7,7 +7,12 @@
   .activity-indicator {
     position: fixed;
     right: calc(var(--space-6) + var(--safe-right));
-    bottom: calc(var(--space-6) + var(--safe-bottom) + 96px);
+    /* Clears the mode switcher and whatever the footer currently is, so a loading pill never
+       lands on top of the thing it is reporting about. */
+    bottom: calc(
+      var(--footer-stack-h, 0px) + var(--modebar-bottom-h, 0px) + var(--map-filter-h, 0px) +
+        var(--space-6) + var(--safe-bottom)
+    );
     z-index: var(--z-footer);
     display: grid;
     /* The rows carry nowrap labels, so the column has to be allowed to be narrower than their
@@ -32,12 +37,18 @@
   }
 
   /* The whole stack is the popover trigger, so the rows themselves are plain spans. */
+  /* The pills are the visible status; this button is the tap target that opens the task popover.
+     A single 32 px pill leaves the trigger under the 44 px minimum, so the button claims the
+     rest as padding and gives the same amount back as negative margin: the hit box grows, the
+     pill stays exactly where it was, and it is still a quiet status rather than a banner. */
   .activity-rows {
     display: grid;
     justify-items: end;
     gap: var(--space-2);
     max-width: 100%;
-    padding: 0;
+    padding-block: var(--space-3);
+    padding-inline: 0;
+    margin-block: calc(var(--space-3) * -1);
     border: 0;
     background: none;
     cursor: pointer;
@@ -147,11 +158,16 @@
        it rather than at a fixed distance from the bottom edge, where the sheet would bury it. */
     .activity-indicator,
     .activity-indicator[data-right-open] {
-      right: calc(var(--space-4) + var(--safe-right));
+      /* Leave the fixed utility rail (layers/settings) its own column. A loading pill can be
+         wider than the icon and otherwise crosses the settings target on a raised bottom sheet. */
+      right: calc(var(--space-4) + var(--safe-right) + var(--tap-min) + var(--space-2));
       bottom: calc(
         var(--bottom-nav-h) + var(--sheet-h) + var(--space-4) + var(--safe-bottom) + 88px
       );
-      max-width: calc(100vw - var(--space-8) - var(--safe-left) - var(--safe-right));
+      max-width: calc(
+        100vw - var(--space-8) - var(--safe-left) - var(--safe-right) - var(--tap-min) -
+          var(--space-2)
+      );
     }
 
     .activity-indicator[data-footer-active] {
@@ -221,6 +237,10 @@
     z-index: var(--z-popover);
   }
 
+  .chrome-bar-slot:has(.topbar-search[data-focused]) {
+    z-index: 1;
+  }
+
   /* The slot is the strip the pill may use: it starts after the open panel (plus the hamburger
      when one is showing) and ends before the utility rail and the open drawer. The pill centres
      inside it, so it can never slide underneath the Podklady button, and TopBar.tsx measures the
@@ -233,7 +253,7 @@
       var(--drawer-w-open) + var(--chrome-rail-w, 0px) + var(--chrome-inset) * 2 + var(--safe-right)
     );
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
     pointer-events: none;
     transition:
       left var(--dur-slow) var(--ease-standard),
@@ -404,40 +424,83 @@
     animation: mapos-badge-pop var(--dur) var(--ease-emph-decel);
   }
 
-  /* ---- Mode switcher --------------------------------------------------- */
-  .chrome-modes {
+  /* ---- Mode switcher (desktop, bottom centre) --------------------------
+     One floating pill over the map, the desktop counterpart of the phone's navigation bar. It
+     is centred between the panel and the drawer rather than in the window, so opening a panel
+     slides it aside instead of pushing it half underneath. */
+  .desktop-modebar {
+    position: fixed;
+    bottom: calc(var(--space-6) + var(--safe-bottom));
+    left: calc(var(--sidebar-w-open) + var(--chrome-inset) + var(--safe-left));
+    right: calc(var(--drawer-w-open) + var(--chrome-inset) + var(--safe-right));
+    /* `max-content` plus auto margins is what centres the pill inside whatever the panels
+       left over; a `translateX(-50%)` off `left: 50%` would centre it in the window. */
+    width: max-content;
+    max-width: 100%;
+    margin-inline: auto;
+    /* Above the footer stack (28) so a legend never covers the switcher, below the phone's
+       navigation bar (35) which occupies the same corner of the z order. */
+    z-index: 30;
     display: flex;
     align-items: center;
     gap: var(--space-1);
-    flex-shrink: 0;
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    backdrop-filter: var(--blur);
+    box-shadow: var(--shadow-lg);
+    transition:
+      left var(--dur-slow) var(--ease-out),
+      right var(--dur-slow) var(--ease-out);
   }
 
-  .chrome-mode {
+  .desktop-mode {
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: var(--space-3);
-    height: var(--control-h-sm);
-    padding-inline: var(--space-4);
+    height: var(--control-h);
+    padding-inline: var(--space-5);
+    border: 0;
     border-radius: var(--radius-pill);
     background: transparent;
     color: var(--text-muted);
     font: var(--type-title-sm);
     white-space: nowrap;
+    cursor: pointer;
     transition:
       background var(--dur-fast) var(--ease-standard),
       color var(--dur-fast) var(--ease-standard);
   }
 
-  .chrome-mode:hover {
+  .desktop-mode:hover {
     color: var(--text);
     background: var(--surface-hover);
   }
 
-  .chrome-mode[data-active] {
+  .desktop-mode[data-active] {
     background: var(--accent-soft);
     color: var(--accent);
+  }
+
+  .desktop-mode:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .desktop-mode-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* A narrow strip between the panel and the drawer: the labels go and the icons stay, which
+     is the same trade the top bar makes with the wordmark. */
+  @media (max-width: 1180px) {
+    .app-shell.panel-open .desktop-mode-label {
+      display: none;
+    }
   }
 
   /* ---- Search (§4.1) ---------------------------------------------------
@@ -1198,13 +1261,22 @@
     background: var(--accent-soft);
   }
 
-  /* ---- Floating map affordances --------------------------------------- */
+  /* ---- Floating map affordances ---------------------------------------
+     "Search this area" sits directly above the mode switcher, centred over the map, and is the
+     one accent-filled button floating over the map. It used to be a grey pill under the top
+     bar, where it read as a status message rather than the offer of fresh data it is. */
   .search-here-btn {
     position: fixed;
-    top: calc(var(--modebar-h) + var(--space-6));
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 25;
+    bottom: calc(
+      var(--footer-stack-h, 0px) + var(--modebar-bottom-h, 0px) + var(--map-filter-h, 0px) +
+        var(--bottom-nav-h) + var(--space-6) + var(--safe-bottom)
+    );
+    left: calc(var(--sidebar-w-open) + var(--chrome-inset) + var(--safe-left));
+    right: calc(var(--drawer-w-open) + var(--chrome-inset) + var(--safe-right));
+    width: max-content;
+    max-width: calc(100% - var(--space-8));
+    margin-inline: auto;
+    z-index: 31;
     display: inline-flex;
     align-items: center;
     gap: var(--space-4);
@@ -1213,16 +1285,74 @@
     min-height: var(--tap-min);
     padding: var(--space-4) var(--space-7);
     border-radius: var(--radius-pill);
-    background: var(--surface-solid);
-    color: var(--text);
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow);
+    background: var(--accent);
+    color: var(--accent-contrast);
+    border: 0;
+    box-shadow: var(--shadow-lg);
     font-weight: var(--weight-strong);
     font-size: var(--text-sm);
+    transition:
+      left var(--dur-slow) var(--ease-out),
+      right var(--dur-slow) var(--ease-out),
+      background var(--dur-fast) var(--ease-standard);
+  }
+
+  .search-here-btn:hover {
+    background: var(--accent-hover);
   }
 
   .search-here-btn:disabled {
     opacity: 0.7;
+  }
+
+  /* The discover mode's "What is here?" chip shares the Search-here slot and geometry, but
+     stays a quiet surface button — it is a standing question, not a call to action, and the
+     accent fill belongs to the button that pulls fresh data. */
+  .discover-here-btn {
+    display: none;
+  }
+
+  html[data-discover-here] .discover-here-btn {
+    position: fixed;
+    bottom: calc(
+      var(--footer-stack-h, 0px) + var(--modebar-bottom-h, 0px) + var(--map-filter-h, 0px) +
+        var(--bottom-nav-h) + var(--space-6) + var(--safe-bottom)
+    );
+    left: calc(var(--sidebar-w-open) + var(--chrome-inset) + var(--safe-left));
+    right: calc(var(--drawer-w-open) + var(--chrome-inset) + var(--safe-right));
+    width: max-content;
+    max-width: calc(100% - var(--space-8));
+    margin-inline: auto;
+    z-index: 31;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: var(--tap-min);
+    padding: var(--space-4) var(--space-7);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    font-weight: var(--weight-strong);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition:
+      left var(--dur-slow) var(--ease-out),
+      right var(--dur-slow) var(--ease-out),
+      background var(--dur-fast) var(--ease-standard);
+  }
+
+  html[data-discover-here] .discover-here-btn:hover {
+    background: var(--surface-raised, var(--surface));
+  }
+
+  /* Both chips want the same slot; when the map needs a refresh that question wins. */
+  html[data-discover-here] .search-here-btn {
+    bottom: calc(
+      var(--footer-stack-h, 0px) + var(--modebar-bottom-h, 0px) + var(--map-filter-h, 0px) +
+        var(--bottom-nav-h) + var(--tap-min) + var(--space-8) + var(--safe-bottom)
+    );
   }
 
   /* Sits under the mode bar, below the Search-here button's slot so the two never overlap. */
@@ -1271,7 +1401,8 @@
   .toast {
     position: fixed;
     bottom: calc(
-      var(--footer-stack-h, 0px) + var(--bottom-nav-h) + var(--safe-bottom) + var(--space-8)
+      var(--footer-stack-h, 0px) + var(--modebar-bottom-h, 0px) + var(--map-filter-h, 0px) +
+        var(--bottom-nav-h) + var(--safe-bottom) + var(--space-8)
     );
     left: 50%;
     transform: translateX(-50%);
@@ -1383,11 +1514,6 @@
   }
 
   /* ---- Responsive ----------------------------------------------------- */
-  @media (min-width: 900px) {
-    .app-shell.panel-open .search-here-btn {
-      left: calc(var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2);
-    }
-  }
 
   /* ---- Mobile chrome (§3.2) -------------------------------------------
      Hamburger left, search filling the row, and a vertical column of the three utility
@@ -1467,7 +1593,11 @@
 
     .toast {
       top: auto;
-      bottom: calc(var(--bottom-nav-h) + var(--space-6) + var(--safe-bottom));
+      /* The footer stack counts on a phone too: with a legend up (a theme, the weather) the
+         toast otherwise lands on top of it, and both messages become unreadable. */
+      bottom: calc(
+        var(--footer-stack-h, 0px) + var(--bottom-nav-h) + var(--space-6) + var(--safe-bottom)
+      );
     }
 
     .layer-notices {
@@ -1477,7 +1607,8 @@
     .maplibregl-ctrl-bottom-right,
     .maplibregl-ctrl-bottom-left {
       bottom: calc(
-        var(--bottom-nav-h) + var(--sheet-h) + var(--space-4) + var(--safe-bottom)
+        var(--bottom-nav-h) + var(--map-filter-h, 0px) + var(--sheet-h) + var(--space-4) +
+          var(--safe-bottom)
       ) !important;
     }
 
@@ -1486,4 +1617,167 @@
       display: none;
     }
   }
+}
+
+@layer chrome {
+  /* Anchored bottom-left, opposite the activity pills, so a click on a region never lands under
+     the thing it opened. It is a card rather than a map popup because the sparkline needs a
+     stable width and a popup tied to a polygon centroid moves on every pan. */
+  .theme-value-card {
+    position: fixed;
+    /* Follows the sidebar the same way the rest of the chrome does, so opening a panel slides
+       the card aside instead of hiding it. */
+    left: calc(var(--sidebar-w-open) + var(--chrome-inset) + var(--safe-left));
+    bottom: calc(
+      var(--footer-stack-h, 0px) + var(--modebar-bottom-h, 0px) + var(--map-filter-h, 0px) +
+        var(--space-6) + var(--safe-bottom)
+    );
+    z-index: var(--z-footer);
+    display: grid;
+    gap: var(--space-2);
+    width: min(280px, calc(100vw - var(--space-8)));
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .theme-value-card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .theme-value-name {
+    font: var(--type-title-sm);
+  }
+
+  .theme-value-figure {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin: 0;
+  }
+
+  .theme-value-figure strong {
+    font: var(--type-data-lg);
+  }
+
+  .theme-value-figure span,
+  .theme-value-meta,
+  .theme-value-source {
+    margin: 0;
+    color: var(--text-muted);
+    font: var(--type-body-sm);
+  }
+
+  .theme-value-source {
+    color: var(--text-faint);
+  }
+
+  .theme-sparkline {
+    width: 100%;
+    height: 28px;
+    stroke: var(--accent);
+  }
+
+  @media (max-width: 899px) {
+    .theme-value-card {
+      left: calc(var(--chrome-inset) + var(--safe-left));
+      right: calc(var(--space-4) + var(--safe-right));
+      bottom: calc(var(--bottom-nav-h) + var(--sheet-h) + var(--space-4) + var(--safe-bottom));
+      width: auto;
+    }
+  }
+}
+
+/* `utilities`, the last layer: these have to beat whatever each element's own layer says about
+   its display, and layer order decides that before specificity does. */
+@layer utilities {
+  /* Picking a point clears the map of everything that is not the pick (§4.5). */
+  html[data-map-picker="active"] .map-footer-stack,
+  html[data-map-picker="active"] .desktop-modebar,
+  html[data-map-picker="active"] .bottom-nav,
+  html[data-map-picker="active"] .activity-indicator,
+  html[data-map-picker="active"] .theme-value-card,
+  html[data-map-picker="active"] .layer-notices,
+  html[data-map-picker="active"] .search-here-btn {
+    display: none;
+  }
+}
+/* Map shortcuts occupy their own row below search, within the same panel-aware bounds. */
+.quick-layers-slot {
+  position: absolute;
+  top: calc(var(--chrome-inset) + var(--safe-top) + var(--control-h-lg) + var(--space-3));
+  left: calc(var(--sidebar-w-open) + var(--chrome-inset) + var(--safe-left));
+  right: calc(var(--drawer-w-open) + var(--chrome-inset) + var(--safe-right));
+  pointer-events: none;
+}
+.quick-layers {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  max-width: 100%;
+  width: max-content;
+  pointer-events: auto;
+  padding-block: var(--space-1);
+}
+.quick-layer {
+  display: flex;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.quick-layer button {
+  min-height: var(--tap-min);
+  min-width: var(--tap-min);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: var(--type-body-sm);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.quick-layer button:first-child {
+  max-width: 180px;
+  padding-left: var(--space-4);
+}
+.quick-layer button:first-child > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.quick-layer button + button {
+  border-left: 1px solid var(--border);
+}
+.quick-layer[data-active] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.quick-layer[data-active] button {
+  color: var(--accent);
+}
+.quick-layer small {
+  font: var(--type-label-sm);
+}
+.quick-layer button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+.quick-layer button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.chrome-top:has(.topbar-search[data-focused]) .quick-layers-slot {
+  visibility: hidden;
 }

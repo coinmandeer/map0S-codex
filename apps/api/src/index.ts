@@ -1,3 +1,23 @@
+import { OverviewService } from "./services/ai/overviewService.js";
+import { sourcePlaceDetail } from "./services/ai/sourceDetail.js";
+import {
+  overviewCollectors,
+  overviewSynthesis,
+  overviewSynthesisAvailable
+} from "./services/ai/overviewProduction.js";
+import { postgresOverviewSnapshots } from "./services/ai/overviewSnapshots.js";
+import { postgresConversationPersistence } from "./services/ai/conversationPersistence.js";
+import { resolveAreaSelection } from "./geo/areaSelection.js";
+import { registerEnvironmentEditionRoutes } from "./routes/environmentEditionRoutes.js";
+import { withRequestSignal } from "./utils/requestSignal.js";
+import { createThreadSaver } from "./world/savedThreads.js";
+import { WorldQuestSources } from "./world/questIntegration.js";
+import { eq } from "drizzle-orm";
+import { users } from "./db/schema.js";
+import { registerWorldRoutes } from "./routes/worldRoutes.js";
+import { SocialWorld } from "./world/socialWorld.js";
+import { PostgresWorldRepository } from "./world/postgresRepository.js";
+import { LiveGotchiInventory, verifyGotchiOwner } from "./world/gotchi.js";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -39,6 +59,7 @@ import {
   listReviews,
   saveDraft,
   submitDraftForReview,
+  feedScope,
   socialFeed,
   unfollow,
   upsertReview
@@ -52,12 +73,19 @@ import {
 import { registerMapyRoutes } from "./routes/mapyRoutes.js";
 import { registerBasemapRoutes } from "./routes/basemapRoutes.js";
 import { registerWeatherGridRoutes } from "./routes/weatherGridRoutes.js";
+import { registerBathymetryGridRoutes } from "./routes/bathymetryGridRoutes.js";
+import { registerSatelliteRoutes } from "./routes/satelliteRoutes.js";
+import { registerLiveTrafficRoutes } from "./routes/liveTrafficRoutes.js";
+import { registerStreetObjectRoutes } from "./routes/streetObjectRoutes.js";
 import { registerInfoRoutes } from "./routes/infoRoutes.js";
 import { registerSavedPlaceRoutes } from "./routes/savedPlaceRoutes.js";
 import { registerPlanV2Routes } from "./routes/planV2Routes.js";
 import { registerEventRoutes } from "./routes/eventRoutes.js";
 import { registerIdentityRoutes } from "./routes/identityRoutes.js";
 import { registerLayerExtensionRoutes } from "./routes/layerExtensionRoutes.js";
+import { registerSourceRoutes } from "./routes/sourceRoutes.js";
+import { registerThemeRoutes } from "./routes/themeRoutes.js";
+import { registerTableRoutes } from "./routes/tableRoutes.js";
 import { registerCommerceRoutes } from "./routes/commerceRoutes.js";
 import { registerOperationalRoutes } from "./routes/operationalRoutes.js";
 import { registerDataRightsRoutes } from "./routes/dataRightsRoutes.js";
@@ -83,7 +111,8 @@ import {
   getGameState,
   getGhostsForBbox,
   catchGhost,
-  completeQuest
+  completeQuest,
+  questsNear
 } from "./services/gameService.js";
 import { collectGameOrbs, getGameProgress } from "./services/gameProgressService.js";
 import { getNamespacedGameState, patchNamespacedGameState } from "./services/gameProfileService.js";
@@ -110,15 +139,16 @@ import { enrichPlace } from "./services/placeEnrichmentService.js";
 import { getPlaceDetail } from "./services/placeDetailService.js";
 import { listDiscoverRegions } from "./services/regionService.js";
 import { getRegionSummary } from "./services/regionSummaryService.js";
-import { reverseGeocodeCountry } from "./services/discoverService.js";
+import { reverseGeocodeCountry, reverseGeocodePlaceName } from "./services/discoverService.js";
 import { registerGuideRoutes } from "./routes/guideRoutes.js";
 import { registerDiscoverContextRoutes } from "./routes/discoverContextRoutes.js";
+import { registerDiscoverBoundaryRoutes } from "./routes/discoverBoundaryRoutes.js";
 import {
   createEventServiceGuideLister,
   createGuidedDiscoverContextService
 } from "./services/guide/guideComposition.js";
 import { createOllamaWebTools } from "./services/ai/webTools.js";
-import { initDb, sql } from "./db/index.js";
+import { initDb, sql, db } from "./db/index.js";
 import { capabilities, config } from "./config.js";
 import { getMapyReadiness } from "./services/providerReadinessService.js";
 import { SavedPlaceService } from "./services/savedPlaceService.js";
@@ -269,7 +299,11 @@ export async function buildApp(options: BuildAppOptions = {}) {
   );
   registerClientSafeErrorHandler(app);
 
-  app.get("/health", async () => ({ status: "ok", service: "mapos-v3" }));
+  app.get("/health", async () => ({
+    status: "ok",
+    service: "mapos-v3",
+    release: process.env.MAPOS_RELEASE ?? "development"
+  }));
   registerCspReporting(app);
   registerOperationalRoutes(app, {
     token: options.operationsToken ?? config.operationsToken,
@@ -283,7 +317,22 @@ export async function buildApp(options: BuildAppOptions = {}) {
     const base = capabilities();
     const mapy = await getMapyReadiness();
     return {
-      capabilities: { ...base, mapy: base.mapy && mapy.status === "ready" },
+      capabilities: {
+        ...base,
+        mapy: base.mapy && mapy.status === "ready",
+        // MapTiler browser keys are intentionally public and should be restricted to the
+        // deployment origin in MapTiler Cloud. Keeping the value next to the capability lets
+        // direct tile/weather requests obey MapTiler's end-client requirement.
+        maptilerPublicKey: config.tileKeys.maptiler ?? ""
+      },
+      publicIntegrations: {
+        maptiler: config.tileKeys.maptiler
+          ? {
+              apiKey: config.tileKeys.maptiler,
+              services: ["maps", "weather", "geocoding", "elevation"]
+            }
+          : null
+      },
       providers: { mapy }
     };
   });
@@ -291,6 +340,11 @@ export async function buildApp(options: BuildAppOptions = {}) {
   registerMapyRoutes(app);
   registerBasemapRoutes(app);
   registerWeatherGridRoutes(app);
+  registerBathymetryGridRoutes(app);
+  registerSatelliteRoutes(app);
+  registerLiveTrafficRoutes(app);
+  registerStreetObjectRoutes(app);
+  registerEnvironmentEditionRoutes(app);
   registerInfoRoutes(app);
   registerSavedPlaceRoutes(app, {
     service: savedPlaceService,
@@ -322,12 +376,24 @@ export async function buildApp(options: BuildAppOptions = {}) {
   const planProposals = createAiPlanProposalCoordinator({
     repository: postgresPlanDocumentRepository
   });
+  const overviewService = new OverviewService({
+    detail: sourcePlaceDetail,
+    collect: overviewCollectors,
+    synthesize: overviewSynthesis,
+    synthesisAvailable: overviewSynthesisAvailable,
+    area: (areaId, boundaryRevision) => resolveAreaSelection({ areaId, boundaryRevision })
+  });
   registerAiRoutes(app, {
+    overview: overviewService,
+    overviewSnapshots: postgresOverviewSnapshots,
+    resolveArea: resolveAreaSelection,
     orchestrator: aiRuntime.orchestrator,
     planProposals,
     resolveUserId: async (request) => (await getSessionUser(getSessionId(request)))?.id ?? null,
-    allowedLayerIds: new Set(["osm-poi", "vanlife", "park4night", "events"]),
+    allowedLayerIds: new Set(["osm-poi", "vanlife", "park4night", "events", "satellites"]),
     chatTurn: createAiChatTurnFactory({
+      persistence: postgresConversationPersistence,
+      overview: overviewService,
       conversations: aiRuntime.conversations,
       providers: createProductionChatToolProviders({
         savedPlaces: savedPlaceService,
@@ -360,6 +426,13 @@ export async function buildApp(options: BuildAppOptions = {}) {
     service: new CommerceService(postgresCommerceRepository, commerceProvider),
     resolveUserId: async (request) => (await getSessionUser(getSessionId(request)))?.id ?? null
   });
+  registerSourceRoutes(app, {
+    resolveUserId: async (request) => (await getSessionUser(getSessionId(request)))?.id ?? null
+  });
+  registerThemeRoutes(app);
+  registerTableRoutes(app, {
+    resolveUserId: async (request) => (await getSessionUser(getSessionId(request)))?.id ?? null
+  });
   registerLayerExtensionRoutes(app, {
     importService: new LayerImportService(postgresLayerImportRepository),
     // Declarative sources are unavailable until an operator reviews and registers exact hosts.
@@ -378,7 +451,55 @@ export async function buildApp(options: BuildAppOptions = {}) {
       simulationEnabled: config.identitySimulationEnabled
     }
   );
-  const gatedInventory = new GatedAavegotchiInventoryAdapter();
+  const world = new SocialWorld(new PostgresWorldRepository(), {
+    externalQuests: new WorldQuestSources(),
+    testEnabled: process.env.MAPOS_GAME_TEST_MOVEMENT === "1",
+    async profile(id) {
+      const [u] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+      return u ? { id: u.id, displayName: u.displayName, avatarUrl: u.avatarUrl } : null;
+    },
+    async initialXp(id) {
+      const [u] = await db
+        .select({ xp: users.xpTotal })
+        .from(users)
+        .where(eq(users.id, id))
+        .limit(1);
+      return u?.xp ?? 0;
+    },
+    async verifyToken(userId, tokenId) {
+      const identities = await identityService.list(userId);
+      await verifyGotchiOwner(
+        identities
+          .filter((i) => i.type === "wallet" && i.verifiedAt && !i.revokedAt && !i.simulated)
+          .map((i) => i.subject),
+        tokenId
+      );
+    }
+  });
+  await registerWorldRoutes(app, {
+    world,
+    enabled: process.env.MAPOS_WORLD_ENABLED !== "0",
+    moderator: async (request) =>
+      (process.env.MAPOS_WORLD_MODERATORS ?? "")
+        .split(",")
+        .filter(Boolean)
+        .includes((await getSessionUser(getSessionId(request)))?.id ?? ""),
+    saveThread: createThreadSaver(savedPlaceService),
+    resolveUser: async (request) => {
+      const u = await getSessionUser(getSessionId(request));
+      return u ? { id: u.id, displayName: u.displayName, avatarUrl: u.avatarUrl } : null;
+    },
+    origins: [
+      config.siweOrigin,
+      ...(process.env.NODE_ENV !== "production"
+        ? ["http://localhost:5173", "http://127.0.0.1:5173"]
+        : [])
+    ]
+  });
+  const gatedInventory =
+    process.env.MAPOS_GOTCHI_LIVE_ENABLED === "0"
+      ? new GatedAavegotchiInventoryAdapter()
+      : new LiveGotchiInventory();
   const simulatedInventory = new SimulatedAavegotchiInventoryAdapter(
     [],
     config.identitySimulationEnabled
@@ -403,6 +524,8 @@ export async function buildApp(options: BuildAppOptions = {}) {
     displayMetadata: identityDisplayMetadata
   });
   registerDataRightsRoutes(app, {
+    eraseWorld: (id) => world.eraseUser(id),
+    exportWorld: (id) => world.exportUser(id),
     service: new DataRightsService(postgresDataRightsRepository),
     resolveUserId: async (request) => (await getSessionUser(getSessionId(request)))?.id ?? null,
     clearSession(reply) {
@@ -428,11 +551,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
         return reply.code(404).send({ message: "Layer not found" });
       }
       const user = await getSessionUser(getSessionId(request));
-      return await provider.features({
-        bbox: parseBbox(request.query.bbox),
-        query: request.query,
-        userId: user?.id
-      });
+      return await withRequestSignal(request, reply, (signal) =>
+        provider.features!({
+          bbox: parseBbox(request.query.bbox),
+          query: request.query,
+          userId: user?.id,
+          signal
+        })
+      );
     } catch (err) {
       return reply
         .code(statusForClient(err))
@@ -456,11 +582,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
         return reply.code(404).send({ message: "Layer has no compatible v2 feature contract" });
       }
       const user = await getSessionUser(getSessionId(request));
-      return await provider.featuresV2({
-        bbox: parseBbox(request.query.bbox),
-        query: request.query,
-        userId: user?.id
-      });
+      return await withRequestSignal(request, reply, (signal) =>
+        provider.featuresV2!({
+          bbox: parseBbox(request.query.bbox),
+          query: request.query,
+          userId: user?.id,
+          signal
+        })
+      );
     } catch (err) {
       return reply
         .code(statusForClient(err))
@@ -1083,7 +1212,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
 
   app.get<{
-    Querystring: { cursor?: string; limit?: string; country?: string; bbox?: string; tag?: string };
+    Querystring: {
+      cursor?: string;
+      limit?: string;
+      country?: string;
+      bbox?: string;
+      tag?: string;
+      scope?: string;
+    };
   }>("/feed", async (request) => {
     const user = await getSessionUser(getSessionId(request));
     const limit = Math.max(1, Math.min(50, Number(request.query.limit) || 20));
@@ -1099,7 +1235,8 @@ export async function buildApp(options: BuildAppOptions = {}) {
       limit,
       (request.query.country ?? "ALL").toUpperCase(),
       bbox,
-      request.query.tag
+      request.query.tag,
+      feedScope(request.query.scope)
     );
   });
 
@@ -1114,11 +1251,37 @@ export async function buildApp(options: BuildAppOptions = {}) {
     return getGameState(user?.id, bbox);
   });
 
+  // Quests bound to a place: the detail panel asks what there is to do right here, reusing the
+  // same anchor cache the viewport sweep fills so opening a detail costs no extra upstream call.
+  app.get<{ Querystring: { lng?: string; lat?: string; radiusKm?: string } }>(
+    "/game/quests/near",
+    async (request, reply) => {
+      const lng = Number(request.query.lng);
+      const lat = Number(request.query.lat);
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+        return reply.code(400).send({ message: "lng and lat required" });
+      }
+      try {
+        return {
+          quests: await questsNear(
+            lng,
+            lat,
+            request.query.radiusKm ? Number(request.query.radiusKm) : 3
+          )
+        };
+      } catch (err) {
+        return reply
+          .code(statusForClient(err))
+          .send({ message: messageForClient(err, "Questy v okolí se nepodařilo načíst") });
+      }
+    }
+  );
+
   app.get<{ Querystring: { bbox?: string } }>("/game/roads", async (request, reply) => {
     try {
       const bbox = parseBbox(request.query.bbox);
       return reply.header("cache-control", "public, max-age=86400").send({
-        roads: await fetchGameRoads(bbox),
+        roads: await withRequestSignal(request, reply, (signal) => fetchGameRoads(bbox, signal)),
         source: "OpenStreetMap via Overpass"
       });
     } catch (err) {
@@ -1405,8 +1568,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
   app.get<{ Querystring: { lat?: string; lng?: string } }>("/geocode/reverse", async (request) => {
     const lat = Number(request.query.lat);
     const lng = Number(request.query.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { country: null };
-    return { country: await reverseGeocodeCountry(lng, lat) };
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { country: null, name: null };
+    // The name is what a picked point on the map is called: a stop written from a tap shows
+    // coordinates until this comes back, and then reads like a place.
+    const [country, name] = await Promise.all([
+      reverseGeocodeCountry(lng, lat),
+      reverseGeocodePlaceName(lng, lat).catch(() => null)
+    ]);
+    return { country, name };
   });
 
   app.get<{
@@ -1441,16 +1610,18 @@ export async function buildApp(options: BuildAppOptions = {}) {
     const viewer = await getSessionUser(getSessionId(request));
     const lng = Number(request.query.lng);
     const lat = Number(request.query.lat);
-    const place = await getPlaceDetail(
-      {
-        id: decodeURIComponent(request.params.id),
-        sourceRefs: request.query.sourceRefs,
-        lng: Number.isFinite(lng) ? lng : undefined,
-        lat: Number.isFinite(lat) ? lat : undefined,
-        name: request.query.name,
-        category: request.query.category
-      },
-      { viewerUserId: viewer?.id ?? null }
+    const place = await withRequestSignal(request, reply, (signal) =>
+      getPlaceDetail(
+        {
+          id: decodeURIComponent(request.params.id),
+          sourceRefs: request.query.sourceRefs,
+          lng: Number.isFinite(lng) ? lng : undefined,
+          lat: Number.isFinite(lat) ? lat : undefined,
+          name: request.query.name,
+          category: request.query.category
+        },
+        { viewerUserId: viewer?.id ?? null, signal }
+      )
     );
     if (!place) return reply.code(404).send({ message: "Place not found" });
     return place;
@@ -1491,6 +1662,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
 
   registerGuideRoutes(app);
   registerDiscoverContextRoutes(app, { service: guidedDiscoverContextService });
+  registerDiscoverBoundaryRoutes(app);
 
   return app;
 }

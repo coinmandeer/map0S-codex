@@ -46,15 +46,42 @@
     gap: var(--space-3);
   }
 
-  /* At 200 % text the four route profiles cannot share a line, so the labels break rather
-     than clip — the control stays usable even when it gets tall. */
-  .planner-options-field .kit-segment {
+  /* A stop taken from a pin shows the place, not an editable copy of its name. */
+  .planner-stop-place {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-3);
     min-width: 0;
+    min-height: var(--control-h);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
   }
 
-  .planner-options-field .kit-segment-label {
-    overflow-wrap: anywhere;
-    white-space: normal;
+  .planner-stop-place img,
+  .planner-stop-place-icon {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-xs);
+    object-fit: cover;
+  }
+
+  .planner-stop-place-icon {
+    display: grid;
+    place-items: center;
+    background: var(--surface-solid);
+    color: var(--text-muted);
+  }
+
+  .planner-stop-place-name {
+    flex: 1;
+    overflow: hidden;
+    font: var(--type-body-md);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .planner-options-switch {
@@ -95,6 +122,13 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
+  }
+
+  /* The old full-list pseudo-element still exists in the compatibility stylesheet.  The
+     redesigned rail below owns the connector; hiding the legacy line prevents it from leaking
+     through translucent bullets and into the footer. */
+  .planner-stops::before {
+    display: none;
   }
 
   .planner-stops-header {
@@ -148,9 +182,37 @@
     width: 24px;
     height: 24px;
     border-radius: var(--radius-pill);
-    background: var(--accent-soft);
+    background: var(--surface-solid);
+    border: 2px solid var(--accent);
     color: var(--accent);
     font: var(--type-label-md);
+    position: relative;
+    z-index: 1;
+  }
+
+  /* The numbered bullet is the drag handle: the one part of the row that is not an input. */
+  .planner-stop-drag {
+    display: grid;
+    place-items: center;
+    border: 0;
+    padding: 0;
+    background: none;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .planner-stop-drag:active {
+    cursor: grabbing;
+  }
+
+  .planner-stop-drag:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-pill);
+  }
+
+  .planner-stop-group[data-dragging] {
+    opacity: 0.6;
   }
 
   .planner-stop-main {
@@ -384,6 +446,29 @@
 
   .planner-segment-focus[aria-pressed="true"] {
     color: var(--warning);
+  }
+
+  /* Navigation for the single leg: each leg is its own route, so the handoff starts where the
+     traveller is standing, not from the first stop of the whole plan. */
+  .planner-segment-handoffs {
+    display: inline-flex;
+    gap: var(--space-3);
+    margin-left: auto;
+  }
+
+  .planner-segment-handoff {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--accent);
+    font: var(--type-label-sm);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .planner-segment-handoff:hover,
+  .planner-segment-handoff:focus-visible {
+    text-decoration: underline;
   }
 
   /* §16.2: variants ride along the segment line as chips, so a two-variant segment costs one

@@ -65,7 +65,10 @@ describe("MapPicker session serialization", () => {
     assert.equal(
       parseMapPickerSession({
         ...session,
-        suggestions: [{ lat: 49.75, lng: 13.38 }, { lat: 91, lng: 13.4 }]
+        suggestions: [
+          { lat: 49.75, lng: 13.38 },
+          { lat: 91, lng: 13.4 }
+        ]
       }),
       null
     );

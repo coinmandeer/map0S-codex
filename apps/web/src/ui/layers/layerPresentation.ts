@@ -25,9 +25,22 @@ const LAYER_ICONS: Record<string, IconName> = {
   openaq: "air",
   "commons-photos": "photo_camera",
   mapillary: "photo_library",
+  panoramax: "photo_library",
+  "snow-cover": "snowing",
+  roads: "add_road",
+  "live-aircraft": "flight",
+  "live-vessels": "directions_boat",
+  "land-cover": "forest",
+  satellites: "satellite_alt",
+  "overture-places": "storefront",
+  "overture-buildings": "apartment",
+  "street-objects": "signpost",
+  "temporary-messages": "campaign",
   "refuge-restrooms": "wc",
   "charging-stations": "ev_station",
   "active-fires": "thunderstorm",
+  "europe-drought": "water_drop",
+  "emodnet-bathymetry": "waves",
   ebird: "pets",
   cyclosm: "directions_bike",
   "waymarked-trails": "hiking",
@@ -46,7 +59,8 @@ const CATEGORY_ICONS: Record<LayerCategory, IconName> = {
   weather: "rainy",
   game: "stadia_controller",
   user: "person",
-  routing: "route"
+  routing: "route",
+  statistics: "bar_chart"
 };
 
 /** One hue per data domain (§2.2). Returned as the token name so light/dark follow the theme. */
@@ -59,7 +73,8 @@ const CATEGORY_COLORS: Record<LayerCategory, string> = {
   weather: "var(--layer-weather)",
   game: "var(--layer-game)",
   user: "var(--layer-user)",
-  routing: "var(--layer-services)"
+  routing: "var(--layer-services)",
+  statistics: "var(--layer-services)"
 };
 
 export function layerIcon(layerId: string, category: LayerCategory): IconName {
@@ -105,13 +120,28 @@ const POI_CATEGORY_ICONS: Record<OsmPoiCategoryId, IconName> = {
   fitness_trail: "directions_walk",
   fitness_centre: "fitness_center",
   disc_golf: "sports_soccer",
+  golf: "sports_golf",
   skatepark: "skateboarding",
   swimming: "pool",
-  sports_centre: "sports_soccer"
+  sports_centre: "sports_soccer",
+  airport: "connecting_airports",
+  helipad: "flight",
+  atm: "local_atm",
+  bank: "account_balance",
+  lighthouse: "light_mode",
+  bitcoin_atm: "account_balance_wallet",
+  bitcoin: "payments"
+};
+
+/** Categories that are not OSM POI ids (live traffic) still get a fitting glyph. */
+const LIVE_CATEGORY_ICONS: Record<string, IconName> = {
+  aircraft: "flight",
+  "aircraft-ground": "flight",
+  vessel: "directions_boat"
 };
 
 export function poiCategoryIcon(id: string): IconName {
-  return POI_CATEGORY_ICONS[id as OsmPoiCategoryId] ?? "place";
+  return POI_CATEGORY_ICONS[id as OsmPoiCategoryId] ?? LIVE_CATEGORY_ICONS[id] ?? "place";
 }
 
 /** Second line of a POI layer row: where the data comes from and anything blocking it.

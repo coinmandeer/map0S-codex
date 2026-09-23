@@ -188,7 +188,7 @@ test("without a model the same question is answered from the same tool", async (
 
   assert.deepEqual(
     events.map((event) => event.type),
-    ["intent", "tool_start", "tool_result", "token", "card", "done"]
+    ["conversation", "intent", "tool_start", "tool_result", "token", "sources", "card", "done"]
   );
 });
 
@@ -252,7 +252,7 @@ test("the tool loop runs a tool, then submits an answer that may only cite what 
 
   assert.deepEqual(
     sink.events.map((event) => event.type),
-    ["intent", "tool_start", "tool_result", "card", "done"]
+    ["conversation", "intent", "tool_start", "tool_result", "sources", "card", "done"]
   );
   const started = sink.events.find((event) => event.type === "tool_start");
   assert.ok(started?.type === "tool_start" && started.tool === "search_places");
@@ -611,4 +611,271 @@ test("a message from someone else's account is refused before any tool runs", as
     sink.events.map((event) => event.type),
     ["error"]
   );
+});
+
+test("selected area is bound to place tools and center statistics are unavailable", async () => {
+  const area = {
+    id: '["gisco","ES","lau","43148"]',
+    revision: "a".repeat(64),
+    name: "Tarragona",
+    level: "lau" as const,
+    country: "ES",
+    source: "gisco",
+    code: "43148",
+    bbox: [1, 40, 2, 42] as [number, number, number, number]
+  };
+  const received: unknown[] = [];
+  const { registry, available } = createChatToolRegistry({
+    providers: {
+      placeSearch: {
+        async search(query) {
+          received.push(query.area);
+          return { places: [], sources: [] };
+        }
+      },
+      layers: () => [],
+      regionContext: async () => {
+        throw new Error("must not reverse geocode selected area");
+      },
+      stats: async () => {
+        throw new Error("must not substitute center statistics");
+      }
+    },
+    mapContext: {
+      center: { longitude: 1.2, latitude: 41.1 },
+      zoom: 12,
+      activeLayerIds: ["osm-poi"],
+      area
+    }
+  });
+  assert.equal(available.has("get_stats"), false);
+  assert.equal(available.has("get_region_context"), false);
+  const result = await registry.invoke(
+    "search_places",
+    { categories: ["camp_site"], bbox: [1, 40, 2, 42], limit: 3 },
+    { actor, projection }
+  );
+  assert.equal(result.status, "succeeded", JSON.stringify(result));
+  assert.deepEqual(received, [area]);
+});
+
+test("a fresh chat service restores durable conversation and advances its compare-and-swap revision", async () => {
+  const documents = new Map<string, import("./conversation.js").AiConversation>();
+  const persistence: import("./conversationPersistence.js").ConversationPersistence = {
+    async load(owner, id) {
+      const doc = documents.get(id);
+      if (!doc || doc.ownerUserId !== owner) throw new Error("not found");
+      return structuredClone(doc);
+    },
+    async save(document, revision) {
+      const prior = documents.get(document.id);
+      assert.equal(prior?.revision ?? null, revision);
+      documents.set(document.id, structuredClone(document));
+    }
+  };
+  const factory = () =>
+    createAiChatTurnFactory({
+      conversations: new AiConversationStore(),
+      persistence,
+      providers: createFixtureChatToolProviders({ fixtures: () => FIXTURES })
+    })({
+      center: { longitude: 13.3775, latitude: 49.7475 },
+      zoom: 13,
+      activeLayerIds: ["osm-poi"]
+    });
+  const sink = collect();
+  await factory().run(
+    request("najdi kemp", { externalModel: false, preciseLocation: false }),
+    sink.emit
+  );
+  const done = sink.events.find((event) => event.type === "done");
+  assert(done?.type === "done");
+  assert.equal(documents.get(done.conversation.id)?.revision, done.conversation.revision);
+  const next = collect();
+  await factory().run(
+    {
+      ...request("najdi bar", { externalModel: false, preciseLocation: false }),
+      conversation: {
+        mode: "existing",
+        conversationId: done.conversation.id,
+        baseRevision: done.conversation.revision
+      }
+    },
+    next.emit
+  );
+  const second = next.events.find((event) => event.type === "done");
+  assert(second?.type === "done");
+  assert.equal(second.conversation.revision, done.conversation.revision + 2);
+  const record = documents.get(second.conversation.id)!;
+  assert(
+    record.messages
+      .filter((message) => message.role === "assistant")
+      .every((message) => message.dataClass === "account-private")
+  );
+});
+
+test("feature questions share overview acquisition, expose geometry early and preserve partial limitations", async () => {
+  const { OverviewService } = await import("./overviewService.js");
+  let calls = 0;
+  const overview = new OverviewService({
+    detail: async () => {
+      calls++;
+      return {
+        place: {
+          id: "osm:node:1",
+          name: "Parkoviště",
+          category: "parking",
+          lng: 1,
+          lat: 2,
+          sources: []
+        },
+        fields: { name: "Parkoviště", category: "parking" },
+        source: {
+          sourceId: "record:osm:node:1",
+          label: "OSM",
+          providerId: "osm",
+          url: "https://www.openstreetmap.org/node/1"
+        }
+      };
+    },
+    collect: async () => {
+      throw new Error("Web je nedostupný.");
+    }
+  });
+  const factory = createAiChatTurnFactory({
+    overview,
+    conversations: new AiConversationStore(),
+    providers: createFixtureChatToolProviders({ fixtures: () => FIXTURES })
+  });
+  const input = {
+    ...request("Co je to za místo?", { externalModel: false, preciseLocation: false }),
+    context: { ...request("").context, featureRef: { layerId: "osm-poi", featureId: "osm:node:1" } }
+  };
+  const sink = collect();
+  const answer = await factory({
+    center: { longitude: 1, latitude: 2 },
+    zoom: 13,
+    activeLayerIds: ["osm-poi"]
+  }).run(input, sink.emit);
+  assert.equal(calls, 1);
+  assert(sink.events.find((event) => event.type === "card" && event.card.type === "places"));
+  assert(answer?.cards.some((card) => card.type === "places"));
+  assert(
+    answer?.cards.some(
+      (card) =>
+        card.type === "facts" &&
+        card.title === "Omezení přehledu" &&
+        card.items.some((item) => item.value.includes("nedostupný"))
+    )
+  );
+  assert(answer?.sources.length);
+});
+
+test("statistical questions use grounded service before the model and keep follow-up history", async () => {
+  const { runtime, requests } = scriptedRuntime([
+    { text: "irrelevant location", finishReason: "stop" }
+  ]);
+  const conversations = new AiConversationStore();
+  const { registry } = createChatToolRegistry({
+    providers: createFixtureChatToolProviders({ fixtures: () => FIXTURES }),
+    mapContext: { center: { longitude: 1.25, latitude: 41.12 }, zoom: 12, activeLayerIds: [] }
+  });
+  const histories: string[][] = [];
+  const service = new AiChatService({
+    registry,
+    conversations,
+    runtime,
+    statistics: async (message, history) => {
+      histories.push([...history]);
+      return {
+        execution: "deterministic",
+        intent: "question",
+        text: `Statistika: ${message}`,
+        cards: [],
+        sources: [],
+        followUps: []
+      };
+    }
+  });
+  const first = collect();
+  await service.run(request("chudoba v CR"), first.emit);
+  const done = first.events.find((e) => e.type === "done");
+  assert(done?.type === "done");
+  await service.run(
+    {
+      ...request("a nezaměstnanost?"),
+      conversation: {
+        mode: "existing",
+        conversationId: done.conversation.id,
+        baseRevision: done.conversation.revision
+      }
+    },
+    collect().emit
+  );
+  assert.deepEqual(histories, [[], ["chudoba v CR"]]);
+  assert.equal(requests.length, 0);
+});
+test("an unsupported nonlocal question never becomes a description of the current location", async () => {
+  const turn = createAiChatTurnFactory({
+    conversations: new AiConversationStore(),
+    providers: createFixtureChatToolProviders({
+      fixtures: () => FIXTURES,
+      discover: createOfflineDiscoverContextService()
+    })
+  });
+  const answer = await turn({
+    center: { longitude: 13.37, latitude: 49.74 },
+    zoom: 12,
+    activeLayerIds: []
+  }).run(
+    request("kde je největší chudoba v CR", { externalModel: false, preciseLocation: false }),
+    collect().emit
+  );
+  assert(answer);
+  assert.doesNotMatch(answer.text, /Jsi v|Oblast ve výřezu/);
+  assert.match(answer.text, /nemám ověřenou odpověď/);
+});
+
+test("explicit question about the selected area shares the exact overview rather than reverse geocoding", async () => {
+  const { OverviewService } = await import("./overviewService.js");
+  let code = "";
+  const overview = new OverviewService({
+    detail: async () => {
+      throw new Error("unexpected POI");
+    },
+    area: async (id, revision) => {
+      code = id;
+      return {
+        id,
+        revision,
+        source: "gisco-lau-cz",
+        country: "CZ",
+        level: "lau",
+        code: "CZ_554782",
+        name: "Praha",
+        bbox: [14, 49, 15, 51]
+      };
+    }
+  });
+  const factory = createAiChatTurnFactory({
+    overview,
+    conversations: new AiConversationStore(),
+    providers: createFixtureChatToolProviders({ fixtures: () => FIXTURES })
+  });
+  const turn = factory({
+    center: { longitude: 1, latitude: 41 },
+    zoom: 10,
+    activeLayerIds: ["osm-poi"]
+  });
+  const base = request("Co víš o této oblasti?", { externalModel: false, preciseLocation: false });
+  const answer = await turn.run(
+    {
+      ...base,
+      context: { ...base.context, areaRef: { areaId: "verified-praha", boundaryRevision: "r1" } }
+    },
+    collect().emit
+  );
+  assert.equal(code, "verified-praha");
+  assert.match(answer!.text, /Praha/);
+  assert(!answer!.text.includes("Plzeň"));
 });

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "asOf": "2026-09-02",
+  "asOf": "2026-09-09",
   "inventory": {
     "productionComposition": "apps/api/src/index.ts",
     "memoryComposition": "apps/api/src/memory-server.ts",
     "machineVerifier": "apps/api/src/routeParity.test.ts",
-    "expectedProductionRouteCount": 142,
-    "expectedMemoryRouteCount": 137,
-    "expectedSharedRouteCount": 136,
+    "expectedProductionRouteCount": 216,
+    "expectedMemoryRouteCount": 209,
+    "expectedSharedRouteCount": 207,
     "productionOnly": [
       {
         "method": "GET",
@@ -62,6 +62,33 @@
         "reason": "A synthetic server must not present an in-memory monetary mutation as equivalent to production staking semantics.",
         "status": "intentional-fixture-gap",
         "target": "Add only with an explicitly fake ledger adapter and contract tests."
+      },
+      {
+        "method": "GET",
+        "path": "/live/aircraft",
+        "auth": "public",
+        "schemaIntent": "Live aircraft positions for a viewport, proxied and cached from ADSB.lol (ODbL 1.0) with each feature carrying its source and position age.",
+        "reason": "Live upstream sources are registered in the production composition only; the memory server serves deterministic fixtures and has no upstream network access.",
+        "status": "permanent",
+        "target": "Keep the adapter behind the same FeatureProvider boundary if the memory server ever needs fixtures."
+      },
+      {
+        "method": "GET",
+        "path": "/live/vessels",
+        "auth": "public",
+        "schemaIntent": "Live vessel positions for a viewport: AISstream when a key is configured, keyless Digitraffic for Finnish waters otherwise, with per-feature source attribution.",
+        "reason": "Same as live aircraft: no upstream in the memory composition, and the collector is a server-side WebSocket that only exists in production.",
+        "status": "permanent",
+        "target": "Add deterministic fixtures before the memory server advertises the layer."
+      },
+      {
+        "method": "GET",
+        "path": "/live/status",
+        "auth": "public",
+        "schemaIntent": "Operational status of the live traffic sources (collector configured/connected, tracked vessel count) without exposing provider keys.",
+        "reason": "The diagnostic exists for the production collector; the memory composition has no collector to report.",
+        "status": "permanent",
+        "target": "Move under the operations surface if more live sources appear."
       }
     ],
     "memoryOnly": [
@@ -73,23 +100,27 @@
         "reason": "Older browser tests used a dedicated Park4Night path while production resolves the same layer through /layers/:layerId/features.",
         "status": "temporary",
         "target": "Remove after every consumer uses the generic layer endpoint."
+      },
+      {
+        "method": "GET",
+        "path": "/layers/meshcore/features",
+        "auth": "public",
+        "schemaIntent": "Offline fixture returning deterministic MeshCore nodes inside the requested bbox.",
+        "reason": "The MeshCore data layer is a server adapter; offline runs must not contact the analyzer, while production resolves it through /layers/:layerId/features.",
+        "status": "temporary",
+        "target": "Serve the same fixture through the generic layer endpoint once the offline registry carries it."
       }
     ]
   },
   "intentionalBehaviorDifferences": [
     {
-      "routes": [
-        "POST /v2/ai/plan-discuss"
-      ],
+      "routes": ["POST /v2/ai/plan-discuss"],
       "production": "The shared authenticated route sends only an explicitly consented, bounded projection of the caller's PlanDocument to the configured external AI gateway; owner identity, notes, conversations, annotations and arbitrary metadata are excluded.",
       "memory": "The same route, consent and ownership contract returns a deterministic labelled offline answer without contacting an external model.",
       "verification": "AI route, plan-projection and browser tests cover explicit consent, owner isolation, private no-store responses, excluded fields and no automatic PlanDocument revision change; route parity proves the method/path is shared."
     },
     {
-      "routes": [
-        "GET /internal/metrics",
-        "GET /internal/status"
-      ],
+      "routes": ["GET /internal/metrics", "GET /internal/status"],
       "production": "Both endpoints are hidden as 404 without the server-only operations bearer token. Authenticated responses expose redacted OpenMetrics and a bounded provider/circuit status view without request URLs, query values, prompts, email, wallet or coordinates.",
       "memory": "The same registrar and hidden-by-default behavior are used; test composition can inject a token and exercise deterministic in-process telemetry without an external backend.",
       "verification": "Operational route, telemetry, correlation and privacy tests cover authentication, no-store headers, bounded status records and forbidden sensitive labels; route parity proves both paths are shared."
@@ -109,55 +140,37 @@
       "verification": "Commerce SDK, migration, state-machine, resolver and shared-route tests cover locked metadata, server-side denial-before-fetch, signed webhook idempotency, refund/cancel/expiry and providerless behavior; route parity proves all seven paths are shared."
     },
     {
-      "routes": [
-        "GET /v2/layer-sources/:layerId/features",
-        "POST /v2/layer-imports/*"
-      ],
+      "routes": ["GET /v2/layer-sources/:layerId/features", "POST /v2/layer-imports/*"],
       "production": "The shared registrar uses a durable transactional repository. Declarative HTTP remains fail-closed until exact public hosts are reviewed in the server registry.",
       "memory": "The same contracts use an atomic process-local repository; the declarative source registry is empty so fixture/offline execution cannot contact the network.",
       "verification": "SDK contract/import suites, SSRF boundary tests, atomic route tests and route parity cover the public extension boundary."
     },
     {
-      "routes": [
-        "GET /config"
-      ],
+      "routes": ["GET /config"],
       "production": "Configured capabilities are combined with active database/upstream readiness.",
       "memory": "Normal memory mode reports configured-only readiness; offline mode forces every keyed capability off and identifies fixtureMode=offline.",
       "verification": "The offline smoke asserts fixtureMode and the route-parity test keeps the path shared."
     },
     {
-      "routes": [
-        "GET /layers/:layerId/features",
-        "GET /v2/layers/:layerId/features"
-      ],
+      "routes": ["GET /layers/:layerId/features", "GET /v2/layers/:layerId/features"],
       "production": "Registry-backed providers can query databases and public upstreams.",
       "memory": "Only deterministic OSM/user fixtures and the earthquake v2 fixture are implemented; unsupported providers return 404.",
       "verification": "Layer/provider unit tests own payload compatibility; route parity owns method/path presence."
     },
     {
-      "routes": [
-        "GET /routing",
-        "POST /routing/plan"
-      ],
+      "routes": ["GET /routing", "POST /routing/plan"],
       "production": "Provider routing, optional waypoints, restrictions and fallback behavior.",
       "memory": "Synthetic straight-line calculations; offline mode also replaces the legacy GET route so OSRM is never contacted.",
       "verification": "Planning E2E checks response UX; offline network guard proves no provider call escapes."
     },
     {
-      "routes": [
-        "POST /v2/routing/plan",
-        "POST /v2/routing/temporal-context",
-        "/v2/plans*"
-      ],
+      "routes": ["POST /v2/routing/plan", "POST /v2/routing/temporal-context", "/v2/plans*"],
       "production": "Shared v2 contracts use owner-scoped PostgreSQL persistence and live adjacent routing providers.",
       "memory": "The same registrar uses an owner-scoped in-memory repository and deterministic two-endpoint segment routing without fetch.",
       "verification": "Shared route tests cover auth, revisions, partial failures and exports; route parity proves identical registration."
     },
     {
-      "routes": [
-        "GET /v2/layers/events/features",
-        "GET /v2/events*"
-      ],
+      "routes": ["GET /v2/layers/events/features", "GET /v2/events*"],
       "production": "The shared event registrar uses PostgreSQL and refreshes from Ticketmaster only when its official adapter is explicitly configured.",
       "memory": "The same registrar uses labelled synthetic fixtures and no upstream adapters, including in offline mode.",
       "verification": "Event service and route tests own filtering, pagination and contract behavior; route parity proves all four paths are shared."
@@ -174,18 +187,13 @@
       "verification": "Identity route/service tests cover origin and session binding, exact-message verification, nonce replay, global wallet uniqueness, revocation, simulation labels and inventory gating; route parity proves all six paths are shared."
     },
     {
-      "routes": [
-        "GET /places/:id"
-      ],
+      "routes": ["GET /places/:id"],
       "production": "ACL-aware source resolution plus canonical enrichment.",
       "memory": "Echoes validated coordinate/source hints so the detail UI can render without provider or database access.",
       "verification": "Production ACL is unit-tested separately; route parity owns the shared public route shape."
     },
     {
-      "routes": [
-        "/v2/me/saved-places*",
-        "/v2/me/saved-place-collections*"
-      ],
+      "routes": ["/v2/me/saved-places*", "/v2/me/saved-place-collections*"],
       "production": "The shared authenticated service uses the owner-scoped PostgreSQL repository.",
       "memory": "The same route registrar and domain service use a process-local owner-scoped repository.",
       "verification": "Shared route contract tests cover validation, ACL, round trips, filters and cursors; route parity proves both compositions register every endpoint."

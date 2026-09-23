@@ -121,6 +121,58 @@ describe("tile layer factory", () => {
     assert.equal(paint.get("raster-tile-t")?.["raster-opacity"], 0.4);
   });
 
+  it("keeps selected networks independently and removes only the deselected source", async () => {
+    const { map, sources, addCalls, paint } = fakeMap();
+    const handle = createTileLayer(map, "trails", {
+      tiles: [],
+      sourcesForFilters: (filters) =>
+        (filters.activity as string[]).map((id) => ({
+          id,
+          tiles: [`https://tiles/${id}/{z}/{x}/{y}.png`]
+        }))
+    });
+    await handle.update(BBOX, { activity: ["cycling", "hiking"] });
+    assert.equal(sources.size, 2);
+    const before = addCalls.length;
+    handle.setOpacity(0.35);
+    await handle.update(BBOX, { activity: ["hiking"] });
+    assert.equal(addCalls.length, before);
+    assert.equal(sources.has("source-tile-trails-cycling"), false);
+    assert.equal(paint.get("raster-tile-trails-hiking")?.["raster-opacity"], 0.35);
+    handle.detach();
+    assert.equal(sources.size, 0);
+  });
+
+  it("cannot recreate later children after detach or a newer filter update", async () => {
+    const { map, sources } = fakeMap();
+    const handle = createTileLayer(map, "race", {
+      tiles: [],
+      sourcesForFilters: (filters) =>
+        (filters.activity as string[]).map((id) => ({ id, tiles: [`https://tiles/${id}`] }))
+    });
+    const pending = handle.update(BBOX, { activity: ["cycling", "hiking"] });
+    handle.detach();
+    await pending;
+    assert.equal(sources.size, 0);
+    const next = createTileLayer(map, "race", {
+      tiles: [],
+      sourcesForFilters: (filters) =>
+        (filters.activity as string[]).map((id) => ({ id, tiles: [`https://tiles/${id}`] }))
+    });
+    const old = next.update(BBOX, { activity: ["cycling", "hiking"] });
+    await next.update(BBOX, { activity: ["mtb"] });
+    await old;
+    assert.deepEqual([...sources.keys()], ["source-tile-race-mtb"]);
+    next.detach();
+  });
+
+  it("does not attach any source for an already aborted update", async () => {
+    const { map, sources } = fakeMap();
+    const handle = createTileLayer(map, "cancel", { tiles: ["https://tiles/x"] });
+    await handle.update(BBOX, {}, AbortSignal.abort());
+    assert.equal(sources.size, 0);
+  });
+
   it("expands subdomain templates", () => {
     assert.deepEqual(subdomains("https://{s}.tile.example/{z}/{x}/{y}.png"), [
       "https://a.tile.example/{z}/{x}/{y}.png",

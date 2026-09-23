@@ -4,13 +4,23 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import maplibregl from "maplibre-gl";
 import maplibreWorker from "maplibre-gl/dist/maplibre-gl-csp-worker?url";
 import { App } from "./App";
+import { registerPmTilesProtocol } from "./map/pmtilesProtocol";
+import { registerTileCacheProtocol } from "./map/tileCache";
 import { getMapStore } from "./store/mapStore";
 import { ToastProvider, TooltipProvider } from "./ui/kit";
 // Inter covers body and headings alike. The icon font is not imported here: it is declared
 // in kit.css against a committed subset, so it is fetched only once something renders a glyph.
 import "@fontsource-variable/inter/standard.css";
 import "./styles/global.css";
+import "./ui/layers/layerActivity.css";
 import "maplibre-gl/dist/maplibre-gl.css";
+
+// Before any map is constructed: a style that references a `pmtiles://` URL is resolved as the
+// map loads, and an unregistered scheme fails the whole style rather than one source.
+registerPmTilesProtocol();
+// The shared tile cache, for the same reason and at the same moment: an overlay's tile template
+// names this scheme, and a style referencing an unregistered one fails as a whole.
+registerTileCacheProtocol();
 
 // Apply stored theme before first paint so headings/body inherit the right color.
 {
@@ -62,5 +72,10 @@ if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("kit"
 } else {
   // Required for Vite production builds — without this the map canvas stays blank.
   maplibregl.setWorkerUrl(maplibreWorker);
-  render(<App />);
+  if (import.meta.env.MODE === "performance") {
+    void import("./map/performanceHarness").then((module) => {
+      module.installPerformanceHarness();
+      render(<App />);
+    });
+  } else render(<App />);
 }

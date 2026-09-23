@@ -1,3 +1,11 @@
+import { AreaControls } from "./discover/AreaControls";
+import { MapPlaceContext } from "./ui/MapPlaceContext";
+import { ClusterChoices } from "./ui/ClusterChoices";
+import { WorldUiBoundary } from "./world/WorldUiBoundary";
+import { WorldBridge } from "./world/WorldBridge";
+import "./world/world.css";
+import { configureTileCache } from "./map/tileCache";
+import { attachStatisticsRuntime } from "./statistics/explorerStore";
 import { useEffect } from "react";
 import { MapCore } from "./map/MapCore";
 import { apiGetSafe } from "./lib/api";
@@ -6,6 +14,7 @@ import type { ServerCapabilities } from "./store/mapStore";
 import { getMapStore } from "./store/mapStore";
 import { emit } from "./lib/events";
 import { geolocation, messageFor, type Fix } from "./lib/geolocation";
+import { setActiveLocale } from "./i18n";
 import { useMapStoreSnapshot } from "./store/useMapStoreSnapshot";
 import { bootstrapGuestSession } from "./lib/sessionBootstrap";
 import { AppShell, LegacyAppShell } from "./ui/shell/AppShell";
@@ -20,6 +29,13 @@ export function App() {
   const experienceId = useMapStoreSnapshot((s) => s.experienceId);
   const themeClass = theme === "dark" ? "theme-dark" : "theme-light";
   useVisualViewportLayout();
+  useEffect(attachStatisticsRuntime, []);
+  useEffect(() => configureTileCache(preferences.lowData), [preferences.lowData]);
+
+  // Set during render, not in an effect: `t()` is read by children as they render, and mode
+  // manifests read it at module scope. An effect would run one paint too late and the first
+  // frame after a language switch would still be in the old language.
+  setActiveLocale(preferences.locale);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -89,13 +105,21 @@ export function App() {
       {/* The map is intentionally outside the feature-flag branch: opening a surface or rolling
           the chrome back can never construct a second MapLibre instance. */}
       <ModuleErrorBoundary moduleId="map-renderer" title="Mapu se nepodařilo spustit">
+        <WorldBridge />
+        <WorldUiBoundary />
         <MapCore />
+        <MapPlaceContext />
+        <ClusterChoices />
+        <AreaControls />
       </ModuleErrorBoundary>
+      {/* Keyed on the locale: the chrome remounts when the language changes, which is what
+          makes a plain `t()` lookup enough. The map is outside this boundary, so switching
+          language never rebuilds MapLibre or loses the view. */}
       <ModuleErrorBoundary moduleId="app-shell" title="Ovládání mapy se nepodařilo načíst">
         {APP_SHELL_V2_ENABLED ? (
-          <AppShell onFlyToMe={flyToMe} />
+          <AppShell key={preferences.locale} onFlyToMe={flyToMe} />
         ) : (
-          <LegacyAppShell onFlyToMe={flyToMe} />
+          <LegacyAppShell key={preferences.locale} onFlyToMe={flyToMe} />
         )}
       </ModuleErrorBoundary>
     </div>

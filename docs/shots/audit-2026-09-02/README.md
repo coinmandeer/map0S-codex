@@ -2,7 +2,7 @@
 
 These are the screenshots the redesign brief was written against, captured from the
 working tree at commit `aa3f37c` ("Snapshot the feature work that landed before the UI
-redesign"). They are the *before* state: every defect listed in
+redesign"). They are the _before_ state: every defect listed in
 `docs/plans/2026-09-ui-redesign-and-layer-roadmap.md` §1 and §29.2 is visible in here.
 
 PNGs were re-encoded to JPEG at 960 px wide so the folder stays under 10 MB and no single
@@ -11,12 +11,12 @@ file exceeds 300 kB. Re-generate at full resolution with `node e2e/visual-audit.
 
 ## Naming
 
-| Prefix | Viewport |
-| --- | --- |
-| `d-` | desktop, 1440×900 |
-| `m-` | mobile, 390×844 |
-| `x-` | desktop, one-off interaction states |
-| `xm-` | mobile, one-off interaction states |
+| Prefix | Viewport                            |
+| ------ | ----------------------------------- |
+| `d-`   | desktop, 1440×900                   |
+| `m-`   | mobile, 390×844                     |
+| `x-`   | desktop, one-off interaction states |
+| `xm-`  | mobile, one-off interaction states  |
 
 For `d-` and `m-` the second segment is the theme (`light` / `dark`), then a sequence number
 and the state being shown, so `d-dark-05-layers.jpg` is the Layers drawer in dark mode on

@@ -1,0 +1,11 @@
+release=20260912-area-overview-statistics-r3
+restored_tables=89
+legacy_baseline_precondition=pass
+candidate_migrations=all-registered-idempotent
+durable_preview_store=pass
+candidate_api_http_health=pass
+candidate_web_http_health=pass
+layer_import_http_postgres=pass
+data_rights_postgres=pass
+previous_image_read_write=pass
+verified_at=2026-09-12T10:04:00Z

@@ -22,6 +22,13 @@ export function inlineFeatureCollection(manifest: LayerManifestV2): FeatureColle
         id: feature.id,
         layerId: manifest.id,
         name: feature.title,
+        sourceId: feature.sourceId,
+        ...(feature.sourceLayerId
+          ? {
+              sourceLayerId: feature.sourceLayerId,
+              sourceFeatureId: feature.sourceFeatureId ?? feature.id
+            }
+          : {}),
         ...(feature.category ? { category: feature.category } : {}),
         ...(feature.summary ? { summary: feature.summary } : {}),
         ...(feature.url ? { url: feature.url } : {})

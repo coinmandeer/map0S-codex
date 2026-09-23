@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "./fixtures/offlineTest";
+import { collectEssence, snapshotWorld, startExplore } from "./fixtures/worldTest";
 
 async function currentUser(page: Page) {
   return page.evaluate(async () => {
@@ -40,28 +41,19 @@ test.describe("guest-first identity", () => {
     const guest = await currentUser(page);
     expect(guest?.isGuest).toBe(true);
 
-    const orbId = `orb:${guest!.id}:14.12345,50.12345`;
-    const firstClaim = await page.evaluate(async (id) => {
-      const response = await fetch("/api/game/orbs/collect", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orbIds: [id, id] })
-      });
-      return response.json();
-    }, orbId);
-    expect(firstClaim.progress).toMatchObject({ xpTotal: 10, acceptedCount: 1 });
-
-    const replay = await page.evaluate(async (id) => {
-      const response = await fetch("/api/game/orbs/collect", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orbIds: [id] })
-      });
-      return response.json();
-    }, orbId);
-    expect(replay.progress).toMatchObject({ xpTotal: 10, acceptedCount: 0 });
+    const session = await startExplore(page);
+    const earned = await collectEssence(page, session.id);
+    const retiredStatus = await page.evaluate(
+      async () =>
+        (
+          await fetch("/api/game/orbs/collect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orbIds: ["invented"] })
+          })
+        ).status
+    );
+    expect(retiredStatus).toBe(410);
 
     await page.getByTestId("settings-btn").click();
     await page.getByTestId("settings-account").click();
@@ -80,15 +72,11 @@ test.describe("guest-first identity", () => {
       email,
       displayName: "Trvalý poutník",
       isGuest: false,
-      xpTotal: 10
+      xpTotal: guest?.xpTotal
     });
 
-    const progress = await page.evaluate(async () => {
-      const response = await fetch("/api/game/progress", { credentials: "include" });
-      return (await response.json()).progress;
-    });
-    expect(progress).toMatchObject({ xpTotal: 10, collectedCount: 1 });
-    expect(progress.collectedOrbIds).toContain(orbId);
+    const restored = await startExplore(page);
+    expect((await snapshotWorld(page, restored.id)).progress).toEqual(earned.progress);
   });
 });
 
@@ -157,21 +145,31 @@ test.describe("community pin ownership", () => {
       })
     );
 
-    await page.goto("/?layers=osm-poi,user-layers&mode=planning&lng=13.3775&lat=49.7475&z=14");
-    const suggestions = page.locator(".planner-suggestions");
-    await expect(suggestions).toContainText("Moje editovatelná kopie", { timeout: 20_000 });
-    await expect(suggestions).toContainText("Cizí veřejný pin");
-    await expect(suggestions).not.toContainText("Sloučená kopie");
-    await expect(suggestions.getByRole("button")).toHaveCount(2);
+    // The planner's suggestion list is gone; the map itself is now the surface where the
+    // ownership fusion is visible, so read the rendered pins back out of it.
+    const renderedPinNames = () =>
+      page.evaluate(() => {
+        const map = window.__maposMap;
+        if (!map?.getStyle()) return [] as string[];
+        const layers = (map.getStyle().layers ?? [])
+          .map((layer) => layer.id)
+          .filter((id) => id.startsWith("pins-") && !id.includes("cluster"));
+        if (!layers.length) return [] as string[];
+        return map
+          .queryRenderedFeatures(undefined, { layers })
+          .map((feature) => String(feature.properties?.name ?? ""));
+      });
+
+    await page.goto("/?layers=osm-poi,user-layers&lng=13.3775&lat=49.7475&z=14");
+    await expect.poll(renderedPinNames, { timeout: 20_000 }).toContain("Moje editovatelná kopie");
+    await expect.poll(renderedPinNames).toContain("Cizí veřejný pin");
+    // The fused osm-poi copy of the owned pin yields to the editable personal one.
+    expect(await renderedPinNames()).not.toContain("Sloučená kopie");
 
     // With the personal layer off, the raw fused response becomes the owner again from cache.
-    await page.goto("/?layers=osm-poi&mode=planning");
-    const fusedSuggestions = page.locator(".planner-suggestions");
-    await expect(fusedSuggestions).toContainText("Sloučená kopie", {
-      timeout: 20_000
-    });
-    await expect(fusedSuggestions).not.toContainText("Moje editovatelná kopie");
-    await expect(fusedSuggestions.getByRole("button")).toHaveCount(2);
+    await page.goto("/?layers=osm-poi&lng=13.3775&lat=49.7475&z=14");
+    await expect.poll(renderedPinNames, { timeout: 20_000 }).toContain("Sloučená kopie");
+    expect(await renderedPinNames()).not.toContain("Moje editovatelná kopie");
   });
 });
 

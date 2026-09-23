@@ -51,13 +51,88 @@ const STATES = [
     }
   },
   { id: "04-personal", url: "/?mode=personal" },
+  {
+    id: "04b-personal-wallet",
+    url: "/?mode=personal",
+    setup: async (page) => {
+      await page.getByTestId("personal-panel").getByText("Wallet", { exact: true }).click();
+      await page.getByTestId("personal-wallet").waitFor({ timeout: 5000 });
+    }
+  },
+  {
+    id: "04c-add-source",
+    url: "/?mode=personal",
+    setup: async (page) => {
+      await openSourceWizard(page);
+      await probeFixtureSource(page);
+    }
+  },
   { id: "05-discover", url: "/?mode=discover" },
+  { id: "05b-feed", url: "/?mode=feed&lng=13.3775&lat=49.7475&z=13" },
   { id: "06-planning-empty", url: "/?mode=planning" },
   { id: "08-game", url: "/?mode=game" },
   {
     id: "09-layers-drawer",
     url: "/",
     setup: (page) => page.getByTestId("layers-btn").click()
+  },
+  {
+    id: "09b-source-layer",
+    url: "/?mode=personal",
+    setup: async (page) => {
+      await openSourceWizard(page);
+      await probeFixtureSource(page);
+      await page.getByTestId("add-source-continue").click();
+      await page.getByTestId("add-source-name").fill("Zaplavy z URL");
+      await page.getByTestId("add-source-save").click();
+      await page.getByTestId("add-source-dialog").waitFor({ state: "hidden", timeout: 15_000 });
+      await page.getByTestId("layers-btn").click();
+    }
+  },
+  {
+    id: "09c-themes",
+    url: "/",
+    setup: async (page) => {
+      await openThemes(page);
+      // Switched on, so the capture shows the choropleth, its legend in the footer and the row
+      // in its active state rather than a list of switches nobody touched.
+      const first = page.getByTestId("themes-section").locator("[data-testid^='theme-switch-']");
+      await first.first().click();
+      await page.waitForTimeout(1200);
+    }
+  },
+  {
+    id: "09d-theme-sources",
+    url: "/",
+    setup: async (page) => {
+      await openThemes(page);
+      await page
+        .getByTestId("themes-section")
+        .locator("[data-testid^='theme-sources-btn-']")
+        .first()
+        .click();
+      await page.waitForTimeout(600);
+    }
+  },
+  {
+    id: "09e-table-import",
+    url: "/?mode=personal",
+    setup: async (page) => {
+      const panel = page.getByTestId("personal-panel");
+      await panel.waitFor({ timeout: 30_000 });
+      await panel.getByTestId("personal-accordion-layers").click();
+      await panel.getByTestId("add-table-open").click();
+      const dialog = page.getByTestId("add-table-dialog");
+      await dialog.waitFor({ timeout: 5000 });
+      await dialog.getByTestId("add-table-file").setInputFiles({
+        name: "kriminalita.csv",
+        mimeType: "text/csv",
+        buffer: Buffer.from("kod;nazev;hodnota\nCZ031;Jihocesky kraj;640,1\nCZ032;Plzensky;811,4")
+      });
+      // The confirm step is the one worth auditing: it carries the two selects and the preview
+      // grid, which is the densest thing in the dialog.
+      await dialog.getByTestId("add-table-preview").waitFor({ timeout: 20_000 });
+    }
   },
   {
     id: "10-basemaps-drawer",
@@ -70,6 +145,48 @@ const STATES = [
     setup: (page) => page.getByTestId("settings-btn").click()
   }
 ];
+
+/** The Themes section of the Layers drawer, with the rows loaded. */
+async function openThemes(page) {
+  await page.getByTestId("layers-btn").click();
+  await page.getByTestId("themes-accordion").click();
+  const section = page.getByTestId("themes-section");
+  const empty = page.getByTestId("themes-empty");
+  // Either outcome ends the wait: offline the fixtures answer, and a run without imported data
+  // should say so in the capture rather than time out on a row that is not coming.
+  await Promise.race([section.waitFor({ timeout: 20_000 }), empty.waitFor({ timeout: 20_000 })]);
+}
+
+/** The "add source from URL" wizard, opened from the Layers section of the personal panel. */
+async function openSourceWizard(page) {
+  const panel = page.getByTestId("personal-panel");
+  await panel.waitFor({ timeout: 30_000 });
+  await panel.getByTestId("personal-accordion-layers").click();
+  await panel.getByTestId("add-source-open").click();
+  await page.getByTestId("add-source-dialog").waitFor({ timeout: 5000 });
+}
+
+/** Probes the offline fixture service, so the capture shows a real sublayer choice rather than
+ *  an empty form. Needs the memory API (`dev:memory -w @mapos/api`), which answers
+ *  `https://example.wms` from `services/sourceFixtures.ts`. */
+async function probeFixtureSource(page) {
+  const dialog = page.getByTestId("add-source-dialog");
+  await dialog
+    .getByTestId("add-source-url")
+    .fill("https://example.wms/service?service=WMS&request=GetCapabilities");
+  await dialog.getByTestId("add-source-probe").click();
+  const sublayer = dialog.getByTestId("add-source-sublayer-zaplavy");
+  const failed = dialog.getByTestId("add-source-error");
+  // Waiting for either outcome, so a refused probe reports the reason the dialog shows instead
+  // of a bare timeout on a checkbox that was never going to appear.
+  await Promise.race([
+    sublayer.waitFor({ timeout: 20_000 }),
+    failed.waitFor({ timeout: 20_000 }).then(async () => {
+      throw new Error(`probe failed: ${await failed.innerText()}`);
+    })
+  ]);
+  await sublayer.click();
+}
 
 async function closePanel(page) {
   const hamburger = page.getByTestId("hamburger-btn");
@@ -314,7 +431,8 @@ function auditPage() {
     // Icons are drawn with a text font but they are not text: WCAG asks 3:1 of non-text
     // content, and holding a glyph to 4.5:1 would force the whole icon set darker than the
     // labels it sits beside.
-    const icon = el.classList.contains("kit-icon") || el.classList.contains("material-symbols-rounded");
+    const icon =
+      el.classList.contains("kit-icon") || el.classList.contains("material-symbols-rounded");
     const required = large || icon ? 3 : 4.5;
     if (ratio + 0.05 < required) {
       findings.push(`contrast ${ratio.toFixed(2)}:1 < ${required}: ${describe(el)}`);
@@ -430,7 +548,9 @@ function auditPage() {
     // finding: an odd offset, which only comes from fractional layout.
     const offGrid = [...edges.entries()].filter(([left, count]) => left % 2 !== 0 && count >= 2);
     for (const [left, count] of offGrid.slice(0, 4)) {
-      findings.push(`${where} alignment: ${count} text nodes start at ${left} px, off the 2 px grid`);
+      findings.push(
+        `${where} alignment: ${count} text nodes start at ${left} px, off the 2 px grid`
+      );
     }
   }
 

@@ -23,6 +23,20 @@ function ActiveMapPickerHost({ picker }: { picker: Extract<MapPickerState, { typ
   const settledRef = useRef(false);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
+  /**
+   * While a point is being picked the map is the whole interface.
+   *
+   * Legends, the mode bar, the loading pill and the rest are all things to read later; what
+   * matters now is seeing the ground and one button that says "this place". The flag lives on
+   * the document element because the chrome is rendered as siblings, with no shared wrapper.
+   */
+  useEffect(() => {
+    document.documentElement.dataset.mapPicker = "active";
+    return () => {
+      delete document.documentElement.dataset.mapPicker;
+    };
+  }, []);
+
   useLayoutEffect(() => {
     restoreFocusRef.current = captureFocusedElement();
     return () => {
@@ -92,6 +106,20 @@ function ActiveMapPickerHost({ picker }: { picker: Extract<MapPickerState, { typ
   const onPin = (location: MapPickerLocation) =>
     Math.abs(location.lat - candidate.lat) < 1e-5 && Math.abs(location.lng - candidate.lng) < 1e-5;
 
+  const confirmAt = (location: MapPickerLocation) => {
+    settledRef.current = true;
+    mapPickerControllers.confirm(picker.session.id, location);
+    shell.closeMapPicker("caller");
+  };
+
+  // A tap on the map answers the picker where the finger already is. The label is left to the
+  // caller to fill in (reverse geocode), so the coordinate lands in the plan immediately.
+  useEffect(
+    () => on("map-picker-tap", ({ lng, lat }) => confirmAt({ lng, lat })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [picker.session.id, shell]
+  );
+
   const select = () => {
     settledRef.current = true;
     const label = picked && onPin(picked) ? picked.label : candidate.label;
@@ -131,8 +159,7 @@ function ActiveMapPickerHost({ picker }: { picker: Extract<MapPickerState, { typ
                 data-testid={`map-picker-suggestion-${index + 1}`}
                 onClick={() => pickSuggestion(suggestion)}
               >
-                {suggestion.label ??
-                  `${suggestion.lat.toFixed(4)}, ${suggestion.lng.toFixed(4)}`}
+                {suggestion.label ?? `${suggestion.lat.toFixed(4)}, ${suggestion.lng.toFixed(4)}`}
               </button>
             </li>
           ))}

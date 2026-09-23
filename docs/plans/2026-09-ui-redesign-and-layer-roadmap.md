@@ -376,7 +376,7 @@ pro neutrální UI; Voyager zůstává volitelný), dark → CARTO Dark Matter.
 - **Levý sidebar**: 360 px, `--surface-solid`, pravý okraj 1 px `--border`, resizer (existuje
   `left-panel-resizer`). Hlavička 56 px: title‑lg vlevo, vpravo IconButton `close`. Obsah scroll
   s `scrollbar-gutter: stable`. **Sidebar začíná na horní hraně viewportu** (`top: 0; height:
-  100dvh`) – žádný odskok pod top bar (revize §29.2: dnešní `top: calc(var(--modebar-h) + …)`
+100dvh`) – žádný odskok pod top bar (revize §29.2: dnešní `top: calc(var(--modebar-h) + …)`
   je vada). Top bar pill se **centruje nad mapovou plochou**, tj. mezi pravou hranou otevřeného
   sidebaru a levou hranou otevřeného draweru (`left/right` s přechodem 250 ms); při zavřeném
   panelu je centrovaný na celé šířce okna. Sidebar má vyšší z‑index než top bar.
@@ -1141,13 +1141,8 @@ Playwright vizuální sadou (§7.6). Feature flag `VITE_APP_SHELL_V3=1` pro post
 
 Rozšířit `e2e/visual.spec.ts` o tyto stavy (1440×900 a 390×844, light i dark):
 
-1. mapa bez panelu, 2. search popover prázdný, 3. search s AI dotazem, 4. Osobní, 5. Objevuj,
-   6. Plánování prázdné, 7. Plánování s trasou, 8. Hra, 9. Vrstvy drawer (horní část + scroll),
-   10. Podklady drawer, 11. Nastavení, 12. Detail místa, 13. weather + timeline + legenda,
-   14. události timeline, 15. geologie legenda, 16. loading indikátor (mock pending task),
-   17. AI panel s odpovědí a kartami, 18. Plánování s alternativami úseků, 19. AI vrstva
-   v drawer Vrstvy, 20. Objevuj po „Zjistit co je tady“, 21. Detail místa (desktop dialog),
-   22. Hra HUD s aktivní zónou.
+1. mapa bez panelu, 2. search popover prázdný, 3. search s AI dotazem, 4. Osobní, 5. Objevuj, 6. Plánování prázdné, 7. Plánování s trasou, 8. Hra, 9. Vrstvy drawer (horní část + scroll), 10. Podklady drawer, 11. Nastavení, 12. Detail místa, 13. weather + timeline + legenda, 14. události timeline, 15. geologie legenda, 16. loading indikátor (mock pending task), 17. AI panel s odpovědí a kartami, 18. Plánování s alternativami úseků, 19. AI vrstva
+   v drawer Vrstvy, 20. Objevuj po „Zjistit co je tady“, 21. Detail místa (desktop dialog), 22. Hra HUD s aktivní zónou.
    Snapshoty ukládat do `e2e/screenshots/`, tolerance 0.2 %.
 
 Po snapshotech následuje **kontrolní kolo** podle §31.3 (audit překryvů, hustoty, zarovnání,
@@ -2084,10 +2079,10 @@ v Plánování a ve Feedu.
 
 Univerzální vstup: v dialogu **textarea „Vlož odkazy (každý na řádek) nebo přetáhni soubory“**
 a tlačítko „Připojit službu“ (Polar, Strava‑osobní, OwnTracks). Každá položka projde
-  `route-link resolver` (server `apps/api/src/adapters/routeLinks/*`, jeden resolver per doména,
-  detekce podle hostu) → stav per řádek (`✓ 12,3 km`, `⟳ přeplánováno`, `✕ potřebuje GPX`).
-  Stejný resolver používá **hlavní vyhledávání**: vložený odkaz → nabídka „Importovat jako
-  trasu / místo“.
+`route-link resolver` (server `apps/api/src/adapters/routeLinks/*`, jeden resolver per doména,
+detekce podle hostu) → stav per řádek (`✓ 12,3 km`, `⟳ přeplánováno`, `✕ potřebuje GPX`).
+Stejný resolver používá **hlavní vyhledávání**: vložený odkaz → nabídka „Importovat jako
+trasu / místo“.
 
 ### 19.3 Model a UI
 
@@ -2632,7 +2627,7 @@ Dnes našeptávač u názvu obce nabídne položku typu „město“ a kategorie
 - Nový druh příspěvku/pinu **`secret`**: autor určí přesnou polohu, ale veřejně se zobrazuje
   jen **přibližná oblast** (kruh 300–2 000 m s náhodným posunem středu, poloměr volí autor)
   a název + teaser + podmínka odemčení. Přesnou polohu, popis, fotky a případný úkol vidí jen
-    ten, kdo splní podmínku.
+  ten, kdo splní podmínku.
 - **Podmínky odemčení** (kombinovatelné): `follow` (sleduješ autora), `paid-follow`
   (předplatné profilu – tier), `unlock-once` (jednorázová platba za toto místo), `task`
   (splň úkol – odpověď, fotka, check‑in v oblasti), `time` (odemkne se v datum/čas – vhodné pro
@@ -2716,6 +2711,7 @@ překrývají; u polí, která mají domov v OSM/Wikidata, nabídnout „Odeslat
   9. teprve pak generický placeholder podle kategorie (ilustrace, ne šedý box).
 
   Krok 8 znamená, že **žádné místo nemá prázdný obrázek**.
+
 - Každý obrázek nese `{ url, thumbUrl, source, sourceUrl, license, author, fetchedAt,
 width, height, blurhash }` – v UI chip zdroje v rohu („Commons · CC BY‑SA · Jan Novák“) a
   klik = originál. Uložit `provenance` v cache, aby se zdroj nikdy neztratil.
@@ -2824,13 +2820,13 @@ problémy a odhaluje čtvrtý. Vše níže je **závazné** pro implementátora.
 ### 29.2 Potvrzené vady (fix v Fázi 1, před čímkoli dalším)
 
 1. **Sidebar nezačíná nahoře.** `panels.css` `.panel-left { top: calc(var(--modebar-h) +
-   var(--space-3)) }`, kde `--modebar-h` je **spodní hrana** plovoucího top baru
+var(--space-3)) }`, kde `--modebar-h` je **spodní hrana** plovoucího top baru
    (`ModeBar.tsx` ResizeObserver píše `getBoundingClientRect().bottom`; default 108 px před
    měřením → první paint 114 px, pak skok na 64 px). Hlavička navíc přičítá `--safe-top`
    podruhé. **Řešení (mění §3.1):** `.panel-left { top: 0; height: 100dvh }` – sidebar je
    plnovýškový sloupec od horní hrany; top bar pill se **centruje nad mapovou plochou**
    (`left: var(--sidebar-w-open, 0)`, `right: var(--drawer-w-open, 0)`, `transition: left/right
-   250ms`), ne nad celým oknem. Hamburger zůstává jen při zavřeném panelu. Stejnou opravu
+250ms`), ne nad celým oknem. Hamburger zůstává jen při zavřeném panelu. Stejnou opravu
    dostane `.source-strip-floating` (zrušit, nahrazuje ho ActivityIndicator), `.search-here-btn`,
    `.layer-notices`, `.toast` (odkazují na `--modebar-h` → nová `--chrome-top: 64px` konstanta).
 2. **Překrývající se texty.** Změřeno DOM‑testem překryvů (viz §31.3): „Diskutovat tento plán“
@@ -2860,21 +2856,21 @@ problémy a odhaluje čtvrtý. Vše níže je **závazné** pro implementátora.
 Cíl uživatele: **zachovat všechny funkce, ale s minimem prvků** – multifunkční prvky, ikony,
 kompaktní UI, ne tisíc tlačítek. Konkrétní redukce (každý řádek = úkol):
 
-| Kde | Dnes | Cíl |
-|---|---|---|
-| Plánování – zastávka | combobox + řádek souřadnic + „Vybrat na mapě“ + „Moje poloha“ + fallback blok s lon/lat + `details` „Čas a přesné GPS“ s druhým lon/lat + ↑↓ + × | **jeden řádek** (§4.5): číslo · Combobox · 2 IconButtony (`pin_drop`, `more_horiz`) · drag handle. Vše ostatní (GPS ručně, moje poloha, pobyt, příjezd) v popoveru pod `more_horiz`. Souřadnice jen jako supporting text pod názvem. |
-| Plánování – „Více možností“ | datum, vozidlo, karta CyclOSM (4 tlačítka), limity, 4 preference s „Podporováno/Fallback“, box `Request: …` | datum + vozidlo + SegmentedButton preference. Limity jen pro karavan/kamion (inline 3 pole). CyclOSM → **toast** s „Vrátit“ po výpočtu (§4.5), ne karta. `Request:` box **smazat** (debug do konzole). Fallback = InfoTip. |
-| Plánování – „Kontext odjezdu“ | karta s 2 checkboxy, 2 status kartami, tlačítkem a technickou patičkou | jeden **Switch** „Počasí a doprava po trase“ v „Více možností“; výsledky se zobrazí **v itineráři u úseků** (ikona + teplota/varování) a v timeline. Žádná samostatná sekce. |
-| Plánování – „Najít zajímavější cestu“ | sekce s eyebrow „Deterministický výběr · bez AI“, radio 10/15/25 %, tlačítko, dlaždice, karty se skóre a rozpadem, `details` „Jak vzniklo skóre“ | je to preference **Dobrodružná** (§16.6): po výpočtu s touto preferencí se pod itinerářem objeví řádek „Zajímavá místa po cestě (5) · Přidat všechna“ s kompaktními chipy; zajížďka v popoveru preference. Skóre jako InfoTip. |
-| Plánování – „Uložit a sdílet“ + AI + export + handoff | 3 tlačítka + details + AI toggle karta + formulář + 4 export + 3 odkazy + 2 disclaimery | **patička** (§4.5): souhrn km/čas + 4 IconButtony (`save`, `ios_share`, `download`, `open_in_new`) → Dialog Sdílet (taby). AI diskuse = **AI panel** (§30.6) otevřený z ikonky `auto_awesome` v hlavičce, ne inline formulář. |
-| Objevuj | hero + 3 dlaždice faktů + karta „Komunitní mapa“ (3 kroky) + „Oblasti ve výřezu“ s odstavcem + „Kontext podle záměru“ + statistiky `<dl>` + AI syntéza + Počasí + Události + Průvodce + details „Místa…“ + details „Přesnost…“ + „Zdroje“ | §4.4 hierarchie: **breadcrumb** → hero (název, 1 věta AI/průvodce, chip zdrojů) → **Průvodce** (karty Wikivoyage/AI) → Statistiky (řádky, ne karty) → Počasí (harmonika) → Události (harmonika, jen s vrstvou). „Přispět“ jen jako IconButton `add` v hlavičce (karta pryč). „Kontext podle záměru“ = 4 chipy pod hero, bez popisu. Fakta „3/5 datových modulů“ **smazat**. „Přesnost oblasti“ → InfoTip u breadcrumbu. |
-| Search AI náhled | 6 odstavců/poznámek + gate karta v 280 px dropdownu | jeden řádek „Zeptat se AI: ‚…‘“ → Enter otevře AI panel (§30.6). Gate „zapnout vrstvy“ = akce v odpovědi, ne předběžný dialog. |
-| Nastavení | karta „MapOS podle tebe“ duplikuje sekce pod ní | smazat kartu; sekce přímo. |
-| TaskCenter | plovoucí karta „Průběh úloh“ s N řádky, Zrušit/Zkusit znovu/Skrýt | **ActivityIndicator pill** (§4.12); klik → Popover se seznamem úloh a akcemi. |
-| Vývojářské texty | `Request: …`, „Datově úsporné: nejvýše 20 zastávek…“, „mapos-adventure-v1 · žádný náhodný waypoint…“, „Deterministický výběr · bez AI“, „Mapový AI nástroj funguje deterministicky…“ | **smazat z UI**; přesunout do `docs/` a do `console.debug` za `?debug=1`. |
-| Disclosure/souhlas AI | opakuje se u každé odpovědi + 5‑větný souhlas | jednorázový souhlas (`ack:ai-consent`) + InfoTip `info` u vstupu; `disclosure` v Popoveru „Co AI vidělo“ u zprávy. |
-| Jazyk | „Personal“, „Discover“ vs. „Plánování“, „Hra“ | `i18n/cs.ts`: Osobní · Objevuj · Plánování · Hra (Fáze 0). |
-| CSS | `#2563eb` natvrdo ~12×, `.planner-*` 1 700 řádků v 5 822‑řádkovém `panels.css` | tokeny `--accent`; rozdělení dle §4.2. |
+| Kde                                                   | Dnes                                                                                                                                                                                                                                      | Cíl                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plánování – zastávka                                  | combobox + řádek souřadnic + „Vybrat na mapě“ + „Moje poloha“ + fallback blok s lon/lat + `details` „Čas a přesné GPS“ s druhým lon/lat + ↑↓ + ×                                                                                          | **jeden řádek** (§4.5): číslo · Combobox · 2 IconButtony (`pin_drop`, `more_horiz`) · drag handle. Vše ostatní (GPS ručně, moje poloha, pobyt, příjezd) v popoveru pod `more_horiz`. Souřadnice jen jako supporting text pod názvem.                                                                                                                                                                                    |
+| Plánování – „Více možností“                           | datum, vozidlo, karta CyclOSM (4 tlačítka), limity, 4 preference s „Podporováno/Fallback“, box `Request: …`                                                                                                                               | datum + vozidlo + SegmentedButton preference. Limity jen pro karavan/kamion (inline 3 pole). CyclOSM → **toast** s „Vrátit“ po výpočtu (§4.5), ne karta. `Request:` box **smazat** (debug do konzole). Fallback = InfoTip.                                                                                                                                                                                              |
+| Plánování – „Kontext odjezdu“                         | karta s 2 checkboxy, 2 status kartami, tlačítkem a technickou patičkou                                                                                                                                                                    | jeden **Switch** „Počasí a doprava po trase“ v „Více možností“; výsledky se zobrazí **v itineráři u úseků** (ikona + teplota/varování) a v timeline. Žádná samostatná sekce.                                                                                                                                                                                                                                            |
+| Plánování – „Najít zajímavější cestu“                 | sekce s eyebrow „Deterministický výběr · bez AI“, radio 10/15/25 %, tlačítko, dlaždice, karty se skóre a rozpadem, `details` „Jak vzniklo skóre“                                                                                          | je to preference **Dobrodružná** (§16.6): po výpočtu s touto preferencí se pod itinerářem objeví řádek „Zajímavá místa po cestě (5) · Přidat všechna“ s kompaktními chipy; zajížďka v popoveru preference. Skóre jako InfoTip.                                                                                                                                                                                          |
+| Plánování – „Uložit a sdílet“ + AI + export + handoff | 3 tlačítka + details + AI toggle karta + formulář + 4 export + 3 odkazy + 2 disclaimery                                                                                                                                                   | **patička** (§4.5): souhrn km/čas + 4 IconButtony (`save`, `ios_share`, `download`, `open_in_new`) → Dialog Sdílet (taby). AI diskuse = **AI panel** (§30.6) otevřený z ikonky `auto_awesome` v hlavičce, ne inline formulář.                                                                                                                                                                                           |
+| Objevuj                                               | hero + 3 dlaždice faktů + karta „Komunitní mapa“ (3 kroky) + „Oblasti ve výřezu“ s odstavcem + „Kontext podle záměru“ + statistiky `<dl>` + AI syntéza + Počasí + Události + Průvodce + details „Místa…“ + details „Přesnost…“ + „Zdroje“ | §4.4 hierarchie: **breadcrumb** → hero (název, 1 věta AI/průvodce, chip zdrojů) → **Průvodce** (karty Wikivoyage/AI) → Statistiky (řádky, ne karty) → Počasí (harmonika) → Události (harmonika, jen s vrstvou). „Přispět“ jen jako IconButton `add` v hlavičce (karta pryč). „Kontext podle záměru“ = 4 chipy pod hero, bez popisu. Fakta „3/5 datových modulů“ **smazat**. „Přesnost oblasti“ → InfoTip u breadcrumbu. |
+| Search AI náhled                                      | 6 odstavců/poznámek + gate karta v 280 px dropdownu                                                                                                                                                                                       | jeden řádek „Zeptat se AI: ‚…‘“ → Enter otevře AI panel (§30.6). Gate „zapnout vrstvy“ = akce v odpovědi, ne předběžný dialog.                                                                                                                                                                                                                                                                                          |
+| Nastavení                                             | karta „MapOS podle tebe“ duplikuje sekce pod ní                                                                                                                                                                                           | smazat kartu; sekce přímo.                                                                                                                                                                                                                                                                                                                                                                                              |
+| TaskCenter                                            | plovoucí karta „Průběh úloh“ s N řádky, Zrušit/Zkusit znovu/Skrýt                                                                                                                                                                         | **ActivityIndicator pill** (§4.12); klik → Popover se seznamem úloh a akcemi.                                                                                                                                                                                                                                                                                                                                           |
+| Vývojářské texty                                      | `Request: …`, „Datově úsporné: nejvýše 20 zastávek…“, „mapos-adventure-v1 · žádný náhodný waypoint…“, „Deterministický výběr · bez AI“, „Mapový AI nástroj funguje deterministicky…“                                                      | **smazat z UI**; přesunout do `docs/` a do `console.debug` za `?debug=1`.                                                                                                                                                                                                                                                                                                                                               |
+| Disclosure/souhlas AI                                 | opakuje se u každé odpovědi + 5‑větný souhlas                                                                                                                                                                                             | jednorázový souhlas (`ack:ai-consent`) + InfoTip `info` u vstupu; `disclosure` v Popoveru „Co AI vidělo“ u zprávy.                                                                                                                                                                                                                                                                                                      |
+| Jazyk                                                 | „Personal“, „Discover“ vs. „Plánování“, „Hra“                                                                                                                                                                                             | `i18n/cs.ts`: Osobní · Objevuj · Plánování · Hra (Fáze 0).                                                                                                                                                                                                                                                                                                                                                              |
+| CSS                                                   | `#2563eb` natvrdo ~12×, `.planner-*` 1 700 řádků v 5 822‑řádkovém `panels.css`                                                                                                                                                            | tokeny `--accent`; rozdělení dle §4.2.                                                                                                                                                                                                                                                                                                                                                                                  |
 
 Pravidla, která implementátor kontroluje u každé obrazovky (checklist do PR šablony):
 
@@ -2924,7 +2920,7 @@ nikdy do repozitáře, docs ani klienta; `.env.example` má prázdnou hodnotu). 
   ověřeno na `glm-5.3-flash` (7 s, 2denní plán s lat/lon). Adapter tedy musí umět `tools`, a
   `outputSchema` v `AiGatewayRequest` se interně převede na nástroj `submit_result`.
 - **Web**: `POST https://ollama.com/api/web_search` (`{query, max_results}` → `results[{title,url,
-  content}]`, ověřeno 200 s reálnými výsledky pro „festivaly Plzeň září 2026“) a
+content}]`, ověřeno 200 s reálnými výsledky pro „festivaly Plzeň září 2026“) a
   `POST /api/web_fetch` (`{url}` → text, 200). Žádný model nemá web „vestavěný“; web je **náš
   nástroj** `web_search`/`web_fetch` v katalogu (nahrazuje bloker Brave/SearXNG z §22 bod 21 –
   ten zůstává jen jako volitelný fallback).
@@ -2934,11 +2930,11 @@ nikdy do repozitáře, docs ani klienta; `.env.example` má prázdnou hodnotu). 
 
 **Volba modelů (env, s fallbackem):**
 
-| Slot | Env | Výchozí | Fallback | Použití |
-|---|---|---|---|---|
-| `fast` | `OLLAMA_MODEL_FAST` | `glm-5.3-flash` | `deepseek-v4-flash:0731` | intent, tool‑calling smyčka, shrnutí průvodce, souhrny míst, extrakce faktů z webu, přepis dotazu na filtry |
-| `strong` | `OLLAMA_MODEL_STRONG` | `deepseek-v4-pro:0813` | `kimi-k3` | návrh vícedenního plánu, „vytvoř vrstvu podle dotazu“, dlouhé odpovědi, kontrola faktů |
-| `embed` | `OLLAMA_MODEL_EMBED` | – (P2) | – | sémantické hledání v uložených místech/vrstvách (pokud cloud nabídne embedding model; jinak `bge-m3` lokálně) |
+| Slot     | Env                   | Výchozí                | Fallback                 | Použití                                                                                                       |
+| -------- | --------------------- | ---------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `fast`   | `OLLAMA_MODEL_FAST`   | `glm-5.3-flash`        | `deepseek-v4-flash:0731` | intent, tool‑calling smyčka, shrnutí průvodce, souhrny míst, extrakce faktů z webu, přepis dotazu na filtry   |
+| `strong` | `OLLAMA_MODEL_STRONG` | `deepseek-v4-pro:0813` | `kimi-k3`                | návrh vícedenního plánu, „vytvoř vrstvu podle dotazu“, dlouhé odpovědi, kontrola faktů                        |
+| `embed`  | `OLLAMA_MODEL_EMBED`  | – (P2)                 | –                        | sémantické hledání v uložených místech/vrstvách (pokud cloud nabídne embedding model; jinak `bge-m3` lokálně) |
 
 `OLLAMA_MODEL` (existuje) zůstává jako alias pro `fast`. Směrování: router (§30.4) volí slot podle
 intentu a rozpočtu; každý běh loguje `model, tokens, ms, cache` do `operationalTelemetry`
@@ -2991,8 +2987,8 @@ flowchart LR
 
 - **Jeden vstup**: `POST /v2/ai/chat` (SSE) nahrazuje `orchestrate` i `plan-discuss`
   (ty zůstávají jako tenké aliasy do odstranění klientů). Tělo: `{ conversationId?, message,
-  context: { mapCenter, bbox, zoom, activeLayerIds, activeFilters, mode, planId?, featureRef?,
-  regionRef? }, consent: { externalModel, preciseLocation } }`. Odpověď = stream událostí
+context: { mapCenter, bbox, zoom, activeLayerIds, activeFilters, mode, planId?, featureRef?,
+regionRef? }, consent: { externalModel, preciseLocation } }`. Odpověď = stream událostí
   `token | tool_start | tool_result | card | done | error`.
 - **Kontext se posílá jako projekce** (existuje `projectForModel`): max 20 prvků z aktivních
   vrstev ve výřezu (název, kategorie, vzdálenost), plán bez poznámek, uživatelova uložená místa
@@ -3012,7 +3008,7 @@ flowchart LR
 ### 30.4 Hledání napříč vrstvami („find nearest bar“, „kempy s elektřinou u moře“, „co je tady“)
 
 1. **Intent router** (`fast`, 1 krátké volání s nástroji `classify`): `place | address | coords |
-   layer_query | question | plan | edit_plan | layer_create | command`. Heuristika
+layer_query | question | plan | edit_plan | layer_create | command`. Heuristika
    `search/intent.ts` běží dál na klientu pro okamžitou odezvu (bez sítě); server ji jen
    potvrdí/přepíše.
 2. **Layer‑aware hledání**: model dostane `list_available_layers` (katalog z `layerCatalog.ts`
@@ -3036,11 +3032,11 @@ flowchart LR
   extrakt (existuje v brief), Wikidata (populace, výška, kód NUTS), OSM prvky s notabilitou
   (existuje `notabilityService`), statistiky §20 (Eurostat, GISCO, Numbeo jen pokud ToS dovolí čtení přes `web_fetch`, jinak OECD/Eurostat a označený odhad;
   s cache 30 d), události (§11 events), počasí 7 dní, **web** (`web_search` „{název} co vidět“
-  + „{název} events {měsíc rok}“, max 5 výsledků, `web_fetch` top 2) – vše paralelně,
-  timeout 4 s, každý zdroj samostatně cachovaný (TTL 6 h–30 d).
+  - „{název} events {měsíc rok}“, max 5 výsledků, `web_fetch` top 2) – vše paralelně,
+    timeout 4 s, každý zdroj samostatně cachovaný (TTL 6 h–30 d).
 - **Syntéza** (`fast`, tool‑as‑schema `submit_guide`): `{ lead (1 věta), highlights[≤6]{title,
-  text, sourceIds, featureRef?}, practical{arrival, bestTime, warnings}, stats[] , events[≤5],
-  sources[] }`. Každé tvrzení odkazuje `sourceIds`; UI ukazuje chip zdroje u odstavce.
+text, sourceIds, featureRef?}, practical{arrival, bestTime, warnings}, stats[] , events[≤5],
+sources[] }`. Každé tvrzení odkazuje `sourceIds`; UI ukazuje chip zdroje u odstavce.
   Cache per (regionId, jazyk, měsíc) 24 h; invalidace při změně zdrojů.
 - **Vždy něco zobrazit**: pořadí fallbacků – syntéza → strukturovaný Wikivoyage → Wikipedia
   extrakt → „O této oblasti zatím nic nemáme · Zeptat se AI (web)“ (tlačítko spustí syntézu
@@ -3078,10 +3074,10 @@ flowchart LR
 
 - Nový zdroj v `LayerManifest v2`: `source.type = "inline"` s `data: FeatureCollection` (limit
   500 prvků / 1 MB) a `provenance: { kind: "ai" | "import" | "manual", model?, prompt?,
-  createdAt, sourceIds[] }`. Nástroj `emit_layer` vrátí manifest + data; klient ji přidá jako
+createdAt, sourceIds[] }`. Nástroj `emit_layer` vrátí manifest + data; klient ji přidá jako
   **dočasnou vrstvu** „AI: kempy s elektřinou u moře“ (chip `auto_awesome` v `--accent` v drawer Vrstvy › Moje),
   s legendou a filtry odvozenými z polí. Tlačítko „Uložit do Moje vrstvy“ → `POST /user-layers`
-  + piny (existuje) s provenance; „Sdílet“ → §12; „Přidat do plánu“ → `create_plan_draft`.
+  - piny (existuje) s provenance; „Sdílet“ → §12; „Přidat do plánu“ → `create_plan_draft`.
 - Zdroje prvků: `search_places` (fúze), `query_layer` (libovolná vrstva), `web_search` +
   extrakce (model vytáhne názvy → geokód přes `search_places`; nikdy nevymýšlí souřadnice –
   prvek bez geokódu se vyřadí a spočítá do „N míst nešlo umístit“).
@@ -3251,7 +3247,7 @@ registry (§14), ne jako výjimka v jádru.
   rozhodnutí vlastníka zapsaného přímo sem (odstavec „Rozhodnuto: …“ u příslušného bodu).
 - Odškrtávání: každá fáze v §7/§15/§24.10/§30.10 má checklist v `docs/plans/progress.md`
   (vytvořit) ve tvaru `- [ ] §4.5 StopRow jeden řádek` → `- [x] … (commit abc123, shot
-  docs/shots/f3/planning-01.png)`. Bod je hotový, až když má commit **a** screenshot **a** zelený
+docs/shots/f3/planning-01.png)`. Bod je hotový, až když má commit **a** screenshot **a** zelený
   audit (§31.3). `docs/requirements-traceability-v19.json` slouží jako druhý kontrolní seznam –
   každý řádek `open` musí do konce Fáze 6 změnit stav.
 - Pořadí: Fáze 0 → 1 (včetně oprav §29.2) → 2 → 3 (+ AI‑1) → 4 (+ AI‑2) → 5 → AI‑3 → 6; paralelně

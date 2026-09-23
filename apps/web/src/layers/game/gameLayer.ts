@@ -329,9 +329,33 @@ export function createGameLayerHandle(map: maplibregl.Map, apiBase: string, laye
     }
   }
 
+  // Walking into a monster is the encounter: waiting for a tap on a 6-metre model at street
+  // zoom made them furniture. Resolved or failed ones stay on a cooldown so a player standing
+  // on the spawn is not buried in toasts.
+  const encounterCooldowns = new Map<string, number>();
+  const ENCOUNTER_RADIUS_M = 30;
+  const ENCOUNTER_COOLDOWN_MS = 60_000;
+  let liveEncounters: GameEncounter[] = [];
+  const distanceM = (aLng: number, aLat: number, bLng: number, bLat: number) => {
+    const latRad = (aLat * Math.PI) / 180;
+    return Math.hypot((aLat - bLat) * 110_540, (aLng - bLng) * 111_320 * Math.cos(latRad));
+  };
+  const checkProximityEncounters = (lng: number, lat: number) => {
+    const now = Date.now();
+    for (const encounter of liveEncounters) {
+      const cooledAt = encounterCooldowns.get(encounter.id) ?? 0;
+      if (now < cooledAt) continue;
+      if (distanceM(lng, lat, encounter.lng, encounter.lat) > ENCOUNTER_RADIUS_M) continue;
+      encounterCooldowns.set(encounter.id, now + ENCOUNTER_COOLDOWN_MS);
+      void resolveEncounter(encounter.id);
+      break;
+    }
+  };
+
   const offGeolocation = on("geolocation", (detail) => {
     if (!detail) return;
     scene?.setPlayerPosition(detail.lng, detail.lat);
+    checkProximityEncounters(detail.lng, detail.lat);
     const grabbed = scene?.collectNearbyOrbs(15) ?? [];
     if (grabbed.length) {
       scene?.triggerAvatarAnimation("collect");
@@ -418,6 +442,7 @@ export function createGameLayerHandle(map: maplibregl.Map, apiBase: string, laye
         return;
       }
       const data = (await res.json()) as { rewardUsd?: number; loot?: string };
+      liveEncounters = liveEncounters.filter((encounter) => encounter.id !== id);
       scene?.removeEncounter(id);
       emit("encounter-resolved", { id });
       getMapStore().showToast(`Odmena $${data.rewardUsd ?? 0} · ${data.loot ?? "loot"}`);
@@ -493,7 +518,8 @@ export function createGameLayerHandle(map: maplibregl.Map, apiBase: string, laye
         }
         if (encRes.ok) {
           const data = (await encRes.json()) as { encounters?: GameEncounter[] };
-          scene?.syncEncounters(data.encounters ?? []);
+          liveEncounters = data.encounters ?? [];
+          scene?.syncEncounters(liveEncounters);
         }
       } catch {
         /* refresh on next tick */

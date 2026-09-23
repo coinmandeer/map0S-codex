@@ -66,13 +66,16 @@ export function presentMapyGeocodeResult(
   index: number
 ): PresentedGeocodeResult {
   return {
-    display_name: item.label || item.name,
+    display_name: item.name || item.label,
     lat: String(item.position.lat),
     lon: String(item.position.lon),
     type: item.type || "place",
     hierarchy: cleanParts([
-      ...(item.regionalStructure ?? []).map((part) => part.name),
-      item.location
+      ...(item.location
+        ? [item.location]
+        : (item.regionalStructure ?? [])
+            .map((part) => part.name)
+            .filter((name) => name !== item.name))
     ]),
     source: { id: "mapy", label: "Mapy.com" },
     confidence: geocodeConfidence(index)

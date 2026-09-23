@@ -14,9 +14,10 @@ export type LayerCategoryV2 =
   | "environment"
   | "community"
   | "infrastructure"
-  | "moving";
+  | "moving"
+  | "statistics";
 
-export type LayerModeV2 = "personal" | "discover" | "planning" | "game";
+export type LayerModeV2 = "personal" | "feed" | "discover" | "planning" | "game";
 export type GeometryKindV2 =
   | "Point"
   | "MultiPoint"
@@ -37,6 +38,8 @@ export interface RendererDescriptorV2 {
     | "heatmap"
     | "raster"
     | "vector-style"
+    /** Territory polygons coloured by a value; the classes come from `legend.stops`. */
+    | "choropleth"
     | "custom-gl"
     | "three";
   cluster?: boolean;
@@ -54,6 +57,9 @@ export interface RendererDescriptorV2 {
  * the layer is exactly the rows below, and `sourceId` is what makes each row checkable.
  */
 export interface InlineFeatureV2 {
+  /** Optional original identity for opening the source detail; old snapshots remain valid. */
+  sourceLayerId?: string;
+  sourceFeatureId?: string;
   id: string;
   title: string;
   longitude: number;
@@ -134,6 +140,7 @@ export interface DeclarativeHttpMappingV2 {
 }
 
 export interface LayerQueryPolicyV2 {
+  areaFilter?: "geometry" | "context";
   strategy: "viewport" | "tile" | "realtime" | "global" | "manual";
   maxResultsPerViewport?: number;
   debounceMs?: number;
@@ -222,7 +229,11 @@ export interface TemporalManifestV2 {
 }
 
 export interface LegendManifestV2 {
-  type?: "categorical" | "continuous" | "numeric" | "icon" | "custom";
+  /** `image` is a key the source rendered itself — a WMS `GetLegendGraphic`. Kept distinct from
+   *  `categorical` because there is nothing to read off it programmatically, and inventing
+   *  swatches for someone else's styling would put a key beside the map that does not match the
+   *  pixels. */
+  type?: "categorical" | "continuous" | "numeric" | "icon" | "image" | "custom";
   title?: string;
   unit?: string;
   items?: Array<{
@@ -231,6 +242,8 @@ export interface LegendManifestV2 {
     color?: string;
     icon?: string;
     description?: string;
+    /** Set on an `image` legend: the swatch the source serves for this entry. */
+    imageUrl?: string;
   }>;
   min?: number;
   max?: number;
@@ -247,6 +260,16 @@ export interface PermissionManifestV2 {
 }
 
 export interface AiExposureManifestV2 {
+  semanticProfile?: {
+    version: "1";
+    fields: Array<{
+      field: string;
+      meaning: "identity" | "category" | "description" | "value" | "time" | "url";
+      unit?: string;
+      timeRole?: "observed" | "published" | "valid" | "retrieved";
+    }>;
+    spatial: Array<"point" | "bbox" | "polygon" | "aggregate">;
+  };
   discoverable?: boolean;
   searchableFields?: string[];
   tools?: string[];
@@ -295,6 +318,11 @@ export interface LayerManifestV2 extends VersionEnvelope {
   category: LayerCategoryV2;
   presetIds?: Array<"trip" | "city" | "travel" | "sport">;
   modes?: LayerModeV2[];
+  activation?: {
+    preferredMode?: LayerModeV2;
+    compatibleModes?: LayerModeV2[];
+    exclusiveGroup?: string;
+  };
   worldIds?: string[];
   geometryKinds: GeometryKindV2[];
   renderer: RendererDescriptorV2;

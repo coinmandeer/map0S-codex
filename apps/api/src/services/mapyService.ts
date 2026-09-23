@@ -190,19 +190,47 @@ export async function mapyRoute(opts: {
   };
   if (rest.length) params.waypoints = rest.map((w) => `${w[0]},${w[1]}`).join(";");
 
-  const data = await mapyJson<{
-    length?: number;
-    duration?: number;
-    geometry?: { type: string; coordinates: [number, number][] };
-  }>("/v1/routing/route", params);
+  const data = await mapyJson<MapyRoutePayload>("/v1/routing/route", params);
+  return normalizeMapyRoute(data);
+}
 
+export interface MapyRoutePayload {
+  length?: number;
+  duration?: number;
+  geometry?: {
+    type?: string;
+    coordinates?: unknown;
+    geometry?: { type?: string; coordinates?: unknown };
+  };
+}
+
+/** Mapy returns a GeoJSON Feature, not a bare LineString. Never invent a road on failure. */
+export function normalizeMapyRoute(data: MapyRoutePayload): MapyRoute {
+  const geometry = data.geometry?.type === "Feature" ? data.geometry.geometry : data.geometry;
+  const coordinates = geometry?.coordinates;
+  if (
+    geometry?.type !== "LineString" ||
+    !Array.isArray(coordinates) ||
+    coordinates.length < 2 ||
+    !coordinates.every(
+      (p) =>
+        Array.isArray(p) &&
+        p.length >= 2 &&
+        Number.isFinite(p[0]) &&
+        Number.isFinite(p[1]) &&
+        Math.abs(p[0]) <= 180 &&
+        Math.abs(p[1]) <= 90
+    ) ||
+    !Number.isFinite(data.length) ||
+    data.length! < 0 ||
+    !Number.isFinite(data.duration) ||
+    data.duration! < 0
+  )
+    throw new Error("Mapy returned invalid route geometry or metrics");
   return {
-    length: data.length ?? 0,
-    duration: data.duration ?? 0,
-    geometry: {
-      type: "LineString",
-      coordinates: data.geometry?.coordinates ?? [start, end]
-    }
+    length: data.length!,
+    duration: data.duration!,
+    geometry: { type: "LineString", coordinates: coordinates.map((p) => [p[0], p[1]]) }
   };
 }
 

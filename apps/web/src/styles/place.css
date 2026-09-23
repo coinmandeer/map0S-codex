@@ -51,6 +51,10 @@
 
   .place-hero-photo {
     position: relative;
+    /* The photo bleeds to the panel edges and has a negative top margin, which puts it in the
+       same paint band as the rows below it. It stays at the bottom of that band so the hero can
+       never cover the action row (route/save/share) that follows it in the DOM. */
+    z-index: 0;
     /* Bleeds to the panel edges: the body's padding would leave two white columns beside a
        16:9 image. */
     margin-inline: calc(var(--space-7) * -1);
@@ -116,6 +120,10 @@
     grid-auto-columns: 1fr;
     gap: var(--space-3);
     align-items: start;
+    /* Above the hero: the relatively-positioned photo would otherwise paint over these static
+       buttons when the panel is narrow and the rows are tight. */
+    position: relative;
+    z-index: 1;
   }
 
   .place-action {
@@ -382,5 +390,88 @@
     font: var(--type-label-md);
     color: var(--text-muted);
     white-space: nowrap;
+  }
+}
+
+@layer place {
+  .place-identity-meta {
+    margin: 0;
+    padding-top: var(--space-4);
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+  }
+  .panel-place-detail .place-action-label {
+    overflow-wrap: normal;
+    white-space: nowrap;
+  }
+  .panel-place-detail .place-stepper-count {
+    display: none;
+  }
+  .detail-curated {
+    display: grid;
+    gap: var(--space-7);
+  }
+  .detail-curated .info-panel,
+  .detail-curated .detail-source-group,
+  .detail-curated .detail-panel-group {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+  .detail-curated .detail-source-group {
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--border);
+  }
+  .detail-curated .detail-source-group[hidden] {
+    display: none;
+  }
+  .detail-curated h4 {
+    margin: 0 0 var(--space-4);
+    font: var(--type-title-sm);
+  }
+  .detail-curated .info-facts {
+    margin: 0;
+  }
+  .detail-curated .info-gps {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+  .detail-curated .info-gps .kit-icon-button {
+    flex-shrink: 0;
+  }
+  .detail-description {
+    margin: 0;
+  }
+  .detail-more {
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-6);
+  }
+  .detail-more > summary {
+    cursor: pointer;
+    font: var(--type-title-sm);
+    padding-block: var(--space-4);
+  }
+  .detail-more[open] > * + * {
+    margin-top: var(--space-7);
+  }
+  .detail-external-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-5);
+  }
+  .detail-external-actions > a {
+    font: var(--type-body-sm);
+  }
+  .detail-section-retry {
+    margin-top: var(--space-4);
+  }
+  [data-testid="detail-embed-dialog"] .info-frame {
+    width: 100%;
+    max-height: 65dvh;
   }
 }

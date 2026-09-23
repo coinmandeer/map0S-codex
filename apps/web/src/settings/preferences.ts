@@ -14,6 +14,7 @@ export interface UserPreferences {
   density: UiDensity;
   locale: UiLocale;
   units: DistanceUnits;
+  lowData: boolean;
   flyAnimations: boolean;
   showSearchHere: boolean;
   aiEnabled: boolean;
@@ -23,8 +24,10 @@ export interface UserPreferences {
 export const DEFAULT_USER_PREFERENCES: Readonly<UserPreferences> = {
   theme: "system",
   density: "comfortable",
-  locale: "cs",
+  /** English is the baseline; Czech is a choice somebody makes in Settings. */
+  locale: "en",
   units: "metric",
+  lowData: false,
   flyAnimations: true,
   showSearchHere: true,
   aiEnabled: true,
@@ -68,6 +71,7 @@ export function parseUserPreferences(value: unknown): UserPreferences {
     units: UNITS.has(record.units as DistanceUnits)
       ? (record.units as DistanceUnits)
       : DEFAULT_USER_PREFERENCES.units,
+    lowData: booleanOr(record.lowData, DEFAULT_USER_PREFERENCES.lowData),
     flyAnimations: booleanOr(record.flyAnimations, DEFAULT_USER_PREFERENCES.flyAnimations),
     showSearchHere: booleanOr(record.showSearchHere, DEFAULT_USER_PREFERENCES.showSearchHere),
     aiEnabled: booleanOr(record.aiEnabled, DEFAULT_USER_PREFERENCES.aiEnabled),

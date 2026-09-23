@@ -55,6 +55,7 @@ test("an inline manifest becomes a session layer whose points need no request", 
     id: "osm:1",
     layerId: "ai-vyhlidky-abc",
     name: "Petřín",
+    sourceId: "osm",
     category: "viewpoint"
   });
 });

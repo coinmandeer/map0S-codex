@@ -1,5 +1,6 @@
 import { formatDistance as formatDistanceValue } from "../lib/units";
 import type { DistanceUnits } from "../settings/preferences";
+import { intlLocale } from "../i18n";
 
 /** Formatting shared by the planning panel's rows, footer and assistant.
  *
@@ -29,7 +30,7 @@ export function formatDurationDelta(seconds: number): string {
 
 export function formatPlanTime(value: string | null | undefined): string {
   if (!value) return "čas není dostupný";
-  return new Date(value).toLocaleString("cs-CZ", {
+  return new Date(value).toLocaleString(intlLocale(), {
     day: "numeric",
     month: "numeric",
     hour: "2-digit",

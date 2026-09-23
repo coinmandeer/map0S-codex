@@ -1,6 +1,8 @@
 import { useEffect, useId, useState, type CSSProperties } from "react";
+import { t } from "../../i18n";
+import { getShellStore } from "../../store/shellStore";
 import type { LegendContributionRef } from "../footerContributions";
-import { Dialog } from "../kit";
+import { Dialog, IconButton } from "../kit";
 import {
   legendCompactDescription,
   legendTextEntries,
@@ -27,13 +29,17 @@ export function LegendStack({ legends }: { legends: LegendContributionRef[] }) {
 
   if (!legends.length) return null;
 
-  const heading = multiple ? `${legends.length} legendy` : legends[0]!.title;
+  const heading = multiple ? t("footer.legends", { count: legends.length }) : legends[0]!.title;
   const description = multiple
-    ? "Aktivní tematické vrstvy"
+    ? t("footer.legends.description")
     : legendCompactDescription(legends[0]!.legend);
 
   return (
-    <section className="legend-tray" data-testid="legend-stack" aria-label="Legendy mapy">
+    <section
+      className="legend-tray"
+      data-testid="legend-stack"
+      aria-label={t("footer.legend.mapLegends")}
+    >
       <div className="legend-tray-summary" aria-live="polite">
         <span className="legend-tray-copy">
           <strong>{heading}</strong>
@@ -48,9 +54,22 @@ export function LegendStack({ legends }: { legends: LegendContributionRef[] }) {
             aria-controls={detailsId}
             onClick={() => setExpanded((value) => !value)}
           >
-            {expanded ? "Skrýt detail" : multiple ? `Zobrazit ${legends.length} legendy` : "Detail"}
+            {expanded
+              ? t("footer.legend.hideDetail")
+              : multiple
+                ? t("footer.legend.showAll", { count: legends.length })
+                : t("footer.legend.detail")}
           </button>
         )}
+        {/* Rolling the key up leaves the colours on the map: this hides an explanation, it does
+            not turn a layer off, which is why it lives here and not next to the layer switch. */}
+        <IconButton
+          icon="close_fullscreen"
+          label={t("footer.minimize")}
+          size="sm"
+          testId="footer-minimize-legend"
+          onClick={() => getShellStore().setFooterMinimized("legend", true)}
+        />
       </div>
 
       <div
@@ -71,14 +90,14 @@ export function LegendStack({ legends }: { legends: LegendContributionRef[] }) {
           data-testid="legend-open-all"
           onClick={() => setDialogOpen(true)}
         >
-          Rozbalit ({overflow} dalších)
+          {t("footer.legend.more", { count: overflow })}
         </button>
       )}
 
       <Dialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        title="Legendy aktivních vrstev"
+        title={t("footer.legend.dialogTitle")}
         testId="legend-dialog"
       >
         <div className="legend-detail expanded" role="list">

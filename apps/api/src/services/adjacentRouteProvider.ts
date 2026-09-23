@@ -25,7 +25,7 @@ export function createAdjacentRouteProvider(
   const { routeFetcher = fetchRouteAlternatives, brouterFetcher = fetchBrouterRoutes } =
     typeof options === "function" ? { routeFetcher: options } : options;
   return {
-    id: `mapos-routing:${provider}`,
+    id: `mapos-routing:${provider}:v2`,
     async route(request) {
       const mapping = resolvePlanRoutingRequestV2(
         provider,
@@ -75,17 +75,17 @@ export function createAdjacentRouteProvider(
         mapping.adventureRouter === "brouter"
           ? [...mapping.warnings, "BRouter nebyl dostupný; úsek počítal běžný profil."]
           : primary.provider === provider
-          ? mapping.warnings
-          : [
-              ...mapping.warnings,
-              ...resolvePlanRoutingRequestV2(
-                primary.provider,
-                request.profile,
-                request.preference,
-                request.avoid
-              ).warnings,
-              `Provider ${provider} nebyl dostupný; segment použil ${primary.provider}.`
-            ];
+            ? mapping.warnings
+            : [
+                ...mapping.warnings,
+                ...resolvePlanRoutingRequestV2(
+                  primary.provider,
+                  request.profile,
+                  request.preference,
+                  request.avoid
+                ).warnings,
+                `Provider ${provider} nebyl dostupný; segment použil ${primary.provider}.`
+              ];
       return {
         alternatives: results.map((result, index) => ({
           id: `provider-route-${index + 1}`,

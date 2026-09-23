@@ -2,6 +2,18 @@ import type { FilterValues } from "@mapos/layer-sdk";
 import type { WeatherVariableId } from "./grid";
 
 export type WeatherVisualizationId = "radar" | WeatherVariableId;
+export const WEATHER_MODEL_IDS = [
+  "best_match",
+  "icon_d2",
+  "icon_seamless",
+  "chmi_aladin_seamless"
+] as const;
+export type WeatherModelId = (typeof WEATHER_MODEL_IDS)[number];
+export function resolveWeatherModel(value: unknown): WeatherModelId {
+  return WEATHER_MODEL_IDS.includes(value as WeatherModelId)
+    ? (value as WeatherModelId)
+    : "best_match";
+}
 
 export interface WeatherVisualizationOption {
   id: WeatherVisualizationId;
@@ -74,4 +86,44 @@ export function weatherVisualizationFilters(
 
 export function weatherVisualizationOption(id: WeatherVisualizationId): WeatherVisualizationOption {
   return WEATHER_VISUALIZATIONS.find((option) => option.id === id) ?? WEATHER_VISUALIZATIONS[0]!;
+}
+
+/** Every weather quantity is its own registered layer (`weather-radar`, `weather-wind`, …).
+ *  The renderer is shared, but the layer identity, visibility, opacity and filters are not — so
+ *  the drawer can offer them as ordinary rows and the engine can toggle them independently. */
+export const WEATHER_LAYER_PREFIX = "weather-";
+
+export function weatherLayerId(visualization: WeatherVisualizationId): string {
+  return `${WEATHER_LAYER_PREFIX}${visualization}`;
+}
+
+const WEATHER_LAYER_IDS = new Set<string>(
+  WEATHER_VISUALIZATIONS.map((option) => weatherLayerId(option.id))
+);
+
+/** True for `weather-radar`, `weather-wind`, … but not the legacy bare `weather` id. */
+export function isWeatherLayerId(id: string): boolean {
+  return WEATHER_LAYER_IDS.has(id);
+}
+
+export function weatherVisualizationOfLayerId(id: string): WeatherVisualizationId | null {
+  if (!isWeatherLayerId(id)) return null;
+  return id.slice(WEATHER_LAYER_PREFIX.length) as WeatherVisualizationId;
+}
+
+/** Radar is the only weather layer whose frames come as tiles rather than a numeric grid. */
+export function isWeatherRadarLayerId(id: string): boolean {
+  return id === weatherLayerId("radar");
+}
+
+/** The first visible weather layer that carries a numeric grid (anything but radar), if any. */
+export function firstVisibleWeatherVariableLayer(
+  active: Record<string, { visible?: boolean }>
+): { id: string; visualization: WeatherVariableId } | null {
+  for (const [id, state] of Object.entries(active)) {
+    if (!state.visible) continue;
+    const visualization = weatherVisualizationOfLayerId(id);
+    if (visualization && visualization !== "radar") return { id, visualization };
+  }
+  return null;
 }

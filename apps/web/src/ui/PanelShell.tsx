@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { t } from "../i18n/cs";
+import { t } from "../i18n";
 import { getShellStore } from "../store/shellStore";
 import { IconButton, ProgressLinear } from "./kit";
 import {

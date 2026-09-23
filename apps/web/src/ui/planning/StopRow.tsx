@@ -6,6 +6,12 @@ import type { StopManualState } from "./types";
 
 type PlanStop = PlanDocumentV2["stops"][number];
 
+/** What the map knows about the place a stop was taken from. */
+export interface StopPlacePreview {
+  name: string;
+  photoUrl?: string;
+}
+
 /** One stop is one row (§4.5): the number, the multifunctional input and two icon buttons.
  *
  *  Everything else — my location, manual GPS, dwell, ordering, removal — is in the row's
@@ -20,6 +26,7 @@ export function StopRow({
   locating,
   disabled,
   manual,
+  place,
   onNameChange,
   onSelect,
   onAiQuery,
@@ -28,9 +35,10 @@ export function StopRow({
   onManual,
   onManualClose,
   onCoordinateChange,
-  onDwellChange,
   onMove,
-  onRemove
+  onRemove,
+  onDwellChange,
+  dragHandleProps
 }: {
   stop: PlanStop;
   /** Zero-based position in the whole plan, not in the visible window. */
@@ -42,6 +50,9 @@ export function StopRow({
   locating: boolean;
   disabled: boolean;
   manual: StopManualState | null;
+  /** The place this stop was taken from, when the map still has it — a picture and a name say
+   *  more than an editable copy of the name does. */
+  place: StopPlacePreview | null;
   onNameChange: (name: string) => void;
   onSelect: (selection: StopLocationSelection) => void;
   onAiQuery: (prompt: string) => void;
@@ -50,34 +61,71 @@ export function StopRow({
   onManual: () => void;
   onManualClose: () => void;
   onCoordinateChange: (lng: number, lat: number) => void;
-  onDwellChange: (minutes: number) => void;
   onMove: (toIndex: number) => void;
   onRemove: () => void;
+  onDwellChange: (minutes: number) => void;
+  /** dnd-kit listeners/attributes for the drag handle. Absent when dragging is unavailable. */
+  dragHandleProps?: Record<string, unknown>;
 }) {
-  const [dwellOpen, setDwellOpen] = useState(false);
   const number = index + 1;
   const last = index === total - 1;
   const [lng, lat] = stop.location.coordinates;
+  const [editingName, setEditingName] = useState(false);
+  const [editingDwell, setEditingDwell] = useState(false);
+  // A stop that came from a pin is already a known place: showing its photo and name beats
+  // showing an editable copy of its name, which is what the row used to be. Renaming stays one
+  // click away rather than being the default state.
+  const showPlaceCard = Boolean(place && !editingName && !manual);
 
   return (
     <div className="planner-stop" data-last={last || undefined}>
-      <span className="planner-stop-rail" aria-hidden>
-        <span className="planner-stop-bullet">
-          {last ? <Icon name="flag" size={16} /> : number}
-        </span>
+      <span className="planner-stop-rail">
+        <button
+          type="button"
+          className="planner-stop-drag"
+          aria-label={`Přesunout zastávku ${number}`}
+          data-testid={`stop-drag-${number}`}
+          {...(disabled ? {} : dragHandleProps)}
+        >
+          <span className="planner-stop-bullet">
+            {last ? <Icon name="flag" size={16} /> : number}
+          </span>
+        </button>
       </span>
       <div className="planner-stop-main">
         <div className="planner-stop-row">
-          <StopLocationInput
-            index={number}
-            name={stop.name}
-            provider={provider}
-            aiEnabled={aiEnabled}
-            aiBusy={aiBusy}
-            onNameChange={onNameChange}
-            onSelect={onSelect}
-            onAiQuery={onAiQuery}
-          />
+          {showPlaceCard && place ? (
+            <div className="planner-stop-place" data-testid={`stop-place-${number}`}>
+              {place.photoUrl ? (
+                <img src={place.photoUrl} alt="" loading="lazy" />
+              ) : (
+                <span className="planner-stop-place-icon" aria-hidden>
+                  <Icon name="place" size={18} />
+                </span>
+              )}
+              <span className="planner-stop-place-name">{place.name}</span>
+              <IconButton
+                icon="edit"
+                label={`Přepsat název zastávky ${number}`}
+                size="sm"
+                variant="plain"
+                disabled={disabled}
+                testId={`stop-place-edit-${number}`}
+                onClick={() => setEditingName(true)}
+              />
+            </div>
+          ) : (
+            <StopLocationInput
+              index={number}
+              name={stop.name}
+              provider={provider}
+              aiEnabled={aiEnabled}
+              aiBusy={aiBusy}
+              onNameChange={onNameChange}
+              onSelect={onSelect}
+              onAiQuery={onAiQuery}
+            />
+          )}
           <IconButton
             icon="pin_drop"
             label={`Vybrat zastávku ${number} na mapě`}
@@ -112,9 +160,9 @@ export function StopRow({
               },
               {
                 id: "dwell",
-                label: stop.dwellMinutes ? "Upravit pobyt" : "Nastavit pobyt",
+                label: "Doba zastávky…",
                 icon: "schedule",
-                onSelect: () => setDwellOpen(true)
+                onSelect: () => setEditingDwell((value) => !value)
               },
               {
                 id: "up",
@@ -145,33 +193,27 @@ export function StopRow({
           <span aria-label={`Souřadnice zastávky ${number}`}>
             {lat.toFixed(5)}, {lng.toFixed(5)}
           </span>
-          {stop.dwellMinutes ? (
-            <span className="planner-stop-chip" data-testid={`stop-dwell-${number}`}>
-              Pobyt {stop.dwellMinutes} min
-            </span>
-          ) : null}
+          {stop.dwellMinutes > 0 && <span>· {stop.dwellMinutes} min</span>}
         </div>
 
-        {dwellOpen && (
-          <div className="planner-stop-manual" data-testid={`stop-dwell-editor-${number}`}>
+        {editingDwell && (
+          <div className="planner-stop-dwell" data-testid={`stop-dwell-${number}`}>
             <TextField
               type="number"
-              min={0}
               step={5}
-              label={`Pobyt na zastávce ${number}`}
-              hint="Minuty, které se přičtou k času příjezdu"
-              value={stop.dwellMinutes ?? 0}
+              label={`Doba zastávky ${number} (minuty)`}
+              value={stop.dwellMinutes}
               disabled={disabled}
-              onChange={(event) => onDwellChange(Math.max(0, Number(event.target.value)))}
+              onChange={(event) =>
+                onDwellChange(Math.max(0, Math.round(Number(event.target.value) || 0)))
+              }
             />
-            <div className="planner-stop-manual-actions">
-              <span />
-              <Button variant="tonal" size="sm" onClick={() => setDwellOpen(false)}>
-                Hotovo
-              </Button>
-            </div>
+            <Button variant="text" size="sm" onClick={() => setEditingDwell(false)}>
+              Hotovo
+            </Button>
           </div>
         )}
+
         {manual && (
           <div className="planner-stop-manual" data-testid={`location-fallback-${number}`}>
             {manual.reason !== "manual" && (

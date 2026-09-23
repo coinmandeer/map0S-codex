@@ -19,7 +19,11 @@ test.describe("dlouhý herní výkon", () => {
       timeout: 20_000
     });
     await expect
-      .poll(() => page.evaluate(() => window.__maposGame?.contents.orbs ?? 0))
+      .poll(() =>
+        page.evaluate(
+          () => JSON.parse(window.render_game_to_text!()).world.snapshot?.entities.length ?? 0
+        )
+      )
       .toBeGreaterThan(0);
 
     const startedAt = Date.now();
@@ -66,7 +70,8 @@ test.describe("dlouhý herní výkon", () => {
     expect(finalState.host.avatarOwners).toBe(1);
     expect(finalState.host.renderLoops).toBe(1);
     expect(finalState.counts.hasPlayer).toBe(true);
-    expect(finalState.counts.orbs).toBeGreaterThan(0);
+    expect(finalState.world.snapshot.entities.length).toBeGreaterThan(0);
+    expect(finalState.world.error).toBeNull();
     expect(errors).toEqual([]);
 
     if (heapSamples.length >= 2) {

@@ -22,16 +22,13 @@ interface ChatPlace {
 interface ChatAnswer {
   text: string;
   cards: Array<
-    | { type: "places"; title: string; places: ChatPlace[]; layerIds: string[] }
-    | { type: string }
+    { type: "places"; title: string; places: ChatPlace[]; layerIds: string[] } | { type: string }
   >;
   sources: Array<{ sourceId: string; label: string; url?: string }>;
 }
 
 type ChatEvent =
-  | { type: "done"; answer: ChatAnswer }
-  | { type: "error"; message: string }
-  | { type: string };
+  { type: "done"; answer: ChatAnswer } | { type: "error"; message: string } | { type: string };
 
 export interface StopCandidateAnswer {
   text: string;

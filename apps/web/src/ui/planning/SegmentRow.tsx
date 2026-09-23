@@ -8,6 +8,7 @@ import {
   formatPlanTime
 } from "../../planning/planFormat";
 import type { DistanceUnits } from "../../settings/preferences";
+import type { ExternalSegmentHandoff } from "../../planning/externalHandoff";
 import { Chip, Icon } from "../kit";
 
 type PlanSegment = PlanDocumentV2["segments"][number];
@@ -26,6 +27,7 @@ export function SegmentRow({
   units,
   selectedOnMap,
   temporal,
+  externalLinks,
   onToggleMapSelection,
   onSelectAlternative
 }: {
@@ -35,6 +37,8 @@ export function SegmentRow({
   units: DistanceUnits;
   selectedOnMap: boolean;
   temporal: TemporalSegment | undefined;
+  /** External navigation for this single leg A→B (Google Maps / Mapy.com). */
+  externalLinks?: ExternalSegmentHandoff[];
   onToggleMapSelection: () => void;
   onSelectAlternative: (alternativeId: string) => void;
 }) {
@@ -72,6 +76,24 @@ export function SegmentRow({
               {selectedOnMap ? "Vybráno v mapě" : "Zvýraznit v mapě"}
             </button>
           )}
+          {externalLinks?.length ? (
+            <span className="planner-segment-handoffs">
+              {externalLinks.map((link) => (
+                <a
+                  key={link.id}
+                  className="planner-segment-handoff"
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid={`segment-${order}-handoff-${link.id}`}
+                  title={`${link.label}: ${from} → ${to}`}
+                >
+                  <Icon name="open_in_new" size={16} />
+                  {link.label}
+                </a>
+              ))}
+            </span>
+          ) : null}
         </div>
 
         {segment.status === "failed" && (

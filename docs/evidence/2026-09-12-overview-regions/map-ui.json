@@ -1,0 +1,5 @@
+{
+  "before": "https://mapos.promptstudio3000.com/?lng=14.46896&lat=50.05969&z=10.0&mode=discover",
+  "after": "https://mapos.promptstudio3000.com/?lng=14.46896&lat=50.05969&z=10.0&mode=discover&layers=ai-answer-2",
+  "additionalAiResources": 0
+}

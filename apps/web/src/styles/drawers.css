@@ -13,7 +13,8 @@
   .basemaps-drawer {
     display: flex;
     flex-direction: column;
-    gap: var(--space-7);
+    /* §2.4: 24 px between sections; the drawer's 16 px padding stays on the host. */
+    gap: var(--space-9);
   }
 
   .layers-drawer-footer,
@@ -90,6 +91,34 @@
 
   .preset-card-name {
     font: var(--type-title-sm);
+  }
+
+  /* The delete control belongs to the user's own cards only, and rides in the card's corner
+     rather than taking width from a strip that is already scrolling. */
+  .preset-card-wrap {
+    position: relative;
+    flex: 0 0 auto;
+  }
+
+  .preset-card-delete {
+    position: absolute;
+    top: var(--space-1);
+    right: var(--space-1);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  .preset-card-wrap:hover .preset-card-delete,
+  .preset-card-delete:focus-visible {
+    opacity: 1;
+  }
+
+  .preset-dialog-layers {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    max-height: 46vh;
+    overflow-y: auto;
   }
 
   .preset-card-meta {
@@ -227,14 +256,54 @@
   }
 
   .layer-group + .layer-group {
-    margin-top: var(--space-6);
+    margin-top: var(--space-9);
+  }
+
+  .layer-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    /* §2.4: 8 px between the group header and its first row. */
+    margin-bottom: var(--space-4);
+  }
+
+  .layer-row-block {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Indented under the row that owns them, so four networks read as parts of one layer rather
+     than as four more layers in the list. */
+  .layer-subswitches {
+    display: flex;
+    flex-direction: column;
+    margin: 0 0 var(--space-3) var(--space-8);
+    padding-left: var(--space-4);
+    border-left: 1px solid var(--border);
+  }
+
+  .layer-subswitch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    min-height: 36px;
+    color: var(--text-muted);
+    font: var(--type-body-md);
+    cursor: pointer;
+  }
+
+  .layer-subswitch:hover {
+    color: var(--text);
   }
 
   .layer-row {
     display: flex;
     align-items: center;
     gap: var(--space-5);
-    min-height: 48px;
+    /* §2.4: 44 px single-line rows; a row with a meta line grows to 56 px by its content. */
+    min-height: var(--list-row-h);
     padding-block: var(--space-2);
     border-radius: var(--radius-sm);
   }
@@ -258,12 +327,14 @@
   .layer-row-text {
     display: flex;
     flex-direction: column;
+    gap: var(--space-1);
     flex: 1 1 auto;
     min-width: 0;
   }
 
   .layer-row-name {
-    font: var(--type-body-md);
+    /* §2.3 title-sm: the layer name is an item title, not body copy. */
+    font: var(--type-title-sm);
   }
 
   .layer-row-meta {
@@ -281,7 +352,6 @@
     gap: var(--space-2);
     flex: 0 0 auto;
   }
-
 
   .layer-info-legend,
   .layer-info-sources {
@@ -353,6 +423,12 @@
     align-items: center;
     gap: var(--space-3);
     min-height: var(--list-row-h);
+  }
+
+  .basemap-cycling-choices {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
   }
 
   .basemap-setting-label {
@@ -449,7 +525,8 @@
   }
 
   .basemap-card-hint {
-    color: var(--text-faint);
+    /* --text-faint measures 3.99:1 on the card; the hint is information, not decoration. */
+    color: var(--text-muted);
     font: var(--type-body-sm);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -550,4 +627,485 @@
       width: 120px;
     }
   }
+}
+
+@layer panels {
+  /* Themes reuse the layer row so the two sections read as one list, and add the sources
+     popover's own vocabulary underneath it. */
+  .themes-section {
+    display: grid;
+    /* `minmax(0, …)` rather than the default `auto`: a theme row carries an icon, two lines of
+       text, an info button and a switch, and a grid track that sizes to that content pushes the
+       name out of the drawer instead of letting the unit line ellipsise. */
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+
+  .theme-disclosure {
+    margin: 0 0 var(--space-3);
+    color: var(--text-muted);
+    font: var(--type-body-sm);
+  }
+
+  .theme-sources {
+    display: grid;
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .theme-sources li {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .theme-source-meta {
+    color: var(--text-faint);
+    font: var(--type-body-sm);
+  }
+
+  .theme-sources a {
+    color: var(--text-muted);
+    font: var(--type-body-sm);
+  }
+}
+
+@layer panels {
+  .layers-catalog-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-panel);
+    display: grid;
+    gap: var(--space-5);
+    padding-block: var(--space-4);
+    background: var(--surface-solid);
+  }
+  .layer-settings-body {
+    display: grid;
+    gap: var(--space-7);
+    max-height: min(70dvh, 640px);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .layer-settings-body h4,
+  .layer-settings-body p {
+    margin: 0;
+  }
+  .layer-row-notice {
+    color: var(--text-muted);
+    font: var(--type-label-md);
+  }
+  .layer-row-name {
+    overflow-wrap: anywhere;
+  }
+  .layer-settings-body .category-group-header {
+    align-items: center;
+  }
+  .layer-settings-body .category-chips {
+    padding-block: var(--space-4);
+  }
+  .layer-settings-body .kit-accordion-title {
+    min-width: 0;
+  }
+  .layer-settings-body .kit-accordion-action {
+    flex-shrink: 0;
+  }
+  @media (max-width: 899px) {
+    .kit-dialog[data-testid^="layer-filter-"] {
+      top: auto;
+      bottom: 0;
+      left: 0;
+      transform: none;
+      width: 100%;
+      max-height: 86dvh;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .layer-settings-body {
+      max-height: none;
+      overflow: visible;
+    }
+  }
+}
+
+@layer components {
+  .unified-layers {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .catalog-preset {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
+  }
+  .catalog-preset select {
+    min-width: 0;
+    flex: 1;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    font: var(--type-title-sm);
+  }
+  .catalog-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding-block: var(--space-3);
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+  }
+  .catalog-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    border: 0;
+    background: none;
+    color: inherit;
+    text-align: left;
+    font: var(--type-title-sm);
+    cursor: pointer;
+  }
+  .catalog-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    min-height: var(--list-row-h);
+  }
+  .catalog-name {
+    flex: 1;
+    min-width: 0;
+    font: var(--type-title-sm);
+  }
+  .catalog-name small {
+    display: block;
+    color: var(--text-muted);
+    font: var(--type-body-sm);
+  }
+  .catalog-settings {
+    padding: var(--space-4);
+    background: var(--surface-raised);
+    border-radius: var(--radius-md);
+    margin-block: var(--space-2);
+  }
+  .catalog-source {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding-block: var(--space-3);
+  }
+  /* §2.4: 24 px between catalogue sections; the group heading sits 8 px above its rows. */
+  .catalog-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .catalog-group + .catalog-group {
+    margin-top: var(--space-3);
+  }
+  /* An expanded section is a wall of rows: give the next section breathing room. A collapsed one
+    only needs a small gap so the panel stays scannable. */
+  .catalog-group[data-open] + .catalog-group {
+    margin-top: var(--space-9);
+  }
+  .catalog-group h3 {
+    margin: var(--space-9) 0 var(--space-4);
+    font: var(--type-label-sm);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .catalog-status {
+    display: block;
+    font: var(--type-label-sm);
+    color: var(--text-muted);
+  }
+  .catalog-status[data-phase="loading"],
+  .catalog-status[data-phase="queued"],
+  .catalog-status[data-phase="rendering"] {
+    color: var(--accent);
+  }
+  .catalog-status[data-phase="error"] {
+    color: var(--danger, #dc2626);
+  }
+  .layer-activity-icon {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+  }
+  .layer-activity-mark {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 700;
+  }
+  .layer-activity-icon[data-phase="loading"] .layer-activity-mark,
+  .layer-activity-icon[data-phase="queued"] .layer-activity-mark,
+  .layer-activity-icon[data-phase="rendering"] .layer-activity-mark {
+    width: 8px;
+    height: 8px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: mapos-spin 0.8s linear infinite;
+    font-size: 0;
+  }
+  @keyframes mapos-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .catalog-divider {
+    border-top: 1px solid var(--border);
+    margin-top: var(--space-4);
+  }
+  .catalog-search {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--surface-solid);
+    padding-block: var(--space-2);
+  }
+  .catalog-controls {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    background: var(--surface-solid);
+    padding-block: var(--space-2);
+  }
+  .catalog-controls > :first-child {
+    flex: 1;
+    min-width: 0;
+  }
+  .catalog-results {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .catalog-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  /* Group name as a caption keeps the flat search result honest about where each layer lives,
+    without expanding sixteen accordion sections to answer one query. */
+  .catalog-result-group {
+    font: var(--type-label-sm);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .map-panel-tabs {
+    display: flex;
+    flex: 1;
+    align-self: stretch;
+  }
+  .map-panel-tabs button {
+    flex: 1;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--text-muted);
+    font: var(--type-label-md);
+    cursor: pointer;
+  }
+  .map-panel-tabs button[aria-selected="true"] {
+    border-bottom-color: var(--accent);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .shell-right-drawer:not([data-utility="settings"]) .shell-right-drawer-header {
+    padding-inline: var(--space-3);
+  }
+  @media (min-width: 900px) {
+    .shell-right-drawer:not([data-utility="settings"]) {
+      top: 8px;
+      right: 8px;
+      height: calc(100dvh - 16px);
+      width: 362px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+  }
+}
+
+.catalog-views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.catalog-row {
+  gap: var(--space-2);
+}
+.catalog-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.catalog-group-toggle {
+  min-height: var(--list-row-h);
+  gap: var(--space-2);
+}
+
+/* Keep search attached to the panel edge, above presets and scrolling catalogue rows. */
+.shell-right-drawer-body:has(> .unified-layers) {
+  padding-top: 0;
+}
+.unified-layers > .catalog-controls {
+  order: -1;
+  top: 0;
+  margin-inline: calc(-1 * var(--space-7));
+  padding: var(--space-3) var(--space-7);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-solid);
+  z-index: 4;
+}
+.unified-layers .catalog-group {
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+.unified-layers .catalog-group + .catalog-group,
+.unified-layers .catalog-group[data-open] + .catalog-group {
+  margin-top: 0;
+}
+.unified-layers .catalog-group-toggle {
+  width: 100%;
+  min-height: 56px;
+  padding: 12px;
+  font-weight: 650;
+  gap: 10px;
+}
+.catalog-group-title {
+  flex: 1;
+  min-width: 0;
+}
+.catalog-group-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 28px;
+  height: 24px;
+  padding-inline: 7px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  background: var(--surface-solid);
+  border: 1px solid var(--border);
+}
+.catalog-group .catalog-item {
+  margin-inline: 12px;
+  border-top: 1px solid var(--border);
+}
+.catalog-group .catalog-row {
+  min-height: 58px;
+}
+.catalog-row > .layer-activity-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--surface-solid);
+  color: var(--text-muted);
+}
+.catalog-item[data-selected] .catalog-row > .layer-activity-icon {
+  color: var(--accent);
+}
+.catalog-name {
+  font-weight: 500;
+}
+.catalog-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.catalog-settings details {
+  border-top: 1px solid var(--border);
+  padding-block: 10px;
+}
+.catalog-settings summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.catalog-settings details[open] summary {
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+.catalog-settings dl {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 8px;
+  font-size: 12px;
+}
+.catalog-settings dd {
+  margin: 0;
+}
+.czech-subgroup {
+  border-top: 1px solid var(--border);
+}
+.czech-subgroup-header {
+  display: flex;
+  align-items: center;
+  padding-inline: var(--space-2);
+}
+.czech-subgroup-header .catalog-group-toggle {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap-min);
+  padding-inline: var(--space-2);
+}
+.czech-group-check {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.czech-check-mark {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-xs);
+}
+.czech-group-check[aria-checked="true"],
+.czech-group-check[aria-checked="mixed"] {
+  color: var(--accent);
+}
+.czech-group-check:focus-visible {
+  outline: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+.czech-group-check:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.czech-subgroup .catalog-row {
+  gap: var(--space-1);
+}
+.czech-subgroup .catalog-row button {
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+}
+.catalog-settings:focus {
+  outline: none;
 }

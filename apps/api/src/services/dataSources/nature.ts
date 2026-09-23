@@ -1,3 +1,5 @@
+import { webcams } from "./webcams.js";
+import { eonet } from "./eonet.js";
 import type { Bbox, GeoFeature } from "@mapos/layer-sdk";
 import { fetchJson } from "../../utils/upstream.js";
 import { bboxSpanKm, point, withinBbox, type DataSource } from "./types.js";
@@ -14,7 +16,7 @@ export const earthquakes: DataSource = {
     confidence: 1,
     kind: "event"
   },
-  async load(bbox, query) {
+  async load(bbox, query, signal) {
     const [west, south, east, north] = bbox;
     const days = Number(query.days) > 0 ? Math.min(Number(query.days), 365) : 30;
     const minMagnitude = Number(query.minMagnitude) || 1;
@@ -30,12 +32,19 @@ export const earthquakes: DataSource = {
       `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson` +
         `&minlatitude=${south}&maxlatitude=${north}&minlongitude=${west}&maxlongitude=${east}` +
         `&starttime=${start}&minmagnitude=${minMagnitude}&limit=500&orderby=time`,
-      { providerId: "usgs", ttlMs: 10 * 60_000 }
+      { providerId: "usgs", signal, ttlMs: 10 * 60_000 }
     );
 
     return (data.features ?? []).flatMap((f): GeoFeature[] => {
       const coords = f.geometry?.coordinates;
-      if (!coords) return [];
+      if (
+        !coords ||
+        coords.length < 2 ||
+        !coords.every(Number.isFinite) ||
+        Math.abs(coords[0]) > 180 ||
+        Math.abs(coords[1]) > 90
+      )
+        return [];
       const [lng, lat, depthKm] = coords;
       const magnitude = f.properties?.mag ?? 0;
       return [
@@ -64,7 +73,7 @@ export const inaturalist: DataSource = {
   id: "inaturalist",
   tooLarge: (bbox) =>
     bboxSpanKm(bbox) > 200 ? "Přibliž mapu — pozorování se načítají pro menší výřez." : null,
-  async load(bbox, query) {
+  async load(bbox, query, signal) {
     const [west, south, east, north] = bbox;
     const params = new URLSearchParams({
       nelat: String(north),
@@ -77,7 +86,8 @@ export const inaturalist: DataSource = {
     });
     if (query.taxon) params.set("iconic_taxa", query.taxon);
 
-    const data = await fetchJson<{
+    type ObservationPage = {
+      total_results?: number;
       results?: Array<{
         id: number;
         geojson?: { coordinates?: [number, number] };
@@ -87,14 +97,42 @@ export const inaturalist: DataSource = {
         taxon?: { name?: string; preferred_common_name?: string; iconic_taxon_name?: string };
         photos?: Array<{ url?: string }>;
       }>;
-    }>(`https://api.inaturalist.org/v1/observations?${params}`, {
-      providerId: "inaturalist",
-      ttlMs: 15 * 60_000
-    });
+    };
+    params.set("per_page", "50");
+    params.set(
+      "fields",
+      "id,geojson,species_guess,observed_on,uri,taxon.name,taxon.preferred_common_name,taxon.iconic_taxon_name,photos.url"
+    );
+    const data: ObservationPage = { results: [] };
+    // Bounded pagination and sparse v2 fields avoid multi-megabyte v1 observation objects.
+    for (let page = 1; page <= 4; page++) {
+      params.set("page", String(page));
+      const batch = await fetchJson<ObservationPage>(
+        `https://api.inaturalist.org/v2/observations?${params}`,
+        {
+          providerId: "inaturalist",
+          signal,
+          ttlMs: 15 * 60_000
+        }
+      );
+      data.total_results = batch.total_results;
+      data.results!.push(...(batch.results ?? []));
+      if (
+        (batch.results?.length ?? 0) < 50 ||
+        data.results!.length >= (batch.total_results ?? Infinity)
+      )
+        break;
+    }
 
-    return (data.results ?? []).flatMap((o): GeoFeature[] => {
+    const features = (data.results ?? []).flatMap((o): GeoFeature[] => {
       const coords = o.geojson?.coordinates;
-      if (!coords) return [];
+      if (
+        !coords ||
+        !coords.every(Number.isFinite) ||
+        Math.abs(coords[0]) > 180 ||
+        Math.abs(coords[1]) > 90
+      )
+        return [];
       const [lng, lat] = coords;
       const name =
         o.taxon?.preferred_common_name ?? o.taxon?.name ?? o.species_guess ?? "Pozorování";
@@ -110,6 +148,17 @@ export const inaturalist: DataSource = {
         })
       ];
     });
+    const partial = (data.total_results ?? 0) > (data.results?.length ?? 0);
+    return {
+      features,
+      status: partial ? "partial" : "complete",
+      ...(partial
+        ? {
+            notice:
+              "Zobrazeno nejvýše 200 nejnovějších pozorování. Pro další výsledky přibliž mapu nebo upřesni skupinu."
+          }
+        : {})
+    };
   }
 };
 
@@ -119,7 +168,7 @@ export const gbif: DataSource = {
   id: "gbif",
   tooLarge: (bbox) =>
     bboxSpanKm(bbox) > 200 ? "Přibliž mapu — nálezy se načítají pro menší výřez." : null,
-  async load(bbox) {
+  async load(bbox, _query, signal) {
     const [west, south, east, north] = bbox;
     const data = await fetchJson<{
       results?: Array<{
@@ -135,7 +184,7 @@ export const gbif: DataSource = {
     }>(
       `https://api.gbif.org/v1/occurrence/search?decimalLatitude=${south},${north}` +
         `&decimalLongitude=${west},${east}&hasCoordinate=true&limit=300`,
-      { providerId: "gbif", ttlMs: 30 * 60_000 }
+      { providerId: "gbif", signal, ttlMs: 30 * 60_000 }
     );
 
     return (data.results ?? []).flatMap((r): GeoFeature[] => {
@@ -166,7 +215,7 @@ export const airQuality: DataSource = {
   id: "air-quality",
   tooLarge: (bbox) =>
     bboxSpanKm(bbox) > 120 ? "Přibliž mapu — senzory se načítají pro menší výřez." : null,
-  async load(bbox) {
+  async load(bbox, _query, signal) {
     const [west, south, east, north] = bbox;
     const lat = (south + north) / 2;
     const lng = (west + east) / 2;
@@ -182,7 +231,7 @@ export const airQuality: DataSource = {
       }>
     >(
       `https://data.sensor.community/airrohr/v1/filter/area=${lat.toFixed(4)},${lng.toFixed(4)},${radiusKm.toFixed(1)}`,
-      { providerId: "sensor-community", ttlMs: 5 * 60_000 }
+      { providerId: "sensor-community", signal, ttlMs: 5 * 60_000 }
     );
 
     // One sensor reports repeatedly within the window; only its newest reading is interesting.
@@ -235,7 +284,14 @@ export const airQuality: DataSource = {
   }
 };
 
-export const natureSources: DataSource[] = [earthquakes, inaturalist, gbif, airQuality];
+export const natureSources: DataSource[] = [
+  earthquakes,
+  inaturalist,
+  gbif,
+  airQuality,
+  eonet,
+  webcams
+];
 
 export const __testing = { bboxSpanKm };
 export type { Bbox };

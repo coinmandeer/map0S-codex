@@ -15,29 +15,40 @@ export function placesToFeatureCollection(response: PlacesResponse): FeatureColl
   return {
     type: "FeatureCollection",
     meta: response.meta,
-    features: response.places.map((place) => ({
-      type: "Feature" as const,
-      geometry: { type: "Point" as const, coordinates: [place.lng, place.lat] as [number, number] },
-      properties: {
-        id: place.id,
-        name: place.name,
-        category: place.category,
-        layerId: "osm-poi",
-        sources: place.sources.map((s) => s.source).join(","),
-        sourceRefs: encodeSourceRefs(place.sources),
-        primarySource: place.sources[0]?.source ?? "osm",
-        ...(place.wikidata ? { wikidata: place.wikidata } : {}),
-        ...(place.fsqId ? { fsqId: place.fsqId } : {}),
-        ...(place.address ? { address: place.address } : {}),
-        ...(place.photo ? { photo: place.photo } : {}),
-        ...(place.rating !== undefined ? { rating: place.rating } : {}),
-        ...(place.website ? { website: place.website } : {}),
-        ...(place.phone ? { phone: place.phone } : {}),
-        ...(place.openingHours ? { opening_hours: place.openingHours } : {}),
-        ...(place.elevationM !== undefined ? { ele: place.elevationM } : {}),
-        ...(place.tags?.length ? { tags: place.tags } : {})
-      }
-    }))
+    ...(response.query ? { query: response.query } : {}),
+    features: response.places.map((place) => {
+      // Only sources with a canonical resolver can omit their detail fields. Mixed-source
+      // records retain enrichment until all contributing detail resolvers can merge it.
+      const compact =
+        place.sources.length === 1 &&
+        ["osm", "mapy", "park4night", "user", "wikidata"].includes(place.sources[0]!.source);
+      return {
+        type: "Feature" as const,
+        geometry: {
+          type: "Point" as const,
+          coordinates: [place.lng, place.lat] as [number, number]
+        },
+        properties: {
+          id: place.id,
+          name: place.name,
+          category: place.category,
+          layerId: "osm-poi",
+          sources: place.sources.map((s) => s.source).join(","),
+          sourceRefs: encodeSourceRefs(place.sources),
+          primarySource: place.sources[0]?.source ?? "osm",
+          ...(place.wikidata ? { wikidata: place.wikidata } : {}),
+          ...(place.fsqId ? { fsqId: place.fsqId } : {}),
+          ...(!compact && place.address ? { address: place.address } : {}),
+          ...(place.photo ? { photo: place.photo } : {}),
+          ...(place.rating !== undefined ? { rating: place.rating } : {}),
+          ...(!compact && place.website ? { website: place.website } : {}),
+          ...(!compact && place.phone ? { phone: place.phone } : {}),
+          ...(!compact && place.openingHours ? { opening_hours: place.openingHours } : {}),
+          ...(place.elevationM !== undefined ? { ele: place.elevationM } : {}),
+          ...(place.tags?.length ? { tags: place.tags } : {})
+        }
+      };
+    })
   };
 }
 

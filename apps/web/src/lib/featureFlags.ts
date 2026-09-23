@@ -15,3 +15,7 @@ export const GAME_AVATAR_V2_ENABLED = gameAvatarValue !== "0" && gameAvatarValue
 
 /** Disable only the shared lifecycle bridge; LayerEngine then uses its previous direct handles. */
 export const MAP_RUNTIME_V2_ENABLED = mapRuntimeValue !== "0" && mapRuntimeValue !== "false";
+
+/** Independent rollback of the local Discover polygons, retaining the legacy context overlay. */
+const boundaryValue = env?.VITE_DISCOVER_BOUNDARIES?.trim().toLowerCase();
+export const DISCOVER_BOUNDARIES_ENABLED = boundaryValue !== "0" && boundaryValue !== "false";

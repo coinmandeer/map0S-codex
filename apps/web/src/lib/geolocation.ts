@@ -32,7 +32,7 @@ export interface Fix {
   lat: number;
   /** Metres. */
   accuracy: number;
-  /** `Date.now()` when the fix was received. */
+  /** Device observation timestamp, bounded by receipt time to reject stale cached fixes. */
   receivedAt: number;
 }
 
@@ -68,7 +68,10 @@ function toFix(position: GeolocationPosition): Fix {
     lng: position.coords.longitude,
     lat: position.coords.latitude,
     accuracy: position.coords.accuracy,
-    receivedAt: Date.now()
+    receivedAt: Math.min(
+      Date.now(),
+      Number.isFinite(position.timestamp) ? position.timestamp : Date.now()
+    )
   };
 }
 
@@ -92,24 +95,33 @@ function unavailableReason(): GeolocationError | null {
 }
 
 let lastFix: Fix | null = null;
+let lastError: GeolocationError | null = null;
 let watchId: number | null = null;
 const listeners = new Set<(fix: Fix) => void>();
+const errorListeners = new Set<(error: GeolocationError) => void>();
 /** In-flight one-shot request, shared so simultaneous callers don't each start their own. */
 let pending: Promise<Fix> | null = null;
 
 function publish(fix: Fix) {
+  lastError = null;
   lastFix = fix;
   for (const listener of listeners) listener(fix);
 }
+function publishError(error: GeolocationError) {
+  lastError = error;
+  for (const listener of errorListeners) listener(error);
+}
 
 function startWatch() {
-  if (watchId !== null || unavailableReason()) return;
+  if (watchId !== null) return;
+  const blocked = unavailableReason();
+  if (blocked) {
+    publishError(blocked);
+    return;
+  }
   watchId = navigator.geolocation.watchPosition(
     (position) => publish(toFix(position)),
-    () => {
-      /* A failing watch is not actionable on its own; one-shot callers report their own
-         errors, and the blue dot simply stops moving. */
-    },
+    (error) => publishError(toError(error)),
     { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 }
   );
 }
@@ -184,12 +196,15 @@ export const geolocation = {
   },
 
   /** Continuous updates. Returns an unsubscribe; the underlying watch stops with the last one. */
-  watch(listener: (fix: Fix) => void): () => void {
+  watch(listener: (fix: Fix) => void, onError?: (error: GeolocationError) => void): () => void {
     listeners.add(listener);
+    if (onError) errorListeners.add(onError);
+    if (lastError && onError) onError(lastError);
     startWatch();
     if (lastFix) listener(lastFix);
     return () => {
       listeners.delete(listener);
+      if (onError) errorListeners.delete(onError);
       stopWatch();
     };
   },
@@ -197,11 +212,13 @@ export const geolocation = {
   /** Test seam: drops cached state so specs don't leak fixes into each other. */
   reset(): void {
     lastFix = null;
+    lastError = null;
     pending = null;
     if (watchId !== null) {
       navigator.geolocation.clearWatch(watchId);
       watchId = null;
     }
     listeners.clear();
+    errorListeners.clear();
   }
 };

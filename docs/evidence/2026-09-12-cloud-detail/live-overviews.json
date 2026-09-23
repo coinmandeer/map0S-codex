@@ -1,0 +1,512 @@
+{
+  "at": "2026-09-12T19:45:53.465Z",
+  "results": [
+    {
+      "request": {
+        "target": {
+          "type": "area",
+          "areaId": "[\"gisco-lau-cz\",\"CZ\",\"lau\",\"CZ_554782\"]",
+          "boundaryRevision": "26dd406168ebf8da1fe35d8a4df280d18408ec3fa44b9eca23c070fb4b861ed9"
+        },
+        "web": false
+      },
+      "firstMs": 174,
+      "totalMs": 4113,
+      "phases": [
+        {
+          "type": "context_ready",
+          "phase": "Ověřuji identitu a dostupné podklady",
+          "ms": 155
+        },
+        {
+          "type": "section_upsert",
+          "ms": 174
+        },
+        {
+          "type": "phase",
+          "phase": "Základní informace připravené · doplňuji zdroje",
+          "ms": 174
+        },
+        {
+          "type": "section_upsert",
+          "ms": 323
+        },
+        {
+          "type": "section_upsert",
+          "ms": 353
+        },
+        {
+          "type": "section_upsert",
+          "ms": 410
+        },
+        {
+          "type": "section_upsert",
+          "ms": 909
+        },
+        {
+          "type": "section_upsert",
+          "ms": 1401
+        },
+        {
+          "type": "phase",
+          "phase": "Podklady připravené · sestavuji souhrn",
+          "ms": 1412
+        },
+        {
+          "type": "partial",
+          "ms": 4112
+        }
+      ],
+      "terminal": "partial",
+      "composition": "model-assisted",
+      "limitations": [
+        "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+      ],
+      "sections": [
+        {
+          "id": "summary",
+          "title": "Stručný přehled",
+          "claims": [
+            {
+              "id": "synthesis:summary:area:e5b3d2632b070c59cfbdfb4af064e51c4f33e3d7127eeaba7a9f974247a5d47c:name:0",
+              "text": "Praha · obec · CZ.",
+              "evidenceIds": [
+                "area:e5b3d2632b070c59cfbdfb4af064e51c4f33e3d7127eeaba7a9f974247a5d47c:name"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "synthesis:summary:area:[\"gisco-lau-cz\",\"CZ\",\"lau\",\"CZ_554782\"]:wikidata:1",
+              "text": "Wikidata: Q1085",
+              "evidenceIds": ["area:[\"gisco-lau-cz\",\"CZ\",\"lau\",\"CZ_554782\"]:wikidata"],
+              "support": "source-statement"
+            }
+          ]
+        },
+        {
+          "id": "character",
+          "title": "Charakter místa",
+          "claims": [
+            {
+              "id": "synthesis:character:wiki:0622d3122a6a850cd58cbb7a3dfb746bb56cf9b375a40e4f2be2b37be3d4945a:0",
+              "text": "Praha je hlavní město a současně největší město Česka, zároveň je 13. nejlidnatějším městem Evropské unie.",
+              "evidenceIds": [
+                "wiki:0622d3122a6a850cd58cbb7a3dfb746bb56cf9b375a40e4f2be2b37be3d4945a"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "synthesis:character:wiki:0622d3122a6a850cd58cbb7a3dfb746bb56cf9b375a40e4f2be2b37be3d4945a:1",
+              "text": "Leží mírně na sever od středu Čech na řece Vltavě.",
+              "evidenceIds": [
+                "wiki:0622d3122a6a850cd58cbb7a3dfb746bb56cf9b375a40e4f2be2b37be3d4945a"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "synthesis:character:wiki:0622d3122a6a850cd58cbb7a3dfb746bb56cf9b375a40e4f2be2b37be3d4945a:2",
+              "text": "Praha se rozkládá na území 496 km² a žije zde okolo 1,4 milionu obyvatel, v pražské metropolitní oblasti žije zhruba 2,1 milionu obyvatel.",
+              "evidenceIds": [
+                "wiki:0622d3122a6a850cd58cbb7a3dfb746bb56cf9b375a40e4f2be2b37be3d4945a"
+              ],
+              "support": "source-statement"
+            }
+          ]
+        },
+        {
+          "id": "context",
+          "title": "Širší kontext",
+          "claims": [
+            {
+              "id": "synthesis:context:area-stat:e77a29de3c8eb07026436f4d26738243ab4e2eee5f31a3011823a3252f5a0b3a:0",
+              "text": "Obecní populace (2024): 1 384 732 obyvatel (2024). Vybraná oblast: Praha · LAU · poznámka zdroje: GISCO LAU 2024.",
+              "evidenceIds": [
+                "area-stat:e77a29de3c8eb07026436f4d26738243ab4e2eee5f31a3011823a3252f5a0b3a"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "synthesis:context:area-stat:39f67c5643c924a4c5152dc211fc92170a2eb97034274e40ee0361fca70e6acb:1",
+              "text": "Hustota obyvatel: 2 789,59 obyv./km² (2024). Vybraná oblast: Praha · LAU · poznámka zdroje: GISCO LAU 2024.",
+              "evidenceIds": [
+                "area-stat:39f67c5643c924a4c5152dc211fc92170a2eb97034274e40ee0361fca70e6acb"
+              ],
+              "support": "source-statement"
+            }
+          ]
+        },
+        {
+          "id": "highlights",
+          "title": "Zajímavá místa",
+          "claims": [
+            {
+              "id": "synthesis:highlights:area-place:bc17cc9246168e5eb77a08a26b9e22e29f77f53e437344cb5db51ae1e787bcb6:0",
+              "text": "Armádní muzeum Žižkov · muzeum. Místo uvnitř vybrané hranice podle lokálního indexu OpenStreetMap.",
+              "evidenceIds": [
+                "area-place:bc17cc9246168e5eb77a08a26b9e22e29f77f53e437344cb5db51ae1e787bcb6"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "synthesis:highlights:area-place:ddb94d1dbe95f9c2d68df99003962c649c6af26a63234596768cfcdf6876e077:1",
+              "text": "Památník národního písemnictví · muzeum. Místo uvnitř vybrané hranice podle lokálního indexu OpenStreetMap.",
+              "evidenceIds": [
+                "area-place:ddb94d1dbe95f9c2d68df99003962c649c6af26a63234596768cfcdf6876e077"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "synthesis:highlights:area-index:ef4b00c827cfba0b74ece6681a1275a73b05343ad52f4edbefb10d45a5cb6d13:2",
+              "text": "vyhlídka: 332 různých míst uvnitř přesné hranice v lokálním indexu. Pokrytí indexu není úplné; nejde o celkový počet v oblasti.",
+              "evidenceIds": [
+                "area-index:ef4b00c827cfba0b74ece6681a1275a73b05343ad52f4edbefb10d45a5cb6d13"
+              ],
+              "support": "source-statement"
+            }
+          ]
+        },
+        {
+          "id": "local-index",
+          "title": "Pokrytí místních dat",
+          "claims": [
+            {
+              "id": "claim:area-index:561f08520d30449d9fb69dde90382196a630712567f6b483ca11189c8e246440",
+              "text": "kavárna: 1116 různých míst uvnitř přesné hranice v lokálním indexu. Pokrytí indexu není úplné; nejde o celkový počet v oblasti.",
+              "evidenceIds": [
+                "area-index:561f08520d30449d9fb69dde90382196a630712567f6b483ca11189c8e246440"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "claim:area-index:09b01bd74dee9975082398e8625039669ee3adf94964810a0dacfc9afcd1829c",
+              "text": "restaurace: 656 různých míst uvnitř přesné hranice v lokálním indexu. Pokrytí indexu není úplné; nejde o celkový počet v oblasti.",
+              "evidenceIds": [
+                "area-index:09b01bd74dee9975082398e8625039669ee3adf94964810a0dacfc9afcd1829c"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "claim:area-index:7eb44f06335132edf80b4cdf9ae28dc285617207cfbd28babe08d2bf9cb649ca",
+              "text": "parkoviště: 575 různých míst uvnitř přesné hranice v lokálním indexu. Pokrytí indexu není úplné; nejde o celkový počet v oblasti.",
+              "evidenceIds": [
+                "area-index:7eb44f06335132edf80b4cdf9ae28dc285617207cfbd28babe08d2bf9cb649ca"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "claim:area-index:2cc0302ed27ebfa7da7047cb5fe373c1f4db9e7f2722777c861d3ef1f5a5fd56",
+              "text": "bar: 504 různých míst uvnitř přesné hranice v lokálním indexu. Pokrytí indexu není úplné; nejde o celkový počet v oblasti.",
+              "evidenceIds": [
+                "area-index:2cc0302ed27ebfa7da7047cb5fe373c1f4db9e7f2722777c861d3ef1f5a5fd56"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "claim:area-index:eedc8abbeee83768e3393a5036d6b6a89c1d45e924cee26f863e4073bd434401",
+              "text": "toalety: 415 různých míst uvnitř přesné hranice v lokálním indexu. Pokrytí indexu není úplné; nejde o celkový počet v oblasti.",
+              "evidenceIds": [
+                "area-index:eedc8abbeee83768e3393a5036d6b6a89c1d45e924cee26f863e4073bd434401"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "claim:area-index:280573cad66b0dae655757aac1ab807204dfa5946f213e89a0a3316fbb9d4842",
+              "text": "pitná voda: 259 různých míst uvnitř přesné hranice v lokálním indexu. Pokrytí indexu není úplné; nejde o celkový počet v oblasti.",
+              "evidenceIds": [
+                "area-index:280573cad66b0dae655757aac1ab807204dfa5946f213e89a0a3316fbb9d4842"
+              ],
+              "support": "source-statement"
+            },
+            {
+              "id": "claim:area-index:174b23fba57bbab2b9fb874e28a6c6d361e42527f49a3216fe85667654e10112",
+              "text": "muzeum: 142 různých míst uvnitř přesné hranice v lokálním indexu. Pokrytí indexu není úplné; nejde o celkový počet v oblasti.",
+              "evidenceIds": [
+                "area-index:174b23fba57bbab2b9fb874e28a6c6d361e42527f49a3216fe85667654e10112"
+              ],
+              "support": "source-statement"
+            }
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "id": "area:e5b3d2632b070c59cfbdfb4af064e51c4f33e3d7127eeaba7a9f974247a5d47c:name",
+          "kind": "fact"
+        },
+        {
+          "id": "area-place:bc17cc9246168e5eb77a08a26b9e22e29f77f53e437344cb5db51ae1e787bcb6",
+          "url": "https://www.openstreetmap.org/?mlat=50.0874379&mlon=14.445035#map=17/50.0874379/14.445035",
+          "kind": "fact"
+        },
+        {
+          "id": "area-place:52b38f7d63525ffd7772289f2a2ff0b63e90424b2b5476951ab3a1379e948962",
+          "url": "https://www.openstreetmap.org/?mlat=50.0878669&mlon=14.4221119#map=17/50.0878669/14.4221119",
+          "kind": "fact"
+        },
+        {
+          "id": "area-place:db374cf308c4a28653fef9eafd752d278ff10ea741f16c770599cdc056facbd4",
+          "url": "https://www.openstreetmap.org/?mlat=50.0919269&mlon=14.4491683#map=17/50.0919269/14.4491683",
+          "kind": "fact"
+        },
+        {
+          "id": "area-place:0304c136c1d0774cfce3f8b07b737611be31cc8b08a88a502eef894523ba3e0b",
+          "url": "https://www.openstreetmap.org/?mlat=50.0634359&mlon=14.4160742#map=17/50.0634359/14.4160742",
+          "kind": "fact"
+        },
+        {
+          "id": "area-place:5819fd0a9e52110735df2c2c611d9c4bba0c5c0a882cd53ec87305755f522972",
+          "url": "https://www.openstreetmap.org/?mlat=50.0845813&mlon=14.419724#map=17/50.0845813/14.419724",
+          "kind": "fact"
+        },
+        {
+          "id": "area-place:ddb94d1dbe95f9c2d68df99003962c649c6af26a63234596768cfcdf6876e077",
+          "url": "https://www.openstreetmap.org/?mlat=50.0866429&mlon=14.3900859#map=17/50.0866429/14.3900859",
+          "kind": "fact"
+        },
+        {
+          "id": "area-place:887191fafed94039e0ab44978b18b3cf868148be5ccbfd550790e183643daaad",
+          "url": "https://www.openstreetmap.org/?mlat=50.0333581&mlon=14.5562331#map=17/50.0333581/14.5562331",
+          "kind": "fact"
+        },
+        {
+          "id": "area-place:1191cfc3a7c49e6cdbe3f0e6af181a761c9c9ba3c35e27616030f86c48a5ffda",
+          "url": "https://www.openstreetmap.org/?mlat=50.0874579&mlon=14.4221617#map=17/50.0874579/14.4221617",
+          "kind": "fact"
+        },
+        {
+          "id": "area-index:561f08520d30449d9fb69dde90382196a630712567f6b483ca11189c8e246440",
+          "url": "https://www.openstreetmap.org/copyright",
+          "kind": "fact"
+        },
+        {
+          "id": "area-index:09b01bd74dee9975082398e8625039669ee3adf94964810a0dacfc9afcd1829c",
+          "url": "https://www.openstreetmap.org/copyright",
+          "kind": "fact"
+        },
+        {
+          "id": "area-index:7eb44f06335132edf80b4cdf9ae28dc285617207cfbd28babe08d2bf9cb649ca",
+          "url": "https://www.openstreetmap.org/copyright",
+          "kind": "fact"
+        },
+        {
+          "id": "area-index:2cc0302ed27ebfa7da7047cb5fe373c1f4db9e7f2722777c861d3ef1f5a5fd56",
+          "url": "https://www.openstreetmap.org/copyright",
+          "kind": "fact"
+        },
+        {
+          "id": "area-index:eedc8abbeee83768e3393a5036d6b6a89c1d45e924cee26f863e4073bd434401",
+          "url": "https://www.openstreetmap.org/copyright",
+          "kind": "fact"
+        },
+        {
+          "id": "area-index:ef4b00c827cfba0b74ece6681a1275a73b05343ad52f4edbefb10d45a5cb6d13",
+          "url": "https://www.openstreetmap.org/copyright",
+          "kind": "fact"
+        },
+        {
+          "id": "area-index:280573cad66b0dae655757aac1ab807204dfa5946f213e89a0a3316fbb9d4842",
+          "url": "https://www.openstreetmap.org/copyright",
+          "kind": "fact"
+        },
+        {
+          "id": "area-index:174b23fba57bbab2b9fb874e28a6c6d361e42527f49a3216fe85667654e10112",
+          "url": "https://www.openstreetmap.org/copyright",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:39f67c5643c924a4c5152dc211fc92170a2eb97034274e40ee0361fca70e6acb",
+          "url": "https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/local-administrative-units",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:e77a29de3c8eb07026436f4d26738243ab4e2eee5f31a3011823a3252f5a0b3a",
+          "url": "https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/local-administrative-units",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:8502a7bc7fe235ede932ac84bbbd8a2be5dd5d50e6d79cd489063e282db1fcf1",
+          "url": "https://ec.europa.eu/eurostat/databrowser/view/demo_r_pjanaggr3",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:a53d4407585067db7c0d95ce5f747ba43f5ded70aa790760e6c28939e3a3f0b5",
+          "url": "https://ec.europa.eu/eurostat/databrowser/view/nama_10r_3gdp",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:8edcec4574d3e0e1892df9d0a920e4eaefb9950da44efd0ed31ea4d6c604b880",
+          "url": "https://ec.europa.eu/eurostat/databrowser/view/demo_r_pjanaggr3",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:cd4dfb5faf3c9e7940ddef21d6816e1ce0e70dc17ed3b56939ccb9219e4eb251",
+          "url": "https://ec.europa.eu/eurostat/databrowser/view/ilc_peps11n",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:9298780a50cec1b0f3a9e0d79f1ec11095e483777edc98928b77ab5f6b644986",
+          "url": "https://ec.europa.eu/eurostat/databrowser/view/lfst_r_lfu3rt",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:430ed1b453c4f7a4c9de0526b6348a3b48ea91b3f30929612f77c8138f18b00b",
+          "url": "https://ec.europa.eu/eurostat/databrowser/view/demo_r_gind3",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:799b4ca0d61ca924865ba981d28e0b50d86fa1d136054fcea356391779bf1234",
+          "url": "https://ec.europa.eu/eurostat/databrowser/view/crim_gen_reg",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:961f482433455a310d803233d8ecca4b7505cab3d0a13a80cb2944ad15b7dbbf",
+          "url": "https://ec.europa.eu/eurostat/databrowser/view/demo_r_gind3",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:36a092fb6143592fc33a1a5c6e0c9527fc6babb105052fea94fa935bd69920d1",
+          "url": "https://ec.europa.eu/eurostat/databrowser/view/demo_r_mlifexp",
+          "kind": "fact"
+        },
+        {
+          "id": "area-stat:794bb9f895b7fc8b9a72a3dc47b8b91d60daf7d1733a25e5aa3f3319a16f01a5",
+          "url": "https://ec.europa.eu/eurostat/databrowser/view/nrg_ind_ren",
+          "kind": "fact"
+        },
+        {
+          "id": "area:[\"gisco-lau-cz\",\"CZ\",\"lau\",\"CZ_554782\"]:wikidata",
+          "url": "https://www.wikidata.org/wiki/Q1085",
+          "kind": "fact"
+        },
+        {
+          "id": "wiki:0622d3122a6a850cd58cbb7a3dfb746bb56cf9b375a40e4f2be2b37be3d4945a",
+          "url": "https://cs.wikipedia.org/wiki/Praha",
+          "kind": "fact"
+        }
+      ],
+      "mapRefs": 8
+    },
+    {
+      "request": {
+        "target": {
+          "type": "poi",
+          "layerId": "osm-poi",
+          "featureId": "osm:node:12328539094"
+        },
+        "web": true
+      },
+      "firstMs": 188,
+      "totalMs": 6991,
+      "phases": [
+        {
+          "type": "context_ready",
+          "phase": "Ověřuji identitu a dostupné podklady",
+          "ms": 188
+        },
+        {
+          "type": "section_upsert",
+          "ms": 188
+        },
+        {
+          "type": "sources_ready",
+          "ms": 189
+        },
+        {
+          "type": "phase",
+          "phase": "Základní informace připravené · doplňuji zdroje",
+          "ms": 189
+        },
+        {
+          "type": "section_upsert",
+          "ms": 2335
+        },
+        {
+          "type": "section_upsert",
+          "ms": 3412
+        },
+        {
+          "type": "section_upsert",
+          "ms": 4012
+        },
+        {
+          "type": "section_upsert",
+          "ms": 5153
+        },
+        {
+          "type": "section_upsert",
+          "ms": 6102
+        },
+        {
+          "type": "phase",
+          "phase": "Podklady připravené · sestavuji souhrn",
+          "ms": 6102
+        },
+        {
+          "type": "complete",
+          "ms": 6991
+        }
+      ],
+      "terminal": "complete",
+      "composition": "model-assisted",
+      "limitations": [],
+      "sections": [
+        {
+          "id": "summary",
+          "title": "Stručný přehled",
+          "claims": [
+            {
+              "id": "synthesis:summary:record:osm:node:12328539094:name:0",
+              "text": "Název: B.B.Q. Ribs",
+              "evidenceIds": ["record:osm:node:12328539094:name"],
+              "support": "source-statement"
+            },
+            {
+              "id": "synthesis:summary:record:osm:node:12328539094:category:1",
+              "text": "Kategorie: restaurant",
+              "evidenceIds": ["record:osm:node:12328539094:category"],
+              "support": "source-statement"
+            }
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "id": "record:osm:node:12328539094:name",
+          "url": "https://www.openstreetmap.org/node/12328539094",
+          "kind": "fact"
+        },
+        {
+          "id": "record:osm:node:12328539094:category",
+          "url": "https://www.openstreetmap.org/node/12328539094",
+          "kind": "fact"
+        },
+        {
+          "id": "web:d19a2f82fd3054d6c02ffde9f7f7db5f8bb9bfed7615b2e66117ece72aae00fc",
+          "url": "https://amazingribs.com/best-barbecue-ribs-recipe/",
+          "kind": "document"
+        },
+        {
+          "id": "web:b2a57bdfd2269942b087b2d3b4f334bb155ce447a534cc80155c6e36f72c16f4",
+          "url": "https://www.daringgourmet.com/barbecue-ribs/",
+          "kind": "document"
+        },
+        {
+          "id": "web:4b1fa301f3d58e8f0a6dacd9ab413363ff507b3f1fb448dad26e6c02da80afeb",
+          "url": "https://www.bonappetit.com/recipe/best-ever-barbecued-ribs",
+          "kind": "document"
+        },
+        {
+          "id": "web:768d57d45f6fdd8f7795391009a3016fe929844c961ee303526a48747b38c07a",
+          "url": "https://www.americastestkitchen.com/recipes/13918-kansas-city-style-barbecue-ribs",
+          "kind": "document"
+        },
+        {
+          "id": "web:0555cc73f17f771f62b13565eba4ebb0253c0875b2ce95bef9f762a1a915c787",
+          "url": "https://barbecuebible.com/2024/10/22/first-timers-ribs-a-foolproof-recipe/",
+          "kind": "document"
+        }
+      ],
+      "mapRefs": 1
+    }
+  ]
+}

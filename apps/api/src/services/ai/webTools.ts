@@ -1,3 +1,6 @@
+import { providerBudgets } from "../providerBudget/repository.js";
+import { ProviderBudgetError } from "../providerBudget/policy.js";
+import { publicWebUrl } from "./publicWebUrl.js";
 /**
  * `web_search` and `web_fetch` (§30.2).
  *
@@ -56,19 +59,20 @@ function text(value: unknown, limit: number): string {
 }
 
 /** A result is only usable if it can be cited, and only an http(s) URL can be cited. */
-function citableUrl(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
-  } catch {
-    return null;
-  }
-}
+const citableUrl = publicWebUrl;
 
 /** Production web tools, or `null` when the deployment has no key for them. */
 export function createOllamaWebTools(): AiWebTools | null {
   if (!config.ollamaWebToolsEnabled || !config.ollamaKey) return null;
+  const account = process.env.MAPOS_AI_BUDGET_ACCOUNT ?? "";
+  const budget = (operation: "search" | "fetch") => ({
+    scope: `ollama-web:${account}:${operation}`,
+    cacheable: true,
+    reserve(signal: AbortSignal) {
+      if (!account) throw new ProviderBudgetError("budget-disabled");
+      return providerBudgets.reserve({ product: "ai-overview-web", account, operation }, signal);
+    }
+  });
   const headers = {
     authorization: `Bearer ${config.ollamaKey}`,
     "content-type": "application/json"
@@ -82,6 +86,9 @@ export function createOllamaWebTools(): AiWebTools | null {
       const maxResults = Math.min(MAX_RESULTS, Math.max(1, Math.floor(input.maxResults ?? 3)));
       const envelope = await fetchJson<SearchEnvelope>(SEARCH_URL, {
         providerId: "ollama-web-search",
+        // Cloud currently returns valid JSON with text/html (live verified 2026-09-12).
+        acceptedContentTypes: ["application/json", "text/json", "text/html"],
+        budget: budget("search"),
         method: "POST",
         body: JSON.stringify({ query, max_results: maxResults }),
         headers,
@@ -108,6 +115,8 @@ export function createOllamaWebTools(): AiWebTools | null {
       if (!url) throw new Error("web_fetch requires an http(s) URL");
       const envelope = await fetchJson<FetchEnvelope>(FETCH_URL, {
         providerId: "ollama-web-fetch",
+        acceptedContentTypes: ["application/json", "text/json", "text/html"],
+        budget: budget("fetch"),
         method: "POST",
         body: JSON.stringify({ url }),
         headers,

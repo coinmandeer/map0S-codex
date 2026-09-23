@@ -1,4 +1,6 @@
-import { lazy, Suspense, useEffect, useMemo, type ReactNode } from "react";
+import { StatisticsDialog } from "../../statistics/StatisticsDialog";
+import { chatSession } from "../ai/chatSession";
+import { lazy, Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
 import type { Fix } from "../../lib/geolocation";
 import { getLayerManifestV2 } from "../../layers/registry";
 import {
@@ -10,17 +12,19 @@ import { getMapStore, type ToastState } from "../../store/mapStore";
 import { useMapStoreSnapshot } from "../../store/useMapStoreSnapshot";
 import { useShellStoreSnapshot } from "../../store/useShellStoreSnapshot";
 import { BottomNav } from "../BottomNav";
-import { LayerNotices } from "../LayerNotices";
+
 import { ModeBar } from "../ModeBar";
-import { SearchHereButton } from "../SearchHereButton";
+
 import { SourceStatus } from "../SourceStatus";
 import { TaskCenter } from "../TaskCenter";
 import { legendContributions, timelineContributions } from "../footerContributions";
 import { ModuleErrorBoundary } from "../primitives/ModuleErrorBoundary";
 import { Button } from "../kit";
-import { ActivityIndicator } from "./ActivityIndicator";
+
+import { DesktopModeBar } from "./DesktopModeBar";
 import { MapFooterStack } from "./MapFooterStack";
 import { LegendStack } from "./LegendStack";
+
 import { MapPickerHost } from "./MapPickerHost";
 import { ModalHost } from "./ModalHost";
 import { RightUtilityDrawer } from "./RightUtilityDrawer";
@@ -47,7 +51,12 @@ const BasemapSheet = lazy(() =>
 const GlobalTimeline = lazy(() =>
   import("../GlobalTimeline").then((module) => ({ default: module.GlobalTimeline }))
 );
-const GameHud = lazy(() => import("../GameHud").then((module) => ({ default: module.GameHud })));
+const GameHud = lazy(() =>
+  import("../../world/WorldHud").then((module) => ({ default: module.WorldHud }))
+);
+const GameHudOverlay = lazy(() =>
+  import("../../world/GameHudOverlay").then((module) => ({ default: module.GameHudOverlay }))
+);
 const GameControls = lazy(() =>
   import("../GameControls").then((module) => ({ default: module.GameControls }))
 );
@@ -59,6 +68,9 @@ const PlanningPanel = lazy(() =>
 );
 const PersonalPanel = lazy(() =>
   import("../PersonalPanel").then((module) => ({ default: module.PersonalPanel }))
+);
+const FeedPanel = lazy(() =>
+  import("../FeedPanel").then((module) => ({ default: module.FeedPanel }))
 );
 const GameSimulationBridge = lazy(() =>
   import("../GameSimulationBridge").then((module) => ({ default: module.GameSimulationBridge }))
@@ -117,6 +129,17 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
   const activeLayers = useMapStoreSnapshot((state) => state.activeLayers);
   const activePlan = useMapStoreSnapshot((state) => state.activePlan);
   const selectedPin = useMapStoreSnapshot((state) => state.selectedPin);
+  const discoverFocus = useRef<HTMLElement | null>(null);
+  const previousContext = useRef(leftContext.type);
+  useEffect(() => {
+    if (
+      previousContext.current === "feature" &&
+      leftContext.type === "mode" &&
+      leftContext.mode === "discover"
+    )
+      discoverFocus.current?.focus({ preventScroll: true });
+    previousContext.current = leftContext.type;
+  }, [leftContext]);
 
   useEffect(() => {
     const port = windowShellHistoryPort();
@@ -127,6 +150,13 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
 
   // §4.10: the map, the panels and search all select pins through MapStore. Translating that one
   // signal into the left feature context here keeps every caller free of shell knowledge.
+  useEffect(() => {
+    const keepsSession =
+      leftContext.type === "ai" ||
+      (leftContext.type === "feature" && leftContext.returnTo?.type === "ai");
+    if (!keepsSession) chatSession.stop();
+  }, [leftContext]);
+
   const selectedRef = useMemo(() => {
     if (!selectedPin) return null;
     const featureId = String(selectedPin.feature.properties?.id ?? selectedPin.layerId);
@@ -191,20 +221,6 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
       </ModuleErrorBoundary>
 
       <ModuleErrorBoundary
-        moduleId="search-here"
-        title="Hledání v mapě"
-        compact
-        placement="overlay"
-      >
-        <SearchHereButton />
-      </ModuleErrorBoundary>
-      <ModuleErrorBoundary moduleId="layer-notices" title="Stav vrstev" compact placement="overlay">
-        <LayerNotices />
-      </ModuleErrorBoundary>
-      <ModuleErrorBoundary moduleId="activity" title="Průběh načítání" compact placement="overlay">
-        <ActivityIndicator />
-      </ModuleErrorBoundary>
-      <ModuleErrorBoundary
         moduleId="bottom-navigation"
         title="Mobilní navigace"
         compact
@@ -212,6 +228,20 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
       >
         <BottomNav />
       </ModuleErrorBoundary>
+      <ModuleErrorBoundary
+        moduleId="desktop-modebar"
+        title="Přepínač režimů"
+        compact
+        placement="overlay"
+      >
+        <DesktopModeBar />
+      </ModuleErrorBoundary>
+
+      {/* The arcade HUD floats over the board: in game mode the map panel stays closed and the
+          player gets vitals, zone clock and the three actions without opening anything. */}
+      <AsyncSurface id="game-hud-overlay" title="Herní HUD" compact placement="overlay">
+        <GameHudOverlay />
+      </AsyncSurface>
 
       <div
         id="left-context-host"
@@ -230,16 +260,37 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
             <PlanningPanel />
           </AsyncSurface>
         )}
-        {leftContext.type === "mode" && leftContext.mode === "discover" && (
+        {leftContext.type === "mode" && leftContext.mode === "feed" && (
           <AsyncSurface
-            id="discover-panel"
-            title="Objevování a AI souhrn"
+            id="feed-panel"
+            title="Feed"
             resetKey={leftContext.mode}
             onDismiss={() => shell.closeLeftContext()}
             placement="panel"
           >
-            <DiscoverPanel />
+            <FeedPanel />
           </AsyncSurface>
+        )}
+        {((leftContext.type === "mode" && leftContext.mode === "discover") ||
+          (leftContext.type === "feature" &&
+            leftContext.returnTo?.type === "mode" &&
+            leftContext.returnTo.mode === "discover")) && (
+          <div
+            hidden={leftContext.type === "feature"}
+            onFocusCapture={(event) => {
+              if (event.target instanceof HTMLElement) discoverFocus.current = event.target;
+            }}
+          >
+            <AsyncSurface
+              id="discover-panel"
+              title="Objevování a AI souhrn"
+              resetKey="discover"
+              onDismiss={() => shell.closeLeftContext()}
+              placement="panel"
+            >
+              <DiscoverPanel />
+            </AsyncSurface>
+          </div>
         )}
         {leftContext.type === "mode" && leftContext.mode === "personal" && (
           <AsyncSurface
@@ -320,6 +371,7 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
         onDismiss={() => shell.closeModal()}
       >
         <ModalHost />
+        <StatisticsDialog />
       </ModuleErrorBoundary>
       <ModuleErrorBoundary
         moduleId="map-picker"
@@ -342,6 +394,11 @@ function Toast({ toast }: { toast: ToastState }) {
   return (
     <div className="toast" data-testid="toast" role="status" aria-live="polite">
       <span className="toast-message">{toast.message}</span>
+      {toast.secondaryAction && (
+        <Button variant="text" size="sm" onClick={toast.secondaryAction.onSelect}>
+          {toast.secondaryAction.label}
+        </Button>
+      )}
       {toast.action && (
         <Button variant="text" size="sm" testId="toast-action" onClick={toast.action.onSelect}>
           {toast.action.label}
@@ -367,8 +424,6 @@ export function LegacyAppShell({ onFlyToMe }: AppChromeProps) {
       </div>
 
       <ModuleErrorBoundary moduleId="legacy-map-overlays" title="Mapové ovládání" compact>
-        <SearchHereButton />
-        <LayerNotices />
         <SourceStatus floating testId="map-source-strip" />
         <TaskCenter />
         <BottomNav />
@@ -381,6 +436,9 @@ export function LegacyAppShell({ onFlyToMe }: AppChromeProps) {
       </AsyncSurface>
       <AsyncSurface id="legacy-personal-panel" title="Osobní místa">
         <PersonalPanel />
+      </AsyncSurface>
+      <AsyncSurface id="legacy-feed-panel" title="Feed">
+        <FeedPanel />
       </AsyncSurface>
       <AsyncSurface id="legacy-game-panel" title="Herní panel">
         <GameHud />

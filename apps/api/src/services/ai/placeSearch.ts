@@ -9,7 +9,13 @@
  */
 
 import { createHash } from "node:crypto";
-import type { Bbox, OsmPoiCategoryId, Place, PlacesResponse } from "@mapos/layer-sdk";
+import type {
+  AreaSelection,
+  Bbox,
+  OsmPoiCategoryId,
+  Place,
+  PlacesResponse
+} from "@mapos/layer-sdk";
 import { OSM_POI_CATEGORIES } from "@mapos/layer-sdk";
 import type { AiCitation } from "./contracts.js";
 import type { AiNearestPoiRecord, AiNearestPoiSource } from "./toolCatalog.js";
@@ -98,6 +104,7 @@ export function resolveOsmCategories(toolIds: readonly string[]): OsmPoiCategory
 }
 
 export interface AiPlaceSearchQuery {
+  area?: AreaSelection | null;
   query?: string;
   categories?: readonly string[];
   near?: { longitude: number; latitude: number };
@@ -108,6 +115,7 @@ export interface AiPlaceSearchQuery {
 }
 
 export interface AiPlaceSearchRecord {
+  sourceFeatureId?: string;
   id: string;
   layerId: string;
   title: string;
@@ -131,6 +139,7 @@ export interface AiPlaceSearchSource {
 }
 
 export type FusedPlacesSearchReader = (query: {
+  area?: AreaSelection | null;
   bbox: Bbox;
   categories: OsmPoiCategoryId[];
   sources: ["osm"];
@@ -171,6 +180,7 @@ function fusedRecord(place: Place, category: OsmPoiCategoryId): AiNearestPoiReco
       : undefined;
   return {
     id: opaqueId("poi", place.id),
+    sourceFeatureId: `osm:${provenance.sourceRef.replaceAll("/", ":").replace(/^osm:/, "")}`,
     layerId: OSM_LAYER_ID,
     title: place.name.trim().slice(0, 500),
     category: TOOL_ID_BY_CATEGORY.get(category)!,
@@ -221,6 +231,7 @@ function toOutput(
       const distanceMeters = reference ? deterministicDistanceMeters(reference, record) : undefined;
       return {
         id: record.id,
+        ...(record.sourceFeatureId ? { sourceFeatureId: record.sourceFeatureId } : {}),
         layerId: record.layerId,
         title: record.title,
         category: record.category,
@@ -270,7 +281,12 @@ export function createFusedPlaceSearchSource(
           ? bboxAround(query.near.longitude, query.near.latitude, query.radiusMeters ?? 10_000)
           : null);
       if (!bbox) return { places: [], sources: [] };
-      const response = await readPlaces({ bbox, categories, sources: ["osm"] });
+      const response = await readPlaces({
+        bbox,
+        categories,
+        sources: ["osm"],
+        ...(query.area ? { area: query.area } : {})
+      });
       context.signal.throwIfAborted();
       const records: AiNearestPoiRecord[] = [];
       for (const place of response.places) {
@@ -339,6 +355,7 @@ export function nearestPoiSourceFromSearch(source: AiPlaceSearchSource): AiNeare
         .filter((place) => input.layerIds.includes(place.layerId))
         .map((place) => ({
           id: place.id,
+          ...(place.sourceFeatureId ? { sourceFeatureId: place.sourceFeatureId } : {}),
           layerId: place.layerId,
           title: place.title,
           category: input.category,

@@ -1,4 +1,5 @@
 import type { TaskRecordV2, TaskTypeV2 } from "@mapos/layer-sdk";
+import { t } from "../../i18n";
 import type { IconName } from "../kit/icons";
 
 /** Newest first, and never more than this many rows on screen at once. Concurrency is capped
@@ -81,14 +82,26 @@ export function activityRows(
     .map(rowFor);
 }
 
-/** Single-line summary shown when the pill is collapsed. */
-export function activitySummary(rows: readonly ActivityRow[]): string | null {
+/**
+ * The one line the pill shows.
+ *
+ * There used to be up to three stacked pills, one per task, which turned five layers coming on
+ * at once into a tower of grey lozenges over the map — and the tower was the loudest thing on
+ * screen at exactly the moment the map was the point. One line instead: how many sources are
+ * still working, out of how many were asked. The breakdown is in the popover, for whoever wants
+ * to know which one is slow.
+ *
+ * `total` is the tasks the pill knows about, `rows` the ones it would have drawn.
+ */
+export function activitySummary(rows: readonly ActivityRow[], total = rows.length): string | null {
   if (!rows.length) return null;
   const failed = rows.filter((row) => row.tone === "error");
   if (failed.length) {
-    return failed.length === 1 ? failed[0]!.label : `${failed.length} chyby při načítání`;
+    return failed.length === 1 ? failed[0]!.label : t("activity.failed", { count: failed.length });
   }
   const running = rows.filter((row) => row.tone === "running");
   if (!running.length) return rows[0]!.label;
-  return running.length === 1 ? running[0]!.label : `${running.length} úlohy běží`;
+  // One source is named — "Loading 1/1 sources" tells nobody anything the name does not.
+  if (total <= 1) return running[0]!.label;
+  return t("activity.loading", { done: total - running.length, total });
 }

@@ -39,7 +39,7 @@ test("a GPX from a watch imports as a layer holding both the track and its waypo
 
   const mine = page.getByTestId("personal-panel");
   await expect(mine).toBeVisible();
-  await mine.getByText("Moje vrstvy", { exact: true }).click();
+  await mine.getByText("My layers", { exact: true }).click();
 
   await mine.getByTestId("layer-import-file").setInputFiles({
     name: "activity_18274612.gpx",

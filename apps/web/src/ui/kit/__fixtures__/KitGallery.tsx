@@ -501,7 +501,7 @@ export function KitGallery() {
       >
         <TextField
           label="Odkaz"
-          value="https://mapos.app/p/abc123"
+          value="https://mapos.example/p/abc123"
           onChange={() => undefined}
           readOnly
         />

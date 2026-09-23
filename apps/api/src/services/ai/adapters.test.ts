@@ -246,3 +246,25 @@ test("adapter refuses an oversized body before parsing it", async () => {
     /byte limit/
   );
 });
+
+test("reasoning effort is explicit and model responses still use the common tool contract", async () => {
+  let body: Record<string, unknown> = {};
+  const adapter = new OpenAiCompatibleAdapter({
+    id: "test-reasoning",
+    baseUrl: "https://provider.test/v1",
+    apiKey: "test-key",
+    model: "glm-5.3-flash",
+    reasoningEffort: "low",
+    fetch: async (_input, init) => {
+      body = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: "Odpověď" }, finish_reason: "stop" }] }),
+        { headers: { "content-type": "application/json" } }
+      );
+    }
+  });
+  const result = await adapter.run(baseRequest, new AbortController().signal);
+  assert.equal(body.reasoning_effort, "low");
+  assert.equal(body.model, "glm-5.3-flash");
+  assert.equal(result.text, "Odpověď");
+});

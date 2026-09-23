@@ -10,6 +10,8 @@
  * sections and passes them in as a seed, so wiring a guide here costs no extra upstream call.
  */
 
+import { areaWikidataId } from "../ai/areaIdentity.js";
+import { localAreaPlaces } from "../ai/areaEvidence.js";
 import type { Bbox, EventDocumentV2 } from "@mapos/layer-sdk";
 import type { AiCitation } from "../ai/contracts.js";
 import type { AiWebTools } from "../ai/webTools.js";
@@ -81,11 +83,16 @@ export function createProductionGuideCollectors(
   options: { web?: AiWebTools | null } = {}
 ): GuideCollectors {
   const collectors: GuideCollectors = {
-    async encyclopedia(area) {
+    async encyclopedia(area, signal) {
+      const qid =
+        area.wikidataId ??
+        (area.selectedArea ? await areaWikidataId(area.selectedArea, signal) : undefined);
+      // A common district name is not an encyclopedia identity (e.g. Eixample).
+      if (!qid) return { value: [] };
       const article = await getWikipediaArticle({
-        ...(area.wikidataId ? { qid: area.wikidataId } : {}),
-        title: area.name,
-        lang: area.lang
+        qid,
+        lang: area.lang,
+        signal
       });
       if (!article?.extract.trim()) return { value: [] };
       const sourceId = `wikipedia:${article.lang}:${article.title}`;
@@ -119,7 +126,25 @@ export function createProductionGuideCollectors(
       };
     },
 
-    async places(area) {
+    async places(area, signal) {
+      if (area.selectedArea) {
+        const places = await localAreaPlaces(
+          area.selectedArea.id,
+          area.selectedArea.revision,
+          signal
+        );
+        return {
+          value: places.map((p) => ({ ...p, sourceId: "mapos-osm-index" })),
+          sources: [
+            {
+              sourceId: "mapos-osm-index",
+              label: "Výběr z neúplného lokálního indexu OpenStreetMap",
+              url: "https://www.openstreetmap.org/copyright",
+              providerId: "osm"
+            }
+          ]
+        };
+      }
       const pois = await loadWikipediaPois(boundsOf(area.bbox));
       if (!pois.length) return { value: [] };
       const value: GuidePlaceFact[] = pois.slice(0, 12).map((poi) => ({
@@ -145,6 +170,7 @@ export function createProductionGuideCollectors(
     },
 
     async weather(area) {
+      if (area.selectedArea) return { value: null };
       const forecast = await getPointForecast(area.center.longitude, area.center.latitude);
       const value = weatherSummary(forecast);
       if (!value) return { value: null };

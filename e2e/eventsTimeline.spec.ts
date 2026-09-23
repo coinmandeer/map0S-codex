@@ -83,7 +83,7 @@ test.describe("annual events UI", () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openEvents(page);
-    await page.getByRole("slider", { name: "Výška panelu" }).press("ArrowUp");
+    await page.getByRole("slider", { name: "Panel height" }).press("ArrowUp");
     const explorer = page.getByTestId("event-explorer");
     await explorer.scrollIntoViewIfNeeded();
     await expect(explorer).toBeVisible();

@@ -1,5 +1,8 @@
 # Redesign progress ledger
 
+> Historical ledger. For the current completion list and verified release state, use
+> [the 23 September stabilization report](../releases/2026-09-23-stabilization.md).
+
 Checklist for the master plan in
 [2026-09-ui-redesign-and-layer-roadmap.md](2026-09-ui-redesign-and-layer-roadmap.md), kept per
 §33. A line is only ticked once it has a commit **and** a screenshot **and** a green audit
@@ -365,6 +368,19 @@ Not yet started; see §7, §15, §24.10 and §30.10 for the definitions.
 - [ ] Phase 6 — delete legacy shell and orphans, split `panels.css`, refresh docs
 - [ ] Phase 11 — layer catalog, `mapos-layer publish`, CODEOWNERS, ActivityPub, STAC/COG, 3D Tiles (§14)
 - [ ] §33 — PR template checklist, `gitleaks` in CI, traceability rows closed
+
+## Vlna rychlé mapy (září 2026)
+
+- [x] Pin source: stabilní `promoteId`, větší symboly, clustering do zoomu 14 a kliknutí na
+      cluster s worker-side expansion zoomem.
+- [x] LayerEngine: pin response už nerebuildí všechny ostatní zdroje; response cache má LRU a
+      byte budget; „Hledat zde“ se neshodí dokončením jiné drahé vrstvy.
+- [x] Route source: `setData` jen při změně geometrie/zastávek/výběru segmentu; legacy planner rail
+      pseudo-line je vypnutá.
+- [x] Pin media: hero fotografie se otevírá v přístupné full-screen galerii s Escape, šipkami,
+      licencí a captionem.
+- [x] Brand: minimalistický MapOS symbol vrstev s pinem.
+- [x] Navazující specifikace pro další AI: [2026-09-mapos-followup-next-ai.md](2026-09-mapos-followup-next-ai.md)
 
 ## Blockers owned by the operator (§22)
 

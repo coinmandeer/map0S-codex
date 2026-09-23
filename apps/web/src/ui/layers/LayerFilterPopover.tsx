@@ -1,6 +1,18 @@
+import { t } from "../../i18n";
+import { presentationLabel } from "../../i18n/presentation";
 import { useMemo } from "react";
 import type { FilterFacetV2, FilterValues } from "@mapos/layer-sdk";
-import { Button, Chip, IconButton, Popover, RangeSlider, Slider, Switch, TextField } from "../kit";
+import {
+  Button,
+  Chip,
+  IconButton,
+  Popover,
+  RangeSlider,
+  Select,
+  Slider,
+  Switch,
+  TextField
+} from "../kit";
 
 /** Per-layer filters, rendered from the manifest rather than hand-written per layer (§4.7).
  *
@@ -70,7 +82,7 @@ export function LayerFilterPopover({
   );
 }
 
-function FacetControl({
+export function FacetControl({
   layerId,
   facet,
   values,
@@ -81,6 +93,14 @@ function FacetControl({
   values: FilterValues;
   onChange: (patch: FilterValues) => void;
 }) {
+  facet = {
+    ...facet,
+    label: presentationLabel("facet", facet.id, facet.label),
+    options: facet.options?.map((option) => ({
+      ...option,
+      label: presentationLabel("option", option.id, option.label)
+    }))
+  };
   const testId = `filter-${layerId}-${facet.id}`;
 
   if (facet.kind === "toggle") {
@@ -125,7 +145,7 @@ function FacetControl({
         min={facet.min ?? 0}
         max={facet.max ?? 30}
         value={[from ?? facet.min ?? 0, to ?? facet.max ?? 30]}
-        format={([a, b]) => `${formatNumber(a)}–${formatNumber(b)} dní`}
+        format={([a, b]) => t("polish.days", { from: formatNumber(a), to: formatNumber(b) })}
         onChange={(next) => onChange({ [facet.id]: next })}
         testId={testId}
       />
@@ -147,6 +167,16 @@ function FacetControl({
 
   const selected = asStringArray(values[facet.id] ?? facet.default);
   const single = facet.kind === "single-select";
+  if (single && facet.options.length > 12)
+    return (
+      <Select
+        label={facet.label}
+        testId={testId}
+        value={selected[0] ?? null}
+        options={facet.options.map((option) => ({ value: option.id, label: option.label }))}
+        onChange={(value) => onChange({ [facet.id]: value })}
+      />
+    );
 
   return (
     <div className="layer-filter-facet">

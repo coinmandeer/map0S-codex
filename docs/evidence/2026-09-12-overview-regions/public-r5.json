@@ -1,0 +1,387 @@
+{
+  "revision": "26dd406168ebf8da1fe35d8a4df280d18408ec3fa44b9eca23c070fb4b861ed9",
+  "output": [
+    {
+      "kind": "context",
+      "code": "CZ_554782",
+      "pass": 0,
+      "status": 200,
+      "ms": 658,
+      "cache": false,
+      "name": "Praha",
+      "statistics": [
+        {
+          "id": "published:lau-population-density-2024",
+          "value": 2789.5903205111345,
+          "region": "Praha",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:lau-population-2024",
+          "value": 1384732,
+          "region": "Praha",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:eurostat-demo-r-pjanaggr3",
+          "value": 1397880,
+          "region": "Hlavní město Praha",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-gdp-per-capita",
+          "value": 62400,
+          "region": "Hlavní město Praha",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-population-65-plus",
+          "value": 257441,
+          "region": "Hlavní město Praha",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-poverty",
+          "value": 9.1,
+          "region": "Praha",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-unemployment",
+          "value": 1.8,
+          "region": "Praha",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-birth-rate-country",
+          "value": 7.1,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-crim-gen-reg-country",
+          "value": 0.63,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-death-rate-country",
+          "value": 10.4,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-life-expectancy-country",
+          "value": 80.1,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-renewable-energy",
+          "value": 19.1,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        }
+      ],
+      "guide": "extract"
+    },
+    {
+      "kind": "context",
+      "code": "CZ_554782",
+      "pass": 1,
+      "status": 200,
+      "ms": 55,
+      "cache": true,
+      "name": "Praha",
+      "statistics": [
+        {
+          "id": "published:lau-population-density-2024",
+          "value": 2789.5903205111345,
+          "region": "Praha",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:lau-population-2024",
+          "value": 1384732,
+          "region": "Praha",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:eurostat-demo-r-pjanaggr3",
+          "value": 1397880,
+          "region": "Hlavní město Praha",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-gdp-per-capita",
+          "value": 62400,
+          "region": "Hlavní město Praha",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-population-65-plus",
+          "value": 257441,
+          "region": "Hlavní město Praha",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-poverty",
+          "value": 9.1,
+          "region": "Praha",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-unemployment",
+          "value": 1.8,
+          "region": "Praha",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-birth-rate-country",
+          "value": 7.1,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-crim-gen-reg-country",
+          "value": 0.63,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-death-rate-country",
+          "value": 10.4,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-life-expectancy-country",
+          "value": 80.1,
+          "region": "Czech Republic",
+          "year": 2024,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-renewable-energy",
+          "value": 19.1,
+          "region": "Czech Republic",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        }
+      ],
+      "guide": "extract"
+    },
+    {
+      "kind": "overview",
+      "code": "CZ_554782",
+      "status": 200,
+      "firstMs": 83,
+      "totalMs": 591,
+      "terminal": "partial",
+      "claims": [
+        "Praha · obec · CZ.",
+        "Hustota obyvatel: 2 789,59 obyv./km² (2024). Vybraná oblast: Praha · LAU · poznámka zdroje: GISCO LAU 2024.",
+        "Obecní populace (2024): 1 384 732 obyvatel (2024). Vybraná oblast: Praha · LAU · poznámka zdroje: GISCO LAU 2024.",
+        "Praha je hlavní město a současně největší město Česka, zároveň je 13. nejlidnatějším městem Evropské unie. Leží mírně na sever od středu Čech na řece Vltavě. Praha se rozkládá na území 496 km² a žije zde okolo 1,4 milionu obyvatel, v pražské metropolitní oblasti žije zhruba 2,1 milionu obyvatel. Praha je jedním z krajů a zároveň správním centrem Středočeského kraje, který ji obklopuje.",
+        "Populace: 1 397 880 obyvatel (2025). Údaj za širší statistickou oblast: Hlavní město Praha · NUTS3."
+      ],
+      "sources": 31,
+      "limitations": [
+        "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+      ]
+    },
+    {
+      "kind": "context",
+      "code": "ES_43148",
+      "pass": 0,
+      "status": 200,
+      "ms": 840,
+      "cache": false,
+      "name": "Tarragona",
+      "statistics": [
+        {
+          "id": "published:lau-population-density-2024",
+          "value": 2517.437835574865,
+          "region": "Tarragona",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:lau-population-2024",
+          "value": 141018,
+          "region": "Tarragona",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:eurostat-demo-r-pjanaggr3",
+          "value": 875530,
+          "region": "Tarragona",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-gdp-per-capita",
+          "value": 34500,
+          "region": "Tarragona",
+          "year": 2023,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-population-65-plus",
+          "value": 176264,
+          "region": "Tarragona",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-poverty",
+          "value": 21.3,
+          "region": "Cataluña",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-unemployment",
+          "value": 8.4,
+          "region": "Cataluña",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        }
+      ],
+      "guide": "extract"
+    },
+    {
+      "kind": "context",
+      "code": "ES_43148",
+      "pass": 1,
+      "status": 200,
+      "ms": 48,
+      "cache": true,
+      "name": "Tarragona",
+      "statistics": [
+        {
+          "id": "published:lau-population-density-2024",
+          "value": 2517.437835574865,
+          "region": "Tarragona",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:lau-population-2024",
+          "value": 141018,
+          "region": "Tarragona",
+          "year": 2024,
+          "scope": "selected-area"
+        },
+        {
+          "id": "published:eurostat-demo-r-pjanaggr3",
+          "value": 875530,
+          "region": "Tarragona",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-gdp-per-capita",
+          "value": 34500,
+          "region": "Tarragona",
+          "year": 2023,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-population-65-plus",
+          "value": 176264,
+          "region": "Tarragona",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-poverty",
+          "value": 21.3,
+          "region": "Cataluña",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        },
+        {
+          "id": "published:eurostat-unemployment",
+          "value": 8.4,
+          "region": "Cataluña",
+          "year": 2025,
+          "scope": "regional-aggregate"
+        }
+      ],
+      "guide": "extract"
+    },
+    {
+      "kind": "overview",
+      "code": "ES_43148",
+      "status": 200,
+      "firstMs": 46,
+      "totalMs": 327,
+      "terminal": "partial",
+      "claims": [
+        "Tarragona · obec · ES.",
+        "Hustota obyvatel: 2 517,44 obyv./km² (2024). Vybraná oblast: Tarragona · LAU · poznámka zdroje: INE census 2024.",
+        "Obecní populace (2024): 141 018 obyvatel (2024). Vybraná oblast: Tarragona · LAU · poznámka zdroje: INE census 2024.",
+        "Tarragona je přístavní město v autonomní oblasti Katalánsko na severovýchodě Španělska, středisko stejnojmenné provincie. Podle odhadů zde v roce 2016 žilo více než 130 000 obyvatel, v celé metropolitní oblasti pak přes 450 000 obyvatel. Ve starověku byla centrem římské provincie Hispania Tarraconensis. Ve městě lze dosud najít mnoho starověkých památek, které byly zapsány na seznam UNESCO.",
+        "Populace: 875 530 obyvatel (2025). Údaj za širší statistickou oblast: Tarragona · NUTS3."
+      ],
+      "sources": 26,
+      "limitations": [
+        "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+      ]
+    },
+    {
+      "kind": "theme",
+      "theme": "poverty",
+      "zoom": 9,
+      "status": 200,
+      "level": "nuts2",
+      "dataset": "eurostat-poverty",
+      "period": "2025",
+      "ready": true
+    },
+    {
+      "kind": "theme",
+      "theme": "population",
+      "zoom": 6,
+      "status": 200,
+      "level": "nuts3",
+      "dataset": "eurostat-demo-r-pjanaggr3",
+      "period": "2025",
+      "ready": true
+    },
+    {
+      "kind": "theme",
+      "theme": "population",
+      "zoom": 10,
+      "status": 200,
+      "level": "lau",
+      "dataset": "lau-population-2024",
+      "period": "2024",
+      "ready": true
+    }
+  ]
+}

@@ -184,7 +184,7 @@ test.describe("source-grounded Personal UI", () => {
     await expect(panel.getByTestId("personal-count-places")).toHaveText("3");
     await expect(panel.getByTestId("personal-count-layers")).toHaveText("1");
     await expect(panel.locator(".kit-accordion-panel[data-open]")).toHaveCount(0);
-    await expect(panel).not.toContainText("Poslední hledání");
+    await expect(panel).not.toContainText("Recent searches");
     await expect(panel).not.toContainText("Cizí veřejné místo");
 
     await panel.getByTestId("personal-accordion-plans").click();

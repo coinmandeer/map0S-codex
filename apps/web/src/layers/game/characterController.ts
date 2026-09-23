@@ -20,7 +20,7 @@ export interface CharacterControllerSnapshot {
   gpsAccuracyM: number | null;
 }
 
-const DEFAULT_SPEED_METERS_PER_SECOND = 42;
+const DEFAULT_SPEED_METERS_PER_SECOND = 4;
 const MAX_STEP_MS = 100;
 const TAP_ARRIVAL_METERS = 1.5;
 const MIN_GPS_MOVEMENT_METERS = 1.5;
@@ -46,6 +46,23 @@ export function deltaMeters(from: Coordinates, to: Coordinates): CharacterMoveme
   };
 }
 
+/** The keys the game itself owns. A focused button must not swallow them: after clicking a HUD
+ *  control the reader expects the next arrow press to move the avatar, not to walk the focus
+ *  ring. Text entry and dialogs still keep the keyboard. */
+const GAME_KEYS = new Set([
+  "arrowup",
+  "arrowdown",
+  "arrowleft",
+  "arrowright",
+  "w",
+  "a",
+  "s",
+  "d",
+  " ",
+  "q",
+  "e"
+]);
+
 export function shouldIgnoreGameKeyEvent(event: {
   defaultPrevented?: boolean;
   target?: EventTarget | null;
@@ -54,13 +71,13 @@ export function shouldIgnoreGameKeyEvent(event: {
   const element = event.target as HTMLElement | null;
   if (!element) return false;
   const tag = element.tagName?.toLowerCase();
-  return (
-    tag === "input" ||
-    tag === "textarea" ||
-    tag === "select" ||
-    tag === "button" ||
-    Boolean(element.isContentEditable)
-  );
+  if (tag === "input" || tag === "textarea" || tag === "select" || element.isContentEditable)
+    return true;
+  if (element.closest?.('[role="dialog"][aria-modal="true"], dialog[open]')) return true;
+  const key = (event as KeyboardEvent).key?.toLowerCase?.() ?? "";
+  if (GAME_KEYS.has(key) && element.closest?.("button, [role='button']"))
+    (element.closest("button, [role='button']") as HTMLElement).blur();
+  return false;
 }
 
 export class CharacterController {
@@ -74,6 +91,7 @@ export class CharacterController {
   private tapTarget: Coordinates | null = null;
   private activeInput: CharacterInputSource | null = null;
   private moving = false;
+  private sprinting = false;
   private gpsAccuracyM: number | null = null;
 
   constructor(
@@ -153,7 +171,12 @@ export class CharacterController {
     if (position) this.vectors.clear();
   }
 
+  setSprinting(enabled: boolean): void {
+    this.sprinting = enabled;
+  }
+
   cancelMovement(): void {
+    this.sprinting = false;
     this.vectors.clear();
     this.tapTarget = null;
     this.activeInput = this.anchorMode === "locked-to-gps" ? "gps" : null;
@@ -206,7 +229,7 @@ export class CharacterController {
       north = Math.cos(bearing) * vector.y - Math.sin(bearing) * vector.x;
     }
     const seconds = Math.max(0, Math.min(MAX_STEP_MS, deltaMs)) / 1000;
-    const requestedDistance = this.speedMetersPerSecond * seconds;
+    const requestedDistance = this.speedMetersPerSecond * (this.sprinting ? 2 : 1) * seconds;
 
     if (source === "tap" && this.tapTarget) {
       const remaining = deltaMeters(this.gamePosition, this.tapTarget);

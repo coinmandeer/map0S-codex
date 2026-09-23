@@ -3,12 +3,26 @@ import { mock, test } from "node:test";
 import { __resetUpstreamCache, __setUpstreamTestDependencies } from "../utils/upstream.js";
 import {
   fetchWeatherGrid,
+  resetWeatherGridCache,
   isWeatherVariable,
   MAX_GRID_POINTS,
   WEATHER_VARIABLES
 } from "./weatherGridService.js";
 
 const BBOX: [number, number, number, number] = [12, 48, 16, 51];
+
+test("model selection reaches upstream and keeps each model's six-hour cache separate", async () => {
+  const calls = stubOpenMeteo(4, { temperature_2m: 12 });
+  const query = { bbox: BBOX, variable: "temperature" as const, cols: 2, rows: 2 };
+  for (const model of ["best_match", "icon_seamless", "chmi_aladin_seamless"] as const) {
+    const grid = await fetchWeatherGrid({ ...query, model });
+    assert.equal(grid.model, model);
+    assert.equal(new URL(calls.at(-1)!).searchParams.get("models"), model);
+  }
+  assert.equal(calls.length, 3);
+  await fetchWeatherGrid({ ...query, model: "icon_seamless" });
+  assert.equal(calls.length, 3);
+});
 
 function stubOpenMeteo(points: number, sample: Record<string, number>) {
   const calls: string[] = [];
@@ -41,6 +55,7 @@ function stubOpenMeteo(points: number, sample: Record<string, number>) {
 
 test.afterEach(() => {
   mock.restoreAll();
+  resetWeatherGridCache();
   __resetUpstreamCache();
 });
 
@@ -111,4 +126,30 @@ test("only known variables are accepted", () => {
   for (const spec of Object.values(WEATHER_VARIABLES)) {
     assert.ok(spec.fields.length > 0 && spec.unit.length > 0);
   }
+});
+
+test("six timeline hours share one bounded upstream window and preserve missing hours", async () => {
+  const calls = stubOpenMeteo(9, { temperature_2m: 7 });
+  const start = Math.floor(Date.now() / (6 * 3600_000)) * 6 * 3600_000;
+  const nowHour = Math.floor(Date.now() / 3600_000) * 3600_000;
+  for (let offset = 0; offset < 6; offset++) {
+    const at = start + offset * 3600_000;
+    const grid = await fetchWeatherGrid({
+      bbox: BBOX,
+      variable: "temperature",
+      cols: 3,
+      rows: 3,
+      at
+    });
+    assert.equal(grid.validAt, new Date(at).toISOString());
+    assert.equal(grid.values[0], at === nowHour ? 7 : null);
+  }
+  assert.equal(calls.length, 1);
+  const url = new URL(calls[0]!);
+  assert.equal(url.searchParams.get("start_hour"), new Date(start).toISOString().slice(0, 16));
+  assert.equal(
+    url.searchParams.get("end_hour"),
+    new Date(start + 5 * 3600_000).toISOString().slice(0, 16)
+  );
+  assert.equal(url.searchParams.has("forecast_days"), false);
 });

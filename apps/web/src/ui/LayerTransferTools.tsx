@@ -15,6 +15,7 @@ import {
   inspectLayerImportHostCompatibility,
   type LayerImportHostInspection
 } from "../lib/layerImportDashboard";
+import { Button, Icon, InfoTip, Menu, Section, Select } from "./kit";
 
 interface TransferLayer extends UserLayerTransferSource {
   pinCount: number;
@@ -246,50 +247,61 @@ export function LayerTransferTools({
     inspection.report?.valid !== true;
 
   return (
-    <div className="layer-transfer-tools">
-      <h4>Přenos vrstvy</h4>
-      {selected && (
-        <div className="layer-transfer-export">
-          <select
-            aria-label="Vrstva pro export"
-            value={selected.id}
-            onChange={(event) => setSelectedId(event.target.value)}
-          >
-            {layers.map((layer) => (
-              <option key={layer.id} value={layer.id}>
-                {layer.name}
-              </option>
-            ))}
-          </select>
-          <button
-            className="btn"
-            type="button"
+    <Section
+      title="Přenos vrstvy"
+      action={
+        <InfoTip label="Podporované formáty">
+          Import čte balíček MapOS, GeoJSON, CSV a GPX z hodinek či navigace. Export dá balíček se
+          všemi poli, nebo GeoJSON pro jiné mapové nástroje.
+        </InfoTip>
+      }
+    >
+      <div className="layer-transfer-row">
+        {selected && (
+          <>
+            <Select
+              label="Vrstva pro export"
+              hideLabel
+              value={selected.id}
+              onChange={setSelectedId}
+              options={layers.map((layer) => ({ value: layer.id, label: layer.name }))}
+              testId="layer-export-select"
+            />
+            {/* One button rather than two: the format is a detail of exporting, not a second
+             *  decision to put in front of everyone. */}
+            <Menu
+              testId="layer-export-menu"
+              trigger={
+                <Button variant="outlined" icon="download" disabled={busy}>
+                  Exportovat
+                </Button>
+              }
+              actions={[
+                {
+                  id: "mapos-package",
+                  label: "Balíček MapOS",
+                  onSelect: () => void exportLayer("mapos-package")
+                },
+                { id: "geojson", label: "GeoJSON", onSelect: () => void exportLayer("geojson") }
+              ]}
+            />
+          </>
+        )}
+        {/* A file input has to be reached through its own label, so this is the one control here
+         *  that cannot be a kit Button. */}
+        <label className="layer-import-button" data-busy={busy && !preview ? "" : undefined}>
+          <Icon name="upload" size={18} />
+          {busy && !preview ? "Připravuji náhled…" : "Importovat ze souboru"}
+          <input
+            ref={inputRef}
+            data-testid="layer-import-file"
+            type="file"
             disabled={busy}
-            onClick={() => void exportLayer("mapos-package")}
-          >
-            MapOS balíček
-          </button>
-          <button
-            className="btn"
-            type="button"
-            disabled={busy}
-            onClick={() => void exportLayer("geojson")}
-          >
-            GeoJSON
-          </button>
-        </div>
-      )}
-      <label className="btn block layer-import-button">
-        {busy && !preview ? "Připravuji náhled…" : "Importovat MapOS / GeoJSON / CSV / GPX"}
-        <input
-          ref={inputRef}
-          data-testid="layer-import-file"
-          type="file"
-          disabled={busy}
-          accept=".json,.geojson,.csv,.gpx,application/json,application/geo+json,text/csv,application/gpx+xml"
-          onChange={(event) => void chooseFile(event.target.files?.[0])}
-        />
-      </label>
+            accept=".json,.geojson,.csv,.gpx,application/json,application/geo+json,text/csv,application/gpx+xml"
+            onChange={(event) => void chooseFile(event.target.files?.[0])}
+          />
+        </label>
+      </div>
       {inspection && <HostCompatibilityCard inspection={inspection} />}
       {preview && (
         <section
@@ -395,6 +407,6 @@ export function LayerTransferTools({
           {error}
         </p>
       )}
-    </div>
+    </Section>
   );
 }

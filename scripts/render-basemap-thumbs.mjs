@@ -2,7 +2,7 @@
  * Renders the 96×56 illustrations on the basemap cards.
  *
  * Nothing describes a map style like the style itself, so the picker prefers a real screenshot
- * over the schematic fallback in `BasemapThumb`. Every card is shot over the *same* viewport,
+ * over the explicit unavailable preview in `BasemapThumb`. Every card is shot over the *same* viewport,
  * because the question the picker answers is "which of these do I want", and that comparison is
  * impossible if each card shows a different city.
  *
@@ -17,7 +17,7 @@
  */
 
 import { createServer } from "node:http";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { readFile, mkdir, writeFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
@@ -35,7 +35,17 @@ const OUT_DIR = path.join(process.cwd(), "apps/web/public/basemaps");
  * Alps rising straight out of the sea is what makes a terrain style look like a terrain style.
  * Somewhere flat and inland would make half the cards identical.
  */
-const VIEW = { lng: 7.27, lat: 43.7, zoom: 10 };
+const VIEW = { lng: 13.405, lat: 52.52, zoom: 11 };
+
+/** Backgrounds whose data stops before the shared zoom. GIBS serves the daily VIIRS mosaic to
+ *  z8, so at z10 every tile 404s and the card was blank; at z6 the coast still reads. */
+const VIEW_OVERRIDES = {
+  "gibs-viirs": { zoom: 6 }
+};
+
+function viewFor(basemap) {
+  return { ...VIEW, ...(VIEW_OVERRIDES[basemap.id] ?? {}) };
+}
 
 /** Twice the card's 96×56 so the picture is sharp on a retina screen. */
 const SIZE = { width: 192, height: 112 };
@@ -57,7 +67,13 @@ const REDISTRIBUTABLE = new Set([
   // the underlying data is OSM under ODbL. These are also the default backgrounds, so a
   // schematic here would be the first thing anyone sees.
   "carto-voyager",
-  "carto-dark"
+  "carto-dark",
+  // OSM-based community styles under CC-BY-SA / open style licences.
+  "openfreemap-dark",
+  "osm-france",
+  "opnvkarte",
+  "cyclosm",
+  "osm-hot"
 ]);
 
 function shouldRender(basemap) {
@@ -110,7 +126,7 @@ window.renderBasemap = (style, view) => new Promise((resolve, reject) => {
 
 /** Spread of the rendered pixels. A background that served nothing at this zoom still paints a
  *  canvas — usually flat black or flat beige — and a flat picture is worse on a card than the
- *  schematic fallback, because it looks like a bug rather than a missing file.
+ *  explicit unavailable preview, because it looks like a bug rather than a missing file.
  *
  *  The read has to happen inside a render frame. Asking for a preserved drawing buffer is not
  *  enough on its own: outside a frame the buffer has already been cleared, and every background
@@ -181,7 +197,7 @@ async function main() {
     try {
       await page.evaluate(
         ([style, view]) => window.renderBasemap(style, view),
-        [styleFor(basemap), VIEW]
+        [styleFor(basemap), viewFor(basemap)]
       );
       // A style can reach "idle" with its last tiles still decoding; a beat here costs seconds
       // once and avoids a thumbnail with a blank corner committed for good.
@@ -189,6 +205,7 @@ async function main() {
 
       const contrast = await page.evaluate(() => window.basemapContrast());
       if (contrast < MIN_CONTRAST) {
+        await rm(path.join(OUT_DIR, `${basemap.id}.webp`), { force: true });
         blank.push(`${basemap.id} (contrast ${contrast.toFixed(1)})`);
         process.stdout.write(`  ${basemap.id} — blank at this zoom, using the fallback\n`);
         continue;
@@ -198,6 +215,7 @@ async function main() {
       await writeFile(path.join(OUT_DIR, `${basemap.id}.webp`), webp);
       process.stdout.write(`  ${basemap.id} — ${(webp.length / 1024).toFixed(1)} kB\n`);
     } catch (error) {
+      await rm(path.join(OUT_DIR, `${basemap.id}.webp`), { force: true });
       failures.push(`${basemap.id}: ${error.message}`);
       process.stdout.write(`  ${basemap.id} — failed\n`);
     }
@@ -209,7 +227,7 @@ async function main() {
   const written = targets.length - failures.length - blank.length;
   process.stdout.write(
     `\n${written}/${targets.length} rendered, ` +
-      `${skipped} skipped (keyed or licence-restricted; they use the schematic fallback)\n`
+      `${skipped} skipped (keyed or licence-restricted; they use the explicit unavailable preview)\n`
   );
   if (blank.length) {
     // Not a failure: a background whose data does not reach the shared viewport is honestly

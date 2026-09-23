@@ -8,11 +8,11 @@ import {
 } from "./strategy.js";
 
 describe("zoom-adaptive weather strategy", () => {
-  it("moves from a continuous region through cells to numeric local sectors", () => {
+  it("keeps fields smooth when zooming in and adds local numeric labels", () => {
     assert.equal(resolveWeatherZoomStrategy(4, 1200, 800).representation, "continuous-grid");
-    assert.equal(resolveWeatherZoomStrategy(7, 1200, 800).representation, "cells");
-    assert.equal(resolveWeatherZoomStrategy(9, 1200, 800).targetCellAreaKm2, 20);
-    assert.equal(resolveWeatherZoomStrategy(12, 1200, 800).representation, "numeric-sectors");
+    assert.equal(resolveWeatherZoomStrategy(7, 1200, 800).representation, "smooth-field");
+    assert.equal(resolveWeatherZoomStrategy(9, 1200, 800).targetCellAreaKm2, 10);
+    assert.equal(resolveWeatherZoomStrategy(12, 1200, 800).representation, "smooth-field");
     assert.equal(resolveWeatherZoomStrategy(12, 1200, 800).targetCellAreaKm2, 10);
   });
 
@@ -27,7 +27,7 @@ describe("zoom-adaptive weather strategy", () => {
     }
   });
 
-  it("uses viewport area to approach 50 → 20 → 10 km² cells without exceeding the cap", () => {
+  it("uses viewport area for the local 10 km² target without exceeding the cap", () => {
     const local = resolveWeatherZoomStrategy(12, 900, 900, [0, 0, 0.3, 0.3]);
     assert.equal(local.targetCellAreaKm2, 10);
     assert.ok(local.plannedCellAreaKm2 !== null);

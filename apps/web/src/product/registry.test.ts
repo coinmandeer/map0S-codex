@@ -7,10 +7,10 @@ import {
   resolveAppMode
 } from "./registry";
 
-test("the shell registry exposes exactly the four canonical modes in product order", () => {
+test("the shell registry exposes exactly the canonical modes in product order", () => {
   assert.deepEqual(
     MODE_MANIFESTS.map(({ id }) => id),
-    ["personal", "discover", "planning", "game"]
+    ["personal", "feed", "discover", "planning", "game"]
   );
 });
 
@@ -22,7 +22,7 @@ test("legacy mode aliases resolve without reintroducing legacy shell state", () 
   });
   assert.deepEqual(resolveAppMode("weather"), {
     mode: "discover",
-    activateLayerId: "weather",
+    activateLayerId: "weather-radar",
     source: "legacy",
     rewriteUrl: true
   });
@@ -31,16 +31,30 @@ test("legacy mode aliases resolve without reintroducing legacy shell state", () 
     source: "legacy",
     rewriteUrl: true
   });
+  // Links to Feed exist under the name the mode was designed with.
+  assert.deepEqual(resolveAppMode("social"), {
+    mode: "feed",
+    source: "legacy",
+    rewriteUrl: true
+  });
 });
 
 test("unknown modes fail safely and the v1 layer bridge is explicit", () => {
   assert.deepEqual(resolveAppMode("future-mode"), {
-    mode: "planning",
+    mode: "discover",
     source: "fallback",
     rewriteUrl: true
   });
   assert.equal(legacyLayerModeFor("personal"), "mine");
   assert.equal(legacyLayerModeFor("discover"), "discover");
+  // Feed is canonical in v2 and has no v1 member to map to, so the bridge reports the nearest
+  // one rather than widening the frozen v1 union.
+  assert.equal(legacyLayerModeFor("feed"), "discover");
+  assert.deepEqual(resolveAppMode("feed"), {
+    mode: "feed",
+    source: "canonical",
+    rewriteUrl: false
+  });
 });
 
 test("a third world registers from its manifest without a shell switch branch", () => {

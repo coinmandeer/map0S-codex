@@ -20,6 +20,7 @@ import {
   TextField,
   type SelectOption
 } from "../kit";
+import { intlLocale, t } from "../../i18n";
 
 export const PLAN_PROFILE_OPTIONS: readonly SelectOption<PlanTravelProfileV2>[] = [
   { value: "car", label: "Auto", icon: "directions_car" },
@@ -30,12 +31,16 @@ export const PLAN_PROFILE_OPTIONS: readonly SelectOption<PlanTravelProfileV2>[] 
   { value: "foot", label: "Pěšky", icon: "directions_walk" }
 ];
 
-const PREFERENCE_OPTIONS = [
-  { value: "fast", label: "Rychlá", icon: "bolt" },
-  { value: "short", label: "Krátká", icon: "straighten" },
-  { value: "nohwy", label: "Bez dálnic", icon: "no_crash" },
-  { value: "adventure", label: "Dobrodružná", icon: "hiking" }
-] as const;
+/** A function, not a constant: a label built at import time keeps the language the app started
+ *  in, and the language is a preference the reader can change. */
+function preferenceOptions() {
+  return [
+    { value: "fast", label: t("planning.preference.fast"), icon: "bolt" },
+    { value: "short", label: t("planning.preference.short"), icon: "straighten" },
+    { value: "nohwy", label: t("planning.preference.noTolls"), icon: "no_crash" },
+    { value: "adventure", label: t("planning.preference.scenic"), icon: "hiking" }
+  ] as const;
+}
 
 const DETOUR_OPTIONS = [
   { value: "10", label: "10 %" },
@@ -54,7 +59,7 @@ export function planProfileLabel(profile: PlanTravelProfileV2): string {
 }
 
 export function planPreferenceLabel(preference: PlanRoutePreferenceV2): string {
-  return PREFERENCE_OPTIONS.find((option) => option.value === preference)?.label ?? preference;
+  return preferenceOptions().find((option) => option.value === preference)?.label ?? preference;
 }
 
 /** Everything about a plan that is a setting rather than a stop (§4.5).
@@ -68,6 +73,7 @@ export function PlanOptions({
   detourLimit,
   contextNotes,
   onDetourLimit,
+  onContextToggle,
   onCommand
 }: {
   plan: PlanDocumentV2;
@@ -78,6 +84,9 @@ export function PlanOptions({
    *  provider's own reason for missing data, which §29.3 moved out of a separate card. */
   contextNotes: readonly string[];
   onDetourLimit: (next: number) => void;
+  /** Turning the context on is also what dates the plan: arrival times and forecasts need a
+   *  departure, and the panel supplies "now" rather than making the switch unavailable. */
+  onContextToggle: (next: boolean) => void;
   onCommand: (command: PlanCommandV2) => void;
 }) {
   const profile = plan.routePolicy.profile;
@@ -107,7 +116,7 @@ export function PlanOptions({
 
   const summary = planOptionsSummary([
     plan.departureAt
-      ? new Date(plan.departureAt).toLocaleString("cs-CZ", {
+      ? new Date(plan.departureAt).toLocaleString(intlLocale(), {
           weekday: "short",
           day: "numeric",
           month: "numeric",
@@ -250,9 +259,10 @@ export function PlanOptions({
                 <SegmentedButton<PlanRoutePreferenceV2>
                   ariaLabel="Profil trasy"
                   block
+                  stacked
                   testId="plan-preference"
                   value={preference}
-                  options={PREFERENCE_OPTIONS}
+                  options={preferenceOptions()}
                   onChange={(next) =>
                     onCommand({
                       type: "replace-route-policy",
@@ -283,24 +293,14 @@ export function PlanOptions({
                   <Switch
                     label="Počasí a doprava po trase"
                     testId="plan-context-switch"
-                    disabled={disabled || !plan.departureAt}
+                    disabled={disabled}
                     checked={
-                      plan.routePolicy.weatherAlongRoute !== false &&
-                      plan.routePolicy.trafficAlongRoute !== false
+                      plan.routePolicy.weatherAlongRoute === true &&
+                      plan.routePolicy.trafficAlongRoute === true
                     }
-                    onChange={(next) =>
-                      onCommand({
-                        type: "replace-route-policy",
-                        routePolicy: {
-                          ...plan.routePolicy,
-                          weatherAlongRoute: next,
-                          trafficAlongRoute: next
-                        }
-                      })
-                    }
+                    onChange={onContextToggle}
                   />
                 </span>
-                {!plan.departureAt && <p className="planner-hint">Aktivní až s datem odjezdu.</p>}
               </div>
             </div>
           )

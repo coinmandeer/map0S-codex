@@ -1,28 +1,44 @@
-import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { emit } from "../lib/events";
+import { useSyncExternalStore, useState, useEffect } from "react";
+import { layerActivity } from "../tasks/layerActivity";
 
-/** Floating CTA when the map moved away from the last OSM fetch — avoids hammering Overpass
- * on every pan while still letting the user pull dense foreign-city POIs on demand. */
+/** The engine owns per-layer pending state and deduplicates clicks during active requests. */
 export function SearchHereButton() {
-  const store = getMapStore();
-  const pending = useMapStoreSnapshot((s) => s.searchHerePending);
+  const [batch, setBatch] = useState<string[]>([]);
   const loading = useMapStoreSnapshot((s) => s.loadingLayers);
-  const showSearchHere = useMapStoreSnapshot((s) => s.preferences.showSearchHere);
-  if (!pending || !showSearchHere) return null;
+  const active = useMapStoreSnapshot((s) => s.activeLayers);
+  useSyncExternalStore(layerActivity.subscribe, layerActivity.revision, layerActivity.revision);
+  const waiting = Object.keys(active).filter(
+    (id) =>
+      active[id]?.visible &&
+      layerActivity.get(id)?.phase &&
+      ["pending", "error", "partial"].includes(layerActivity.get(id)!.phase)
+  );
+  const busy = batch.some(
+    (id) =>
+      active[id]?.visible &&
+      (loading[id] ||
+        ["queued", "loading", "rendering"].includes(layerActivity.get(id)?.phase ?? ""))
+  );
+  useEffect(() => {
+    if (batch.length && !busy) setBatch([]);
+  }, [batch, busy]);
+  if (!busy && !waiting.length) return null;
 
   return (
     <button
       className="search-here-btn"
       data-testid="search-here"
-      disabled={Boolean(loading["osm-poi"])}
+      aria-busy={busy}
+      disabled={busy}
       onClick={() => {
-        store.setSearchHerePending(false);
-        emit("search-here");
+        setBatch(waiting);
+        for (const id of waiting) emit("refresh-layer", { id });
       }}
     >
-      {loading["osm-poi"] ? <span className="spinner" /> : null}
-      Hledat v této oblasti
+      {busy ? <span className="spinner" /> : null}
+      {busy ? "Obnovuji" : "Hledat zde"} · {busy ? batch.length : waiting.length} vrstev
     </button>
   );
 }

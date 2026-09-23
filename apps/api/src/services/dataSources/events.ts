@@ -261,7 +261,7 @@ type TicketmasterResponse = { _embedded?: { events?: TicketmasterEvent[] } };
 
 export interface TicketmasterAdapterOptions {
   apiKey: string;
-  fetcher?: (url: string) => Promise<TicketmasterResponse>;
+  fetcher?: (url: string, signal?: AbortSignal) => Promise<TicketmasterResponse>;
   clock?: () => Date;
 }
 
@@ -269,9 +269,10 @@ export function createTicketmasterEventAdapter(options: TicketmasterAdapterOptio
   const clock = options.clock ?? (() => new Date());
   const fetcher =
     options.fetcher ??
-    ((url: string) =>
+    ((url: string, signal?: AbortSignal) =>
       fetchJson<TicketmasterResponse>(url, {
         providerId: "ticketmaster",
+        signal,
         ttlMs: 15 * 60_000,
         retries: 1
       }));
@@ -302,7 +303,8 @@ export function createTicketmasterEventAdapter(options: TicketmasterAdapterOptio
       if (query.keyword) params.set("keyword", query.keyword);
       if (query.category) params.set("classificationName", query.category);
       const response = await fetcher(
-        `https://app.ticketmaster.com/discovery/v2/events.json?${params}`
+        `https://app.ticketmaster.com/discovery/v2/events.json?${params}`,
+        query.signal
       );
       const retrievedAt = clock().toISOString();
       return (response._embedded?.events ?? [])
@@ -334,12 +336,13 @@ export const events: DataSource = {
   },
   tooLarge: (bbox) =>
     bboxSpanKm(bbox) > 400 ? "Přibliž mapu — události se hledají v okruhu do 200 km." : null,
-  async load(bbox, query) {
+  async load(bbox, query, signal) {
     const key = config.layerKeys.ticketmaster;
     if (!key) throw new UpstreamError("Ticketmaster", "chybí klíč TICKETMASTER_API_KEY");
     const now = new Date();
     const documents = await createTicketmasterEventAdapter({ apiKey: key }).load({
       bbox,
+      signal,
       from: query.from ?? now.toISOString(),
       to: query.to ?? new Date(now.getTime() + 7 * 86_400_000).toISOString(),
       keyword: query.keyword,

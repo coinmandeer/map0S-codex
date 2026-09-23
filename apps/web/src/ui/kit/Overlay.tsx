@@ -5,6 +5,7 @@ import { Popover as BasePopover } from "@base-ui/react/popover";
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
 import { Icon, type IconName } from "./Icon";
 import { Button, IconButton } from "./Button";
+import { t } from "../../i18n";
 
 /** Wraps the whole app once so tooltips share a single delay group: moving between two
  *  adjacent icon buttons shows the second one immediately instead of waiting again. */
@@ -72,7 +73,7 @@ export function Popover({
               <header className="kit-popover-header">
                 <h3>{title}</h3>
                 <BasePopover.Close
-                  render={<IconButton icon="close" label="Zavřít" size="sm" round />}
+                  render={<IconButton icon="close" label={t("panel.close")} size="sm" round />}
                 />
               </header>
             )}
@@ -205,7 +206,7 @@ export function Dialog({
                 </BaseDialog.Description>
               )}
             </div>
-            <BaseDialog.Close render={<IconButton icon="close" label="Zavřít" round />} />
+            <BaseDialog.Close render={<IconButton icon="close" label={t("panel.close")} round />} />
           </header>
           {children && <div className="kit-dialog-body">{children}</div>}
           {footer && <footer className="kit-dialog-footer">{footer}</footer>}

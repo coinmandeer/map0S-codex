@@ -1,3 +1,4 @@
+import type { AreaSelection } from "@mapos/layer-sdk";
 /**
  * The tool handlers behind the assistant (§30.3 "reálné handlery").
  *
@@ -47,11 +48,13 @@ export interface AiChatCitation {
 /** Everything the assistant can be given access to. Optional members are optional on purpose:
  *  the offline server composes a subset and the model is told only about that subset. */
 export interface AiChatToolProviders {
+  statisticalAnswer?: import("./chatService.js").AiChatServiceOptions["statistics"];
   placeSearch: AiPlaceSearchSource;
   layers(): readonly AiChatLayerDescriptor[];
   queryLayer?(
     input: {
       layerId: string;
+      area?: AreaSelection | null;
       bbox: Bbox;
       filters?: { openNow?: boolean; minRating?: number; tags?: readonly string[] };
       limit: number;
@@ -134,6 +137,8 @@ export interface AiChatToolProviders {
 }
 
 export interface AiChatMapContext {
+  area?: AreaSelection | null;
+  bbox?: Bbox;
   center: { longitude: number; latitude: number };
   zoom: number;
   activeLayerIds: readonly string[];
@@ -158,7 +163,25 @@ export function createChatToolRegistry(options: {
   mapContext: AiChatMapContext;
   onTrace?: (trace: AiToolTrace) => void;
 }): { registry: AiToolRegistry; available: ReadonlySet<string> } {
-  const { providers, mapContext } = options;
+  const { providers: baseProviders, mapContext } = options;
+  const providers: AiChatToolProviders = mapContext.area
+    ? {
+        ...baseProviders,
+        // Center-based regional providers cannot prove that their statistics describe this selected polygon.
+        regionContext: undefined,
+        stats: undefined,
+        placeSearch: {
+          search: (query, ctx) =>
+            baseProviders.placeSearch.search({ ...query, area: mapContext.area }, ctx)
+        },
+        ...(baseProviders.queryLayer
+          ? {
+              queryLayer: (query, ctx) =>
+                baseProviders.queryLayer!({ ...query, area: mapContext.area }, ctx)
+            }
+          : {})
+      }
+    : baseProviders;
   const available = new Set<string>([
     "get_current_map_context",
     "list_available_layers",
@@ -169,6 +192,7 @@ export function createChatToolRegistry(options: {
   const handlers: MapAiToolHandlers = {
     get_current_map_context: async () => ({
       center: { ...mapContext.center },
+      ...(mapContext.bbox ? { bbox: mapContext.bbox } : {}),
       zoom: mapContext.zoom,
       activeLayerIds: [...mapContext.activeLayerIds]
     }),

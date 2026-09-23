@@ -19,7 +19,7 @@ export default defineConfig({
   webServer: [
     {
       command:
-        "MAPOS_FIXTURE_MODE=offline MAPOS_E2E_RATE_LIMIT_MULTIPLIER=100 npm run dev:memory -w @mapos/api",
+        "MAPOS_FIXTURE_MODE=offline MAPOS_GAME_TEST_MOVEMENT=0 MAPOS_E2E_RATE_LIMIT_MULTIPLIER=100 npm run dev:memory -w @mapos/api",
       port: 4033,
       reuseExistingServer: false
     },

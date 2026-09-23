@@ -53,7 +53,20 @@ test("versioned runner keeps the explicit baseline and ordered additive migratio
       ["0009", "layer_import_previews"],
       ["0010", "plan_collaboration"],
       ["0011", "pin_paths"],
-      ["0012", "quest_anchors"]
+      ["0012", "quest_anchors"],
+      ["0013", "source_backed_layers"],
+      ["0014", "geo_units_stat_series"],
+      ["0015", "theme_coverage"],
+      ["0016", "user_tables"],
+      ["0017", "viewport_indexes"],
+      ["0018", "geo_unit_releases"],
+      ["0019", "boundary_manifests"],
+      ["0020", "stat_releases"],
+      ["0021", "aavegotchi_social_world"],
+      ["0022", "world_lookup_indexes"],
+      ["0023", "provider_budgets"],
+      ["0024", "ai_overview_history"],
+      ["0025", "official_geo_correspondence"]
     ]
   );
   assert.equal(
@@ -62,6 +75,14 @@ test("versioned runner keeps the explicit baseline and ordered additive migratio
     "0001 must checksum the complete legacy bootstrap during ledger adoption"
   );
   assert.match(__testing.versionedMigrations[0].steps[0]?.sql ?? "", /CREATE EXTENSION.*postgis/i);
+});
+
+test("0016 user table ownership uses the UUID type of users.id", () => {
+  const migration = __testing.versionedMigrations.find(({ version }) => version === "0016");
+  assert.ok(migration);
+  const sql = migration.steps.map((step) => step.sql).join("\n");
+  assert.match(sql, /owner_id UUID NOT NULL REFERENCES users\(id\)/i);
+  assert.doesNotMatch(sql, /owner_id TEXT NOT NULL REFERENCES users\(id\)/i);
 });
 
 test("migration actor and release metadata have stable explicit fallbacks", () => {
@@ -122,7 +143,20 @@ test("configured initDb path delegates every configured version to the ledger ru
     "0009",
     "0010",
     "0011",
-    "0012"
+    "0012",
+    "0013",
+    "0014",
+    "0015",
+    "0016",
+    "0017",
+    "0018",
+    "0019",
+    "0020",
+    "0021",
+    "0022",
+    "0023",
+    "0024",
+    "0025"
   ]);
   assert.ok(statements.some((statement) => statement.includes("pg_advisory_lock")));
   assert.ok(statements.some((statement) => statement.includes("pg_advisory_unlock")));

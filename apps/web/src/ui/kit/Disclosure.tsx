@@ -76,6 +76,7 @@ export interface TabDefinition {
   label: string;
   icon?: IconName;
   count?: number;
+  keepMounted?: boolean;
   children: ReactNode;
 }
 
@@ -113,7 +114,12 @@ export function Tabs({
         <BaseTabs.Indicator className="kit-tab-indicator" />
       </BaseTabs.List>
       {tabs.map((tab) => (
-        <BaseTabs.Panel key={tab.id} value={tab.id} className="kit-tab-panel">
+        <BaseTabs.Panel
+          key={tab.id}
+          value={tab.id}
+          keepMounted={tab.keepMounted}
+          className="kit-tab-panel"
+        >
           {tab.children}
         </BaseTabs.Panel>
       ))}

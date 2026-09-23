@@ -352,13 +352,22 @@ export async function deleteDraft(userId: string, id: string) {
   if (!rows.length) throw new ClientError("Koncept nebyl nalezen", 404);
 }
 
+/** `following` narrows the feed to layers and people the reader follows; `all` ranks those first
+ *  but keeps everything public. Nothing here reveals a private layer either way. */
+export type FeedScope = "all" | "following";
+
+export function feedScope(value: unknown): FeedScope {
+  return value === "following" ? "following" : "all";
+}
+
 export async function socialFeed(
   userId: string | null,
   cursor?: string,
   limit = 20,
   country = "ALL",
   bbox?: Bbox,
-  tag?: string
+  tag?: string,
+  scope: FeedScope = "all"
 ) {
   const offset = Math.max(0, Number(Buffer.from(cursor ?? "MA", "base64url").toString()) || 0);
   const [posts, follows] = await Promise.all([
@@ -369,15 +378,26 @@ export async function socialFeed(
   const ranked = posts
     .map((post) => {
       const followedLayer = followed.has(`layer:${post.layerId}`);
+      const followedAuthor = post.layerUserId
+        ? followed.has(`user:${post.layerUserId}`)
+        : // A pin whose layer has since been deleted cannot be attributed to anyone.
+          false;
       const score =
         (followedLayer ? 3 : 0) +
+        (followedAuthor ? 2 : 0) +
         Math.max(0, 1 - (Date.now() - new Date(post.createdAt).getTime()) / (30 * 86400_000));
       return {
         ...post,
         score,
-        reason: followedLayer ? "Vrstva, kterou sleduješ" : "Nové komunitní místo v oblasti"
+        followed: followedLayer || followedAuthor,
+        reason: followedLayer
+          ? "Vrstva, kterou sleduješ"
+          : followedAuthor
+            ? "Od člověka, kterého sleduješ"
+            : "Nové komunitní místo v oblasti"
       };
     })
+    .filter((post) => scope === "all" || post.followed)
     .sort((a, b) => b.score - a.score);
   const items = ranked.slice(offset, offset + limit);
   const nextOffset = offset + items.length;

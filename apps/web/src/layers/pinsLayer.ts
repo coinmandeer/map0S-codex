@@ -1,3 +1,4 @@
+import { registerInteractivePins, unregisterInteractivePins } from "../map/interactivePins";
 import type maplibregl from "maplibre-gl";
 import type { Bbox, FilterValues, FeatureCollection } from "@mapos/layer-sdk";
 import { fetchLayerFeatures } from "../engine/LayerEngine";
@@ -22,8 +23,8 @@ export interface PinsLayerOptions {
 
 export function pinIconSizeExpression(personal: boolean): maplibregl.ExpressionSpecification {
   return personal
-    ? ["interpolate", ["linear"], ["zoom"], 5, 0.42, 8, 0.55, 12, 0.66, 16, 0.8]
-    : ["interpolate", ["linear"], ["zoom"], 5, 0.35, 8, 0.48, 12, 0.58, 16, 0.7];
+    ? ["interpolate", ["linear"], ["zoom"], 5, 0.7, 8, 0.75, 12, 0.83, 16, 0.87]
+    : ["interpolate", ["linear"], ["zoom"], 5, 0.65, 8, 0.7, 12, 0.78, 16, 0.86];
 }
 
 export function createPinsLayerHandle(
@@ -43,36 +44,52 @@ export function createPinsLayerHandle(
   const pinLabelId = `pins-${layerId}-label`;
   const lineLayerId = `pins-${layerId}-line`;
 
-  function ensureLayers() {
-    ensurePinImages(map);
-    if (map.getSource(sourceId)) return;
+  let currentVisible = true;
+  let currentOpacity = 1;
 
+  function ensureLines() {
+    if (map.getSource(lineSourceId)) return;
     // Routes need a source of their own: clustering runs the data through a point index, so a
     // LineString added to the clustered source below would simply never appear.
     map.addSource(lineSourceId, {
       type: "geojson",
       data: { type: "FeatureCollection", features: [] }
     });
-    map.addLayer({
-      id: lineLayerId,
-      type: "line",
-      source: lineSourceId,
-      layout: { "line-join": "round", "line-cap": "round" },
-      paint: {
-        "line-color": ["coalesce", ["get", "color"], color],
-        "line-width": ["interpolate", ["linear"], ["zoom"], 6, 2, 12, 3.5, 16, 5],
-        "line-opacity": 0.9
-      }
-    });
+    map.addLayer(
+      {
+        id: lineLayerId,
+        type: "line",
+        source: lineSourceId,
+        layout: {
+          "line-join": "round",
+          "line-cap": "round",
+          visibility: currentVisible ? "visible" : "none"
+        },
+        paint: {
+          "line-color": ["coalesce", ["get", "color"], color],
+          "line-width": ["interpolate", ["linear"], ["zoom"], 6, 2, 12, 3.5, 16, 5],
+          "line-opacity": 0.9 * currentOpacity
+        }
+      },
+      map.getLayer(clusterLayerId) ? clusterLayerId : undefined
+    );
+  }
+
+  function ensureLayers() {
+    ensurePinImages(map);
+    registerInteractivePins(map, layerId, [pinLayerId, pinLabelId]);
+    if (map.getSource(sourceId)) return;
 
     map.addSource(sourceId, {
       type: "geojson",
       data: { type: "FeatureCollection", features: [] },
+      // Stable ids let the map highlight one hovered pin with feature-state.  The alternative
+      // (DOM markers) scales with every feature and was the reason dense views felt heavy.
+      promoteId: "id",
       cluster: true,
-      // Above z5 the whole view (even the entire Czech Republic) shows individual pins —
-      // clustering is only useful for the very zoomed-out overview.
-      clusterMaxZoom: 5,
-      clusterRadius: 42
+      // Group regional views; city views expose individual places from zoom 12.
+      clusterMaxZoom: 11,
+      clusterRadius: 36
     });
 
     map.addLayer({
@@ -82,7 +99,7 @@ export function createPinsLayerHandle(
       filter: ["has", "point_count"],
       paint: {
         "circle-color": color,
-        "circle-radius": ["step", ["get", "point_count"], 16, 8, 22, 25, 28],
+        "circle-radius": ["step", ["get", "point_count"], 16, 8, 19, 25, 22, 100, 24],
         "circle-opacity": 0.92,
         "circle-stroke-width": 2,
         "circle-stroke-color": "#ffffff"
@@ -95,7 +112,7 @@ export function createPinsLayerHandle(
       filter: ["has", "point_count"],
       layout: {
         "text-field": "{point_count_abbreviated}",
-        "text-size": 12,
+        "text-size": 13,
         "text-font": ["Noto Sans Regular"]
       },
       paint: { "text-color": "#ffffff" }
@@ -108,7 +125,7 @@ export function createPinsLayerHandle(
       layout: {
         "icon-image": iconImageExpr,
         "icon-size": pinIconSizeExpression(Boolean(options.personal)),
-        "icon-anchor": "bottom",
+        "icon-anchor": "center",
         "icon-allow-overlap": true,
         "icon-ignore-placement": true
       }
@@ -160,10 +177,16 @@ export function createPinsLayerHandle(
       type: "FeatureCollection",
       features: points
     });
-    (map.getSource(lineSourceId) as maplibregl.GeoJSONSource | undefined)?.setData({
-      type: "FeatureCollection",
-      features: lines
-    });
+    if (lines.length) {
+      ensureLines();
+      (map.getSource(lineSourceId) as maplibregl.GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features: lines
+      });
+    } else {
+      if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId);
+      if (map.getSource(lineSourceId)) map.removeSource(lineSourceId);
+    }
   }
 
   return {
@@ -174,11 +197,11 @@ export function createPinsLayerHandle(
     ): Promise<FeatureCollection | null> {
       ensureLayers();
       const data = await loader(bbox, filters, signal);
-      setData(data);
       return data;
     },
     setData,
     setVisible(visible: boolean) {
+      currentVisible = visible;
       ensureLayers();
       for (const id of layerIds) {
         if (map.getLayer(id)) {
@@ -187,6 +210,7 @@ export function createPinsLayerHandle(
       }
     },
     setOpacity(opacity: number) {
+      currentOpacity = opacity;
       ensureLayers();
       if (map.getLayer(clusterLayerId))
         map.setPaintProperty(clusterLayerId, "circle-opacity", opacity * 0.92);
@@ -195,6 +219,7 @@ export function createPinsLayerHandle(
         map.setPaintProperty(lineLayerId, "line-opacity", opacity * 0.9);
     },
     detach() {
+      unregisterInteractivePins(map, [pinLayerId, pinLabelId]);
       for (const id of [...layerIds].reverse()) {
         if (map.getLayer(id)) map.removeLayer(id);
       }

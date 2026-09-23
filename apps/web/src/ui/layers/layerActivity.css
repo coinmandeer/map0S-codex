@@ -1,0 +1,60 @@
+.layer-activity-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  min-height: 20px;
+  flex-shrink: 0;
+}
+.layer-activity-mark {
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface, white);
+  font-size: 10px;
+  line-height: 12px;
+  text-align: center;
+}
+.layer-activity-icon[data-phase="off"] .layer-activity-mark {
+  display: none;
+}
+.layer-activity-icon[data-phase="ready"] .layer-activity-mark {
+  color: #15803d;
+}
+.layer-activity-icon[data-phase="error"] .layer-activity-mark {
+  color: #b91c1c;
+  font-weight: 800;
+}
+.layer-activity-icon:is([data-phase="partial"], [data-phase="pending"]) .layer-activity-mark {
+  background: #f59e0b;
+  color: #1c1917;
+}
+.layer-activity-icon:is([data-phase="loading"], [data-phase="rendering"], [data-phase="queued"])
+  .layer-activity-mark {
+  inset: -4px;
+  width: auto;
+  height: auto;
+  background: transparent;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-right-color: currentColor;
+  animation: layer-progress 1s linear infinite;
+}
+.layer-activity-icon[data-phase="queued"] .layer-activity-mark {
+  border-style: dotted;
+  animation-duration: 2s;
+}
+@keyframes layer-progress {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .layer-activity-icon .layer-activity-mark {
+    animation: none !important;
+  }
+}

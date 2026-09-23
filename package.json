@@ -8,19 +8,21 @@
     "packages/*"
   ],
   "scripts": {
-    "build:shared": "npm run build -w @mapos/layer-sdk && npm run build -w @mapos/map-runtime",
+    "verify:release": "node scripts/verify-release.mjs",
+    "test:e2e:release": "playwright test --config=playwright.release.config.ts",
+    "build:shared": "npm run build -w @mapos/layer-sdk && npm run build -w @mapos/adapter-sdk && npm run build -w @mapos/map-runtime",
     "predev": "npm run build:shared",
     "predev:web": "npm run build:shared",
     "predev:api": "npm run build:shared",
     "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @mapos/api\" \"npm run dev -w @mapos/web\"",
     "dev:web": "npm run dev -w @mapos/web",
     "dev:api": "npm run dev -w @mapos/api",
-    "build": "npm run build -w @mapos/layer-sdk && npm run build -w @mapos/map-runtime && npm run build -w @mapos/api && npm run build -w @mapos/web && npm run build -w @mapos/runtime-starter",
+    "build": "npm run build -w @mapos/layer-sdk && npm run build -w @mapos/adapter-sdk && npm run build -w @mapos/map-runtime && npm run build -w @mapos/api && npm run build -w @mapos/web && npm run build -w @mapos/runtime-starter",
     "models": "node scripts/fetch-models.mjs",
     "icons": "node scripts/subset-icon-font.mjs",
     "basemap-thumbs": "npm run build:shared && node scripts/render-basemap-thumbs.mjs",
     "pretest": "npm run build:shared",
-    "test": "npm run test:architecture && npm run test:css-tokens && npm run test -w @mapos/layer-sdk && npm run test -w @mapos/map-runtime && npm run test -w @mapos/api && npm run test -w @mapos/web",
+    "test": "npm run test:architecture && npm run test:css-tokens && npm run test -w @mapos/layer-sdk && npm run test -w @mapos/adapter-sdk && npm run test -w @mapos/map-runtime && npm run test -w @mapos/api && npm run test -w @mapos/web",
     "test:architecture": "node scripts/check-architecture-boundaries.mjs",
     "test:css-tokens": "node scripts/check-css-tokens.mjs",
     "test:contracts": "npm run build -w @mapos/layer-sdk && npm run test:cli -w @mapos/layer-sdk && node packages/layer-sdk/bin/mapos-layer.mjs contract packages/layer-sdk/examples/fixture-layer/layer.manifest.json packages/layer-sdk/examples/fixture-layer/features.fixture.json",
@@ -45,7 +47,7 @@
     "db:down": "docker compose -f infra/docker-compose.yml down",
     "db:seed": "npm run seed -w @mapos/api",
     "pretypecheck": "npm run build:shared",
-    "typecheck": "npm run typecheck -w @mapos/layer-sdk && npm run typecheck -w @mapos/map-runtime && npm run typecheck -w @mapos/api && npm run typecheck -w @mapos/web && npm run typecheck -w @mapos/runtime-starter"
+    "typecheck": "npm run typecheck -w @mapos/layer-sdk && npm run typecheck -w @mapos/adapter-sdk && npm run typecheck -w @mapos/map-runtime && npm run typecheck -w @mapos/api && npm run typecheck -w @mapos/web && npm run typecheck -w @mapos/runtime-starter"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

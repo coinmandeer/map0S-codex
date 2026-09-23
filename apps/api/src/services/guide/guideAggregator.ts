@@ -23,6 +23,7 @@ import { aiPrompt } from "../ai/prompts/index.js";
 
 /** The area a guide is written about: whatever the region resolver knows, projected. */
 export interface GuideAreaRef {
+  selectedArea?: import("@mapos/layer-sdk").AreaSelection;
   regionId: string;
   name: string;
   level: string;
@@ -148,6 +149,7 @@ export interface GuideSynthesis {
   kind: "model" | "structured" | "extract" | "none";
   label: string;
   lead: string;
+  leadSourceIds?: string[];
   highlights: GuideHighlight[];
   practical: GuidePractical;
   statistics: GuideStatisticFact[];
@@ -257,7 +259,12 @@ export interface GuideEvidenceSeed {
 export async function collectGuideEvidence(
   area: GuideAreaRef,
   collectors: GuideCollectors,
-  options: { signal?: AbortSignal; timeoutMs?: number; seed?: GuideEvidenceSeed } = {}
+  options: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    seed?: GuideEvidenceSeed;
+    allowWeb?: boolean;
+  } = {}
 ): Promise<GuideEvidence> {
   const timeoutMs = options.timeoutMs ?? COLLECT_TIMEOUT_MS;
   const seed = options.seed ?? {};
@@ -289,7 +296,7 @@ export async function collectGuideEvidence(
     run("statistics", collectors.statistics, [] as GuideStatisticFact[], seed.statistics),
     run("events", collectors.events, [] as GuideEventFact[], seed.events),
     run("weather", collectors.weather, null as GuideWeatherFact | null, seed.weather),
-    run("web", collectors.web, [] as GuideWebFact[])
+    run("web", options.allowWeb === false ? undefined : collectors.web, [] as GuideWebFact[])
   ]);
 
   const sources = new Map<string, AiCitation>();
@@ -577,6 +584,7 @@ function structuredGuide(evidence: GuideEvidence): GuideSynthesis | null {
     kind: "structured",
     label: `Průvodce ${guide.attribution}`,
     lead: lead || `${evidence.area.name}: ${highlights.length} tipů z průvodce.`,
+    leadSourceIds: [sourceId],
     highlights,
     practical: { warnings: [] },
     statistics: evidence.statistics,
@@ -596,6 +604,7 @@ function extractGuide(evidence: GuideEvidence): GuideSynthesis | null {
     kind: "extract",
     label: "Z encyklopedie",
     lead: sentences(safeText(entry.extract, 1_200), 2).slice(0, MAX_LEAD_CHARS),
+    leadSourceIds: [entry.sourceId],
     highlights: evidence.places.slice(0, MAX_HIGHLIGHTS).map((place) => ({
       title: place.title,
       text: place.categoryLabel ?? place.category,
@@ -696,6 +705,7 @@ export function createGuideAggregator(options: {
 
       const work = (async () => {
         const evidence = await collectGuideEvidence(area, options.collectors, {
+          allowWeb: allowModel,
           ...(callOptions.signal ? { signal: callOptions.signal } : {}),
           ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
           ...(callOptions.seed ? { seed: callOptions.seed } : {})

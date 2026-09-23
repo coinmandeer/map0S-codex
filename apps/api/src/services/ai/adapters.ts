@@ -46,6 +46,7 @@ interface OpenAiCompatibleAdapterOptions {
   apiKey: string;
   model: string;
   fetch?: typeof fetch;
+  reasoningEffort?: "low" | "medium" | "high" | "max" | "none";
 }
 
 interface ChatCompletionEnvelope {
@@ -174,6 +175,7 @@ export class OpenAiCompatibleAdapter implements AiModelAdapter {
   private readonly url: string;
   private readonly apiKey: string;
   private readonly model: string;
+  private readonly reasoningEffort?: OpenAiCompatibleAdapterOptions["reasoningEffort"];
   private readonly providerId: string;
   private readonly request?: typeof fetch;
 
@@ -186,6 +188,7 @@ export class OpenAiCompatibleAdapter implements AiModelAdapter {
     this.url = `${baseUrl}/chat/completions`;
     this.apiKey = options.apiKey;
     this.model = options.model;
+    this.reasoningEffort = options.reasoningEffort;
     this.providerId = assertProviderId(`ai-${options.id}`);
     this.request = options.fetch;
   }
@@ -194,6 +197,7 @@ export class OpenAiCompatibleAdapter implements AiModelAdapter {
     const tools = request.tools ?? [];
     const body = JSON.stringify({
       model: this.model,
+      ...(this.reasoningEffort ? { reasoning_effort: this.reasoningEffort } : {}),
       temperature: request.temperature,
       max_tokens: request.maxOutputTokens,
       messages: chatMessages(request),

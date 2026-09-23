@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { IconButton, Menu, type MenuAction } from "../kit";
 import type { IconName } from "../kit/icons";
+import { t } from "../../i18n";
 
 /** One of the five detail actions: a round icon button with its label underneath (§4.10). The
  *  label is `aria-hidden` because the button already carries the same text as its accessible
@@ -44,10 +45,17 @@ export function PlaceActionOverflow({ actions }: { actions: readonly MenuAction[
     <span className="place-action">
       <Menu
         actions={actions}
-        trigger={<IconButton icon="more_horiz" label="Více" round testId="place-action-more" />}
+        trigger={
+          <IconButton
+            icon="more_horiz"
+            label={t("polish.actionsMore")}
+            round
+            testId="place-action-more"
+          />
+        }
       />
       <span className="place-action-label" aria-hidden="true">
-        Více
+        {t("polish.actionsMore")}
       </span>
     </span>
   );
@@ -55,7 +63,7 @@ export function PlaceActionOverflow({ actions }: { actions: readonly MenuAction[
 
 export function PlaceActionRow({ children }: { children: ReactNode }) {
   return (
-    <div className="place-actions" role="group" aria-label="Akce místa">
+    <div className="place-actions" role="group" aria-label={t("place.actions")}>
       {children}
     </div>
   );

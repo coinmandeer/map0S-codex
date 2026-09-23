@@ -4,104 +4,248 @@ import type {
   LayerManifest,
   LegendManifestV2
 } from "@mapos/layer-sdk";
-import { getLayerManifestV2 } from "../../layers/registry";
+import { availableLayerPlugins, getLayerManifestV2 } from "../../layers/registry";
+import { activityLabel } from "../../tasks/layerActivity";
+import { emit } from "../../lib/events";
+import { t } from "../../i18n";
+import { presentationLabel } from "../../i18n/presentation";
 import { getMapStore } from "../../store/mapStore";
 import { useMapStoreSnapshot } from "../../store/useMapStoreSnapshot";
-import { Button, Icon, InfoTip, Switch } from "../kit";
+import { Button, InfoTip, Slider } from "../kit";
 import { legendTextEntries } from "../legendPresentation";
-import { LayerFilterPopover } from "./LayerFilterPopover";
-import { layerDomainColor, layerIcon, layerRowSubtitle } from "./layerPresentation";
+import { FacetControl, hasNonDefaultValue } from "./LayerFilterPopover";
+import { layerIcon } from "./layerPresentation";
+import { useLayerActivity } from "./LayerActivityBadge";
+import { LayerRow } from "./LayerRow";
+import { CategorySection } from "./CategorySection";
 import type { MapLayerPlugin } from "../../layers";
+import { CZECH_LAYERS } from "../../layers/plugins/czechSources";
 
 const NO_FILTERS: FilterValues = {};
+/** Audited renderers: pinsLayer, dataLayer and tileLayer implement setOpacity. */
+export const OPACITY_LAYERS = new Set([
+  "osm-poi",
+  "user-layers",
+  "my-saved-places",
+  "game-quests",
+  "park4night",
+  "vanlife",
+  "earthquakes",
+  "inaturalist",
+  "gbif",
+  "air-quality",
+  "commons-photos",
+  "refuge-restrooms",
+  "charging-stations",
+  "mapillary",
+  "active-fires",
+  "openaq",
+  "ebird",
+  "events",
+  "shared-mobility",
+  "eonet",
+  "webcams",
+  "emodnet-bathymetry",
+  "gbif-density",
+  "europe-drought",
+  "cams-air-quality"
+]);
 
-/** One layer, one row (§4.7 ⑥): icon, name, one supporting line, then filter · info · switch.
- *
- *  Everything explanatory hangs off the `info` popover rather than sitting in the row, which is
- *  what lets twenty layers fit in a drawer without it turning into a wall of grey paragraphs.
- */
-export function PoiLayerRow({ plugin }: { plugin: MapLayerPlugin }) {
+export function PoiLayerRow({
+  plugin,
+  settingsOnly = false,
+  skipFacet
+}: {
+  plugin: MapLayerPlugin;
+  settingsOnly?: boolean;
+  skipFacet?: string;
+}) {
   const store = getMapStore();
   const manifest = plugin.manifest;
+  const name = presentationLabel("layer", manifest.id, manifest.name);
+  const capabilities = useMapStoreSnapshot((s) => s.capabilities);
+  const available = availableLayerPlugins(capabilities).some((p) => p.manifest.id === manifest.id);
+  const activity = useLayerActivity(manifest.id);
   const active = useMapStoreSnapshot((s) => Boolean(s.activeLayers[manifest.id]?.visible));
-  // Shared constant, not a fresh `{}`: the selector runs on every store read, and a new object
-  // each time makes `useSyncExternalStore` see a changed snapshot and re-render forever.
   const filters = useMapStoreSnapshot((s) => s.activeLayers[manifest.id]?.filters ?? NO_FILTERS);
+  const opacity = useMapStoreSnapshot(
+    (s) => s.activeLayers[manifest.id]?.opacity ?? plugin.defaultOpacity ?? 1
+  );
   const v2 = getLayerManifestV2(manifest.id);
   const locked = v2?.commerce?.access === "entitlement" || v2?.commerce?.access === "subscription";
-  // The v2 manifest carries the richer facet kinds (single-select, date-range); the v1 list is
-  // the same set flattened, so it only has to answer for layers registered the old way.
-  const facets = v2?.filters ?? plugin.filters ?? [];
-
-  return (
-    <div className="layer-row" data-active={active || undefined}>
-      <span
-        className="layer-row-icon"
-        style={{ color: layerDomainColor(manifest.category) }}
-        aria-hidden
-      >
-        <Icon name={layerIcon(manifest.id, manifest.category)} size={20} filled={active} />
-      </span>
-      <span className="layer-row-text">
-        <span className="layer-row-name">{manifest.name}</span>
-        <span className="layer-row-meta">
-          {layerRowSubtitle({
-            description: manifest.description,
-            experimental: manifest.experimental,
-            locked
-          })}
-        </span>
-      </span>
-      <span className="layer-row-actions">
-        {active && facets.length > 0 && (
-          <LayerFilterPopover
-            layerId={manifest.id}
-            layerName={manifest.name}
-            facets={facets}
-            values={filters}
-            onChange={(patch) => store.setLayerFilters(manifest.id, { ...filters, ...patch })}
-            onReset={() => store.setLayerFilters(manifest.id, { ...(plugin.defaultFilters ?? {}) })}
-          />
-        )}
-        <LayerInfoTip
-          manifest={manifest}
-          legend={v2?.legend}
-          attribution={plugin.attribution ?? []}
+  const facets = (v2?.filters ?? plugin.filters ?? [])
+    .filter((facet) => facet.id !== skipFacet)
+    .filter((facet) => manifest.id !== "osm-poi" || facet.id !== "categories");
+  const changed = facets.filter((facet) =>
+    hasNonDefaultValue(
+      { ...facet, default: plugin.defaultFilters?.[facet.id] ?? facet.default },
+      filters
+    )
+  ).length;
+  const problem =
+    active &&
+    activity &&
+    ["error", "partial", "pending", "zoom", "coverage", "budget", "empty"].includes(activity.phase);
+  const settings = (
+    <>
+      {manifest.id === "osm-poi" && !skipFacet && <CategorySection />}
+      {facets.map((facet) => (
+        <FacetControl
+          key={facet.id}
+          layerId={manifest.id}
+          facet={facet}
+          values={filters}
+          onChange={(patch) => store.setLayerFilters(manifest.id, { ...filters, ...patch })}
         />
-        {locked ? (
-          <Button
-            variant="tonal"
-            size="sm"
-            icon="lock"
-            testId={`layer-unlock-${manifest.id}`}
-            onClick={() => store.showToast("Odemknutí vrstev připravujeme")}
-          >
-            Odemknout
-          </Button>
-        ) : (
-          <Switch
-            checked={active}
-            label={manifest.name}
-            testId={`overflow-${manifest.id}`}
-            onChange={() => {
-              store.toggleLayer(manifest.id);
-              // Events only make sense next to their timeline, which lives in Discover.
-              if (!active && manifest.id === "events") {
-                store.setMode("discover");
-                store.setSidebarOpen(true);
-              }
-              store.showToast(
-                active
-                  ? `${manifest.name} vypnuto`
-                  : manifest.id === "events"
-                    ? `${manifest.name} otevřeny v Objevuj`
-                    : `${manifest.name} zapnuto`
-              );
-            }}
-          />
-        )}
-      </span>
-    </div>
+      ))}
+      {facets.length > 0 && (
+        <Button
+          size="sm"
+          icon="undo"
+          testId={`layer-filter-reset-${manifest.id}`}
+          disabled={!changed}
+          onClick={() =>
+            store.setLayerFilters(manifest.id, {
+              ...filters,
+              ...Object.fromEntries(
+                facets.map((facet) => [
+                  facet.id,
+                  plugin.defaultFilters?.[facet.id] ?? facet.default
+                ])
+              )
+            })
+          }
+        >
+          {t("polish.reset")}
+        </Button>
+      )}
+      {(OPACITY_LAYERS.has(manifest.id) || CZECH_LAYERS.some((def) => def.id === manifest.id)) && (
+        <Slider
+          label={t("polish.opacity")}
+          min={CZECH_LAYERS.some((def) => def.id === manifest.id) ? 0 : 0.2}
+          max={1}
+          step={0.05}
+          value={opacity}
+          format={(value) => `${Math.round(value * 100)} %`}
+          onChange={(value) => store.setLayerOpacity(manifest.id, value)}
+          testId={`layer-opacity-${manifest.id}`}
+        />
+      )}
+      {active && (
+        <div data-testid={`layer-status-${manifest.id}`}>
+          <p role="status">{activityLabel(activity)}</p>
+          {["error", "partial", "pending"].includes(activity?.phase ?? "") && (
+            <Button onClick={() => emit("refresh-layer", { id: manifest.id })}>
+              {t("action.retry")}
+            </Button>
+          )}
+          {activity?.phase === "zoom" && (
+            <Button
+              onClick={() => emit("fly-to", { ...store.view, zoom: plugin.minQueryZoom ?? 8 })}
+            >
+              {t("polish.zoom")}
+            </Button>
+          )}
+        </div>
+      )}
+      <details className="layer-details">
+        <summary>
+          {t("polish.sources")} · {t("polish.legend")}
+        </summary>
+        <p className="meta">
+          {presentationLabel("description", manifest.id, manifest.description)}
+        </p>
+        <LayerSourceInfo legend={v2?.legend} attribution={plugin.attribution ?? []} />
+      </details>
+    </>
+  );
+  if (settingsOnly) return settings;
+  return (
+    <LayerRow
+      id={manifest.id}
+      name={name}
+      icon={layerIcon(manifest.id, manifest.category)}
+      active={active}
+      disabled={(!available || locked) && !active}
+      filtered={changed > 0}
+      summary={changed ? t("polish.filters", { count: changed }) : undefined}
+      notice={
+        locked
+          ? t("polish.locked")
+          : !available
+            ? t("polish.unavailable")
+            : problem
+              ? activityLabel(activity)
+              : undefined
+      }
+      onChange={() => store.toggleLayer(manifest.id)}
+    >
+      {settings}
+    </LayerRow>
+  );
+}
+
+export function LayerSourceInfo({
+  legend,
+  attribution
+}: {
+  legend?: LegendManifestV2;
+  attribution: readonly LayerAttribution[];
+}) {
+  const entries = legend ? legendTextEntries(legend) : [];
+  return (
+    <>
+      {legend?.type === "image" && (
+        <ul className="layer-info-legend">
+          {legend.items
+            ?.filter((item) => item.imageUrl)
+            .map((item) => (
+              <li key={item.label}>
+                <img
+                  src={item.imageUrl}
+                  alt={item.label}
+                  loading="lazy"
+                  style={{ maxWidth: "100%", objectFit: "contain" }}
+                />
+              </li>
+            ))}
+        </ul>
+      )}
+      {entries.length > 0 && (
+        <section>
+          <h4>{t("polish.legend")}</h4>
+          <ul className="layer-info-legend">
+            {entries.map((entry) => (
+              <li key={entry.label}>
+                {entry.color && (
+                  <span className="layer-info-swatch" style={{ background: entry.color }} />
+                )}
+                {entry.label}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {attribution.length > 0 && (
+        <section>
+          <h4>{t("polish.sources")}</h4>
+          <ul className="layer-info-sources">
+            {attribution.map((item) => (
+              <li key={item.label}>
+                {item.url ? (
+                  <a href={item.url} target="_blank" rel="noreferrer">
+                    {item.label}
+                  </a>
+                ) : (
+                  item.label
+                )}
+                {item.license ? ` · ${item.license}` : ""}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   );
 }
 

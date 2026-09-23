@@ -1,3 +1,5 @@
+import { registerInteractivePins, unregisterInteractivePins } from "../map/interactivePins";
+import { ensureDataPinImage, LAYER_GLYPHS } from "../map/pinIcons";
 import type maplibregl from "maplibre-gl";
 import type { Bbox, FeatureCollection, FilterValues, LayerHandle } from "@mapos/layer-sdk";
 import { fetchLayerFeatures } from "../engine/LayerEngine";
@@ -8,17 +10,17 @@ export interface DataLayerSpec {
   colorBy?: { property: string; values: Record<string, string>; fallback?: string };
   /** Selects the versioned feature envelope; v1 remains the default during migration. */
   contractVersion?: 1 | 2;
-  /** Numeric property to scale the circle by — magnitude, capacity. Absent means uniform dots. */
+  /** Numeric property to scale the pin by — magnitude, capacity. Absent means uniform pins. */
   sizeBy?: { property: string; min: number; max: number; minRadius: number; maxRadius: number };
-  /** Show names next to the dots from this zoom. Off by default: for dense layers like species
+  /** Show names next to the pins from this zoom. Off by default: for dense layers like species
    *  observations the labels are noise, not information. */
   labelFromZoom?: number;
 }
 
 /**
  * Generic point layer for the many external sources that are "a few hundred things with
- * coordinates". Circles rather than pin icons: the colour is the layer's identity, and a
- * bespoke icon set per source would be a lot of design work for very little gain.
+ * coordinates". Every one renders as a layer-coloured pin that opens the same place sheet (and AI
+ * brief) as an OSM pin, so there is one interaction model across all POI layers.
  *
  * Layer ids keep the `pins-` prefix because that is what the map's click handling and the
  * engine's teardown both look for.
@@ -30,57 +32,105 @@ export function createDataLayer(
   spec: DataLayerSpec
 ): LayerHandle {
   const sourceId = `source-${layerId}`;
-  const circleId = `pins-${layerId}-dot`;
+  const pinLayerId = `pins-${layerId}-dot`;
   const labelId = `pins-${layerId}-label`;
+  const clusterId = `pins-${layerId}-cluster`;
+  const countId = `pins-${layerId}-count`;
+  const clustered = [
+    "inaturalist",
+    "gbif",
+    "commons-photos",
+    "webcams",
+    "mapillary",
+    "panoramax"
+  ].includes(layerId);
   let opacity = 1;
   let visible = true;
 
-  function colorExpression(): maplibregl.ExpressionSpecification | string {
-    if (!spec.colorBy) return spec.color;
-    return [
-      "match",
-      ["get", spec.colorBy.property],
-      ...Object.entries(spec.colorBy.values).flatMap(([value, color]) => [value, color]),
-      spec.colorBy.fallback ?? spec.color
-    ] as unknown as maplibregl.ExpressionSpecification;
-  }
-
-  function radiusExpression(): maplibregl.ExpressionSpecification | number {
-    if (!spec.sizeBy) return 5;
+  function iconSizeExpression(): maplibregl.ExpressionSpecification | number {
+    if (!spec.sizeBy) return 0.86;
     const { property, min, max, minRadius, maxRadius } = spec.sizeBy;
     return [
       "interpolate",
       ["linear"],
-      // Features missing the property collapse to the smallest dot rather than disappearing.
+      // Features missing the property collapse to the smallest pin rather than disappearing.
       ["coalesce", ["to-number", ["get", property]], min],
       min,
-      minRadius,
+      Math.max(0.65, minRadius / 16),
       max,
-      maxRadius
+      Math.max(0.65, maxRadius / 16)
     ];
   }
 
   function ensureLayers() {
+    registerInteractivePins(map, layerId, [pinLayerId, labelId]);
     if (map.getSource(sourceId)) return;
+
+    ensureDataPinImage(map, layerId, spec.colorBy?.fallback ?? spec.color);
+    const icon: unknown[] = ["match", ["to-string", ["get", spec.colorBy?.property ?? ""]]];
+    for (const [value, color] of Object.entries(spec.colorBy?.values ?? {})) {
+      const id = `${layerId}-${encodeURIComponent(value)}`;
+      ensureDataPinImage(map, id, color, LAYER_GLYPHS[layerId]);
+      icon.push(value, `pin-${id}`);
+    }
+    icon.push(`pin-${layerId}`);
 
     map.addSource(sourceId, {
       type: "geojson",
+      promoteId: "id",
+      ...(clustered ? { cluster: true, clusterMaxZoom: 14, clusterRadius: 45 } : {}),
       data: { type: "FeatureCollection", features: [] }
     });
 
+    if (clustered) {
+      map.addLayer({
+        id: clusterId,
+        type: "circle",
+        source: sourceId,
+        filter: ["has", "point_count"],
+        layout: { visibility: visible ? "visible" : "none" },
+        paint: {
+          "circle-color": spec.color,
+          "circle-radius": 18,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2,
+          "circle-opacity": opacity
+        }
+      });
+      map.addLayer({
+        id: countId,
+        type: "symbol",
+        source: sourceId,
+        filter: ["has", "point_count"],
+        layout: {
+          visibility: visible ? "visible" : "none",
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-size": 12,
+          "text-font": ["Noto Sans Regular"],
+          "text-allow-overlap": true
+        },
+        paint: { "text-color": "#ffffff", "text-opacity": opacity }
+      });
+    }
     map.addLayer({
-      id: circleId,
-      type: "circle",
+      id: pinLayerId,
+      type: "symbol",
       source: sourceId,
-      layout: { visibility: visible ? "visible" : "none" },
-      paint: {
-        "circle-color": colorExpression(),
-        "circle-radius": radiusExpression(),
-        "circle-opacity": 0.85 * opacity,
-        "circle-stroke-width": 1.5,
-        "circle-stroke-color": "#ffffff",
-        "circle-stroke-opacity": opacity
-      }
+      ...(clustered
+        ? { filter: ["!", ["has", "point_count"]] as maplibregl.FilterSpecification }
+        : {}),
+      layout: {
+        visibility: visible ? "visible" : "none",
+        "icon-image":
+          spec.colorBy && Object.keys(spec.colorBy.values).length
+            ? (icon as maplibregl.ExpressionSpecification)
+            : ["image", `pin-${layerId}`],
+        "icon-size": iconSizeExpression(),
+        "icon-anchor": "center",
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      },
+      paint: { "icon-opacity": 0.92 * opacity }
     });
 
     if (spec.labelFromZoom !== undefined) {
@@ -89,6 +139,9 @@ export function createDataLayer(
         type: "symbol",
         source: sourceId,
         minzoom: spec.labelFromZoom,
+        ...(clustered
+          ? { filter: ["!", ["has", "point_count"]] as maplibregl.FilterSpecification }
+          : {}),
         layout: {
           "text-field": ["get", "name"],
           "text-size": 11,
@@ -107,7 +160,7 @@ export function createDataLayer(
     }
   }
 
-  const layerIds = [circleId, labelId];
+  const layerIds = [pinLayerId, labelId, clusterId, countId];
 
   function setData(data: FeatureCollection) {
     ensureLayers();
@@ -125,7 +178,6 @@ export function createDataLayer(
         signal,
         spec.contractVersion
       );
-      setData(data);
       return data;
     },
     setData,
@@ -141,12 +193,14 @@ export function createDataLayer(
     setOpacity(next: number) {
       opacity = next;
       ensureLayers();
-      if (map.getLayer(circleId)) {
-        map.setPaintProperty(circleId, "circle-opacity", 0.85 * next);
-        map.setPaintProperty(circleId, "circle-stroke-opacity", next);
+      if (map.getLayer(clusterId)) map.setPaintProperty(clusterId, "circle-opacity", next);
+      if (map.getLayer(countId)) map.setPaintProperty(countId, "text-opacity", next);
+      if (map.getLayer(pinLayerId)) {
+        map.setPaintProperty(pinLayerId, "icon-opacity", 0.92 * next);
       }
     },
     detach() {
+      unregisterInteractivePins(map, [pinLayerId, labelId]);
       for (const id of [...layerIds].reverse()) {
         if (map.getLayer(id)) map.removeLayer(id);
       }

@@ -9,7 +9,12 @@ import {
   type MapyRouteProfile
 } from "./mapyService.js";
 
-const OSRM_BASE = "https://router.project-osrm.org/route/v1";
+export function osrmBase(profile: RouteProfile): string {
+  const configured = process.env[`OSRM_${profile.toUpperCase()}_URL`]?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+  if (profile === "car") return "https://router.project-osrm.org/route/v1";
+  return `https://routing.openstreetmap.de/routed-${profile}/route/v1`;
+}
 
 const PROFILE_MAP = {
   foot: "foot",
@@ -61,7 +66,7 @@ async function osrmRoutes(
   const alternativeCount = Math.min(2, Math.max(1, Math.floor(alternatives)));
   // A simplified GeoJSON overview is sufficient for an interactive plan and keeps the optional
   // second route economical on mobile data. Waypoint metadata is unused, so omit it as well.
-  const url = `${OSRM_BASE}/${osrmProfile}/${points}?overview=simplified&geometries=geojson&alternatives=${alternativeCount > 1 ? alternativeCount : "false"}&skip_waypoints=true`;
+  const url = `${osrmBase(profile)}/${osrmProfile}/${points}?overview=simplified&geometries=geojson&alternatives=${alternativeCount > 1 ? alternativeCount : "false"}&skip_waypoints=true`;
   const data = await fetchJson<{
     routes: Array<{
       distance: number;

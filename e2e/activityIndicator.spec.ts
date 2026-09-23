@@ -11,7 +11,7 @@ const EMPTY_FEATURES = {
  *  task centre and the letter strip of place sources — which of seven providers is slow belongs
  *  in the layer drawer, not on top of the map. */
 test.describe("activity indicator", () => {
-  test("shows concurrent map work as rows that clear the footer and then disappear", async ({
+  test("reports concurrent map work as one line that clears the footer and then goes", async ({
     page
   }) => {
     await mkdir(DIR, { recursive: true });
@@ -31,10 +31,12 @@ test.describe("activity indicator", () => {
 
     const indicator = page.getByTestId("activity-indicator");
     await expect(indicator).toBeVisible();
-    // Three layers are loading, and the cap is three rows (ACTIVITY_MAX_ROWS).
-    await expect(indicator.getByTestId("activity-row")).toHaveCount(3);
+    // Three layers are loading, and the pill is still one row: five layers coming on at once
+    // used to build a tower of pills over the map, so the count moved into the label.
+    await expect(indicator.getByTestId("activity-row")).toHaveCount(1);
+    await expect(indicator).toContainText("Loading 0/3 sources");
     // The pill itself reports; cancel and retry live in its popover (§29.3), never inline.
-    await expect(indicator.getByRole("button", { name: "Zrušit" })).toHaveCount(0);
+    await expect(indicator.getByRole("button", { name: "Cancel" })).toHaveCount(0);
 
     const geometry = await page.evaluate(() => {
       const pill = document
@@ -106,7 +108,7 @@ test.describe("activity indicator", () => {
     await failedRow.click();
     const tasks = page.getByTestId("activity-tasks");
     await expect(tasks.getByTestId("activity-task").first()).toContainText("OSM");
-    await tasks.getByRole("button", { name: "Otevřít Vrstvy" }).click();
+    await tasks.getByRole("button", { name: "Open Layers" }).click();
     await expect(page.getByTestId("right-utility-drawer")).toBeVisible();
   });
 });

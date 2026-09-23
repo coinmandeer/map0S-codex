@@ -21,7 +21,6 @@ export const STRUCTURAL_TILE_OVERLAY_IDS = [
   "waymarked-trails",
   "openrailwaymap",
   "openseamap",
-  "opentopomap",
   "opensnowmap"
 ] as const;
 
@@ -75,10 +74,10 @@ function tilePlugin(args: {
 
 tilePlugin({
   id: "cyclosm",
-  name: "CyclOSM",
+  name: "Cyklistická infrastruktura",
   icon: "🚲",
   color: "#7c3aed",
-  description: "Cyklistická mapa: stezky, pruhy, povrchy a servis kol",
+  description: "Průhledný CyclOSM Lite: cyklistické stezky a infrastruktura nad vaším podkladem",
   category: "outdoor",
   attributionLabel: "CyclOSM",
   attributionUrl: "https://www.cyclosm.org/",
@@ -97,7 +96,7 @@ tilePlugin({
     ]
   },
   spec: {
-    tiles: subdomains("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"),
+    tiles: subdomains("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm-lite/{z}/{x}/{y}.png"),
     maxzoom: 20,
     attribution: `${OSM_CREDIT}, dlaždice <a href="https://www.cyclosm.org/">CyclOSM</a>`
   }
@@ -147,13 +146,15 @@ tilePlugin({
     attribution: `${OSM_CREDIT}, dlaždice <a href="https://waymarkedtrails.org/">Waymarked Trails</a> (CC-BY-SA)`,
     // One layer, five route networks: picking the activity swaps the tile URL rather than
     // registering five near-identical layers.
-    tilesForFilters: (filters) => {
-      const raw = filters.activity;
-      const activity = Array.isArray(raw) ? raw[0] : raw;
-      const allowed = ["hiking", "cycling", "mtb", "riding", "slopes"];
-      const chosen =
-        typeof activity === "string" && allowed.includes(activity) ? activity : "hiking";
-      return [`https://tile.waymarkedtrails.org/${chosen}/{z}/{x}/{y}.png`];
+    sourcesForFilters: (filters) => {
+      const raw = filters.activity ?? "hiking";
+      const selected = new Set(Array.isArray(raw) ? raw : [raw]);
+      return ["hiking", "cycling", "mtb", "riding", "slopes"]
+        .filter((activity) => selected.has(activity))
+        .map((activity) => ({
+          id: activity,
+          tiles: [`https://tile.waymarkedtrails.org/${activity}/{z}/{x}/{y}.png`]
+        }));
     }
   }
 });
@@ -212,35 +213,6 @@ tilePlugin({
     tiles: ["https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"],
     maxzoom: 18,
     attribution: `${OSM_CREDIT}, <a href="https://www.openseamap.org/">OpenSeaMap</a>`
-  }
-});
-
-tilePlugin({
-  id: "opentopomap",
-  name: "Topografická",
-  icon: "⛰️",
-  color: "#65a30d",
-  description: "Vrstevnice, stínovaný reliéf a turistické cesty",
-  category: "outdoor",
-  attributionLabel: "OpenTopoMap",
-  attributionUrl: "https://opentopomap.org/",
-  license: "CC-BY-SA-3.0",
-  legend: {
-    type: "categorical",
-    title: "Topografická",
-    items: [
-      { label: "Vrstevnice", color: "#b07a4a", description: "Zesílená každých 100 m" },
-      { label: "Les", color: "#addd8e" },
-      { label: "Skála a suť", color: "#9c9c9c" },
-      { label: "Ledovec", color: "#d7f0f7" },
-      { label: "Turistická cesta", color: "#e2231a", description: "Červeně čárkovaně" }
-    ]
-  },
-  spec: {
-    tiles: subdomains("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"),
-    // OpenTopoMap renders to z17 and asks that clients not request beyond it.
-    maxzoom: 17,
-    attribution: `${OSM_CREDIT}, <a href="https://opentopomap.org/">OpenTopoMap</a> (CC-BY-SA)`
   }
 });
 

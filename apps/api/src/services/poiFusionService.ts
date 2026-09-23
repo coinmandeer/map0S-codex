@@ -1,3 +1,4 @@
+import { createProgressivePlaces, type PlaceJob } from "./progressivePlaces.js";
 /** Merges several POI sources into one set of places for a viewport.
  *
  *  The sources answer different questions and none of them is sufficient alone:
@@ -17,6 +18,8 @@
 
 import type {
   Bbox,
+  AreaSelection,
+  FeatureCollection,
   OsmPoiCategoryId,
   Place,
   PlaceSourceId,
@@ -38,6 +41,7 @@ import { fetchJson } from "../utils/upstream.js";
 const MERGE_RADIUS_M = 75;
 
 export interface FusionQuery {
+  area?: AreaSelection | null;
   bbox: Bbox;
   categories: OsmPoiCategoryId[];
   sources: PlaceSourceId[];
@@ -57,7 +61,9 @@ export interface PlaceSourceAdapter {
   /** Why this source can't run here (missing key, needs a local import), or null when it can.
    *  A skipped source is reported to the client rather than silently missing. */
   unavailableReason?(): string | null;
-  fetch(query: FusionQuery): Promise<Place[]>;
+  fetch(
+    query: FusionQuery
+  ): Promise<Place[] | { places: Place[]; query?: FeatureCollection["query"] }>;
 }
 
 function normalizeName(name: string): string {
@@ -155,12 +161,14 @@ function dedupe(places: Place[]): { merged: Place[]; dropped: number } {
 
 async function timed<T>(
   source: PlaceSourceId,
-  fn: () => Promise<T[]>
-): Promise<{ places: T[]; meta: PlacesSourceMeta }> {
+  fn: () => Promise<T[] | { places: T[]; query?: FeatureCollection["query"] }>
+): Promise<{ places: T[]; meta: PlacesSourceMeta; query?: FeatureCollection["query"] }> {
   const started = Date.now();
   try {
-    const places = await fn();
+    const result = await fn();
+    const places = Array.isArray(result) ? result : result.places;
     return {
+      ...(Array.isArray(result) ? {} : { query: result.query }),
       places,
       meta: { source, state: "ready", count: places.length, tookMs: Date.now() - started }
     };
@@ -179,13 +187,13 @@ async function timed<T>(
   }
 }
 
-async function fetchOsm(bbox: Bbox, categories: OsmPoiCategoryId[]): Promise<Place[]> {
-  const fc = await getOsmPoiFeatures(bbox, categories.join(","));
-  return fc.features.map((f) => {
+async function fetchOsm(bbox: Bbox, categories: OsmPoiCategoryId[], area?: AreaSelection | null) {
+  const fc = await getOsmPoiFeatures(bbox, categories.join(","), area);
+  const places = fc.features.map((f) => {
     const props = f.properties as Record<string, string>;
     const [lng, lat] = f.geometry.coordinates as [number, number];
     return {
-      id: `osm:${props.id}`,
+      id: props.id!.startsWith("osm:") ? props.id! : `osm:${props.id}`,
       name: props.name ?? "Bez názvu",
       lng,
       lat,
@@ -198,10 +206,15 @@ async function fetchOsm(bbox: Bbox, categories: OsmPoiCategoryId[]): Promise<Pla
       sources: [provenance("osm", props.osmId ?? props.id ?? "")]
     } satisfies Place;
   });
+  return { places, query: fc.query };
 }
 
-async function fetchMapy(bbox: Bbox, categories: OsmPoiCategoryId[]): Promise<Place[]> {
-  const result = await getMapyPois(bbox, categories);
+async function fetchMapy(
+  bbox: Bbox,
+  categories: OsmPoiCategoryId[],
+  area?: AreaSelection | null
+): Promise<Place[]> {
+  const result = await getMapyPois(bbox, categories, area);
   return result.places.map((p) => ({
     id: `mapy:${p.id}`,
     name: p.name,
@@ -213,10 +226,10 @@ async function fetchMapy(bbox: Bbox, categories: OsmPoiCategoryId[]): Promise<Pl
   }));
 }
 
-async function fetchUser(bbox: Bbox): Promise<Place[]> {
+async function fetchUser(bbox: Bbox, area?: AreaSelection | null): Promise<Place[]> {
   // The fused `user` source is the public community catalogue. A signed-in visitor must see the
   // same catalogue as everyone else; their private/editable pins belong to `user-layers`.
-  const fc = await getUserLayerFeatures(bbox);
+  const fc = await getUserLayerFeatures(bbox, undefined, undefined, undefined, area);
   return fc.features.map((f) => {
     const props = f.properties as Record<string, unknown>;
     const [lng, lat] = f.geometry.coordinates as [number, number];
@@ -326,18 +339,18 @@ export const PLACE_SOURCE_ADAPTERS: PlaceSourceAdapter[] = [
   {
     id: "user",
     confidence: 0.95,
-    fetch: ({ bbox }) => fetchUser(bbox)
+    fetch: ({ bbox, area }) => fetchUser(bbox, area)
   },
   {
     id: "mapy",
     confidence: 0.8,
     unavailableReason: () => (config.mapyKey ? null : "chybí MAPY_API_KEY"),
-    fetch: ({ bbox, categories }) => fetchMapy(bbox, categories)
+    fetch: ({ bbox, categories, area }) => fetchMapy(bbox, categories, area)
   },
   {
     id: "osm",
     confidence: 0.75,
-    fetch: ({ bbox, categories }) => fetchOsm(bbox, categories)
+    fetch: ({ bbox, categories, area }) => fetchOsm(bbox, categories, area)
   },
   {
     id: "wikidata",
@@ -378,42 +391,89 @@ export function adapterFor(id: PlaceSourceId): PlaceSourceAdapter | undefined {
   return ADAPTERS_BY_ID.get(id);
 }
 
-export async function getFusedPlaces(query: FusionQuery): Promise<PlacesResponse> {
-  const wanted = new Set(query.sources);
-  const metas: PlacesSourceMeta[] = [];
-  const jobs: Promise<{ places: Place[]; meta: PlacesSourceMeta }>[] = [];
+export function createPlacesFusion(
+  adapters: readonly PlaceSourceAdapter[] = PLACE_SOURCE_ADAPTERS,
+  progressivePlaces = createProgressivePlaces()
+) {
+  return async function fuse(
+    query: FusionQuery,
+    options: { progressive?: boolean } = {}
+  ): Promise<PlacesResponse> {
+    const wanted = new Set(query.sources);
+    const metas: PlacesSourceMeta[] = [];
+    const jobs: PlaceJob[] = [];
 
-  for (const adapter of PLACE_SOURCE_ADAPTERS) {
-    if (!wanted.has(adapter.id)) continue;
-    const reason = adapter.unavailableReason?.();
-    if (reason) {
-      metas.push({ source: adapter.id, state: "skipped", count: 0, message: reason });
-      continue;
+    for (const adapter of adapters) {
+      if (!wanted.has(adapter.id)) continue;
+      const reason = adapter.unavailableReason?.();
+      if (reason) {
+        metas.push({ source: adapter.id, state: "skipped", count: 0, message: reason });
+        continue;
+      }
+      jobs.push({
+        source: adapter.id,
+        local: adapter.id === "osm" || adapter.id === "user",
+        run: () => timed(adapter.id, () => adapter.fetch(query))
+      });
     }
-    jobs.push(timed(adapter.id, () => adapter.fetch(query)));
-  }
 
-  const settled = await Promise.all(jobs);
-  for (const result of settled) metas.push(result.meta);
+    const key = JSON.stringify([
+      query.area?.id,
+      query.area?.revision,
+      query.bbox,
+      [...new Set(query.categories)].sort(),
+      jobs.map((job) => job.source).sort()
+    ]);
+    const snapshot = options.progressive
+      ? await progressivePlaces.collect(key, jobs)
+      : {
+          results: await Promise.all(jobs.map((job) => job.run())),
+          pending: [] as PlaceSourceId[],
+          busy: false
+        };
+    const settled = snapshot.results;
+    for (const source of snapshot.pending)
+      metas.push({
+        source,
+        state: "loading",
+        count: 0,
+        message: snapshot.busy ? "Čeká na volnou kapacitu." : "Zdroj se načítá."
+      });
+    for (const result of settled) metas.push(result.meta);
 
-  // Highest-confidence sources first, so dedupe keeps their record as the surviving one.
-  const all = settled
-    .flatMap((r) => r.places)
-    .sort((a, b) => (b.sources[0]?.confidence ?? 0) - (a.sources[0]?.confidence ?? 0));
+    // Highest-confidence sources first, so dedupe keeps their record as the surviving one.
+    const all = settled
+      .flatMap((r) => r.places)
+      .sort((a, b) => (b.sources[0]?.confidence ?? 0) - (a.sources[0]?.confidence ?? 0));
 
-  const { merged, dropped } = dedupe(all);
+    const { merged, dropped } = dedupe(all);
 
-  return {
-    places: merged,
-    meta: {
-      sources: metas.sort(
-        (a, b) =>
-          Object.keys(PLACE_SOURCE_BY_ID).indexOf(a.source) -
-          Object.keys(PLACE_SOURCE_BY_ID).indexOf(b.source)
-      ),
-      merged: dropped
-    }
+    const incomplete = settled.find(
+      (result) => result.query?.status === "partial" || result.query?.status === "unavailable"
+    );
+    const failed = metas.some((meta) => meta.state === "error");
+    return {
+      query: snapshot.pending.length
+        ? {
+            ...incomplete?.query,
+            status: "partial",
+            bbox: query.bbox,
+            retryAfterMs: 2000,
+            cacheTtlMs: 0
+          }
+        : (incomplete?.query ?? { status: failed ? "partial" : "complete", bbox: query.bbox }),
+      places: merged,
+      meta: {
+        sources: metas.sort(
+          (a, b) =>
+            Object.keys(PLACE_SOURCE_BY_ID).indexOf(a.source) -
+            Object.keys(PLACE_SOURCE_BY_ID).indexOf(b.source)
+        ),
+        merged: dropped
+      }
+    };
   };
 }
+export const getFusedPlaces = createPlacesFusion();
 
 export const __testing = { dedupe, namesMatch, normalizeName };

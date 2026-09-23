@@ -17,6 +17,7 @@ const DEFAULT_EVENT_WINDOW_DAYS = 365;
 const MAX_EVENT_WINDOW_DAYS = 366;
 
 export interface EventAdapterQuery {
+  signal?: AbortSignal;
   bbox: [number, number, number, number];
   from: string;
   to: string;
@@ -477,6 +478,9 @@ export class EventService {
     const ready = result.meta.sources.filter(
       (providerId) => !result.meta.unavailableSources.includes(providerId)
     );
+    // An empty result with zero adapters means the deployment is missing its provider key,
+    // not that "nothing is on around here" — say so, or the layer reads as fake.
+    const noSource = !this.adapters.length && result.events.length === 0;
     return featureQueryResult({
       features: result.events.map(eventToMapOSFeature),
       requestedLimit: result.meta.limit,
@@ -489,11 +493,22 @@ export class EventService {
           state: "unavailable" as const
         }))
       ],
-      notices: result.meta.unavailableSources.map((providerId) => ({
-        code: "event-source-unavailable",
-        message: `${providerId} je dočasně nedostupný; zobrazuji uložené ověřené události.`,
-        severity: "warning"
-      }))
+      notices: [
+        ...(noSource
+          ? [
+              {
+                code: "event-source-not-configured",
+                message: "Události potřebují klíč TICKETMASTER_API_KEY, jinak tu nic nenajdou.",
+                severity: "warning" as const
+              }
+            ]
+          : []),
+        ...result.meta.unavailableSources.map((providerId) => ({
+          code: "event-source-unavailable",
+          message: `${providerId} je dočasně nedostupný; zobrazuji uložené ověřené události.`,
+          severity: "warning" as const
+        }))
+      ]
     });
   }
 }

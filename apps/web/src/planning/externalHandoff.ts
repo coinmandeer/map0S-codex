@@ -36,8 +36,13 @@ function googleTravelMode(profile: PlanTravelProfileV2): string {
 }
 
 function mapyRouteType(document: PlanDocumentV2): string {
-  const profile = document.routePolicy.profile;
-  const preference = document.routePolicy.preference;
+  return mapyRouteTypeFor(document.routePolicy.profile, document.routePolicy.preference);
+}
+
+function mapyRouteTypeFor(
+  profile: PlanTravelProfileV2,
+  preference: PlanDocumentV2["routePolicy"]["preference"]
+): string {
   if (profile === "foot") return preference === "adventure" ? "foot_hiking" : "foot_fast";
   if (profile === "bike") return preference === "adventure" ? "bike_mountain" : "bike_road";
   return preference === "short" ? "car_short" : "car_fast_traffic";
@@ -118,4 +123,35 @@ function osmHandoff(document: PlanDocumentV2): ExternalPlanHandoff {
 export function buildExternalPlanHandoffs(document: PlanDocumentV2): ExternalPlanHandoff[] {
   if (document.stops.length < 2) return [];
   return [googleHandoff(document), mapyHandoff(document), osmHandoff(document)];
+}
+
+export interface ExternalSegmentHandoff {
+  id: "google" | "mapy";
+  label: string;
+  href: string;
+}
+
+/** Handoff for a single leg A→B. Each leg is planned as its own route, so navigation is asked
+ *  for from the stop the user is standing at, not for a whole multi-stop itinerary. */
+export function buildSegmentHandoffs(
+  from: { lng: number; lat: number },
+  to: { lng: number; lat: number },
+  profile: PlanTravelProfileV2,
+  preference: PlanDocumentV2["routePolicy"]["preference"]
+): ExternalSegmentHandoff[] {
+  const google = new URL("https://www.google.com/maps/dir/");
+  google.searchParams.set("api", "1");
+  google.searchParams.set("origin", `${from.lat},${from.lng}`);
+  google.searchParams.set("destination", `${to.lat},${to.lng}`);
+  google.searchParams.set("travelmode", googleTravelMode(profile));
+
+  const mapy = new URL("https://mapy.com/fnc/v1/route");
+  mapy.searchParams.set("start", `${from.lng},${from.lat}`);
+  mapy.searchParams.set("end", `${to.lng},${to.lat}`);
+  mapy.searchParams.set("routeType", mapyRouteTypeFor(profile, preference));
+
+  return [
+    { id: "google", label: "Google Maps", href: google.toString() },
+    { id: "mapy", label: "Mapy.com", href: mapy.toString() }
+  ];
 }

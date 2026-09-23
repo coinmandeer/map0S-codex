@@ -1,4 +1,5 @@
 import type { LayerManifestV2, LegendManifestV2, TripPlan } from "@mapos/layer-sdk";
+import { isWeatherLayerId } from "../layers/weather/controls";
 
 export interface VisibleLayerState {
   visible?: boolean;
@@ -19,17 +20,13 @@ export interface LegendContributionRef {
 
 export type LayerManifestLookup = (layerId: string) => LayerManifestV2 | undefined;
 
-function hasValidDate(value: string | undefined): boolean {
-  return Boolean(value && !Number.isNaN(Date.parse(value)));
-}
-
 /**
  * Resolves footer time controls from declared capabilities instead of the current top-level mode.
  * A Planning or Game panel by itself is not temporal; a dated plan or active temporal layer is.
  */
 export function timelineContributions(
   activeLayers: Record<string, VisibleLayerState>,
-  activePlan: TripPlan | null,
+  _activePlan: TripPlan | null,
   manifestFor: LayerManifestLookup
 ): TimelineContributionRef[] {
   const contributions: TimelineContributionRef[] = [];
@@ -37,15 +34,23 @@ export function timelineContributions(
     if (!state.visible) continue;
     const temporal = manifestFor(layerId)?.temporal;
     if (!temporal?.enabled) continue;
+    // A timestamp is not a working timeline controller. Keep this in sync with TimelineHost:
+    // other sources expose period filters in the drawer until they have a rendered controller.
+    if (
+      layerId !== "weather" &&
+      !isWeatherLayerId(layerId) &&
+      layerId !== "events" &&
+      !layerId.startsWith("theme-")
+    )
+      continue;
     contributions.push({
       id: `layer:${layerId}`,
       kind: "layer",
       priority: temporal.timelinePriority ?? 0
     });
   }
-  if (activePlan && hasValidDate(activePlan.departureAt)) {
-    contributions.push({ id: `plan:${activePlan.id}`, kind: "dated-plan", priority: 100 });
-  }
+  // A departure time remains part of the plan; it does not create an otherwise inert map
+  // scrubber. Only active temporal data (weather/events) earns space in the map footer.
   return contributions.sort(
     (left, right) => right.priority - left.priority || left.id.localeCompare(right.id)
   );

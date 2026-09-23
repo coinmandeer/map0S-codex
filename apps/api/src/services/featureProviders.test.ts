@@ -113,7 +113,15 @@ describe("feature provider registry", () => {
     assert.equal(result.meta.limit, 100);
     assert.equal(result.meta.returned, 100);
     assert.equal(result.meta.truncated, true);
-    assert.equal(result.meta.nextCursor, "provider-cursor");
+    assert.match(result.meta.nextCursor!, /^mapos-page:/);
+    const remainder = await provider.featuresV2!({
+      bbox: [13, 49, 15, 51],
+      query: { limit: "10000", cursor: result.meta.nextCursor! }
+    });
+    assert.equal(remainder.data.features.length, 20);
+    assert.equal(remainder.data.features[0]?.id, "fixture:100");
+    assert.equal(remainder.meta.truncated, false);
+    assert.equal(remainder.meta.nextCursor, null);
   });
 });
 

@@ -64,7 +64,9 @@ test.describe("infrastruktura", () => {
     await expect(legend).toContainText("Pod zemí");
   });
 
-  test("the network filter decides which sublayers are drawn", async ({ page }) => {
+  test("the four networks are switches under the row, and each one decides a sublayer", async ({
+    page
+  }) => {
     await stubTiles(page);
     await page.goto("/?layers=openinframap&lng=13.3775&lat=49.7475&z=10");
     await expect(page.getByTestId("mode-bar")).toBeVisible({ timeout: 30_000 });
@@ -77,12 +79,21 @@ test.describe("infrastruktura", () => {
     await expect.poll(visibilityOf(page, "vt-openinframap-water-pipeline")).toBe("none");
 
     await page.getByTestId("layers-btn").click();
+    // Spelled out under the layer, not folded into a filter popover: the layer means nothing
+    // until one of these four is picked, so the choice is visible where the switch is.
     await page.getByTestId("layer-filter-btn-openinframap").click();
+    const subswitches = page.getByTestId("filter-openinframap-network");
+    await expect(subswitches).toBeVisible();
     await page.getByTestId("filter-openinframap-network-water").click();
 
     await expect
       .poll(visibilityOf(page, "vt-openinframap-water-pipeline"), { timeout: 20_000 })
       .toBe("visible");
+
+    // Turning the layer off takes the sub-switches with it.
+    await page.keyboard.press("Escape");
+    await page.getByTestId("overflow-openinframap").click();
+    await expect(subswitches).toHaveCount(0);
   });
 
   test("switching it off leaves nothing behind", async ({ page }) => {

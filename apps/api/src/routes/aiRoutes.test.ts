@@ -416,15 +416,15 @@ test("chat streams its steps and answers with sourced place cards", async (t) =>
   });
   assert.equal(response.statusCode, 200, response.body);
   assert.match(String(response.headers["content-type"]), /text\/event-stream/);
-  assert.equal(response.headers["cache-control"], "private, no-store");
+  assert.equal(response.headers["cache-control"], "private, no-store, no-transform");
 
   const events = sseEvents(response.body);
   assert.deepEqual(
     events.map((event) => event.type),
-    ["intent", "tool_start", "tool_result", "token", "card", "done"]
+    ["conversation", "intent", "tool_start", "tool_result", "token", "sources", "card", "done"]
   );
   // Without the external-model consent the deterministic path answers, and it still cites.
-  assert.equal(events[0].execution, "deterministic");
+  assert.equal(events.find((event) => event.type === "intent")!.execution, "deterministic");
   const done = events.at(-1);
   assert.match(done.answer.text, /Kemp U Řeky/);
   assert.ok(done.answer.sources.length > 0);
@@ -593,4 +593,27 @@ test("chat drops a layer the projection does not allow instead of trusting the b
   // The answer is still produced from the allowed layer; nothing about the private one leaks.
   assert.equal(done.type, "done");
   assert.ok(!JSON.stringify(done).includes("private-bars"));
+});
+
+test("chat refuses unresolved area revisions and invalid extents before streaming", async (t) => {
+  const fixture = await isolatedApp();
+  t.after(() => fixture.app.close());
+  for (const extra of [
+    { areaId: JSON.stringify(["gisco", "ES", "lau", "43148"]), boundaryRevision: "a".repeat(64) },
+    { areaId: "missing-revision" }
+  ]) {
+    const response = await fixture.app.inject({
+      method: "POST",
+      url: "/v2/ai/chat",
+      payload: { ...chatBody, context: { ...chatBody.context, ...extra } }
+    });
+    assert.equal(response.statusCode, 409, response.body);
+    assert.doesNotMatch(String(response.headers["content-type"]), /event-stream/);
+  }
+  const response = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: { ...chatBody, context: { ...chatBody.context, bbox: [14, 49, 13, 50] } }
+  });
+  assert.equal(response.statusCode, 400, response.body);
 });

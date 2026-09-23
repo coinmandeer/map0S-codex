@@ -55,8 +55,8 @@ function slotModels(slot: AiModelSlot): SlotModels {
     return { primary: config.openaiModel };
   }
   return slot === "fast"
-    ? { primary: config.ollamaModelFast, fallback: "deepseek-v4-flash:0731" }
-    : { primary: config.ollamaModelStrong, fallback: "kimi-k3" };
+    ? { primary: config.ollamaModelFast, fallback: config.ollamaModelFastFallback }
+    : { primary: config.ollamaModelStrong, fallback: config.ollamaModelStrongFallback };
 }
 
 function providerTransport(): { id: string; baseUrl: string; apiKey: string } | null {
@@ -139,7 +139,16 @@ function configuredRuntime(): AiModelRuntime {
           64
         );
         byModel.set(model, providerId);
-        adapters.push(new OpenAiCompatibleAdapter({ ...transport, id: providerId, model }));
+        const configuredEffort = process.env.OLLAMA_REASONING_EFFORT;
+        const effort = configuredEffort ?? (/^(glm-5|deepseek-v4)/.test(model) ? "low" : undefined);
+        const reasoningEffort =
+          config.cmlProvider === "ollama" &&
+          ["low", "medium", "high", "max", "none"].includes(effort ?? "")
+            ? (effort as "low" | "medium" | "high" | "max" | "none")
+            : undefined;
+        adapters.push(
+          new OpenAiCompatibleAdapter({ ...transport, id: providerId, model, reasoningEffort })
+        );
       }
       profiles[slot].push(profile(slot, providerId, model, "external"));
     }

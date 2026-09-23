@@ -1,3 +1,6 @@
+import type { GeoThread } from "@mapos/layer-sdk";
+import { WorldObjects } from "../../world/WorldObjects";
+import type { WorldSnapshot, PublicPresence } from "@mapos/layer-sdk";
 import * as THREE from "three";
 import maplibregl from "maplibre-gl";
 import type mapboxglNS from "maplibre-gl";
@@ -28,6 +31,15 @@ import { legacyAvatarSelection } from "./avatarInventory";
 import { GamePerformanceMonitor, defaultGamePerformanceTier } from "./gamePerformance";
 import { createNeutralAvatar, type NeutralAvatarInstance } from "./neutralAvatar";
 import { createPlaceholderGhostSprite, disposeSprite } from "./ghostRenderer";
+
+/** Short clock label for a zone with a schedule; null when there is nothing to count. */
+export function zoneCountdownText(zone: GameZone): string | null {
+  const seconds = zone.lifecycle === "scheduled" ? zone.startsInSeconds : zone.endsInSeconds;
+  if (seconds === null || seconds === undefined) return null;
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  const value = minutes >= 60 ? `${Math.ceil(minutes / 60)} h` : `${minutes} min`;
+  return zone.lifecycle === "scheduled" ? `▸ ${value}` : `◂ ${value}`;
+}
 
 export interface GameZone {
   id: string;
@@ -86,26 +98,6 @@ function haversineM(a: { lng: number; lat: number }, b: { lng: number; lat: numb
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
-function createFallbackPlayer(): THREE.Group {
-  const root = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: 0xb7791f });
-  const skinMat = new THREE.MeshLambertMaterial({ color: 0xf3d5b5 });
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.35, 4.1, 10), bodyMat);
-  body.rotation.x = Math.PI / 2;
-  body.position.z = 3.1;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(1.15, 12, 12), skinMat);
-  head.position.z = 6.3;
-  const legGeom = new THREE.CylinderGeometry(0.32, 0.38, 2.1, 8);
-  const legL = new THREE.Mesh(legGeom, bodyMat);
-  legL.rotation.x = Math.PI / 2;
-  legL.position.set(-0.5, 0.15, 1.05);
-  const legR = legL.clone();
-  legR.position.x = 0.5;
-  root.add(body, head, legL, legR);
-  root.scale.setScalar(0.76);
-  return root;
-}
-
 function disposeObjectResources(root: THREE.Object3D) {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
@@ -149,6 +141,8 @@ function lerpAngle(from: number, to: number, t: number): number {
  * nothing about the camera is cached between frames.
  */
 export class ThreeScene {
+  private worldObjects: WorldObjects | null = null;
+  private liveAvatarUrl: string | null = null;
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera();
@@ -172,6 +166,17 @@ export class ThreeScene {
 
   private zoneProps = new Map<string, THREE.Group>();
   private zoneData = new Map<string, GameZone>();
+  private zoneCountdowns = new Map<
+    string,
+    {
+      sprite: THREE.Sprite;
+      canvas: HTMLCanvasElement;
+      context: CanvasRenderingContext2D;
+      texture: THREE.CanvasTexture;
+      text: string;
+    }
+  >();
+  private countdownTimer: ReturnType<typeof setInterval> | null = null;
   private questProps = new Map<string, THREE.Group>();
   private encounterProps = new Map<string, THREE.Group>();
   private ghostSprites = new Map<string, THREE.Sprite>();
@@ -270,6 +275,48 @@ export class ThreeScene {
     this.setAnchor(center.lng, center.lat);
   }
 
+  syncWorld(snapshot: WorldSnapshot, presence: PublicPresence[], notes: GeoThread[] = []) {
+    if (!this.worldObjects) {
+      this.worldObjects = new WorldObjects((lng, lat) => this.localFromLngLat(lng, lat));
+      this.scene.add(this.worldObjects.root);
+      if (this.playerVisualKind === "neutral") this.mountNeutralAvatar();
+    }
+    this.worldObjects.sync(snapshot, presence, notes);
+    this.requestRepaint();
+  }
+  worldEffect(type: string, targetId: string) {
+    this.worldObjects?.effect(type, targetId, this.playerLngLat);
+    this.triggerAvatarAnimation("interact");
+  }
+  pickWorld(x: number, y: number) {
+    return this.worldObjects?.pick(x, y, this.camera) ?? null;
+  }
+  hoverWorld(x: number, y: number) {
+    return this.worldObjects?.hover(x, y, this.camera) ?? null;
+  }
+  async setLiveAvatar(url: string) {
+    if (this.liveAvatarUrl === url) return;
+    this.liveAvatarUrl = url;
+    const request = ++this.avatarRequest;
+    const loaded = await loadModelSpec(url, { url, targetHeight: 6, animated: true });
+    if (this.disposed || request !== this.avatarRequest) return;
+    if (!loaded) {
+      this.avatarLoadError = "3D model se nepodařilo načíst";
+      this.liveAvatarUrl = null;
+      return;
+    }
+    const instance = instantiateModel(loaded, {
+      url,
+      targetHeight: 6,
+      animated: true,
+      yawOffset: Math.PI
+    });
+    this.clearPlayerVisual();
+    this.avatarStyle = "aavegotchi";
+    this.mountPlayerInstance(instance, "asset-glb", false);
+    this.requestRepaint();
+  }
+
   private ensurePlayerModel() {
     if (this.disposed || (this.playerRoot && this.playerVisualKind === "legacy")) return;
     const request = ++this.avatarRequest;
@@ -280,7 +327,9 @@ export class ThreeScene {
         const instance = instantiate(loaded, "player");
         this.mountPlayerInstance(instance, "legacy", false);
       } else {
-        this.mountPlayerRoot(createFallbackPlayer(), "legacy", true);
+        // Deployments that cannot ship the unverified GLB still get a walking body, not a box.
+        this.mountNeutralAvatar();
+        this.playerVisualKind = "legacy";
       }
       this.requestRepaint();
     });
@@ -329,6 +378,9 @@ export class ThreeScene {
 
   private mountNeutralAvatar() {
     this.clearPlayerVisual();
+    // The procedural 3D character, never the flat ghost sprite: the player must read as a body
+    // walking the street even when no GLB is deployable (unverified model provenance) and while
+    // a live avatar model is still decoding.
     const neutral = createNeutralAvatar(this.performanceTier);
     this.neutralAvatar = neutral;
     this.avatarLod = null;
@@ -372,7 +424,7 @@ export class ThreeScene {
   }
 
   private ensureAvatarAssetForZoom() {
-    if (this.disposed || this.avatarResolution.kind !== "asset-glb") return;
+    if (this.disposed || this.liveAvatarUrl || this.avatarResolution.kind !== "asset-glb") return;
     const { descriptor } = this.avatarResolution;
     const lod = selectAvatarLod(descriptor, this.performanceTier, this.map.getZoom());
     if (this.avatarLod === lod.level || this.desiredAvatarLod === lod.level) return;
@@ -475,6 +527,7 @@ export class ThreeScene {
   }
 
   setAvatarSelection(selection: AvatarInventorySelection) {
+    this.liveAvatarUrl = null;
     this.avatarStyle = "aavegotchi";
     this.avatarSelection = selection;
     this.avatarResolution = this.avatarAssetProvider.resolve(selection, this.performanceTier);
@@ -651,8 +704,13 @@ export class ThreeScene {
     const colour = kind === "event" ? 0xffc857 : kind === "staker_gate" ? 0xa855f7 : 0x21d4b4;
     const opacity = zone.lifecycle === "scheduled" ? 0.3 : 0.72;
     const radius = Math.max(24, Math.min(zone.radiusM, 240));
+    // Every zone a recognisable silhouette instead of the same circle: the id picks the shape,
+    // so it is stable between visits without the API carrying geometry.
+    let hash = 0;
+    for (const ch of zone.id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    const sides = [3, 4, 5, 6, 8][hash % 5]!;
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(Math.max(1, radius - 3), radius, 64),
+      new THREE.RingGeometry(Math.max(1, radius - 3), radius, sides),
       new THREE.MeshBasicMaterial({
         color: colour,
         transparent: true,
@@ -662,6 +720,7 @@ export class ThreeScene {
       })
     );
     ring.position.z = 0.12;
+    ring.rotation.z = ((hash >> 3) % 360) * (Math.PI / 180);
 
     const geometry =
       kind === "event"
@@ -687,7 +746,77 @@ export class ThreeScene {
       if (this.opacity < 1) this.applyOpacityTo(object);
       group.add(object);
     }
+
+    const label = this.ensureZoneCountdown(zone);
+    if (label) {
+      label.userData = { lng: zone.lng, lat: zone.lat, zoneProcedural: true };
+      this.positionObject(label, zone.lng, zone.lat, 22);
+      group.add(label);
+    }
     this.requestRepaint();
+  }
+
+  /** The countdown lives on the map, not just in the HUD: a temporary zone is defined by its
+   *  clock, and a clock you have to open a panel to see might as well not exist. */
+  private ensureZoneCountdown(zone: GameZone): THREE.Sprite | null {
+    const text = zoneCountdownText(zone);
+    let entry = this.zoneCountdowns.get(zone.id);
+    if (!text) {
+      if (entry) {
+        disposeObjectResources(entry.sprite);
+        this.zoneCountdowns.delete(zone.id);
+      }
+      return null;
+    }
+    if (!entry) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 64;
+      const context = canvas.getContext("2d")!;
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
+      );
+      sprite.scale.set(56, 14, 1);
+      entry = { sprite, canvas, context, texture, text: "" };
+      this.zoneCountdowns.set(zone.id, entry);
+    }
+    if (entry.text !== text) {
+      entry.text = text;
+      const { context, canvas, texture } = entry;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "rgba(17, 24, 39, 0.82)";
+      context.beginPath();
+      context.roundRect(0, 0, canvas.width, canvas.height, 32);
+      context.fill();
+      context.fillStyle = "#ffffff";
+      context.font = "600 30px Inter, system-ui, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(text, canvas.width / 2, canvas.height / 2 + 1);
+      texture.needsUpdate = true;
+    }
+    this.scheduleCountdownRefresh();
+    return entry.sprite;
+  }
+
+  /** One shared timer for every countdown on the board; textures only change once a minute. */
+  private scheduleCountdownRefresh() {
+    if (this.countdownTimer !== null || this.disposed) return;
+    this.countdownTimer = setInterval(() => {
+      if (this.disposed) return;
+      let live = false;
+      for (const [id, zone] of this.zoneData) {
+        if (!this.zoneCountdowns.has(id)) continue;
+        if (zoneCountdownText(zone)) live = true;
+        this.ensureZoneCountdown(zone);
+      }
+      if (!live && this.countdownTimer !== null) {
+        clearInterval(this.countdownTimer);
+        this.countdownTimer = null;
+      }
+      this.requestRepaint();
+    }, 30_000);
   }
 
   private disposeZoneBeacon(group: THREE.Group) {
@@ -820,7 +949,7 @@ export class ThreeScene {
       ),
       avatarVisualKind: this.playerVisualKind,
       avatarLod: this.avatarLod,
-      isAssetBackedAvatar: this.avatarResolution.kind === "asset-glb"
+      isAssetBackedAvatar: this.playerVisualKind === "asset-glb"
     };
   }
 
@@ -839,7 +968,7 @@ export class ThreeScene {
       avatarAsset: {
         selectionId: this.avatarSelection.inventoryItemId,
         selectionSource: this.avatarSelection.source,
-        resolution: this.avatarResolution.kind,
+        resolution: this.liveAvatarUrl ? "asset-glb" : this.avatarResolution.kind,
         fallbackReason:
           this.avatarResolution.kind === "neutral-placeholder"
             ? this.avatarResolution.reason
@@ -852,7 +981,7 @@ export class ThreeScene {
           this.avatarResolution.kind === "asset-glb"
             ? this.avatarResolution.descriptor.licence.evidencePath
             : null,
-        hasAssetPayload: this.avatarResolution.kind === "asset-glb"
+        hasAssetPayload: this.playerVisualKind === "asset-glb"
       },
       player,
       counts: this.contents,
@@ -937,7 +1066,7 @@ export class ThreeScene {
     const zoomBand = Math.floor(this.map.getZoom() * 2);
     if (zoomBand !== this.lastAvatarZoomBand) {
       this.lastAvatarZoomBand = zoomBand;
-      this.ensureAvatarAssetForZoom();
+      if (!this.liveAvatarUrl) this.ensureAvatarAssetForZoom();
     }
 
     const scale = this.anchor.merc.meterInMercatorCoordinateUnits();
@@ -970,7 +1099,14 @@ export class ThreeScene {
         this.playerDisplayPosition.y,
         0.08
       );
-      if (this.playerRoot) this.playerRoot.position.copy(this.playerDisplayPosition);
+      if (this.playerRoot) {
+        this.playerRoot.position.copy(this.playerDisplayPosition);
+        if (this.liveAvatarUrl) {
+          this.playerRoot.position.z += 1.5 + Math.sin(now / 650) * 0.65;
+          this.playerRoot.rotation.x =
+            now < this.avatarInteractionUntil ? -0.1 : positionMoving ? 0.07 : 0;
+        }
+      }
 
       const headingDelta = Math.atan2(
         Math.sin(this.playerTargetHeading - this.playerHeading),
@@ -1001,10 +1137,16 @@ export class ThreeScene {
     const renderStartedAt = performance.now();
     this.renderer.resetState();
     this.renderer.clearDepth();
+    this.worldObjects?.update(
+      performance.now(),
+      this.map.getCanvas().ownerDocument.defaultView?.matchMedia("(prefers-reduced-motion: reduce)")
+        .matches ?? false
+    );
     this.renderer.render(this.scene, this.camera);
 
     const info = this.renderer.info;
     const visibleEntities =
+      (this.worldObjects?.count ?? 0) +
       this.orbData.size +
       this.zoneProps.size +
       this.questProps.size +
@@ -1020,17 +1162,25 @@ export class ThreeScene {
       visibleEntities
     });
 
-    if (positionMoving || headingMoving || interacting) this.requestAnimationRepaint();
+    if (positionMoving || headingMoving || interacting || this.worldObjects)
+      this.requestAnimationRepaint();
   }
 
   destroy() {
     if (this.disposed) return;
     this.disposed = true;
+    this.worldObjects?.destroy();
     this.avatarRequest += 1;
     if (this.repaintTimer) {
       clearTimeout(this.repaintTimer);
       this.repaintTimer = null;
     }
+    if (this.countdownTimer !== null) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
+    for (const entry of this.zoneCountdowns.values()) disposeObjectResources(entry.sprite);
+    this.zoneCountdowns.clear();
     this.playerMixer?.stopAllAction();
 
     // Cached GLB instances share their materials. Restore their base opacity before releasing the

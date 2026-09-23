@@ -6,7 +6,8 @@ import { ghostById, ghostsForBbox as spawnGhostsForBbox } from "../game/spawn.js
 import {
   parseAnchoredQuestId,
   verifyAnchoredQuest,
-  COMPLETION_RADIUS_M
+  COMPLETION_RADIUS_M,
+  type AnchoredQuest
 } from "../game/anchors.js";
 import { cachedAnchoredQuestsForBbox } from "../game/questAnchorCache.js";
 import { registerDbQuestSources } from "../game/anchorSources.js";
@@ -127,6 +128,43 @@ async function resolveReward(questId: string, at?: { lng: number; lat: number })
 /** Ghosts exist by derivation, not by row (see game/spawn.ts) — the table only records the
  * ones somebody has already caught, so this filters the derived set against that record.
  * Consequence worth knowing: an empty database is a fully playable world. */
+/** Quests anchored to what is actually near a place (§2.11, §10 "Questy na místo/oblast").
+ *
+ *  A place detail asks "is there something to do right here", which is a smaller question than
+ *  the viewport sweep. The search reuses the same anchor cache, so opening a detail does not
+ *  become its own third-party request, and every quest reports how far it is so the panel can
+ *  say whether the reader can actually walk to it. */
+export async function questsNear(
+  lng: number,
+  lat: number,
+  radiusKm = 3
+): Promise<Array<AnchoredQuest & { distanceM: number }>> {
+  const clamped = Math.min(Math.max(radiusKm, 0.25), 10);
+  const dy = clamped / 111.32;
+  const dx = dy / Math.max(0.01, Math.cos((lat * Math.PI) / 180));
+  const bbox: Bbox = [
+    Math.max(-180, lng - dx),
+    Math.max(-90, lat - dy),
+    Math.min(180, lng + dx),
+    Math.min(90, lat + dy)
+  ];
+  const quests = await cachedAnchoredQuestsForBbox(bbox, 40);
+  const rad = Math.PI / 180;
+  return quests
+    .map((quest) => {
+      const a =
+        Math.sin(((quest.lat - lat) * rad) / 2) ** 2 +
+        Math.cos(lat * rad) *
+          Math.cos(quest.lat * rad) *
+          Math.sin(((quest.lng - lng) * rad) / 2) ** 2;
+      const distanceM = Math.round(6371000 * 2 * Math.asin(Math.sqrt(Math.min(1, a))));
+      return { ...quest, distanceM };
+    })
+    .filter((quest) => quest.distanceM <= clamped * 1000)
+    .sort((left, right) => left.distanceM - right.distanceM)
+    .slice(0, 12);
+}
+
 export async function getGhostsForBbox(bbox: Bbox) {
   const spawned = spawnGhostsForBbox(bbox);
   if (!spawned.length) return [];

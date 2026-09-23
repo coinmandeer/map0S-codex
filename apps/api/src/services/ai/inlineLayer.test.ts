@@ -59,3 +59,16 @@ test("an unattributable or empty selection is refused rather than shipped as a l
     })
   );
 });
+
+test("draft keeps original resolver references and limits map results to100", () => {
+  const manifest = buildInlineLayerManifest({
+    name: "Results",
+    places: Array.from({ length: 120 }, (_, i) => place(String(i))),
+    sources: [{ sourceId: "osm", label: "OSM" }],
+    generatedAt: "2026-09-08T00:00:00Z",
+    seed: "test"
+  });
+  assert.equal(manifest.source.inline!.features.length, 100);
+  assert.equal(manifest.source.inline!.features[0]!.sourceLayerId, "osm-poi");
+  assert.equal(manifest.source.inline!.features[0]!.sourceFeatureId, "0");
+});

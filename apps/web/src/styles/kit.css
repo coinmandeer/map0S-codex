@@ -418,6 +418,33 @@
     white-space: nowrap;
   }
 
+  /* Icon over label: four choices that cannot share a line as rows fit comfortably as
+     columns, and the label stays legible instead of being clipped to "Bez dál…". */
+  .kit-segmented[data-stacked] {
+    min-height: calc(var(--control-h) + var(--space-6));
+  }
+
+  .kit-segmented[data-stacked] .kit-segment {
+    flex-direction: column;
+    gap: var(--space-1);
+    padding-block: var(--space-2);
+    padding-inline: var(--space-2);
+    line-height: 1.2;
+  }
+
+  .kit-segmented[data-stacked] .kit-segment-label {
+    display: -webkit-box;
+    overflow: hidden;
+    /* Two lines is enough for the longest profile name; a third would push the track past
+       the row below it. */
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow-wrap: anywhere;
+    text-align: center;
+    white-space: normal;
+    font: var(--type-label-sm);
+  }
+
   .kit-segmented[data-icons-only] .kit-segment-label {
     /* Kept in the DOM so the accessible name survives; only the pixels go away. */
     position: absolute;
@@ -937,7 +964,8 @@
   .kit-section {
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
+    /* §2.4: 8 px between the rows of one section. */
+    gap: var(--space-4);
     min-width: 0;
   }
 
@@ -1066,7 +1094,6 @@
     text-align: start;
     color: var(--text-muted);
   }
-
   .kit-accordion-title {
     flex: 1;
     font: var(--type-title-sm);
@@ -1663,4 +1690,18 @@
     font: var(--type-title-sm);
     cursor: pointer;
   }
+}
+
+/* Four compact place views; keep the familiar panel width and touch-sized tabs. */
+.detail-tabbed > .kit-tabs > .kit-tab-list {
+  gap: 0;
+}
+.detail-tabbed > .kit-tabs > .kit-tab-list > .kit-tab {
+  min-height: 44px;
+  flex: 1;
+  justify-content: center;
+  padding-inline: 8px;
+}
+.detail-tabbed .kit-tab-panel[hidden] {
+  display: none;
 }

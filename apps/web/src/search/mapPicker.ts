@@ -165,9 +165,7 @@ function cloneSession(session: MapPickerSession): MapPickerSession {
     caller: { ...session.caller },
     originalView: cloneView(session.originalView),
     ...(session.candidate ? { candidate: cloneLocation(session.candidate) } : {}),
-    ...(session.suggestions
-      ? { suggestions: session.suggestions.map(cloneLocation) }
-      : {})
+    ...(session.suggestions ? { suggestions: session.suggestions.map(cloneLocation) } : {})
   };
 }
 

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef } from "react";
+import { geolocation } from "../lib/geolocation";
+import { useEffect, useRef } from "react";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { useSimulationController } from "../layers/game/useSimulationController";
-import { on } from "../lib/events";
-import { getMapStore } from "../store/mapStore";
+import { on, emit } from "../lib/events";
 
 /** Bridges keyboard/GPS simulation to the game layer when in game mode. */
 export function GameSimulationBridge() {
@@ -10,16 +10,9 @@ export function GameSimulationBridge() {
   const view = useMapStoreSnapshot((s) => s.view);
   const cameraMode = useMapStoreSnapshot((s) => s.gameCameraMode);
   const trackingMode = useMapStoreSnapshot((s) => s.gameTrackingMode);
-  const fallbackToSimulation = useCallback(() => {
-    const store = getMapStore();
-    store.setGameTrackingMode("simulation");
-    store.showToast("GPS není dostupná; pokračuji v označené simulaci.");
-  }, []);
-
   const simulation = useSimulationController(
     { latitude: view.lat, longitude: view.lng },
-    mode === "game",
-    fallbackToSimulation
+    mode === "game" && trackingMode === "simulation"
   );
   const { seedPosition, setMovementBearing, setRelativeMovement, setTrackingMode } = simulation;
   const seededRef = useRef(false);
@@ -43,11 +36,30 @@ export function GameSimulationBridge() {
     }
     if (seededRef.current) return;
     seededRef.current = true;
-    // Simulation starts immediately where the map already is. The old six-second best-effort GPS
-    // lookup could resolve after the player had started walking and teleport them back here. GPS is
-    // now requested only when the player explicitly selects it in the HUD.
+    // Start immediately; the bounded GPS lookup below may relocate only before movement.
     seedPosition({ latitude: view.lat, longitude: view.lng });
   }, [mode, seedPosition, view.lat, view.lng]);
 
+  useEffect(() => {
+    if (mode !== "game" || trackingMode !== "gps") return;
+    let cancelled = false;
+    const stop = on("game-controller-status", (status) => {
+      if (status.moving) cancelled = true;
+    });
+    void geolocation
+      .getPosition({ timeoutMs: 5000, maxAgeMs: 30000 })
+      .then((fix) => {
+        if (cancelled) return;
+        seedPosition({ latitude: fix.lat, longitude: fix.lng });
+        emit("fly-to", { lng: fix.lng, lat: fix.lat, zoom: 18.3 });
+      })
+      .catch(() => {
+        /* Keep the immediately usable map position when GPS is denied. */
+      });
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, [mode, trackingMode, seedPosition]);
   return null;
 }

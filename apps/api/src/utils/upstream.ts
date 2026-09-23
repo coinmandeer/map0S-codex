@@ -1,7 +1,9 @@
+import { consumeShared, type SharedRequest } from "./sharedRequest.js";
 import { lookup } from "node:dns/promises";
 import { request as httpsRequest } from "node:https";
 import { isIP, type LookupFunction } from "node:net";
 import { Readable } from "node:stream";
+import { gunzipSync } from "node:zlib";
 import { config } from "../config.js";
 import { currentRequestCorrelationId } from "../observability/correlation.js";
 import { operationalTelemetry } from "../observability/operationalTelemetry.js";
@@ -27,33 +29,56 @@ export class UpstreamError extends Error {
 interface CacheEntry {
   value: unknown;
   expiresAt: number;
+  bytes: number;
 }
 
 const cache = new Map<string, CacheEntry>();
 const MAX_ENTRIES = 500;
-const inFlight = new Map<string, Promise<unknown>>();
+// Encoded payload + key budget, not a measurement of decoded JS heap usage.
+const MAX_CACHE_BYTES = 32 * 1024 * 1024;
+let cacheBytes = 0;
+const inFlight = new Map<string, SharedRequest<unknown>>();
 export const providerCircuitBreaker = new ProviderCircuitBreaker();
+
+function deleteCache(key: string) {
+  const entry = cache.get(key);
+  if (entry) cacheBytes -= entry.bytes;
+  cache.delete(key);
+}
 
 function readCache<T>(key: string): T | undefined {
   const hit = cache.get(key);
   if (!hit) return undefined;
   if (hit.expiresAt < Date.now()) {
-    cache.delete(key);
+    deleteCache(key);
     return undefined;
   }
+  cache.delete(key);
+  cache.set(key, hit);
   return hit.value as T;
 }
 
-function writeCache(key: string, value: unknown, ttlMs: number) {
+function writeCache(key: string, value: unknown, ttlMs: number, payloadBytes: number) {
   if (ttlMs <= 0) return;
-  if (cache.size >= MAX_ENTRIES) {
-    const oldest = cache.keys().next().value;
-    if (oldest) cache.delete(oldest);
+  const bytes = payloadBytes + Buffer.byteLength(key);
+  deleteCache(key);
+  if (bytes > MAX_CACHE_BYTES) return;
+  const now = Date.now();
+  for (const [entryKey, entry] of cache) {
+    if (entry.expiresAt <= now) deleteCache(entryKey);
   }
-  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  while (cache.size >= MAX_ENTRIES || cacheBytes + bytes > MAX_CACHE_BYTES) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    deleteCache(oldest);
+  }
+  cache.set(key, { value, expiresAt: now + ttlMs, bytes });
+  cacheBytes += bytes;
 }
 
 interface CommonFetchOptions {
+  /** Admission runs after sharing/cache lookup and before EACH transport attempt. Caching is opt-in per product. */
+  budget?: { scope: string; cacheable?: boolean; reserve(signal: AbortSignal): Promise<unknown> };
   /** Stable adapter slug. Display names, URLs and user-controlled values are forbidden. */
   providerId: string;
   ttlMs?: number;
@@ -69,6 +94,8 @@ interface CommonFetchOptions {
 }
 
 export interface FetchJsonOptions extends CommonFetchOptions {
+  /** Explicit provider-specific MIME exception; JSON parsing and byte limits still apply. */
+  acceptedContentTypes?: readonly string[];
   method?: "GET" | "POST";
   body?: string;
 }
@@ -292,6 +319,14 @@ function acceptsContentType(contentType: string | null, accepted: readonly strin
   });
 }
 
+function canonicalHeaders(headers?: Record<string, string>): string {
+  if (!headers) return "";
+  return Object.entries(headers)
+    .map(([name, value]) => `${name.toLowerCase()}=${value}`)
+    .sort()
+    .join(";");
+}
+
 async function fetchDecoded<T>(
   responseKind: string,
   url: string,
@@ -307,17 +342,37 @@ async function fetchDecoded<T>(
     throw new TypeError("Upstream request body exceeds 1 MiB");
   }
   const safeUrl = validateUpstreamUrl(url);
-  const ttlMs = Math.min(24 * 3600_000, Math.max(0, options.ttlMs ?? 5 * 60_000));
+  const ttlMs = Math.min(
+    24 * 3600_000,
+    Math.max(0, options.budget && !options.budget.cacheable ? 0 : (options.ttlMs ?? 5 * 60_000))
+  );
   const timeoutMs = Math.min(30_000, Math.max(250, options.timeoutMs ?? 12_000));
   const retries = Math.min(3, Math.max(0, Math.floor(options.retries ?? 0)));
   const minIntervalMs = Math.min(60_000, Math.max(0, options.minIntervalMs ?? 0));
   const maxResponseBytes = normalizedMaxBytes(options.maxResponseBytes);
-  const key = `${responseKind}|${providerId}|${method}|${safeUrl.href}|${body ?? ""}`;
+  // Request headers are part of the key because they change the response: a `Range` asks for a
+  // different slice of the same URL, and two callers asking for two slices must not share one
+  // cache entry.
+  // A warm capabilities response must not bypass a caller's shorter freshness policy,
+  // tighter response budget, or accepted media types. The same applies to in-flight joins.
+  const key = JSON.stringify([
+    responseKind,
+    providerId,
+    method,
+    safeUrl.href,
+    body ?? "",
+    canonicalHeaders(options.headers),
+    options.budget?.scope ?? "",
+    ttlMs,
+    maxResponseBytes,
+    [...acceptedContentTypes].sort()
+  ]);
 
   const cached = readCache<T>(key);
   if (cached !== undefined) return cached;
   const existing = inFlight.get(key);
-  if (existing) return existing as Promise<T>;
+  if (existing && !existing.controller.signal.aborted)
+    return consumeShared(existing as SharedRequest<T>, options.signal);
 
   if (!providerCircuitBreaker.tryAcquire(providerId)) {
     operationalTelemetry.recordProvider({
@@ -329,12 +384,26 @@ async function fetchDecoded<T>(
     throw new UpstreamError(providerId, "zdroj je dočasně pozastaven po opakovaných chybách");
   }
 
+  const callerSignal = options.signal;
+  const controller = new AbortController();
+  options = { ...options, signal: controller.signal };
+  let admissionDenied = false;
   const request = (async () => {
     const startedAt = performance.now();
     let outcome: "error" | "timeout" | "aborted" = "error";
     try {
       for (let attempt = 0; attempt <= retries; attempt += 1) {
         await waitForProvider(providerId, minIntervalMs);
+        options.signal?.throwIfAborted();
+        if (options.budget) {
+          try {
+            await options.budget.reserve(controller.signal);
+          } catch (error) {
+            admissionDenied = true;
+            throw error;
+          }
+          options.signal?.throwIfAborted();
+        }
         let response: Response;
         try {
           const timeoutSignal = AbortSignal.timeout(timeoutMs);
@@ -397,8 +466,18 @@ async function fetchDecoded<T>(
           }
           throw error;
         }
+        // Some providers (Digitraffic) require the client to accept gzip. The body cap applies
+        // to the compressed bytes above; the inflate cap keeps a zip bomb bounded too.
+        const encoding = response.headers.get("content-encoding")?.trim().toLowerCase();
+        if (encoding === "gzip" || encoding === "x-gzip") {
+          try {
+            bytes = gunzipSync(bytes, { maxOutputLength: maxResponseBytes });
+          } catch {
+            throw new UpstreamError(providerId, "zdroj vrátil nečitelná komprimovaná data");
+          }
+        }
         const value = decode(bytes, contentType!);
-        writeCache(key, value, ttlMs);
+        writeCache(key, value, ttlMs, bytes.byteLength);
         providerCircuitBreaker.success(providerId);
         operationalTelemetry.recordProvider({
           provider: providerId,
@@ -418,7 +497,7 @@ async function fetchDecoded<T>(
       ) {
         outcome = "timeout";
       }
-      if (outcome === "aborted") providerCircuitBreaker.aborted(providerId);
+      if (outcome === "aborted" || admissionDenied) providerCircuitBreaker.aborted(providerId);
       else providerCircuitBreaker.failure(providerId);
       operationalTelemetry.recordProvider({
         provider: providerId,
@@ -430,22 +509,30 @@ async function fetchDecoded<T>(
     }
   })();
 
-  inFlight.set(key, request);
-  try {
-    return await request;
-  } finally {
-    inFlight.delete(key);
-  }
+  const entry: SharedRequest<T> = { promise: request, controller, consumers: 0, settled: false };
+  inFlight.set(key, entry);
+  const cleanup = () => {
+    entry.settled = true;
+    if (inFlight.get(key) === entry) inFlight.delete(key);
+  };
+  void request.then(cleanup, cleanup);
+  return consumeShared(entry, callerSignal);
 }
 
 export async function fetchJson<T>(url: string, options: FetchJsonOptions): Promise<T> {
-  return fetchDecoded("json", url, options, ["application/json"], (bytes) => {
-    try {
-      return JSON.parse(new TextDecoder().decode(bytes)) as T;
-    } catch {
-      throw new UpstreamError(options.providerId, "zdroj vrátil neplatný JSON");
+  return fetchDecoded(
+    "json",
+    url,
+    options,
+    options.acceptedContentTypes ?? ["application/json", "text/json"],
+    (bytes) => {
+      try {
+        return JSON.parse(new TextDecoder().decode(bytes)) as T;
+      } catch {
+        throw new UpstreamError(options.providerId, "zdroj vrátil neplatný JSON");
+      }
     }
-  });
+  );
 }
 
 export async function fetchText(url: string, options: FetchTextOptions): Promise<string> {
@@ -456,6 +543,37 @@ export async function fetchText(url: string, options: FetchTextOptions): Promise
     options.acceptedContentTypes ?? ["text/plain", "text/csv"],
     (bytes) => new TextDecoder().decode(bytes)
   );
+}
+
+/**
+ * A byte range of a remote file.
+ *
+ * PMTiles is why this exists: an archive is a single file, potentially enormous, whose header
+ * and directories are read by offset. Nothing else here can express that — `fetchBytes` reads
+ * from the start up to a size cap, which for a 40 GB archive means failing on the size cap.
+ *
+ * A server that ignores `Range` answers 200 with the whole file, and the size cap then stops it
+ * from being read into memory. That is the right outcome: a host that cannot serve ranges cannot
+ * serve PMTiles, and the caller finds out in one bounded request.
+ */
+export async function fetchRange(
+  url: string,
+  options: FetchBytesOptions & { offset: number; length: number }
+): Promise<Uint8Array> {
+  const offset = Math.max(0, Math.floor(options.offset));
+  const length = Math.max(1, Math.floor(options.length));
+  const { body } = await fetchBytes(url, {
+    ...options,
+    maxResponseBytes: Math.max(length, options.maxResponseBytes ?? 0),
+    headers: { ...options.headers, Range: `bytes=${offset}-${offset + length - 1}` },
+    acceptedContentTypes: options.acceptedContentTypes ?? [
+      "application/octet-stream",
+      "binary/octet-stream",
+      "application/vnd.pmtiles",
+      "application/x-protobuf"
+    ]
+  });
+  return new Uint8Array(body);
 }
 
 export async function fetchBytes(
@@ -562,6 +680,7 @@ export async function fetchMetadata(
 /** Test seam — module-level caches otherwise leak between specs. */
 export function __resetUpstreamCache() {
   cache.clear();
+  cacheBytes = 0;
   inFlight.clear();
   nextRequestAt.clear();
   providerCircuitBreaker.clear();

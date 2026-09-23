@@ -249,6 +249,7 @@ test("with no guide the encyclopedia answers, and with nothing at all an action 
     { allowModel: false }
   );
   assert.equal(extract.kind, "extract");
+  assert.deepEqual(extract.leadSourceIds, ["wikipedia:cs:Plzeň"]);
   assert.match(extract.lead, /statutární město/u);
   assert.equal(extract.highlights[0]?.title, "Katedrála svatého Bartoloměje");
 
@@ -305,4 +306,18 @@ test("the cache key changes with the month, the language and the model path", ()
     guideCacheKey({ ...AREA, lang: "en" }, true, september),
     guideCacheKey(AREA, true, september)
   );
+});
+
+test("ordinary Discover never performs web research even with a configured cloud account", async () => {
+  let searches = 0;
+  const guide = createGuideAggregator({
+    collectors: collectorsWith({
+      web: async () => {
+        searches++;
+        return { value: [] };
+      }
+    })
+  });
+  await guide.get(AREA, { allowModel: false });
+  assert.equal(searches, 0);
 });
