@@ -8,6 +8,25 @@ services:
       POSTGRES_DB: mapos
       POSTGRES_USER: mapos
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    # The image defaults (128 MB shared buffers, 4 MB work_mem, JIT on) made the catalogue and
+    # boundary queries spend more time planning, compiling and spilling than reading: JIT alone
+    # cost 1.8 s of a 4.2 s coverage query. Sizes are for a small shared VPS and can be raised
+    # per host; changing them restarts PostgreSQL once.
+    command:
+      - postgres
+      - -c
+      - jit=off
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-512MB}
+      - -c
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-2GB}
+      - -c
+      - work_mem=${POSTGRES_WORK_MEM:-32MB}
+      - -c
+      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-256MB}
+      - -c
+      - random_page_cost=1.1
+    shm_size: 256mb
     volumes:
       - mapos-v3-postgres:/var/lib/postgresql/data
     healthcheck:

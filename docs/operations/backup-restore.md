@@ -35,6 +35,17 @@ it never drops or rewrites `mapos`.
    critical startup logs.
 5. On failure restore the previous symlink and immutable image IDs. Additive schema remains
    compatible; repair forward rather than dropping new columns/tables during the same release.
+   A release that changes the PostgreSQL settings in `infra/compose.production.yml` recreates the
+   database container once, inside this rollback boundary; a failed rollout recreates it with the
+   previous settings.
+6. After a healthy rollout the deploy analyses tables that were never analysed or have changed
+   by more than a tenth, keeps the three newest releases and backups (never the live or the
+   previous release) and six rollback image tags per service, and prunes dangling images and
+   week-old build cache. None of this can fail the release.
+
+A restored database has no planner statistics: `pg_restore` does not carry them, and until the
+next analyse the planner can misjudge joins by three orders of magnitude. After any manual
+restore into a database that serves traffic, run `ANALYZE;` (or the next deploy does it).
 
 Backups contain user data and production environment metadata. Directories are mode 0700/files
 0600 and must follow the hosting retention/encryption policy. Provider secrets are restored from

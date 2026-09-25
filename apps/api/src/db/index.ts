@@ -35,7 +35,11 @@ import {
 
 const connectionString = process.env.DATABASE_URL ?? "postgres://mapos:mapos@localhost:5434/mapos";
 
-export const sql = postgres(connectionString);
+/** JIT and a 4 MB sort budget cost the heavy catalogue joins more than they saved; set per
+ *  connection as well, so a database whose server settings were never tuned still benefits. */
+export const sql = postgres(connectionString, {
+  connection: { jit: "off", work_mem: process.env.MAPOS_PG_WORK_MEM ?? "32MB" }
+});
 export const db = drizzle(sql, { schema });
 
 const BASELINE_STATEMENTS = [

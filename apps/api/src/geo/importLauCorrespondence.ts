@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { sql } from "../db/index.js";
+import { analyzeTables } from "../db/analyze.js";
 const officialUrl =
   "https://ec.europa.eu/eurostat/documents/345175/501971/EU-27-LAU-2024-NUTS-2024.xlsx/12971f56-c035-dbab-4d9f-ff1dcc617bb3";
 export function validateLauCorrespondence(data: unknown): {
@@ -79,7 +80,10 @@ export async function importLauCorrespondence(path: string) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   importLauCorrespondence(process.argv[2] ?? "")
-    .then((result) => console.log(JSON.stringify(result)))
+    .then(async (result) => {
+      console.log(JSON.stringify(result));
+      await analyzeTables(["geo_unit_correspondences"]);
+    })
     .catch((e) => {
       console.error(e.message);
       process.exitCode = 1;

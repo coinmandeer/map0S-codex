@@ -94,6 +94,11 @@ try {
       throw error;
     }
   }
+  if (process.env.MAPOS_BOUNDARY_PUBLISH === "1") {
+    // Published rows replace whole editions; refresh planner statistics before traffic hits them.
+    const { analyzeTables } = await import(`${root}/db/analyze.js`);
+    await analyzeTables(["geo_units", "geo_unit_versions", "geo_unit_releases"]);
+  }
 } finally {
   await stage.end();
   await sql.end();
