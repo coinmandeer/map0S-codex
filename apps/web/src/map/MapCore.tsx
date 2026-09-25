@@ -42,6 +42,10 @@ const GAME_FOLLOW_ZOOM = 18.3;
 const GAME_TOP_ZOOM = 17.2;
 const GAME_FOLLOW_UPDATE_MS = 100;
 
+/** Tile failures from a loaded basemap tolerated within the window before it counts as down. */
+const BASEMAP_ERROR_BUDGET = 8;
+const BASEMAP_ERROR_WINDOW_MS = 15_000;
+
 export function MapCore() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -200,6 +204,13 @@ export function MapCore() {
       else map.jumpTo(camera);
     };
 
+    let basemapTileErrors: number[] = [];
+    // True once the current style's JSON has loaded. `isStyleLoaded()` is false while any tile is
+    // still loading, so it cannot tell "the style never arrived" from "a tile is in flight".
+    let styleArrived = false;
+    map.on("style.load", () => {
+      styleArrived = true;
+    });
     map.on("error", (event) => {
       console.warn("MapLibre error", safeBrowserErrorFields(event.error ?? event));
       const sourceId = (event as maplibregl.ErrorEvent & { sourceId?: unknown }).sourceId;
@@ -220,12 +231,25 @@ export function MapCore() {
         }
       }
       if (!isBasemapError) return;
+      // A style that loaded and then lost a tile at the edge of its coverage is still the style
+      // the user chose. Only a style that never loaded, or one whose tiles keep failing, is an
+      // outage worth replacing the whole map for.
+      if (styleArrived) {
+        const now = Date.now();
+        basemapTileErrors = basemapTileErrors.filter((at) => now - at < BASEMAP_ERROR_WINDOW_MS);
+        basemapTileErrors.push(now);
+        if (basemapTileErrors.length < BASEMAP_ERROR_BUDGET) return;
+      }
+      basemapTileErrors = [];
+      styleArrived = false;
       const fallbackStyle =
         store.theme === "dark" ? MAP_STYLE_RASTER_FALLBACK_DARK : MAP_STYLE_RASTER_FALLBACK;
       // Once the emergency style owns the map, any error from its own provider must not recurse.
       // Checking the actual drawn style is more robust than a sticky boolean: a later explicit
-      // basemap selection naturally becomes eligible for one fresh recovery attempt.
-      if (map.getStyle().name === fallbackStyle.name) return;
+      // basemap selection naturally becomes eligible for one fresh recovery attempt. Before the
+      // first style has loaded there is no style at all, which is exactly when the fallback is
+      // needed most.
+      if (map.getStyle()?.name === fallbackStyle.name) return;
       beginBasemapHealth(store.theme === "dark" ? "carto-dark" : "osm-carto");
       store.showToast(
         "Mapový podklad se nepodařilo načíst. Zobrazuji nouzovou mapu; tvoje vrstvy zůstaly zapnuté.",
@@ -476,6 +500,8 @@ export function MapCore() {
           })
         )
       );
+      styleArrived = false;
+      basemapTileErrors = [];
       map.setStyle(
         styleForBasemap(basemap, {
           theme: store.theme,
@@ -977,7 +1003,10 @@ export function MapCore() {
       if (!map.getSource("route-preview")) {
         map.addSource("route-preview", {
           type: "geojson",
-          data: { type: "FeatureCollection", features: [] }
+          data: { type: "FeatureCollection", features: [] },
+          // Segment ids are strings ("segment:a:b"); MapLibre only keeps numeric feature ids, so
+          // feature-state (the selected segment) has to key on a property instead.
+          promoteId: "segmentId"
         });
         map.addLayer({
           id: "route-preview-casing",
@@ -1156,19 +1185,37 @@ export function MapCore() {
       // Device GPS only feeds the blue "you are here" dot. The game's player position is a
       // separate signal (`geolocation`) owned by useSimulationController — broadcasting raw
       // fixes from here as well would fight WASD movement in simulation mode.
-      if (geoWatchRef.current === null) {
-        geoWatchRef.current = geolocation.watch((fix) => {
-          const src = map.getSource("my-location") as maplibregl.GeoJSONSource | undefined;
-          src?.setData({
-            type: "FeatureCollection",
-            features: [
-              {
-                type: "Feature",
-                geometry: { type: "Point", coordinates: [fix.lng, fix.lat] },
-                properties: { accuracyRadius: Math.min(fix.accuracy, 200) }
-              }
-            ]
-          });
+      //
+      // The watch starts only once location is already granted or the user has asked for it
+      // (the first fix from "My location"). Starting it on map load put the browser's permission
+      // prompt in front of every first visit, with nothing on screen explaining why.
+      const drawDot = (fix: { lng: number; lat: number; accuracy: number }) => {
+        const src = map.getSource("my-location") as maplibregl.GeoJSONSource | undefined;
+        src?.setData({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [fix.lng, fix.lat] },
+              properties: { accuracyRadius: Math.min(fix.accuracy, 200) }
+            }
+          ]
+        });
+      };
+      const startDot = () => {
+        if (geoWatchRef.current === null) geoWatchRef.current = geolocation.watch(drawDot);
+      };
+      const known = geolocation.lastFix();
+      if (known) {
+        drawDot(known);
+        startDot();
+      } else if (geoWatchRef.current === null) {
+        const offFix = geolocation.onFix(() => {
+          offFix();
+          startDot();
+        });
+        void geolocation.permission().then((state) => {
+          if (state === "granted") startDot();
         });
       }
     };
@@ -1275,6 +1322,7 @@ export function MapCore() {
   useEffect(() => {
     let animation = 0;
     let shownId: string | null = null;
+    let shownSource: maplibregl.GeoJSONSource | undefined;
     const reducedMotion =
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1285,9 +1333,17 @@ export function MapCore() {
       animation = 0;
     };
 
+    // Three rings and rest: a pulse that never stops repaints the whole map every frame for as
+    // long as a pin is selected, which is most of a session on a phone battery.
     const pulse = (map: maplibregl.Map, startedAt: number) => {
       if (!map.getLayer("selected-pin-pulse")) return;
-      const phase = ((performance.now() - startedAt) % 1600) / 1600;
+      const elapsed = performance.now() - startedAt;
+      if (elapsed > 1600 * 3) {
+        map.setPaintProperty("selected-pin-pulse", "circle-stroke-opacity", 0);
+        animation = 0;
+        return;
+      }
+      const phase = (elapsed % 1600) / 1600;
       map.setPaintProperty("selected-pin-pulse", "circle-radius", 12 + phase * 14);
       map.setPaintProperty("selected-pin-pulse", "circle-stroke-opacity", 0.9 * (1 - phase));
       animation = requestAnimationFrame(() => pulse(map, startedAt));
@@ -1312,12 +1368,18 @@ export function MapCore() {
       if (!pin) {
         stopPulse();
         shownId = null;
+        shownSource = source;
         source.setData({ type: "FeatureCollection", features: [] });
         return;
       }
       const id = `${pin.layerId}:${String(pin.feature.properties.id ?? "")}`;
-      if (id === shownId) return;
+      // A basemap switch recreates the source empty; the same pin has to be drawn again, just
+      // without panning the map to it a second time.
+      const restyled = source !== shownSource;
+      if (id === shownId && !restyled) return;
+      const moved = id !== shownId;
       shownId = id;
+      shownSource = source;
       const coordinates = pin.feature.geometry.coordinates as [number, number];
       map.setPaintProperty(
         "selected-pin-pulse",
@@ -1328,21 +1390,24 @@ export function MapCore() {
         type: "FeatureCollection",
         features: [{ type: "Feature", geometry: { type: "Point", coordinates }, properties: {} }]
       });
-      revealBehindPanel(map, coordinates);
+      if (moved) revealBehindPanel(map, coordinates);
       stopPulse();
-      if (!reducedMotion) pulse(map, performance.now());
+      if (!reducedMotion && moved) pulse(map, performance.now());
     };
 
     update();
     const unsubscribe = store.subscribe(update);
+    const map = mapRef.current;
+    map?.on("style.load", update);
     return () => {
       stopPulse();
       unsubscribe();
+      map?.off("style.load", update);
     };
   }, [store]);
 
   useEffect(() => {
-    let lastFittedRoute: typeof store.routePreview = null;
+    let lastFittedRoute: string | null = null;
     let lastHighlighted: string | null = null;
     let lastRouteSource: maplibregl.GeoJSONSource | undefined;
     let lastWrittenRoute: typeof store.routePreview | undefined;
@@ -1366,7 +1431,6 @@ export function MapCore() {
         needsWrite && route.segments?.length
           ? route.segments.map((segment) => ({
               type: "Feature" as const,
-              id: segment.id,
               geometry: { type: "LineString" as const, coordinates: segment.coordinates },
               properties: {
                 kind: "route",
@@ -1432,8 +1496,13 @@ export function MapCore() {
       } else if (!highlighted) {
         lastHighlighted = null;
       }
-      if (lastFittedRoute === route) return;
-      lastFittedRoute = route;
+      // Refit when the route's geometry changes, not whenever a panel rebuilds the same route as
+      // a new object: picking an alternative or renaming a stop must not yank the camera away.
+      const fitKey = routeGeometryKey(route);
+      if (lastFittedRoute === fitKey) return;
+      lastFittedRoute = fitKey;
+      // Whoever set this route already framed it together with everything else they showed.
+      if (route.cameraHandled) return;
       const fittedCoordinates = route.segments?.length
         ? route.segments.flatMap((segment) => segment.coordinates)
         : route.coordinates.length
@@ -1458,4 +1527,12 @@ export function MapCore() {
   }, [store]);
 
   return <div ref={containerRef} className="map-container" data-testid="map-container" />;
+}
+
+function routeGeometryKey(route: NonNullable<ReturnType<typeof getMapStore>["routePreview"]>) {
+  const line = route.segments?.length
+    ? route.segments.flatMap((segment) => segment.coordinates)
+    : route.coordinates;
+  const stops = route.stops?.map((stop) => stop.coordinates) ?? [];
+  return JSON.stringify([line.length, line[0], line.at(-1), stops]);
 }
