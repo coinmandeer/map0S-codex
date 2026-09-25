@@ -252,8 +252,21 @@
   }
 
   .ai-turn-answer {
+    display: grid;
+    gap: var(--space-3);
     margin: 0;
     font: var(--type-body-md);
+    overflow-wrap: anywhere;
+  }
+
+  .ai-turn-answer :is(p, ul, ol) {
+    margin: 0;
+  }
+
+  .ai-turn-answer :is(ul, ol) {
+    display: grid;
+    gap: var(--space-2);
+    padding-left: var(--space-7);
   }
 
   .ai-turn-places {
@@ -367,15 +380,41 @@
     color: var(--text-muted);
   }
 
+  /* Follow-ups scroll sideways in one row: wrapped, three chips took a third of a phone's sheet
+     and left the answer itself no room at the half snap. */
   .ai-panel-followups {
     display: flex;
-    flex-wrap: wrap;
     gap: var(--space-2);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .ai-panel-followups > * {
+    flex: none;
   }
 
   .ai-panel-composer {
     display: grid;
-    gap: var(--space-4);
+    gap: var(--space-3);
+  }
+
+  .ai-panel-composer-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-3);
+  }
+
+  .ai-panel-composer-row > :first-child {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ai-panel-composer-row .kit-textarea {
+    min-height: var(--control-h);
+    max-height: 30dvh;
+    field-sizing: content;
+    resize: none;
   }
 
   /* ---- Header stepper -------------------------------------------------- */
@@ -477,38 +516,29 @@
 }
 
 @layer components {
-  .ai-session-menu {
-    position: relative;
+  /* One line: the thread's name, a new-thread button and a menu for everything else. The name
+     ellipsises instead of pushing the controls off a phone-width header. */
+  .ai-session-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
     flex: 1;
     min-width: 0;
-    max-width: 100%;
   }
-  .ai-session-menu > summary {
-    cursor: pointer;
-    max-width: 180px;
+  .ai-session-title {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font: var(--type-body-sm);
+    color: var(--text-muted);
   }
-  .ai-session-controls {
+  .ai-session-error {
     position: absolute;
-    right: 0;
+    right: var(--space-6);
     top: 100%;
-    z-index: 30;
-    width: min(280px, 65vw);
-    max-height: 65dvh;
-    overflow-y: auto;
-    padding: var(--space-3);
-    background: var(--surface-elevated);
-    box-shadow: var(--shadow-md);
-    border-radius: var(--radius-md);
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-2);
-  }
-  .ai-session-controls select {
-    width: 100%;
-    min-width: 0;
+    font: var(--type-label-md);
+    color: var(--danger);
   }
 }

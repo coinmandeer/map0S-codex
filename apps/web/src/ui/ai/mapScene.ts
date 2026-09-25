@@ -260,6 +260,7 @@ export function applyMapAnswer(answer: AiAnswer, question: string, fitCamera = t
         card.route
           ? {
               ...card.route,
+              cameraHandled: fitCamera,
               profile,
               stops: card.stops.map((s, i) => ({
                 coordinates: [s.longitude, s.latitude],
@@ -270,7 +271,12 @@ export function applyMapAnswer(answer: AiAnswer, question: string, fitCamera = t
           : null,
         false
       );
-      const bbox = answerBounds(card.stops);
+      // One frame for the whole answer: the drawn route, its stops and any other places.
+      const bbox = answerBounds([
+        ...card.stops,
+        ...places,
+        ...(card.route?.coordinates ?? []).map(([longitude, latitude]) => ({ longitude, latitude }))
+      ]);
       if (bbox && fitCamera) emit("fit-bounds", { bbox });
     }
   }

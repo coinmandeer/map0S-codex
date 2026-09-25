@@ -65,6 +65,8 @@ export interface SelectedPin {
 }
 
 export interface RoutePreview {
+  /** Set when the caller already framed the route with other results; the map does not refit. */
+  cameraHandled?: boolean;
   coordinates: [number, number][];
   distanceM: number;
   durationS: number;
