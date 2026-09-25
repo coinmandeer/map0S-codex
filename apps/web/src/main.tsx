@@ -1,6 +1,5 @@
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import maplibregl from "maplibre-gl";
 import maplibreWorker from "maplibre-gl/dist/maplibre-gl-csp-worker?url";
 import { App } from "./App";
@@ -29,34 +28,43 @@ registerTileCacheProtocol();
   document.documentElement.style.colorScheme = theme;
 }
 
-// Clear leftover QuestLayer / Next.js service workers from previous deploys
-if ("serviceWorker" in navigator) {
-  void navigator.serviceWorker.getRegistrations().then((regs) => {
-    for (const reg of regs) void reg.unregister();
-  });
-  if ("caches" in window) {
-    void caches.keys().then((keys) => {
-      for (const key of keys) void caches.delete(key);
-    });
-  }
+// Clear leftover QuestLayer / Next.js service workers from previous deploys. Once per browser:
+// repeating it on every start cost a registration query and a cache sweep each time, and would
+// remove a future service worker of this app as soon as it was installed.
+const SERVICE_WORKER_CLEANUP_KEY = "mapos:legacy-sw-cleared-v1";
+let serviceWorkerCleared = false;
+try {
+  serviceWorkerCleared = window.localStorage.getItem(SERVICE_WORKER_CLEANUP_KEY) === "1";
+} catch {
+  /* Without storage the cleanup simply runs again. */
 }
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { staleTime: 30_000, retry: 1 }
-  }
-});
+if (!serviceWorkerCleared && "serviceWorker" in navigator) {
+  void Promise.all([
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((regs) => Promise.all(regs.map((reg) => reg.unregister()))),
+    "caches" in window
+      ? caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+      : Promise.resolve()
+  ])
+    .then(() => {
+      try {
+        window.localStorage.setItem(SERVICE_WORKER_CLEANUP_KEY, "1");
+      } catch {
+        /* Runs again next time. */
+      }
+    })
+    .catch(() => {});
+}
 
 const root = createRoot(document.getElementById("root")!);
 
 function render(children: ReactNode) {
   root.render(
     <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <ToastProvider>{children}</ToastProvider>
-        </TooltipProvider>
-      </QueryClientProvider>
+      <TooltipProvider>
+        <ToastProvider>{children}</ToastProvider>
+      </TooltipProvider>
     </StrictMode>
   );
 }
