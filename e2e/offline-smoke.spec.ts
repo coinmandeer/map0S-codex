@@ -277,6 +277,23 @@ test("CAMS overlay paints model cells and changing pollutant reuses the same dat
         ).serialize().data.features[0].properties.value
     );
   await expect.poll(value).toBe(8);
+  // Closing the layers drawer with Escape changes the map padding, so the view settles a little
+  // later and the grid is fetched once more for the final bbox. On a slow runner that second
+  // request came after the count below was taken; the claim here is only that a pollutant change
+  // reuses the data, so wait until the requests stop and the map is idle first.
+  await expect
+    .poll(
+      async () => {
+        const settled = requests;
+        await page.waitForTimeout(1_000);
+        return (
+          requests === settled &&
+          (await page.evaluate(() => !window.__maposMap!.isMoving() && window.__maposMap!.loaded()))
+        );
+      },
+      { timeout: 30_000 }
+    )
+    .toBe(true);
   const before = requests;
   await page.evaluate(async () => {
     const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
