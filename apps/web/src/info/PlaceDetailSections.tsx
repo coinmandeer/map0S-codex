@@ -3,7 +3,7 @@ import type { Place } from "@mapos/layer-sdk";
 import { loadDiscoverContext, type DiscoverContext } from "../discover/context";
 import { st } from "../statistics/labels";
 import { activateStatistic, showStatistics, useStatistics } from "../statistics/explorerStore";
-import { Button, Skeleton } from "../ui/kit";
+import { Button, Icon, Skeleton, type IconName } from "../ui/kit";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { getMapStore } from "../store/mapStore";
 import { distanceMeters } from "@mapos/layer-sdk";
@@ -63,16 +63,32 @@ function AreaPopulationCard({ place }: { place: Place }) {
   );
 }
 
+/** Every section gets the same header: its icon, its name and a chevron. The browser's own
+ *  disclosure triangle was the only marker before, and it differs per engine. */
+const SECTION_ICONS: Record<string, IconName> = {
+  panorama: "photo_camera",
+  statistics: "bar_chart",
+  weather: "rainy",
+  events: "event",
+  places: "place",
+  geology: "terrain",
+  notes: "edit",
+  sources: "link",
+  "provider-reviews": "star"
+};
+
 export function DetailDisclosure({
   title,
   children,
   initialOpen = false,
-  id
+  id,
+  icon
 }: {
   title: string;
   children: ReactNode;
   initialOpen?: boolean;
   id: string;
+  icon?: IconName;
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
@@ -82,7 +98,15 @@ export function DetailDisclosure({
       onToggle={(e) => setOpen(e.currentTarget.open)}
       data-testid={`place-section-${id}`}
     >
-      <summary>{title}</summary>
+      <summary>
+        <Icon
+          name={icon ?? SECTION_ICONS[id] ?? "description"}
+          size={20}
+          className="place-detail-disclosure-icon"
+        />
+        <span className="place-detail-disclosure-title">{title}</span>
+        <Icon name="expand_more" size={20} className="place-detail-disclosure-chevron" />
+      </summary>
       {open && <div className="place-detail-section-body">{children}</div>}
     </details>
   );

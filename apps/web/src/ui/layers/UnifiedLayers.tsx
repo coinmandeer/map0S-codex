@@ -13,7 +13,17 @@ import { getMapStore } from "../../store/mapStore";
 import { useMapStoreSnapshot } from "../../store/useMapStoreSnapshot";
 import { on } from "../../lib/events";
 import { st } from "../../statistics/labels";
-import { Button, EmptyState, Icon, IconButton, SearchField, Select, Switch } from "../kit";
+import {
+  Button,
+  EmptyState,
+  Icon,
+  ICON_NAME_SET,
+  IconButton,
+  SearchField,
+  Select,
+  Switch,
+  type IconName
+} from "../kit";
 import { LayerActivityBadge, useLayerActivity } from "./LayerActivityBadge";
 import { activityLabel } from "../../tasks/layerActivity";
 import {
@@ -79,6 +89,11 @@ function LayerStatus({ id, enabled = true }: { id: string; enabled?: boolean }) 
   );
 }
 
+/** A group's icon if the icon font ships it; a plain layers glyph otherwise. */
+function groupIcon(name: string | undefined): IconName {
+  return name && ICON_NAME_SET.has(name as IconName) ? (name as IconName) : "layers";
+}
+
 export function UnifiedLayers() {
   const store = getMapStore();
   const capabilities = useMapStoreSnapshot((s) => s.capabilities);
@@ -86,7 +101,6 @@ export function UnifiedLayers() {
   const statistics = useStatistics();
   const [view, setView] = useState<"all" | "active" | "favorites" | "mine">("all");
   const [availableHere, setAvailableHere] = useState(false);
-  const [activeOpen, setActiveOpen] = useState(false);
   const { favorites, toggleFavorite } = useFavoriteLayers();
   const { reasonFor, change } = useCatalogActions();
   const layers = useMapStoreSnapshot((s) => s.activeLayers);
@@ -200,7 +214,7 @@ export function UnifiedLayers() {
   const withSetup: CatalogGroup[] = setupRows.length
     ? [
         ...baseGroups,
-        { id: "setup", cs: "Vyžaduje nastavení", en: "Needs setup", items: setupRows }
+        { id: "setup", icon: "lock", cs: "Vyžaduje nastavení", en: "Needs setup", items: setupRows }
       ]
     : baseGroups;
   const scopedGroups = withSetup.map((group) => ({
@@ -608,22 +622,6 @@ export function UnifiedLayers() {
           label={st("Dostupné při tomto přiblížení", "Available at this zoom")}
         />
       </div>
-      {view === "all" && !query && active.length > 0 && (
-        <section className="catalog-group">
-          <button
-            className="catalog-group-toggle"
-            aria-expanded={activeOpen}
-            onClick={() => setActiveOpen((v) => !v)}
-          >
-            {active.filter((i) => catalogItemState(i, layers).enabled).length}{" "}
-            {st("zapnutých", "on")} · {active.length} {st("vybraných", "selected")}
-            <Icon name={activeOpen ? "expand_less" : "expand_more"} size={16} />
-          </button>
-          {activeOpen && (
-            <div data-testid="active-layer-list">{active.map((i) => row(i, "active"))}</div>
-          )}
-        </section>
-      )}
       {query ? (
         <div className="catalog-results" data-testid="layers-results">
           {!results.length && (
@@ -657,6 +655,7 @@ export function UnifiedLayers() {
                     )
                   }
                 >
+                  <Icon name={groupIcon(group.icon)} size={20} className="catalog-group-icon" />
                   <span className="catalog-group-title">{st(group.cs, group.en)}</span>
                   <span className="catalog-group-count">{group.items.length}</span>
                   <Icon name={expanded ? "expand_less" : "expand_more"} size={16} />

@@ -31,6 +31,8 @@ export interface CatalogGroup {
   id: string;
   cs: string;
   en: string;
+  /** A Material Symbols ligature for the section header; the web app checks it is shipped. */
+  icon?: string;
   parent?: string;
   items: CatalogItem[];
 }
@@ -465,6 +467,7 @@ const historic = new Set(["poi-castle", "poi-palace", "poi-ruins", "poi-museum",
 export const CATALOG_GROUPS: CatalogGroup[] = [
   {
     id: "czech-land",
+    icon: "flag",
     cs: "Pozemky a území ČR",
     en: "Czech land & territories",
     items: CZECH_LAYERS.map((def) => ({
@@ -478,6 +481,7 @@ export const CATALOG_GROUPS: CatalogGroup[] = [
   },
   {
     id: "places",
+    icon: "storefront",
     cs: "Místa a služby",
     en: "Places & services",
     items: [
@@ -499,12 +503,14 @@ export const CATALOG_GROUPS: CatalogGroup[] = [
   },
   {
     id: "weather",
+    icon: "cloud",
     cs: "Počasí a ovzduší",
     en: "Weather & air quality",
     items: [...rows("weather"), ...rows("air")]
   },
   {
     id: "transport",
+    icon: "directions_bus",
     cs: "Doprava a infrastruktura",
     en: "Transport & infrastructure",
     items: [
@@ -515,6 +521,7 @@ export const CATALOG_GROUPS: CatalogGroup[] = [
   },
   {
     id: "nature",
+    icon: "forest",
     cs: "Příroda, výlety a sport",
     en: "Nature, outdoors & sport",
     items: [
@@ -526,6 +533,7 @@ export const CATALOG_GROUPS: CatalogGroup[] = [
   },
   {
     id: "events",
+    icon: "warning",
     cs: "Události a rizika",
     en: "Events & risks",
     items: [
@@ -536,18 +544,37 @@ export const CATALOG_GROUPS: CatalogGroup[] = [
       }))
     ]
   },
-  { id: "media", cs: "Fotografie a pozorování", en: "Photos & observations", items: rows("media") },
-  { id: "society", cs: "Společnost a území", en: "Society & territories", items: [] },
+  {
+    id: "media",
+    icon: "photo_library",
+    cs: "Fotografie a pozorování",
+    en: "Photos & observations",
+    items: rows("media")
+  },
+  {
+    id: "society",
+    icon: "bar_chart",
+    cs: "Společnost a území",
+    en: "Society & territories",
+    items: []
+  },
   {
     id: "space",
+    icon: "satellite_alt",
     cs: "Vesmír",
     en: "Space",
     items: rows("transport")
       .filter((i) => i.layer === "satellites")
       .map((i) => ({ ...i, cs: "Družice na oběžné dráze", en: "Satellites in orbit" }))
   },
-  { id: "community", cs: "Komunita a hra", en: "Community & play", items: rows("community") },
-  { id: "mine", cs: "Moje vrstvy", en: "My layers", items: rows("mine") }
+  {
+    id: "community",
+    icon: "stadia_controller",
+    cs: "Komunita a hra",
+    en: "Community & play",
+    items: rows("community")
+  },
+  { id: "mine", icon: "person_pin_circle", cs: "Moje vrstvy", en: "My layers", items: rows("mine") }
 ];
 
 /** Registered plugins that deliberately have no catalogue row: the 3D game world is switched on

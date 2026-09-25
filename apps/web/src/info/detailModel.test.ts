@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import test, { describe, it } from "node:test";
 import type { GeoFeature, LayerManifestV2 } from "@mapos/layer-sdk";
 import {
   detailActionsFromManifest,
+  detailFieldLabel,
   detailFieldsFromFeature,
   detailMediaFromFeature,
   detailSurfaceOrder,
+  formatDetailDate,
   osmCorrectionUrl,
   safeExternalUrl
 } from "./detailModel";
+import { setActiveLocale } from "../i18n";
 
 const feature: GeoFeature = {
   type: "Feature",
@@ -211,4 +214,20 @@ describe("manifest-driven place detail", () => {
     assert.equal(osmCorrectionUrl("node/123"), "https://www.openstreetmap.org/edit?node=123");
     assert.equal(osmCorrectionUrl("123"), null);
   });
+});
+
+test("provider timestamps read as dates, and non-dates are left alone", () => {
+  assert.equal(formatDetailDate("2026-09-25", "cs-CZ"), "25. 9. 2026");
+  assert.match(formatDetailDate("2026-09-25T14:05:00Z", "en-GB") ?? "", /25 Sept 2026, \d{2}:05/);
+  assert.equal(formatDetailDate("active", "cs-CZ"), null);
+  assert.equal(formatDetailDate(42, "cs-CZ"), null);
+});
+
+test("field labels follow the UI language and cover the Prague open-data fields", () => {
+  setActiveLocale("cs");
+  assert.equal(detailFieldLabel("district"), "Městská část");
+  assert.equal(detailFieldLabel("properties.updatedAt"), "Aktualizováno");
+  setActiveLocale("en");
+  assert.equal(detailFieldLabel("updatedAt"), "Updated");
+  assert.equal(detailFieldLabel("someNewField"), "Some New Field");
 });

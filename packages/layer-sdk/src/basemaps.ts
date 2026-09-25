@@ -30,6 +30,15 @@ export const BASEMAP_GROUP_LABELS: Record<BasemapGroup, string> = {
   national: "Národní geoportály"
 };
 
+export const BASEMAP_GROUP_LABELS_EN: Record<BasemapGroup, string> = {
+  street: "Standard",
+  outdoor: "Outdoor & hiking",
+  satellite: "Aerial & satellite",
+  terrain: "Terrain & relief",
+  historic: "Historic",
+  national: "National geoportals"
+};
+
 export interface BasemapDefinition {
   id: string;
   label: string;
