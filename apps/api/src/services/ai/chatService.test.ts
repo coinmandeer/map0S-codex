@@ -1289,3 +1289,208 @@ test("web discoveries geocode into grounded pins and an automatically computed r
     "geocoding a result does not redirect subsequent context"
   );
 });
+
+/** A composition whose geocoder answers from a tiny gazetteer and whose router draws straight
+ *  lines, so the new "places without ids" paths can be followed end to end. */
+function geocodingService(runtime: AiModelRuntime) {
+  const providers = createFixtureChatToolProviders({ fixtures: () => [] });
+  const gazetteer: Record<string, { longitude: number; latitude: number }> = {
+    Vrchlabí: { longitude: 15.6, latitude: 50.63 },
+    "Pec pod Sněžkou": { longitude: 15.73, latitude: 50.69 },
+    "Obec A": { longitude: 14, latitude: 50 }
+  };
+  const queries: string[] = [];
+  providers.resolveLocation = async (query) => {
+    queries.push(query);
+    const hit = gazetteer[query];
+    return hit ? [{ name: `${query}, Česko`, ...hit }] : [];
+  };
+  let routed = 0;
+  providers.routePlan = async (stops, profile) => {
+    routed += 1;
+    return {
+      coordinates: stops.map((s) => [s.longitude, s.latitude]),
+      distanceM: 1000,
+      durationS: 600,
+      profile,
+      provider: "mapy"
+    };
+  };
+  const context = { center: { longitude: 15.6, latitude: 50.6 }, zoom: 10, activeLayerIds: [] };
+  const { registry, available } = createChatToolRegistry({ providers, mapContext: context });
+  return {
+    queries,
+    routedCount: () => routed,
+    service: new AiChatService({
+      registry,
+      availableTools: available,
+      runtime,
+      conversations: new AiConversationStore(),
+      routePlan: providers.routePlan
+    })
+  };
+}
+
+test("places named in submit_answer are geocoded by the server and shown without ids", async () => {
+  const { runtime } = scriptedRuntime([
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "answer",
+          name: "submit_answer",
+          arguments: {
+            text: "Dvě dobrá výchozí místa.",
+            places: [{ name: "Vrchlabí" }, { name: "Pec pod Sněžkou" }, { name: "Atlantida" }]
+          }
+        }
+      ]
+    }
+  ]);
+  const { service, queries } = geocodingService(runtime);
+  const answer = await service.run(request("kam vyrazit do Krkonoš?"), collect().emit);
+  const card = answer?.cards.find((c) => c.type === "places");
+  assert.ok(card?.type === "places");
+  assert.deepEqual(
+    card.places.map((p) => p.title),
+    ["Vrchlabí", "Pec pod Sněžkou"],
+    "a name the geocoder cannot find is not drawn"
+  );
+  assert.ok(card.places.every((p) => p.sourceId === "mapos-geocoder"));
+  assert.ok(queries.includes("Atlantida"));
+});
+
+test("plan stops given by name become a routed plan", async () => {
+  const { runtime } = scriptedRuntime([
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "plan",
+          name: "submit_plan",
+          arguments: {
+            name: "Krkonoše",
+            text: "Z Vrchlabí do Pece.",
+            stops: [{ name: "Vrchlabí" }, { name: "Pec pod Sněžkou", note: "cíl" }]
+          }
+        }
+      ]
+    }
+  ]);
+  const { service, routedCount } = geocodingService(runtime);
+  const answer = await service.run(request("naplánuj trasu z Vrchlabí do Pece"), collect().emit);
+  const plan = answer?.cards.find((c) => c.type === "plan");
+  assert.ok(plan?.type === "plan");
+  assert.deepEqual(
+    plan.stops.map((s) => s.title),
+    ["Vrchlabí", "Pec pod Sněžkou"]
+  );
+  assert.equal(plan.route?.distanceM, 1000);
+  assert.equal(routedCount(), 1);
+});
+
+test("a prose answer keeps its text and turns listed places into pins and a route", async () => {
+  const { runtime } = scriptedRuntime([
+    {
+      text: "Doporučená trasa:\n- **Vrchlabí** – start u zámku\n- **Pec pod Sněžkou** – cíl\n\nPočítej se 4 hodinami.",
+      finishReason: "stop",
+      toolCalls: []
+    }
+  ]);
+  const { service } = geocodingService(runtime);
+  const answer = await service.run(request("jaká je hezká trasa v Krkonoších?"), collect().emit);
+  assert.ok(answer);
+  assert.equal(answer.execution, "model-tool-loop");
+  assert.match(answer.text, /\n- \*\*Vrchlabí\*\*/u, "paragraphs and list lines survive");
+  const plan = answer.cards.find((c) => c.type === "plan");
+  assert.ok(plan?.type === "plan");
+  assert.equal(plan.stops.length, 2);
+});
+
+test("rejected mapData goes back to the model once instead of ending the turn", async () => {
+  const page = "Index 2024, body. Obec A: 12,5 bodů.";
+  const { runtime, requests } = scriptedRuntime([
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [{ id: "fetch", name: "web_fetch", arguments: { url: "https://fixture.test/i" } }]
+    },
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "bad",
+          name: "submit_answer",
+          arguments: {
+            text: "Index obcí.",
+            mapData: {
+              title: "Index",
+              unit: "body",
+              time: "2024",
+              rows: [
+                {
+                  placeName: "Obec A",
+                  value: 99,
+                  sourceUrl: "https://fixture.test/i",
+                  quote: "Obec A: 99 bodů."
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "good",
+          name: "submit_answer",
+          arguments: {
+            text: "Index obcí.",
+            mapData: {
+              title: "Index",
+              unit: "body",
+              time: "2024",
+              rows: [
+                {
+                  placeName: "Obec A",
+                  value: 12.5,
+                  sourceUrl: "https://fixture.test/i",
+                  quote: "Obec A: 12,5 bodů."
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]);
+  // The fixture web tools only serve pages they were given.
+  const providers = createFixtureChatToolProviders({ fixtures: () => [] });
+  providers.web = createFixtureWebTools([
+    { url: "https://fixture.test/i", title: "Index", text: page }
+  ]);
+  providers.resolveLocation = async (query) =>
+    query === "Obec A" ? [{ name: "Obec A, Česko", longitude: 14, latitude: 50 }] : [];
+  const { registry, available } = createChatToolRegistry({
+    providers,
+    mapContext: { center: { longitude: 14, latitude: 50 }, zoom: 9, activeLayerIds: [] }
+  });
+  const service = new AiChatService({
+    registry,
+    availableTools: available,
+    runtime,
+    conversations: new AiConversationStore()
+  });
+  const answer = await service.run(request("ukaž index obcí na mapě"), collect().emit);
+  assert.equal(requests.length, 3, "the model got its correction round");
+  const retry = requests[2]!.history?.at(-1);
+  assert.equal(retry?.role, "tool");
+  assert.match(retry?.content ?? "", /mapData odmítnuto/u);
+  assert.equal(answer?.mapResults?.[0]?.data.features[0]?.properties.value, 12.5);
+});

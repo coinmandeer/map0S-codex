@@ -65,9 +65,27 @@ interface ChatCompletionEnvelope {
   usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
+/** Arguments as JSON. Smaller open models wrap them in a Markdown fence or leave a trailing
+ *  comma; those are syntax, not meaning, so they are undone. Anything else stays unparseable. */
+export function parseToolArguments(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const repaired = raw
+      .replace(/^```(?:json)?\s*/iu, "")
+      .replace(/\s*```$/u, "")
+      .replace(/,\s*([}\]])/gu, "$1");
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      return undefined;
+    }
+  }
+}
+
 /** Tool calls the server can act on. A call with a missing name or unparseable arguments is
- *  dropped rather than repaired: guessing what the model meant is how a read tool turns into the
- *  wrong write. */
+ *  dropped rather than repaired beyond syntax: guessing what the model meant is how a read tool
+ *  turns into the wrong write. */
 function normaliseToolCalls(
   raw: NonNullable<NonNullable<ChatCompletionEnvelope["choices"]>[number]["message"]>["tool_calls"]
 ): AiToolCall[] {
@@ -79,11 +97,8 @@ function normaliseToolCalls(
     const rawArguments = entry.function?.arguments?.trim();
     let parsed: unknown = {};
     if (rawArguments) {
-      try {
-        parsed = JSON.parse(rawArguments);
-      } catch {
-        continue;
-      }
+      parsed = parseToolArguments(rawArguments);
+      if (parsed === undefined) continue;
     }
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) continue;
     calls.push({

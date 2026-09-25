@@ -13,6 +13,13 @@ import {
 } from "@mapos/layer-sdk";
 import { walkingLoop, cheapestInsertion } from "./tripOptimization.js";
 import { tripProfile } from "./tripRoute.js";
+import {
+  MENTIONED_PLACES_SCHEMA,
+  normaliseMentionedPlaces,
+  parseAnswerText,
+  resolveMentionedPlaces,
+  type MentionedPlace
+} from "./mentionedPlaces.js";
 import type { RouteResult } from "../routingService.js";
 import type { OverviewService } from "./overviewService.js";
 import type { ConversationPersistence } from "./conversationPersistence.js";
@@ -254,6 +261,7 @@ const SUBMIT_ANSWER_SCHEMA = {
       items: { type: "string", minLength: 1, maxLength: 128 },
       description: "Identifikátory míst z výsledků nástrojů, v pořadí, v jakém je chceš zobrazit."
     },
+    places: MENTIONED_PLACES_SCHEMA,
     followUps: {
       type: "array",
       maxItems: 3,
@@ -299,12 +307,17 @@ const SUBMIT_PLAN_SCHEMA = {
       type: "array",
       minItems: 1,
       maxItems: 40,
+      description:
+        "Zastávky v pořadí trasy: placeId z výsledků nástrojů, nebo název s adresou či GPS, které server sám geokóduje.",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["placeId"],
         properties: {
           placeId: { type: "string", minLength: 1, maxLength: 128 },
+          name: { type: "string", minLength: 2, maxLength: 120 },
+          address: { type: "string", maxLength: 240 },
+          latitude: { type: "number", minimum: -90, maximum: 90 },
+          longitude: { type: "number", minimum: -180, maximum: 180 },
           day: { type: "integer", minimum: 1, maximum: 30 },
           note: { type: "string", maxLength: 240 }
         }
@@ -510,6 +523,34 @@ function distanceLabel(distanceMeters: number | undefined): string {
   return distanceMeters < 1_000
     ? ` (${distanceMeters} m)`
     : ` (${(distanceMeters / 1_000).toFixed(1).replace(".", ",")} km)`;
+}
+
+/** A submission the server rejected in a way the model can fix, sent back as a tool error. */
+interface SubmissionRetry {
+  retry: string;
+}
+
+/** Answer text keeps its paragraphs and list lines; everything else is folded like `safeText`. */
+function safeAnswerText(value: string): string {
+  let clean = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    clean += code === 10 ? "\n" : code <= 31 || code === 127 ? " " : value[index];
+  }
+  return clean
+    .split("\n")
+    .map((line) => line.replace(/\s+/gu, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim()
+    .slice(0, 4_000);
+}
+
+/** "Jak se dostanu z A do B", "trasa přes…", "projet mezi…": the places are stops, not a list. */
+function asksForRoute(message: string): boolean {
+  return /\b(?:tras[auyo]|cest[auy] (?:z|mezi|do|přes)|route|itinerář|itinerar|okruh|projet|projít|projit|dojet|dojít|dojit)\b/iu.test(
+    message
+  );
 }
 
 function safeText(value: string): string {
@@ -1314,6 +1355,7 @@ export class AiChatService {
 
     for (const profile of this.runtime.profiles(slot)) {
       const turns: AiChatTurn[] = [...history];
+      let retried = false;
       for (let round = 0; round < maxRounds; round += 1) {
         const outcome = await this.runtime.gateway.turn({
           taskId: "ai-chat-turn",
@@ -1357,7 +1399,15 @@ export class AiChatService {
         });
         if (outcome.status !== "succeeded") break;
 
-        const submitted = outcome.toolCalls.find((call) => submissionNames.has(call.name));
+        // Some models write the submission as JSON in their text instead of calling the tool.
+        const written = outcome.toolCalls.length
+          ? undefined
+          : parseAnswerText(outcome.text).toolCall;
+        const submitted =
+          outcome.toolCalls.find((call) => submissionNames.has(call.name)) ??
+          (written && submissionNames.has(written.name)
+            ? { id: `text-${round}`, name: written.name, arguments: written.arguments }
+            : undefined);
         if (submitted) {
           const answer = await this.answerFromSubmission(
             submitted.name,
@@ -1368,6 +1418,19 @@ export class AiChatService {
             evidence,
             profile.model
           );
+          if (answer && "retry" in answer) {
+            // A fixable rejection goes back to the model once, as the result of its own call.
+            if (retried) break;
+            retried = true;
+            turns.push({ role: "assistant", content: outcome.text, toolCalls: [submitted] });
+            turns.push({
+              role: "tool",
+              toolCallId: submitted.id,
+              name: submitted.name,
+              content: JSON.stringify({ error: answer.retry })
+            });
+            continue;
+          }
           // A submission the server could not honour — an unresolvable place, a plan that moved
           // under it — is not an answer; the loop lets the fallback speak instead.
           if (answer) return answer;
@@ -1377,7 +1440,12 @@ export class AiChatService {
           .filter((call) => !submissionNames.has(call.name))
           .slice(0, MAX_TOOL_CALLS_PER_ROUND);
         if (!calls.length) {
-          // An unsubmitted paragraph has no validated evidence contract.
+          // Prose without a submission is still the model's answer. Its places are geocoded
+          // before they become pins, so the evidence contract holds for everything on the map.
+          const answer = outcome.text
+            ? await this.answerFromText(outcome.text, request, intent, evidence, profile.model)
+            : null;
+          if (answer) return answer;
           break;
         }
 
@@ -2164,8 +2232,8 @@ export class AiChatService {
     conversation: AiConversation,
     evidence: CollectedEvidence,
     model: string
-  ): Promise<AiChatAnswer | null> {
-    const text = typeof submission.text === "string" ? safeText(submission.text) : "";
+  ): Promise<AiChatAnswer | SubmissionRetry | null> {
+    const text = typeof submission.text === "string" ? safeAnswerText(submission.text) : "";
     if (!text) return null;
     const requested = Array.isArray(submission.placeIds)
       ? submission.placeIds.filter((id): id is string => typeof id === "string")
@@ -2182,9 +2250,29 @@ export class AiChatService {
           .slice(0, 3)
       : [];
     const extraCards: AiChatCard[] = [];
+
+    // Places the answer names without an id: the server geocodes them itself, so a model that
+    // skipped resolve_location still puts its places on the map. Prose is read only when the
+    // submission carries no places of its own.
+    let mentions = normaliseMentionedPlaces(submission.places);
+    if (
+      !mentions.length &&
+      !chosen.length &&
+      tool === SUBMIT_ANSWER_TOOL &&
+      intent !== "command" &&
+      intent !== "edit_plan"
+    )
+      mentions = parseAnswerText(text).mentions;
+    if (mentions.length) chosen.push(...(await this.resolveMentions(mentions, request, evidence)));
+
     if (submission.mapData !== undefined) {
-      const result = webMapData(submission.mapData, evidence.places, evidence.webPages);
-      if (!result) return null; // the model gets another round to correct unsupported rows
+      const mapData = await this.withGeocodedRows(submission.mapData, request, evidence);
+      const result = webMapData(mapData, evidence.places, evidence.webPages);
+      if (!result)
+        return {
+          retry:
+            "mapData odmítnuto: každý řádek musí citovat doslovný úryvek načtené stránky se jménem místa, hodnotou, jednotkou a obdobím. Oprav řádky, nebo odevzdej odpověď bez mapData."
+        };
       evidence.mapResults.set(result.id, result);
     }
 
@@ -2201,17 +2289,24 @@ export class AiChatService {
     }
 
     if (tool === SUBMIT_PLAN_TOOL) {
+      const stops = await this.withGeocodedStops(submission.stops, request, evidence);
       const card = this.planCard(
         typeof submission.name === "string" ? submission.name : "",
         text,
-        submission.stops,
+        stops,
         evidence
       );
       if (!card) return null;
       extraCards.push(card);
     }
 
-    if (tool === SUBMIT_ANSWER_TOOL && intent === "plan" && chosen.length >= 2) {
+    // Two or more places and a question about getting between them is a route, whichever tool
+    // the model used to say so.
+    if (
+      tool === SUBMIT_ANSWER_TOOL &&
+      (intent === "plan" || asksForRoute(request.message)) &&
+      chosen.length >= 2
+    ) {
       const card = this.planCard(
         "Návrh trasy",
         text,
@@ -2251,6 +2346,139 @@ export class AiChatService {
           ? chosen
           : [...evidence.places.values()].filter((place) => !place.id.startsWith("geocode:"))
     );
+  }
+
+  /** A model that answered in prose instead of calling a submission tool. The text is still an
+   *  answer; the places it names become pins only after the geocoder confirms them. */
+  private async answerFromText(
+    raw: string,
+    request: AiChatRequest,
+    intent: AiChatIntent,
+    evidence: CollectedEvidence,
+    model: string
+  ): Promise<AiChatAnswer | null> {
+    const parsed = parseAnswerText(raw);
+    const text = safeAnswerText(parsed.text);
+    if (text.length < 20) return null;
+    const places =
+      intent === "command" || intent === "edit_plan"
+        ? []
+        : await this.resolveMentions(parsed.mentions, request, evidence);
+    const extraCards: AiChatCard[] = [];
+    if ((intent === "plan" || asksForRoute(request.message)) && places.length >= 2) {
+      const card = this.planCard(
+        "Návrh trasy",
+        text,
+        places.map((place) => ({ placeId: place.id })),
+        evidence
+      );
+      if (card) extraCards.push(card);
+    }
+    return this.assembleAnswer(
+      {
+        text,
+        execution: "model-tool-loop",
+        intent,
+        model,
+        ...(extraCards.length ? { extraCards } : {})
+      },
+      evidence,
+      extraCards.length ? [] : places
+    );
+  }
+
+  /** Geocodes through the registry, so the same permissions, projection and budgets apply as
+   *  when the model calls resolve_location itself. */
+  private async resolveMentions(
+    mentions: readonly MentionedPlace[],
+    request: AiChatRequest,
+    evidence: CollectedEvidence
+  ): Promise<AiPlaceSearchRecord[]> {
+    if (!mentions.length) return [];
+    const resolved = await resolveMentionedPlaces(mentions, async (query) => {
+      const result = await this.registry.invoke<unknown>(
+        "resolve_location",
+        { query: query.slice(0, 200), asPlace: true },
+        {
+          actor: request.actor,
+          projection: request.projection,
+          ...(request.signal ? { signal: request.signal } : {})
+        }
+      );
+      if (result.status !== "succeeded") return [];
+      for (const citation of citationsFrom(result.value))
+        if (!evidence.sources.has(citation.sourceId))
+          evidence.sources.set(citation.sourceId, citation);
+      return placesFrom(result.value);
+    });
+    for (const citation of resolved.sources)
+      if (!evidence.sources.has(citation.sourceId))
+        evidence.sources.set(citation.sourceId, citation);
+    for (const place of resolved.places) evidence.places.set(place.id, place);
+    return resolved.places;
+  }
+
+  /** Stops named instead of referenced get a placeId from the geocoder; the rest pass as they are. */
+  private async withGeocodedStops(
+    raw: unknown,
+    request: AiChatRequest,
+    evidence: CollectedEvidence
+  ): Promise<unknown[]> {
+    const rows = Array.isArray(raw) ? raw.slice(0, 40) : [];
+    const named = rows.map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const entry = row as Record<string, unknown>;
+      if (typeof entry.placeId === "string" && evidence.places.has(entry.placeId)) return null;
+      return normaliseMentionedPlaces([entry])[0] ?? null;
+    });
+    const wanted = named.filter((entry): entry is MentionedPlace => Boolean(entry));
+    if (!wanted.length) return rows;
+    const resolved = await this.resolveMentions(wanted, request, evidence);
+    const byName = new Map(resolved.map((place) => [place.title, place.id]));
+    return rows.map((row, index) => {
+      const mention = named[index];
+      if (!mention) return row;
+      const placeId = byName.get(mention.name);
+      return placeId ? { ...(row as Record<string, unknown>), placeId } : row;
+    });
+  }
+
+  /** mapData rows name their place; one without a known placeId is geocoded by that name. */
+  private async withGeocodedRows(
+    raw: unknown,
+    request: AiChatRequest,
+    evidence: CollectedEvidence
+  ): Promise<unknown> {
+    if (!raw || typeof raw !== "object") return raw;
+    const data = raw as { rows?: unknown };
+    if (!Array.isArray(data.rows)) return raw;
+    const rows = data.rows.slice(0, 20) as unknown[];
+    const missing = rows
+      .map((row) => (row && typeof row === "object" ? (row as Record<string, unknown>) : null))
+      .filter(
+        (row): row is Record<string, unknown> =>
+          row !== null &&
+          typeof row.placeName === "string" &&
+          !(typeof row.placeId === "string" && evidence.places.has(row.placeId))
+      );
+    if (!missing.length) return raw;
+    const resolved = await this.resolveMentions(
+      missing.map((row) => ({ name: safeText(String(row.placeName)) })),
+      request,
+      evidence
+    );
+    const byName = new Map(resolved.map((place) => [place.title, place.id]));
+    return {
+      ...data,
+      rows: rows.map((row) => {
+        if (!row || typeof row !== "object") return row;
+        const entry = row as Record<string, unknown>;
+        if (typeof entry.placeId === "string" && evidence.places.has(entry.placeId)) return row;
+        const placeId =
+          typeof entry.placeName === "string" ? byName.get(safeText(entry.placeName)) : undefined;
+        return placeId ? { ...entry, placeId } : row;
+      })
+    };
   }
 
   private layerDraftCard(

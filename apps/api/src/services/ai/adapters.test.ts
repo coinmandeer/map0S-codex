@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { operationalTelemetry } from "../../observability/operationalTelemetry.js";
 import { __resetUpstreamCache, __setUpstreamTestDependencies } from "../../utils/upstream.js";
-import { OpenAiCompatibleAdapter } from "./adapters.js";
+import { OpenAiCompatibleAdapter, parseToolArguments } from "./adapters.js";
 
 afterEach(() => {
   operationalTelemetry.clear();
@@ -267,4 +267,11 @@ test("reasoning effort is explicit and model responses still use the common tool
   assert.equal(body.reasoning_effort, "low");
   assert.equal(body.model, "glm-5.3-flash");
   assert.equal(result.text, "Odpověď");
+});
+
+test("tool arguments survive a Markdown fence or trailing comma, and nothing more", () => {
+  assert.deepEqual(parseToolArguments('{"query":"Brno"}'), { query: "Brno" });
+  assert.deepEqual(parseToolArguments('```json\n{"query":"Brno",}\n```'), { query: "Brno" });
+  assert.deepEqual(parseToolArguments('{"stops":[{"name":"A"},],}'), { stops: [{ name: "A" }] });
+  assert.equal(parseToolArguments("query: Brno"), undefined);
 });
