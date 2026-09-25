@@ -9,6 +9,8 @@ import {
   type LayerManifestV2
 } from "@mapos/layer-sdk";
 
+import { activeLocale } from "../i18n";
+
 type JsonRecord = Record<string, unknown>;
 
 export interface DetailSurfaceAvailability {
@@ -162,78 +164,84 @@ function flatPhotoMedia(feature: GeoFeature, manifest?: LayerManifestV2): Detail
   ];
 }
 
-const FIELD_LABELS: Record<string, string> = {
-  vehiclesAvailable: "Dostupná vozidla",
-  docksAvailable: "Volné stojany",
-  availabilityStatus: "Dostupnost údajů",
-  reportedAt: "Poslední hlášení",
-  renting: "Výpůjčky povoleny",
-  returning: "Vrácení povoleno",
-  capacity: "Kapacita",
-  operator: "Provozovatel",
-  attribution: "Uvedení zdroje",
-  license: "Licence",
-  licenseUrl: "Licenční podmínky",
-  sourceUrl: "Zdroj",
-  waveHeight: "Výška vln (m)",
-  wavePeriod: "Perioda vln (s)",
-  waterTemperature: "Teplota hladiny (°C)",
-  validAt: "Platnost modelu",
-  solarEnergy: "Sluneční energie (kWh/m²/den)",
-  temperature: "Teplota (°C)",
-  precipitation: "Srážky (mm/den)",
-  period: "Období",
-  address: "Adresa",
-  openingHours: "Otevírací doba",
-  opening_hours: "Otevírací doba",
-  phone: "Telefon",
-  email: "E-mail",
-  website: "Web",
-  elevationM: "Nadmořská výška",
-  altitudeKm: "Výška nad povrchem",
-  epoch: "Epocha prvků",
-  magnitude: "Magnituda",
-  depthKm: "Hloubka",
-  occurredAt: "Čas",
-  price: "Cena",
-  rating: "Hodnocení",
-  reviews: "Počet recenzí",
-  note: "Poznámka",
-  tags: "Štítky",
-  collection: "Sbírka",
-  status: "Stav",
-  serviceLabels: "Vybavení",
-  externalUrl: "Zdroj",
-  callsign: "Volací znak",
-  registration: "Registrace",
-  aircraftType: "Typ letadla",
-  altitudeFt: "Výška",
-  speedKt: "Rychlost",
-  headingDeg: "Směr",
-  courseDeg: "Kurz",
-  verticalRateFpm: "Stoupání / klesání",
-  onGround: "Na zemi",
-  seenPosSeconds: "Stáří zprávy",
-  fixAgeSeconds: "Stáří polohy",
-  squawk: "Squawk",
-  emergency: "Nouzový stav",
-  mmsi: "MMSI",
-  imo: "IMO",
-  shipType: "Typ plavidla",
-  navStatus: "Plavební stav",
-  destination: "Cíl plavby",
-  callSign: "Volací znak lodi"
+/** Field names as a reader would say them, in both UI languages: [cs, en]. */
+const FIELD_LABELS: Record<string, readonly [string, string]> = {
+  vehiclesAvailable: ["Dostupná vozidla", "Vehicles available"],
+  docksAvailable: ["Volné stojany", "Free docks"],
+  availabilityStatus: ["Dostupnost údajů", "Data availability"],
+  reportedAt: ["Poslední hlášení", "Last report"],
+  renting: ["Výpůjčky povoleny", "Rentals allowed"],
+  returning: ["Vrácení povoleno", "Returns allowed"],
+  capacity: ["Kapacita", "Capacity"],
+  operator: ["Provozovatel", "Operator"],
+  attribution: ["Uvedení zdroje", "Attribution"],
+  license: ["Licence", "Licence"],
+  licenseUrl: ["Licenční podmínky", "Licence terms"],
+  sourceUrl: ["Zdroj", "Source"],
+  waveHeight: ["Výška vln (m)", "Wave height (m)"],
+  wavePeriod: ["Perioda vln (s)", "Wave period (s)"],
+  waterTemperature: ["Teplota hladiny (°C)", "Sea surface temperature (°C)"],
+  validAt: ["Platnost modelu", "Model valid at"],
+  solarEnergy: ["Sluneční energie (kWh/m²/den)", "Solar energy (kWh/m²/day)"],
+  temperature: ["Teplota (°C)", "Temperature (°C)"],
+  precipitation: ["Srážky (mm/den)", "Precipitation (mm/day)"],
+  period: ["Období", "Period"],
+  address: ["Adresa", "Address"],
+  openingHours: ["Otevírací doba", "Opening hours"],
+  opening_hours: ["Otevírací doba", "Opening hours"],
+  phone: ["Telefon", "Phone"],
+  email: ["E-mail", "E-mail"],
+  website: ["Web", "Website"],
+  elevationM: ["Nadmořská výška", "Elevation"],
+  altitudeKm: ["Výška nad povrchem", "Altitude"],
+  epoch: ["Epocha prvků", "Element epoch"],
+  magnitude: ["Magnituda", "Magnitude"],
+  depthKm: ["Hloubka", "Depth"],
+  occurredAt: ["Čas", "Time"],
+  price: ["Cena", "Price"],
+  rating: ["Hodnocení", "Rating"],
+  reviews: ["Počet recenzí", "Reviews"],
+  note: ["Poznámka", "Note"],
+  tags: ["Štítky", "Tags"],
+  collection: ["Sbírka", "Collection"],
+  status: ["Stav", "Status"],
+  serviceLabels: ["Vybavení", "Amenities"],
+  externalUrl: ["Zdroj", "Source"],
+  callsign: ["Volací znak", "Call sign"],
+  registration: ["Registrace", "Registration"],
+  aircraftType: ["Typ letadla", "Aircraft type"],
+  altitudeFt: ["Výška", "Altitude"],
+  speedKt: ["Rychlost", "Speed"],
+  headingDeg: ["Směr", "Heading"],
+  courseDeg: ["Kurz", "Course"],
+  verticalRateFpm: ["Stoupání / klesání", "Climb / descent"],
+  onGround: ["Na zemi", "On ground"],
+  seenPosSeconds: ["Stáří zprávy", "Message age"],
+  fixAgeSeconds: ["Stáří polohy", "Fix age"],
+  squawk: ["Squawk", "Squawk"],
+  emergency: ["Nouzový stav", "Emergency"],
+  mmsi: ["MMSI", "MMSI"],
+  imo: ["IMO", "IMO"],
+  shipType: ["Typ plavidla", "Vessel type"],
+  navStatus: ["Plavební stav", "Navigation status"],
+  destination: ["Cíl plavby", "Destination"],
+  callSign: ["Volací znak lodi", "Vessel call sign"],
+  district: ["Městská část", "District"],
+  updatedAt: ["Aktualizováno", "Updated"],
+  dataScope: ["Rozsah dat", "Data coverage"],
+  verifiedAt: ["Ověřeno", "Verified"],
+  description: ["Popis", "Description"],
+  category: ["Kategorie", "Category"]
 };
 
 export function detailFieldLabel(id: string): string {
   const leaf = id.split(/[./]/).filter(Boolean).at(-1) ?? id;
-  return (
-    FIELD_LABELS[leaf] ??
-    leaf
-      .replace(/[_-]+/g, " ")
-      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-      .replace(/^./, (letter) => letter.toUpperCase())
-  );
+  const known = FIELD_LABELS[leaf];
+  if (known) return activeLocale() === "cs" ? known[0] : known[1];
+  return leaf
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function fieldKind(id: string, value: unknown): DetailFieldValueKind {
@@ -392,4 +400,30 @@ export function osmCorrectionUrl(ref: string | undefined): string | null {
   const match = /^(node|way|relation)\/(\d+)$/.exec(ref);
   if (!match) return null;
   return `https://www.openstreetmap.org/edit?${match[1]}=${match[2]}`;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ](\d{2}):(\d{2}))?/;
+
+/**
+ * A provider's timestamp as a date a person reads ("25. 9. 2026 14:05"), not an ISO string.
+ * Anything that is not recognisably a date is returned unchanged, so a field mislabelled as a
+ * date by its name ("state", "format") still shows its own text.
+ */
+export function formatDetailDate(value: unknown, locale: string): string | null {
+  let date: Date | null = null;
+  let withTime = false;
+  if (typeof value === "string") {
+    const match = value.trim().match(ISO_DATE);
+    if (!match) return null;
+    date = new Date(value.trim());
+    withTime = match[1] !== undefined && !(match[1] === "00" && match[2] === "00");
+  } else if (typeof value === "number" && value > 1e11 && value < 1e14) {
+    date = new Date(value);
+    withTime = true;
+  }
+  if (!date || !Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    ...(withTime ? { timeStyle: "short" } : {})
+  }).format(date);
 }

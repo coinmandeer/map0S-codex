@@ -18,7 +18,7 @@ export const WEB_MAP_DATA_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["placeId", "placeName", "value", "sourceUrl", "quote"],
+        required: ["placeName", "value", "sourceUrl", "quote"],
         properties: {
           placeId: { type: "string", minLength: 1, maxLength: 128 },
           placeName: { type: "string", minLength: 2, maxLength: 120 },

@@ -35,17 +35,17 @@ Status values: **open** (nobody has started), **waiting** (requested, no credent
 
 ## Layers and basemaps
 
-| #   | Item                                                                                            | Status | Notes                                                          |
-| --- | ----------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------------------- |
-| 11  | Golemio API key                                                                                 | open   | Live transit, parking, cameras. api.golemio.cz/api-keys        |
-| 12  | aisstream.io key, OpenSky account                                                               | open   | Ships; aircraft work keyless via adsb.lol at lower limits.     |
-| 13  | Tankerkönig, Wheelmap, Meteoalarm EDR token                                                     | open   | Meteoalarm Atom feed works without a token.                    |
-| 14  | Foursquare Places Portal token                                                                  | open   | Check whether the OS Places PMTiles need one at all.           |
-| 15  | Google Maps Platform key with billing                                                           | open   | Tiles and 3D Tiles. Needs a budget decision and a daily quota. |
-| 16  | mapakriminality.cz API access                                                                   | open   | CC BY-NC-SA, request required.                                 |
-| 17  | Verify machine access: ČTÚ coverage, ČHMÚ ISKO index JSON, CzechInvest brownfields, Kudy z nudy | open   |                                                                |
-| 18  | Copernicus Data Space account, HDX account                                                      | open   | Sentinel STAC/COG, Kontur download.                            |
-| 19  | GoOut partner request                                                                           | open   | Ticketmaster key already exists.                               |
+| #   | Item                                                                                            | Status | Notes                                                                                                                                    |
+| --- | ----------------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 11  | Golemio API key                                                                                 | done   | Key obtained (set `GOLEMIO_API_KEY` in the deployment, never in the repo). Transit, parking and cameras are still to be added as layers. |
+| 12  | aisstream.io key, OpenSky account                                                               | open   | Ships; aircraft work keyless via adsb.lol at lower limits.                                                                               |
+| 13  | Tankerkönig, Wheelmap, Meteoalarm EDR token                                                     | open   | Meteoalarm Atom feed works without a token.                                                                                              |
+| 14  | Foursquare Places Portal token                                                                  | open   | Check whether the OS Places PMTiles need one at all.                                                                                     |
+| 15  | Google Maps Platform key with billing                                                           | open   | Tiles and 3D Tiles. Needs a budget decision and a daily quota.                                                                           |
+| 16  | mapakriminality.cz API access                                                                   | open   | CC BY-NC-SA, request required.                                                                                                           |
+| 17  | Verify machine access: ČTÚ coverage, ČHMÚ ISKO index JSON, CzechInvest brownfields, Kudy z nudy | open   |                                                                                                                                          |
+| 18  | Copernicus Data Space account, HDX account                                                      | open   | Sentinel STAC/COG, Kontur download.                                                                                                      |
+| 19  | GoOut partner request                                                                           | open   | Ticketmaster key already exists.                                                                                                         |
 
 ## Infrastructure
 

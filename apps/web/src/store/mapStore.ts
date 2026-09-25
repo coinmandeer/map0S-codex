@@ -1,4 +1,4 @@
-import { appearanceKey, type MapAppearance } from "./mapAppearance";
+import { presetAppearanceKey, type MapAppearance } from "./mapAppearance";
 import { registerInlineLayer } from "../layers/inlineLayers";
 import { unregisterLayer } from "../layers/registry";
 import { AI_RESULT_PREFIX, temporaryAnswerManifest } from "../layers/aiMapResults";
@@ -65,6 +65,8 @@ export interface SelectedPin {
 }
 
 export interface RoutePreview {
+  /** Set when the caller already framed the route with other results; the map does not refit. */
+  cameraHandled?: boolean;
   coordinates: [number, number][];
   distanceM: number;
   durationS: number;
@@ -536,6 +538,9 @@ export class MapStore {
       this.state.buildings3d = true;
       this.state.basemapId = this.state.theme === "dark" ? "carto-dark" : "carto-positron";
       this.state.sidebarOpen = false;
+      // The board is the mode: opening straight into it has to start the game scene, exactly
+      // as switching to the mode does. Without it a `?mode=game` link showed an empty map.
+      this.ensureLayerActive(primaryLayerForAppMode("game"));
     }
     // Only an explicit initial mode link activates its required layer.
     if (!reloading && modeResolution.activateLayerId) {
@@ -592,7 +597,7 @@ export class MapStore {
     // The comparison only exists to drop the preset badge once the config drifts, so it runs
     // only while a preset baseline is actually armed, and the baseline side is cached.
     if (this.presetBaseline) {
-      const drift = appearanceKey(this.captureAppearance()) !== this.presetBaselineKey();
+      const drift = presetAppearanceKey(this.captureAppearance()) !== this.presetBaselineKey();
       if (drift && this.state.activePresetId) this.state.activePresetId = null;
       else if (!drift && this.state.activePresetId === null && this.presetBaseline.id) {
         this.state.activePresetId = this.presetBaseline.id;
@@ -605,7 +610,7 @@ export class MapStore {
   private presetBaselineKey(): string {
     if (!this.presetBaseline) return "";
     if (this.presetBaselineKeyCache === null) {
-      this.presetBaselineKeyCache = appearanceKey(this.presetBaseline.appearance);
+      this.presetBaselineKeyCache = presetAppearanceKey(this.presetBaseline.appearance);
     }
     return this.presetBaselineKeyCache;
   }
@@ -1621,6 +1626,10 @@ export class MapStore {
     params.set("lng", this.state.view.lng.toFixed(5));
     params.set("lat", this.state.view.lat.toFixed(5));
     params.set("z", this.state.view.zoom.toFixed(1));
+    // A shared plan link is that explicit share, not ordinary navigation: its mode has to survive
+    // the camera rewrite, or a reload (or the address bar copied) opens Discover without the plan.
+    if ((window.location.hash ?? "").startsWith("#plan=") && existing.get("mode"))
+      params.set("mode", existing.get("mode")!);
     // Explicit sharing builds its own URL. Ordinary navigation persists camera only.
     // Shell/browser-back keeps a small same-document sentinel in history.state. Replacing the
     // URL on every map move must preserve it, otherwise the first pan silently breaks Back.

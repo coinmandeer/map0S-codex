@@ -24,3 +24,22 @@ export function appearanceKey(value: unknown): string {
     );
   return JSON.stringify(value);
 }
+
+/**
+ * What identifies a preset's configuration, for noticing that the user has drifted from it.
+ * A layer's time window (`from`/`to`) is where the timeline is looking, written as absolute dates:
+ * it moves with the calendar and the scrubber, not with the preset. Counting it made any preset
+ * with events fall back to "Custom" the moment the timeline filled in this week.
+ */
+export function presetAppearanceKey(value: MapAppearance): string {
+  const layers = Object.fromEntries(
+    Object.entries(value.layers).map(([id, entry]) => {
+      if (!entry.filters || !("from" in entry.filters || "to" in entry.filters)) return [id, entry];
+      const filters = { ...entry.filters };
+      delete filters.from;
+      delete filters.to;
+      return [id, { ...entry, filters }];
+    })
+  );
+  return appearanceKey({ ...value, layers });
+}

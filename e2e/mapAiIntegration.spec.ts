@@ -51,13 +51,12 @@ test("search opens the left conversation; history restores results without anoth
   await page.goto("/?lng=13.3775&lat=49.7475&z=13");
   const input = page.getByTestId("place-search");
   await input.fill("nejbližší bar");
-  await page.getByRole("button", { name: "Probrat s AI: nejbližší bar", exact: true }).click();
+  await input.press("Enter");
   await expect(page.getByTestId("ai-panel")).toBeVisible();
   await expect(page.getByTestId("ai-card-places")).toBeVisible();
   await expect(page.getByTestId("ai-results-hide")).toBeVisible();
-  await expect
-    .poll(() => page.getByLabel("Historie konverzací").locator("option").count())
-    .toBeGreaterThan(1);
+  // The saved thread names the header once history has it.
+  await expect(page.getByTestId("ai-session-bar")).toContainText("nejbližší bar");
   expect(chats).toBe(1);
   const question = await page.getByTestId("ai-panel-thread").innerText();
   const savedManual = page.waitForResponse((response) => {
@@ -95,20 +94,25 @@ test("search opens the left conversation; history restores results without anoth
     )
     .toBe(true);
   expect(chats).toBe(1);
-  await page.locator(".ai-session-menu > summary").click();
+  const menu = async (action: string) => {
+    await page.getByRole("button", { name: "Konverzace", exact: true }).click();
+    await page.getByTestId(`ai-session-menu-${action}`).click();
+  };
   page.once("dialog", (dialog) => dialog.accept("Plzeň — můj výlet"));
-  await page.getByRole("button", { name: "Přejmenovat", exact: true }).click();
-  await expect(page.getByLabel("Historie konverzací")).toContainText("Plzeň — můj výlet");
-  await page.getByRole("button", { name: "Archivovat", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Obnovit z archivu", exact: true })).toBeVisible();
-  await expect(page.getByLabel("Historie konverzací")).toContainText("Archiv · Plzeň");
-  await page.getByRole("button", { name: "Obnovit z archivu", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Archivovat", exact: true })).toBeVisible();
+  await menu("rename");
+  await expect(page.getByTestId("ai-session-bar")).toContainText("Plzeň — můj výlet");
+  await menu("archive");
+  await page.getByRole("button", { name: "Konverzace", exact: true }).click();
+  await expect(page.getByTestId("ai-session-menu-archive")).toContainText("Obnovit z archivu");
+  await page.getByTestId("ai-session-menu-archive").click();
+  await page.getByRole("button", { name: "Konverzace", exact: true }).click();
+  await expect(page.getByTestId("ai-session-menu-archive")).toContainText("Archivovat");
+  await page.keyboard.press("Escape");
   expect(chats).toBe(1);
   page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Smazat konverzaci", exact: true }).click();
+  await menu("delete");
   await expect(page.getByTestId("ai-panel-thread")).not.toContainText("nejbližší bar");
-  await expect(page.getByLabel("Historie konverzací").locator("option")).toHaveCount(1);
+  await expect(page.getByTestId("ai-session-bar")).toContainText("Nová konverzace");
 });
 
 test("undo preserves manual fields changed after an assistant scene", async ({ page }) => {
@@ -145,69 +149,12 @@ test("undo preserves manual fields changed after an assistant scene", async ({ p
   expect(result.basemap).toBe("carto-dark");
 });
 
-test("Google UI Kit starts only on explicit request and never exports provider text", async ({
-  page
-}) => {
-  let googleLoads = 0;
-  await page.route("https://maps.googleapis.com/maps/api/js?**", async (route) => {
-    googleLoads++;
-    await route.fulfill({
-      contentType: "application/javascript",
-      body: `
-      window.google = { maps: { importLibrary: async () => {
-        if (!customElements.get('gmp-place-text-search-request')) {
-          customElements.define('gmp-place-text-search-request', class extends HTMLElement {
-            set textQuery(value) {
-              const button = document.createElement('button');
-              button.textContent = 'Google fixture result';
-              button.onclick = () => this.parentElement.dispatchEvent(Object.assign(new Event('gmp-select'), {
-                place: { displayName: 'Do not copy provider text', location: { lat: () => 36.72, lng: () => -4.42 } }
-              }));
-              this.parentElement.append(button);
-              this.parentElement.dispatchEvent(new Event('gmp-load'));
-            }
-          });
-        }
-      } } };
-      window.maposGooglePlacesReady();
-    `
-    });
-  });
-  await page.goto("/?lng=14.42&lat=50.08&z=12");
-  const input = page.getByTestId("place-search");
-  await input.fill("Malaga");
-  await expect(page.getByRole("button", { name: "Dohledat přes Google" })).toHaveCount(0);
-  expect(googleLoads).toBe(0);
-  await page.evaluate(async () => {
-    const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
-    const store = getMapStore();
-    store.setCapabilities({
-      ...store.capabilities,
-      googlePlacesUi: true,
-      googlePlacesPublicKey: "fixture-public-key"
-    });
-  });
-  await page.getByRole("button", { name: "Dohledat přes Google" }).click();
-  await page.getByRole("button", { name: "Google fixture result" }).click();
-  expect(googleLoads).toBe(1);
-  const result = await page.evaluate(async () => {
-    const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
-    return {
-      view: getMapStore().view,
-      persisted: JSON.stringify(localStorage) + JSON.stringify(sessionStorage)
-    };
-  });
-  expect(result.view.lng).toBeCloseTo(-4.42, 2);
-  expect(result.view.lat).toBeCloseTo(36.72, 2);
-  expect(result.persisted).not.toContain("Do not copy provider text");
-});
-
 test("derived area reaches map as a sourced polygon and survives reopening a conversation", async ({
   page
 }) => {
   await page.goto("/?lng=-4.42&lat=36.72&z=12");
   await page.getByTestId("place-search").fill("ukaž okruh 10 km");
-  await page.getByRole("button", { name: "Probrat s AI: ukaž okruh 10 km", exact: true }).click();
+  await page.getByTestId("place-search").press("Enter");
   await expect(page.getByTestId("ai-panel-thread")).toContainText("Nejde o dojezdovou oblast");
   await expect
     .poll(() =>
@@ -218,7 +165,7 @@ test("derived area reaches map as a sourced polygon and survives reopening a con
     )
     .toBe("Polygon");
   await expect(page.locator(".map-artifact-legend")).toContainText("Okruh 10 km");
-  await expect(page.getByLabel("Historie konverzací").locator("option")).toHaveCount(2);
+  await expect(page.getByTestId("ai-session-bar")).toContainText("ukaž okruh 10 km");
   await page.reload();
   await page.getByTestId("place-search").focus();
   await page

@@ -5156,9 +5156,36 @@
     margin-inline: calc(-1 * var(--space-4));
   }
   .place-detail-disclosure > summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    min-height: var(--list-row-h);
     cursor: pointer;
     padding: var(--space-4);
     font-weight: 600;
+    list-style: none;
+  }
+  .place-detail-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+  .place-detail-disclosure-icon {
+    flex: none;
+    color: var(--text-muted);
+  }
+  .place-detail-disclosure[open] .place-detail-disclosure-icon {
+    color: var(--accent);
+  }
+  .place-detail-disclosure-title {
+    flex: 1;
+    min-width: 0;
+  }
+  .place-detail-disclosure-chevron {
+    flex: none;
+    color: var(--text-muted);
+    transition: transform var(--dur) var(--ease);
+  }
+  .place-detail-disclosure[open] .place-detail-disclosure-chevron {
+    transform: rotate(180deg);
   }
   .place-detail-section-body {
     padding: 0 var(--space-4) var(--space-4);
@@ -5188,11 +5215,14 @@
     display: flex;
     border-radius: var(--radius-md);
     background: var(--surface-raised);
-    overflow: hidden;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
+  /* A tab label is one word; breaking "Obyvatelstvo" into "Obyvatelstv/o" in a narrow panel
+     read as a bug. Tabs keep their word and the row scrolls if it has to. */
   .local-stat-tabs button {
-    flex: 1;
-    min-width: 0;
+    flex: 1 0 auto;
+    white-space: nowrap;
     border: 0;
     background: none;
     color: inherit;
@@ -5206,7 +5236,7 @@
   }
   .local-stat-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-4);
     padding-block: var(--space-4);
   }
@@ -5214,6 +5244,8 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
+    min-width: 0;
+    overflow-wrap: anywhere;
     text-align: left;
     background: none;
     border: 0;

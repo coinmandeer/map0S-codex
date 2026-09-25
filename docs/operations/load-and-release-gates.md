@@ -19,6 +19,12 @@ After atomic activation, `scripts/smoke-vps-public.sh` checks the exact public H
 downloads only headers and tiny health/error bodies, performs no authenticated mutation and records
 public health, security-header, hostile-CORS and protected-operations evidence.
 
+The same release can run from GitHub Actions (`.github/workflows/deploy-vps.yml`): label a pull
+request `deploy:vps` to deploy its head commit, or run the workflow manually once it is on the
+default branch. It needs the `VPS_SSH_KEY` (preferred) or `VPS_PASSWORD` repository secret and
+optionally `VPS_KNOWN_HOSTS` to pin the host key; the script, its backup/restore drill, atomic
+switch and rollback are unchanged, followed by `scripts/smoke-vps-public.sh`.
+
 Soak/capacity numbers are environment evidence: run the same offline scenario on the target VPS,
 then add a longer authenticated read-only soak. Do not load-test public volunteer providers or AI
 endpoints. Provider quotas and mobile-data budgets are correctness constraints, not traffic to

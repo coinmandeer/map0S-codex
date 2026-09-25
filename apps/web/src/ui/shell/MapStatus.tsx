@@ -34,7 +34,30 @@ export function MapStatus({ compact = false }: { compact?: boolean }) {
   // Only real failures raise the alert. "Partial" is the normal state of a progressive source
   // that is still filling in (or a capped answer) and is already explained on the layer's row;
   // counting it made every busy map open with "4 layers failed to load".
-  const failures = ids.filter((id) => layerActivity.get(id)?.phase === "error");
+  // A failure stays reported while the layer tries again (a pan or a Retry re-queries it) and
+  // clears once it answers, drops out of range or is turned off. Tracking only the live phase made
+  // the alert blink out and back on with every retry — on a phone, right after it first appeared.
+  const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    setFailed((previous) => {
+      const next = new Set(
+        [...previous].filter(
+          (id) =>
+            active[id]?.visible &&
+            ["error", "queued", "loading", "rendering"].includes(
+              layerActivity.get(id)?.phase ?? "off"
+            )
+        )
+      );
+      for (const id of ids) if (layerActivity.get(id)?.phase === "error") next.add(id);
+      return next.size === previous.size && [...next].every((id) => previous.has(id))
+        ? previous
+        : next;
+    });
+    // `ids` is derived from `active`; the activity revision covers phase changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, activityRevision]);
+  const failures = ids.filter((id) => failed.has(id) || layerActivity.get(id)?.phase === "error");
 
   const noticesToShow = failures.filter((id) => !dismissed.has(id));
   const noticeLabel = noticeNames(noticesToShow);

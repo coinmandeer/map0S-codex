@@ -2,6 +2,7 @@ import type { StyleSpecification } from "maplibre-gl";
 import type { BasemapDefinition, LabelOverlayDefinition } from "@mapos/layer-sdk";
 import { basemapById, DEFAULT_BASEMAP_ID, labelOverlayFor } from "@mapos/layer-sdk";
 import type { ThemeMode } from "../store/mapStore";
+import { RASTER_STYLE_GLYPHS } from "./mapStyle";
 
 /**
  * Turns a chosen background into something MapLibre will render.
@@ -121,5 +122,5 @@ export function styleForBasemap(
     layers.push({ id: "basemap-labels", type: "raster", source: "labels" });
   }
 
-  return { version: 8, name: basemap.label, sources, layers };
+  return { version: 8, name: basemap.label, glyphs: RASTER_STYLE_GLYPHS, sources, layers };
 }

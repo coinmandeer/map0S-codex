@@ -8,7 +8,11 @@ const webPort = Number(process.env.MAPOS_E2E_WEB_PORT ?? 5178);
 export default defineConfig({
   ...base,
   testMatch: /performanceMap\.spec\.ts/,
+  testIgnore: [],
   workers: 1,
+  // The preview below serves on its own port; without this the inherited base URL points at the
+  // dev server port unless MAPOS_E2E_WEB_PORT happens to be set to the same value.
+  use: { ...base.use, baseURL: `http://localhost:${webPort}` },
   webServer: [
     (Array.isArray(base.webServer) ? base.webServer : [base.webServer])[0]!,
     {

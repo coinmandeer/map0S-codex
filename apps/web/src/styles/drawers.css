@@ -113,6 +113,13 @@
     opacity: 1;
   }
 
+  /* Touch has no hover: an invisible button that still deletes on tap is a trap. */
+  @media (hover: none) {
+    .preset-card-delete {
+      opacity: 1;
+    }
+  }
+
   .preset-dialog-layers {
     display: flex;
     flex-direction: column;
@@ -971,12 +978,15 @@
   background: var(--surface-solid);
   z-index: 4;
 }
+/* Sections read as a list, not a stack of cards: an icon, the name, a quiet count and a chevron,
+   separated by hairlines. Boxing every section made eleven headers look like eleven buttons. */
 .unified-layers .catalog-group {
   gap: 0;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface-raised);
-  overflow: hidden;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
 }
 .unified-layers .catalog-group + .catalog-group,
 .unified-layers .catalog-group[data-open] + .catalog-group {
@@ -984,31 +994,39 @@
 }
 .unified-layers .catalog-group-toggle {
   width: 100%;
-  min-height: 56px;
-  padding: 12px;
-  font-weight: 650;
-  gap: 10px;
+  min-height: var(--list-row-h);
+  padding: var(--space-4) var(--space-2);
+  font-weight: var(--weight-strong);
+  gap: var(--space-5);
+  border-radius: var(--radius-sm);
+}
+.unified-layers .catalog-group-toggle:hover {
+  background: var(--surface-sunken);
+}
+.catalog-group-icon {
+  flex: none;
+  color: var(--text-muted);
+}
+.catalog-group[data-open] > .catalog-group-toggle .catalog-group-icon,
+.basemap-accordion[data-open] .catalog-group-icon {
+  color: var(--accent);
 }
 .catalog-group-title {
   flex: 1;
   min-width: 0;
 }
 .catalog-group-count {
-  display: inline-grid;
-  place-items: center;
-  min-width: 28px;
-  height: 24px;
-  padding-inline: 7px;
-  border-radius: 8px;
-  font-size: 12px;
+  min-width: 2ch;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
+  text-align: right;
   color: var(--text-muted);
-  background: var(--surface-solid);
-  border: 1px solid var(--border);
 }
 .catalog-group .catalog-item {
-  margin-inline: 12px;
-  border-top: 1px solid var(--border);
+  margin-inline: 0;
+}
+.catalog-group .catalog-item + .catalog-item {
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 .catalog-group .catalog-row {
   min-height: 58px;

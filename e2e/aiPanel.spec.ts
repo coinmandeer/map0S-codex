@@ -180,7 +180,9 @@ async function openPanel(page: Page) {
   await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
 
   await page.getByTestId("place-search").fill(QUESTION);
-  await page.getByTestId("search-offer-ai").click();
+  // A question is not a place: Enter hands it to the assistant (the footer hint says so).
+  await expect(page.getByTestId("search-ai-hint")).toBeVisible();
+  await page.getByTestId("place-search").press("Enter");
   await expect(page.getByTestId("ai-panel")).toBeVisible({ timeout: 20_000 });
   // The panel asks the carried-over question as it opens. Waiting for that answer keeps a
   // caller's later `state.stream` from being served to this first turn as well, which showed
@@ -268,7 +270,6 @@ test.describe("AI panel", () => {
       timeout: 20_000
     });
 
-    await page.locator(".ai-session-menu > summary").click();
     await page.getByTestId("ai-panel-clear").click();
     await expect(page.getByTestId("ai-panel-empty")).toBeVisible();
 
@@ -472,7 +473,6 @@ test("AI V2 preserves streamed text on EOF and clears pending work on new thread
   );
   await expect(page.getByTestId("ai-panel-error")).toContainText("Přenos se přerušil");
   await expect(page.getByTestId("ai-panel-stop")).toHaveCount(0);
-  await page.locator(".ai-session-menu > summary").click();
   await page.getByTestId("ai-panel-clear").click();
   await expect(page.getByTestId("ai-panel-empty")).toBeVisible();
 });

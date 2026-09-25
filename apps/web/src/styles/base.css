@@ -247,3 +247,36 @@
     display: none;
   }
 }
+
+/* iOS zooms the page into any focused field whose text is smaller than 16px and does not zoom
+   back out, which on a map app means the chrome is suddenly half off screen. Touch devices get
+   16px fields; desktop keeps the denser type scale. This sits in `utilities` so it wins over
+   every component that sets `font` on a field. */
+@layer utilities {
+  @media (pointer: coarse) {
+    input:not([type="checkbox"], [type="radio"], [type="range"]),
+    textarea,
+    select {
+      font-size: max(16px, 1em);
+    }
+  }
+}
+
+/* Native-feeling touch: no grey flash on tap, no rubber-band scroll of the whole app behind the
+   map, and no text-selection callout from a long press on chrome. Text the user reads in panels
+   stays selectable. */
+@layer base {
+  html,
+  body {
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .map-container,
+  button,
+  [role="button"],
+  [role="tab"],
+  [role="switch"] {
+    -webkit-touch-callout: none;
+  }
+}

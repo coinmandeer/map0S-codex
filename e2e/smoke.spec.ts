@@ -60,9 +60,11 @@ test.describe("MapOS V3 smoke", () => {
     await page.getByLabel("Preset").click();
     await page.getByRole("option", { name: "Sport", exact: true }).click();
 
-    const layers = await page.evaluate(
-      () => new URLSearchParams(location.search).get("layers") ?? ""
-    );
+    // The URL keeps the camera only; the preset's layers live in the store.
+    const layers = await page.evaluate(async () => {
+      const { getMapStore } = await import("/src/store/mapStore.ts");
+      return Object.keys(getMapStore().activeLayers).join(",");
+    });
     expect(layers).toContain("waymarked-trails");
 
     const categories = await page.evaluate(async () => {
@@ -179,7 +181,14 @@ test.describe("MapOS V3 smoke", () => {
     await expect(toggle).toBeEnabled();
     await toggle.click();
     await expect(toggle).toBeChecked();
-    await expect(page).toHaveURL(/layers=[^&]*park4night/);
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { getMapStore } = await import("/src/store/mapStore.ts");
+          return getMapStore().activeLayers["park4night"]?.visible ?? false;
+        })
+      )
+      .toBe(true);
   });
 
   test("game mode lazy-loads the three.js layer without crashing", async ({ page }) => {
@@ -242,7 +251,6 @@ test.describe("MapOS V3 smoke", () => {
     await expect(page.getByTestId("game-hud")).toBeVisible({ timeout: 15_000 });
 
     await page.goto("/?mode=weather");
-    await expect(page).toHaveURL(/[?&]mode=discover(?:&|$)/);
     await expect(page.getByTestId("mode-discover")).toHaveAttribute("data-active", "true");
     await expect(page.getByTestId("global-timeline")).toBeVisible({ timeout: 30_000 });
     await page.getByTestId("layers-btn").click();

@@ -242,9 +242,9 @@
   }
 
   /* The slot is the strip the pill may use: it starts after the open panel (plus the hamburger
-     when one is showing) and ends before the utility rail and the open drawer. The pill centres
-     inside it, so it can never slide underneath the Podklady button, and TopBar.tsx measures the
-     slot to decide which labels still fit. */
+     when one is showing) and ends before the utility rail and the open drawer. The pill sits at
+     its start, next to the panel it searches from, so it can never slide underneath the rail,
+     and TopBar.tsx measures the slot to decide which labels still fit. */
   .chrome-bar-slot {
     position: absolute;
     top: calc(var(--chrome-inset) + var(--safe-top));
@@ -688,11 +688,7 @@
     background: transparent;
   }
 
-  .command-search-ai-preview,
   .command-search-empty {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
     margin: var(--space-3);
     padding: var(--space-5);
     border-radius: var(--radius-sm);
@@ -701,106 +697,61 @@
     font-size: var(--text-sm);
   }
 
-  .command-search-ai-preview strong {
-    color: var(--text);
-  }
-
-  /* The AI offer is one row in the same list as the geocoder hits (§29.3), only accented so it
-     reads as the alternative to them rather than as a result. */
-  .command-search-ai-offer strong {
-    color: var(--accent);
-  }
-
-  .command-search-ai-answer {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .command-search-ai-actions {
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  .command-search-ai-command span {
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-  }
-
-  .command-search-ai-preview {
-    color: var(--text);
-  }
-
-  .command-search-ai-command {
-    display: flex;
+  /* A place is one line of name and one of hierarchy, with its kind carried by the icon: the
+     type and source chips under every row were most of what made the list feel noisy. */
+  .command-search-section .command-search-place {
+    flex-direction: row;
+    /* \`.search-hit\` centres its column vertically; in a row that would centre it sideways. */
+    justify-content: flex-start;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-4);
-    padding: var(--space-4);
-    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
-    border-radius: var(--radius-sm);
+    gap: var(--space-5);
+  }
+
+  .command-search-place[aria-selected="true"] {
     background: var(--accent-soft);
   }
 
-  .command-search-ai-answer {
-    border-top: 1px solid var(--border);
-    padding-top: var(--space-4);
-  }
-
-  .command-search-ai-result {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-2);
-    width: 100%;
-    padding: var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface-elevated);
-    text-align: left;
-  }
-
-  .command-search-ai-result:hover {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-  }
-
-  .command-search-ai-result span,
-  .command-search-ai-selection {
+  .command-search-place-icon {
+    flex: none;
     color: var(--text-muted);
-    font-size: var(--text-xs);
   }
 
-  .command-search-ai-error {
-    color: var(--danger);
+  .command-search-place-text {
+    display: grid;
+    min-width: 0;
   }
 
   .search-hit-name,
-  .search-hit-hierarchy,
-  .search-hit-facts {
+  .search-hit-hierarchy {
     display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .search-hit-hierarchy {
-    margin-top: var(--space-2);
     color: var(--text-muted);
     font-size: var(--text-xs);
   }
 
-  .search-hit-facts {
+  /* One quiet line for what Enter does and where the places came from. */
+  .command-search-footer {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-5);
     margin-top: var(--space-3);
+    padding: var(--space-3) var(--space-5) var(--space-1);
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: var(--text-xs);
   }
 
-  .search-hit-facts span {
-    padding: 2px 6px;
-    border-radius: 999px;
-    background: var(--surface-sunken);
-    color: var(--text-muted);
-    font-size: 10px;
-    line-height: 1.4;
+  .command-search-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
   }
 
   /* ---- Dropdowns (legacy shell only) ---------------------------------- */
@@ -1312,11 +1263,13 @@
     display: none;
   }
 
+  /* On a phone the Discover panel is a bottom sheet; the chip floats above its top edge
+     (`--sheet-h`, 0 on desktop) instead of over the panel's own content. */
   html[data-discover-here] .discover-here-btn {
     position: fixed;
     bottom: calc(
       var(--footer-stack-h, 0px) + var(--modebar-bottom-h, 0px) + var(--map-filter-h, 0px) +
-        var(--bottom-nav-h) + var(--space-6) + var(--safe-bottom)
+        var(--bottom-nav-h) + var(--sheet-h) + var(--space-6) + var(--safe-bottom)
     );
     left: calc(var(--sidebar-w-open) + var(--chrome-inset) + var(--safe-left));
     right: calc(var(--drawer-w-open) + var(--chrome-inset) + var(--safe-right));
@@ -1341,6 +1294,14 @@
       left var(--dur-slow) var(--ease-out),
       right var(--dur-slow) var(--ease-out),
       background var(--dur-fast) var(--ease-standard);
+  }
+
+  /* On a phone the chip earns its place only while the sheet is lowered: at half or full height
+     the panel is already answering for this centre, and the chip would sit on the few pixels of
+     map that are left. */
+  html[data-discover-here]:has(.discover-panel[data-snap="half"], .discover-panel[data-snap="full"])
+    .discover-here-btn {
+    display: none;
   }
 
   html[data-discover-here] .discover-here-btn:hover {
@@ -1604,12 +1565,26 @@
       width: calc(100vw - 32px);
     }
 
+    /* The controls ride above the sheet, but never higher than the space under the top rail:
+       at the half snap they used to climb into the Layers/Settings column and cover it. */
     .maplibregl-ctrl-bottom-right,
     .maplibregl-ctrl-bottom-left {
-      bottom: calc(
-        var(--bottom-nav-h) + var(--map-filter-h, 0px) + var(--sheet-h) + var(--space-4) +
-          var(--safe-bottom)
+      bottom: min(
+        calc(
+          var(--bottom-nav-h) + var(--map-filter-h, 0px) + var(--sheet-h) + var(--space-4) +
+            var(--safe-bottom)
+        ),
+        calc(100dvh - var(--chrome-top) - 3 * var(--tap-min) - 4 * var(--space-6))
       ) !important;
+    }
+
+    /* Phones zoom with two fingers, as every native map does; the +/− pair only took the space
+       the sheet needs. 3D and the compass stay. */
+    @media (pointer: coarse) {
+      .maplibregl-ctrl-zoom-in,
+      .maplibregl-ctrl-zoom-out {
+        display: none !important;
+      }
     }
 
     html[data-soft-keyboard="open"] .bottom-nav,

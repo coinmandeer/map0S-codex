@@ -1,3 +1,4 @@
+import { catalogSwitch } from "./fixtures/mapPanel";
 import { expect, test } from "./fixtures/offlineTest";
 import { openAccessibleMapFeature, stubDiscoverContext } from "./fixtures/discoverContext";
 
@@ -23,8 +24,7 @@ test.describe("geologie", () => {
     });
 
     await page.goto("/");
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("overflow-geology").click();
+    await (await catalogSwitch(page, "geology")).click();
 
     await expect.poll(() => requested.length, { timeout: 15_000 }).toBeGreaterThan(0);
 
@@ -46,8 +46,7 @@ test.describe("geologie", () => {
       route.fulfill({ contentType: "application/x-protobuf", body: EMPTY_MVT })
     );
     await page.goto("/");
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("overflow-geology").click();
+    await (await catalogSwitch(page, "geology")).click();
 
     await expect
       .poll(() => page.evaluate(() => Boolean(window.__maposMap?.getLayer("vt-geology-fill"))), {
@@ -55,7 +54,7 @@ test.describe("geologie", () => {
       })
       .toBe(true);
 
-    await page.getByTestId("overflow-geology").click();
+    await (await catalogSwitch(page, "geology")).click();
     await expect
       .poll(
         () =>
@@ -116,11 +115,11 @@ test.describe("geologie", () => {
       });
     });
 
-    await page.goto("/?layers=osm-poi&mode=discover");
+    await page.goto("/?layers=osm-poi&mode=discover&lng=13.3775&lat=49.7475&z=13");
     await openAccessibleMapFeature(page, "Vyhlídka");
     await expect(page.getByTestId("pin-detail")).toBeVisible({ timeout: 20_000 });
-    await page.getByTestId("detail-section-more").click();
-    await page.getByRole("tab", { name: /Pod nohama/ }).click();
+    // Geology is one of the detail's sections, folded until asked for.
+    await page.getByTestId("place-section-geology").locator("summary").click();
 
     const panel = page.getByTestId("panel-geologie");
     await expect(panel).toBeVisible();

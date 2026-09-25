@@ -99,7 +99,7 @@ export function createAirQualityLayer(
         layout: {
           "text-field": ["get", "label"],
           "text-size": 12,
-          "text-font": ["Open Sans Regular"],
+          "text-font": ["Noto Sans Regular"],
           "text-allow-overlap": false
         },
         paint: { "text-color": "#18232f", "text-halo-color": "#ffffff", "text-halo-width": 1 }

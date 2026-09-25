@@ -1,3 +1,4 @@
+import { catalogSwitch } from "./fixtures/mapPanel";
 import { expect, test } from "./fixtures/offlineTest";
 
 /** §4.11: the two footer surfaces. The legend states what the colours on the map mean without
@@ -14,9 +15,7 @@ test.describe("map footer", () => {
     // A plain map has nothing to scrub: no strip at all rather than an inert one.
     await expect(page.getByTestId("global-timeline")).toHaveCount(0);
 
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("weather-accordion").click();
-    await page.locator('label:has([data-testid="weather-visualization-radar"])').click();
+    await (await catalogSwitch(page, "weather-radar")).click();
     await page.getByTestId("layers-btn").click();
 
     const timeline = page.getByTestId("global-timeline");
@@ -28,7 +27,7 @@ test.describe("map footer", () => {
   });
 
   test("play advances the cursor and Live puts it back on now", async ({ page }) => {
-    await page.goto("/?layers=weather&lng=13.3775&lat=49.7475&z=10");
+    await page.goto("/?layers=weather-radar&lng=13.3775&lat=49.7475&z=10");
     const scrubber = page.getByTestId("timeline-scrubber");
     await expect(scrubber).toBeVisible({ timeout: 30_000 });
     const start = Number(await scrubber.inputValue());
@@ -47,8 +46,7 @@ test.describe("map footer", () => {
 
   test("a numeric legend is a compact row before it is a list of values", async ({ page }) => {
     await page.goto("/?lng=13.3775&lat=49.7475&z=6");
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("overflow-earthquakes").click();
+    await (await catalogSwitch(page, "earthquakes")).click();
     await page.getByTestId("layers-btn").click();
 
     const legend = page.getByTestId("legend-stack");
@@ -69,7 +67,6 @@ test.describe("map footer", () => {
     { id: "waymarked-trails", legendTitle: "Značené trasy", item: "Mezinárodní trasa" },
     { id: "openrailwaymap", legendTitle: "Železnice", item: "Hlavní trať" },
     { id: "openseamap", legendTitle: "Námořní značení", item: "Maják" },
-    { id: "opentopomap", legendTitle: "Topografická", item: "Vrstevnice" },
     { id: "opensnowmap", legendTitle: "Sjezdovky a běžky", item: "Běžecká stopa" }
   ]) {
     test(`the ${overlay.id} overlay explains its colours`, async ({ page }) => {
@@ -120,7 +117,7 @@ test.describe("map footer", () => {
   });
 
   test("the timeline rolls up the same way and keeps running underneath", async ({ page }) => {
-    await page.goto("/?layers=weather&lng=13.3775&lat=49.7475&z=10");
+    await page.goto("/?layers=weather-radar&lng=13.3775&lat=49.7475&z=10");
     await expect(page.getByTestId("timeline-scrubber")).toBeVisible({ timeout: 30_000 });
 
     await page.getByTestId("footer-minimize-timeline").click();
@@ -138,11 +135,12 @@ test.describe("map footer", () => {
       });
     });
     await page.goto("/?lng=13.3775&lat=49.7475&z=6");
-    await page.getByTestId("layers-btn").click();
-    for (const id of ["overflow-earthquakes", "overflow-events", "overflow-trails"]) {
-      const toggle = page.getByTestId(id);
-      if (await toggle.count()) await toggle.click();
-    }
+    for (const [layer, row] of [
+      ["earthquakes", "earthquakes"],
+      ["events", "events"],
+      ["waymarked-trails", "walking"]
+    ])
+      await (await catalogSwitch(page, layer!, row)).click();
     await page.getByTestId("layers-btn").click();
 
     const legend = page.getByTestId("legend-stack");

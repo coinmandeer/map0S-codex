@@ -8,7 +8,7 @@ import { getLayerManifestV2 } from "../layers";
 import { answerBounds, AI_RESULT_PREFIX } from "../layers/aiMapResults";
 import { saveInlineLayerAsUserLayer } from "../layers/saveInlineLayer";
 import { formatDistance } from "../lib/units";
-import { t } from "../i18n";
+import { intlLocale, t } from "../i18n";
 import { getMapStore } from "../store/mapStore";
 import { getShellStore } from "../store/shellStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
@@ -21,6 +21,7 @@ import {
   IconButton,
   InlineNotice,
   ListItem,
+  Menu,
   Popover,
   Skeleton,
   TextArea
@@ -28,6 +29,7 @@ import {
 
 import type { AiPlace, AiCard, AiPlanDiff } from "./ai/chatTypes";
 import { runChatTurn } from "./ai/runChatTurn";
+import { AnswerText } from "./ai/AnswerText";
 import { showStatisticAnswer } from "./ai/statisticAnswer";
 import { chatSession, useChatField } from "./ai/chatSession";
 
@@ -311,6 +313,8 @@ export function AiPanel() {
     }
   };
 
+  const currentTitle = sessions.find((s) => s.id === conversationId)?.title ?? "Nová konverzace";
+
   return (
     <PanelShell
       title="Asistent"
@@ -323,127 +327,125 @@ export function AiPanel() {
         leftContext.type === "ai" && leftContext.prompt ? () => shell.closeLeftContext() : undefined
       }
       headerExtra={
-        <details className="ai-session-menu">
-          <summary
-            title={sessions.find((s) => s.id === conversationId)?.title ?? "Nová konverzace"}
-          >
-            {sessions.find((s) => s.id === conversationId)?.title ?? "Nová konverzace"}
-          </summary>
-          <div className="ai-session-controls">
-            <select
-              aria-label="Historie konverzací"
-              value={conversationId ?? ""}
-              onChange={(e) => {
-                if (e.target.value) void chatSession.openConversation(e.target.value);
-                else chatSession.clear();
-              }}
-            >
-              <option value="">Nová konverzace</option>
-              {sessions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.archived ? "Archiv · " : ""}
-                  {s.title} · {new Date(s.updatedAt).toLocaleDateString()}
-                </option>
-              ))}
-            </select>
-            <Button
-              variant="text"
+        <div className="ai-session-bar" data-testid="ai-session-bar">
+          <span className="ai-session-title" title={currentTitle}>
+            {currentTitle}
+          </span>
+          {turns.length > 0 ? (
+            <IconButton
+              icon="forum"
+              label="Nové vlákno"
               size="sm"
+              testId="ai-panel-clear"
               onClick={() => {
-                chatSession.set("includeArchived", !includeArchived);
-                void chatSession.refreshHistory();
+                chatSession.clear();
+                chatSession.askedSeed = seedKey;
               }}
-            >
-              {includeArchived ? "Skrýt archiv" : "Zobrazit archiv"}
-            </Button>
-            {conversationId && (
-              <>
-                <Button
-                  variant="text"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => {
-                    const name = window.prompt(
-                      "Název konverzace",
-                      sessions.find((s) => s.id === conversationId)?.title ?? ""
-                    );
-                    if (name) void chatSession.renameConversation(name);
-                  }}
-                >
-                  Přejmenovat
-                </Button>
-                <Button
-                  variant="text"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => void chatSession.archiveConversation(!archived)}
-                >
-                  {archived ? "Obnovit z archivu" : "Archivovat"}
-                </Button>
-                <Button
-                  variant="text"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        "Smazat tuto konverzaci a její mapové výsledky? Samostatně uložené plány zůstanou zachované."
-                      )
-                    )
-                      void chatSession.deleteConversation();
-                  }}
-                >
-                  Smazat konverzaci
-                </Button>
-              </>
-            )}
-            {nextHistoryCursor && (
-              <Button
-                variant="text"
-                size="sm"
-                onClick={() => void chatSession.refreshHistory(true)}
-              >
-                Starší konverzace
-              </Button>
-            )}
-            {historyError && <small role="status">{historyError}</small>}
-            {store.activePlanDocument && (
-              <Button
-                variant="tonal"
-                disabled={savingPlan || busy}
-                onClick={() => void savePlanDraft()}
-              >
-                Uložit plán
-              </Button>
-            )}
-            {chatSession.undoMap && (
-              <Button
-                variant="tonal"
-                onClick={() => {
-                  chatSession.undoMap?.();
-                  chatSession.undoMap = null;
-                  void chatSession
-                    .saveWorkspace()
-                    .catch(() => store.showToast("Mapový pohled se nepodařilo uložit."));
-                }}
-              >
-                Vrátit změnu mapy
-              </Button>
-            )}
-            {turns.length > 0 ? (
-              <IconButton
-                icon="forum"
-                label="Nové vlákno"
-                size="sm"
-                testId="ai-panel-clear"
-                onClick={() => {
-                  chatSession.clear();
-                  chatSession.askedSeed = seedKey;
-                }}
-              />
-            ) : null}
-          </div>
-        </details>
+            />
+          ) : null}
+          <Menu
+            testId="ai-session-menu"
+            trigger={<IconButton icon="more_horiz" label="Konverzace" size="sm" />}
+            actions={[
+              ...sessions
+                .filter((s) => s.id !== conversationId)
+                .slice(0, 6)
+                .map((s) => ({
+                  id: `open-${s.id}`,
+                  label: `${s.archived ? "Archiv · " : ""}${s.title} · ${new Date(
+                    s.updatedAt
+                  ).toLocaleDateString(intlLocale())}`,
+                  icon: "history" as const,
+                  onSelect: () => void chatSession.openConversation(s.id)
+                })),
+              ...(nextHistoryCursor
+                ? [
+                    {
+                      id: "older",
+                      label: "Starší konverzace",
+                      icon: "expand_more" as const,
+                      onSelect: () => void chatSession.refreshHistory(true)
+                    }
+                  ]
+                : []),
+              {
+                id: "archive-toggle",
+                label: includeArchived ? "Skrýt archiv" : "Zobrazit archiv",
+                onSelect: () => {
+                  chatSession.set("includeArchived", !includeArchived);
+                  void chatSession.refreshHistory();
+                }
+              },
+              ...(store.activePlanDocument
+                ? [
+                    {
+                      id: "save-plan",
+                      label: "Uložit plán",
+                      icon: "save" as const,
+                      disabled: savingPlan || busy,
+                      onSelect: () => void savePlanDraft()
+                    }
+                  ]
+                : []),
+              ...(chatSession.undoMap
+                ? [
+                    {
+                      id: "undo-map",
+                      label: "Vrátit změnu mapy",
+                      icon: "undo" as const,
+                      onSelect: () => {
+                        chatSession.undoMap?.();
+                        chatSession.undoMap = null;
+                        void chatSession
+                          .saveWorkspace()
+                          .catch(() => store.showToast("Mapový pohled se nepodařilo uložit."));
+                      }
+                    }
+                  ]
+                : []),
+              ...(conversationId
+                ? [
+                    {
+                      id: "rename",
+                      label: "Přejmenovat",
+                      icon: "edit" as const,
+                      disabled: busy,
+                      onSelect: () => {
+                        const name = window.prompt("Název konverzace", currentTitle);
+                        if (name) void chatSession.renameConversation(name);
+                      }
+                    },
+                    {
+                      id: "archive",
+                      label: archived ? "Obnovit z archivu" : "Archivovat",
+                      disabled: busy,
+                      onSelect: () => void chatSession.archiveConversation(!archived)
+                    },
+                    {
+                      id: "delete",
+                      label: "Smazat konverzaci",
+                      icon: "delete" as const,
+                      destructive: true,
+                      disabled: busy,
+                      onSelect: () => {
+                        if (
+                          window.confirm(
+                            "Smazat tuto konverzaci a její mapové výsledky? Samostatně uložené plány zůstanou zachované."
+                          )
+                        )
+                          void chatSession.deleteConversation();
+                      }
+                    }
+                  ]
+                : [])
+            ]}
+          />
+          {historyError && (
+            <small className="ai-session-error" role="status">
+              {historyError}
+            </small>
+          )}
+        </div>
       }
       footer={
         <form
@@ -470,36 +472,45 @@ export function AiPanel() {
               ))}
             </div>
           ) : null}
-          <TextArea
-            label="Na co se chceš zeptat?"
-            rows={2}
-            maxLength={2_000}
-            value={prompt}
-            placeholder="Např. kde je poblíž klidný kemp u vody?"
-            onChange={(event) => setPrompt(event.target.value)}
-          />
-          {busy ? (
-            <Button
-              variant="tonal"
-              icon="close"
-              block
-              testId="ai-panel-stop"
-              onClick={() => running.current?.abort()}
-            >
-              Zastavit
-            </Button>
-          ) : (
-            <Button
-              type="submit"
-              variant="filled"
-              icon="send"
-              block
-              disabled={!prompt.trim()}
-              testId="ai-panel-send"
-            >
-              Odeslat
-            </Button>
-          )}
+          <div className="ai-panel-composer-row">
+            <TextArea
+              label="Na co se chceš zeptat?"
+              hideLabel
+              rows={1}
+              maxLength={2_000}
+              value={prompt}
+              placeholder="Např. kde je poblíž klidný kemp u vody?"
+              enterKeyHint="send"
+              onChange={(event) => setPrompt(event.target.value)}
+              onKeyDown={(event) => {
+                // Enter sends, Shift+Enter breaks the line — the chat convention on every platform.
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  if (!busy && prompt.trim()) void ask(prompt);
+                }
+              }}
+            />
+            {busy ? (
+              <Button
+                variant="tonal"
+                icon="close"
+                testId="ai-panel-stop"
+                onClick={() => running.current?.abort()}
+              >
+                Zastavit
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                variant="filled"
+                icon="send"
+                disabled={!prompt.trim()}
+                testId="ai-panel-send"
+              >
+                Odeslat
+              </Button>
+            )}
+          </div>
         </form>
       }
     >
@@ -617,7 +628,7 @@ export function AiPanel() {
               </>
             ) : (
               <>
-                <p className="ai-turn-answer">{turn.text}</p>
+                <AnswerText text={turn.text} />
 
                 {turn.cards.map((card, index) =>
                   card.type === "places" ? (

@@ -47,6 +47,7 @@ export function createWorldLayer(map: maplibregl.Map, apiBase: string, layerId: 
   let host: GameHost | null = null,
     avatarKey: string | null = null;
   let disposed = false,
+    detached = false,
     defaultTimer: ReturnType<typeof setTimeout> | undefined,
     defaultAttempts = 0;
   let playerPosition = { lng: getMapStore().view.lng, lat: getMapStore().view.lat };
@@ -253,6 +254,8 @@ export function createWorldLayer(map: maplibregl.Map, apiBase: string, layerId: 
     type: "custom",
     renderingMode: "3d",
     onAdd(m, gl) {
+      // A style swap removes the layer and the next style load adds it back to this same handle.
+      disposed = false;
       host = new GameHost(m, gl, apiBase);
       host.setAvatarStyle("cube");
       const p = worldRuntime.get().snapshot?.position ?? getMapStore().view;
@@ -290,12 +293,13 @@ export function createWorldLayer(map: maplibregl.Map, apiBase: string, layerId: 
       clearTimeout(defaultTimer);
       roadController?.abort();
       zoneController?.abort();
-      host = null;
-      if (GAME_DEBUG) {
+      // The globals may already belong to a newer handle's scene; leave that one alone.
+      if (GAME_DEBUG && window.__maposGame === host) {
         delete window.__maposGame;
         delete window.render_game_to_text;
         delete window.advanceTime;
       }
+      host = null;
     }
   };
   const off = worldRuntime.subscribe(sync);
@@ -421,9 +425,25 @@ export function createWorldLayer(map: maplibregl.Map, apiBase: string, layerId: 
   window.addEventListener("keydown", key);
   map.on("click", click);
   map.on("mousemove", move);
+  // Entering the game switches to its board style. That drops every custom layer and makes the
+  // engine replace this handle with a new one, and the old handle's detach can land after the new
+  // one exists. Both used to share the layer id, so the late detach removed the new scene and the
+  // first entry into the game after a load often showed an empty board. So: a handle attaches as
+  // soon as a style is there, re-attaches after every style load, and removes only its own layer.
+  // Leaving the game detaches from inside a `style.load` dispatch, and MapLibre still calls the
+  // listeners it copied before the `off`, so a detached handle has to refuse to attach again.
+  const attach = () => {
+    if (!detached && map.getStyle() && !map.getLayer(layer.id)) map.addLayer(layer);
+  };
+  const ownsLayer = () => {
+    const current = map.getLayer(layer.id) as { implementation?: unknown } | undefined;
+    return Boolean(current) && (current!.implementation ?? layer) === layer;
+  };
+  map.on("style.load", attach);
+  if (map.isStyleLoaded()) attach();
   return {
     async update() {
-      if (!map.getLayer(layer.id)) map.addLayer(layer);
+      if (!detached && !map.getLayer(layer.id)) map.addLayer(layer);
       sync();
       // Capabilities/session arrive after onAdd, so the board are (re)checked here;
       // every call is keyed and TTL-guarded, so an unchanged cell costs nothing.
@@ -438,6 +458,7 @@ export function createWorldLayer(map: maplibregl.Map, apiBase: string, layerId: 
       host?.setOpacity(value);
     },
     detach() {
+      detached = true;
       window.removeEventListener("keydown", key);
       unsubscribeWorld();
       off();
@@ -449,7 +470,12 @@ export function createWorldLayer(map: maplibregl.Map, apiBase: string, layerId: 
       nearestAction();
       map.off("click", click);
       map.off("mousemove", move);
-      if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+      map.off("style.load", attach);
+      if (ownsLayer()) map.removeLayer(layer.id);
+      disposed = true;
+      clearTimeout(defaultTimer);
+      roadController?.abort();
+      zoneController?.abort();
     }
   };
 }

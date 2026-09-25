@@ -1,5 +1,7 @@
 import { expect, test } from "./fixtures/offlineTest";
 import { discoverContextFixture, stubDiscoverContext } from "./fixtures/discoverContext";
+import { openLayersPanel } from "./fixtures/mapPanel";
+import { boundaryArea, renderedBoundaryAreas, stubBoundaryTiles } from "./fixtures/boundaryTiles";
 
 const boundary = {
   type: "Polygon" as const,
@@ -123,8 +125,11 @@ test.describe("map-first Discover boundary", () => {
     await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
 
     // The preset lives in the Layers drawer (§4.7); Discover only consumes the use case.
+    await openLayersPanel(page);
+    await page.getByTestId("preset").click();
+    await page.getByTestId("preset-city").click();
     await page.getByTestId("layers-btn").click();
-    await page.getByLabel("Preset").selectOption("city");
+    await expect(page.getByTestId("right-utility-drawer")).toBeHidden();
 
     const panel = page.getByTestId("discover-panel");
     await page.getByTestId("discover-accordion-places").click();
@@ -161,24 +166,21 @@ test.describe("map-first Discover boundary", () => {
     );
     await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
 
-    const panel = page.getByTestId("discover-panel");
-    await panel.getByRole("button", { name: "What is here?" }).click();
-    const indicator = page.getByTestId("activity-indicator");
-    await expect(indicator).toBeVisible();
+    // The map asks the question ("What is here?" floats over it); the panel shows the one
+    // context task as its busy bar until the answer arrives.
+    await expect(page.getByTestId("discover-panel")).toBeVisible();
+    await page.getByTestId("discover-here-fab").click();
+    const busy = page.getByTestId("discover-panel-busy");
+    await expect(busy).toBeVisible();
+    await expect(busy.getByRole("progressbar", { name: "Zjišťuji kontext oblasti" })).toBeVisible();
     await expect.poll(() => requestCount).toBe(1);
-    await expect(
-      indicator.getByTestId("activity-row").filter({ hasText: "Zjišťuji kontext oblasti" })
-    ).toHaveCount(1);
 
     releaseRequest();
-    await expect(
-      indicator.getByTestId("activity-row").filter({ hasText: "Zjišťuji kontext oblasti" })
-    ).toHaveCount(0);
-    await expect(page.getByTestId("discover-panel-busy")).toHaveCount(0);
+    await expect(busy).toHaveCount(0);
     expect(requestCount).toBe(1);
   });
 
-  test("keeps a sourced polygon visible after the panel closes and reopens it on click", async ({
+  test("keeps the area outlines after the panel closes and selects an area on click", async ({
     page
   }) => {
     await stubDiscoverContext(page, {
@@ -189,6 +191,9 @@ test.describe("map-first Discover boundary", () => {
         sourceId: "nominatim-osm"
       }
     });
+    await stubBoundaryTiles(page, [
+      boundaryArea("CZ0323", "Plzeň-město", "adm2", boundary.coordinates[0]!)
+    ]);
     await page.route(/\/api\/layers\/osm-poi\/features/u, (route) =>
       route.fulfill({ json: { type: "FeatureCollection", features: [] } })
     );
@@ -200,21 +205,13 @@ test.describe("map-first Discover boundary", () => {
     await page.getByTestId("discover-accordion-boundary").click();
     await expect(page.getByTestId("discover-boundary-ready")).toBeVisible();
     await expect
-      .poll(
-        () =>
-          page.evaluate(() => {
-            const map = window.__maposMap;
-            if (!map?.getLayer("discover-fill")) return 0;
-            return map.queryRenderedFeatures(map.project([13.3775, 49.7475]), {
-              layers: ["discover-fill"]
-            }).length;
-          }),
-        { timeout: 20_000 }
-      )
+      .poll(() => renderedBoundaryAreas(page, [13.3775, 49.7475]), { timeout: 20_000 })
       .toBeGreaterThan(0);
 
+    // The outlines belong to the mode, not to the panel: closing it keeps them choosable.
     await panel.getByRole("button", { name: "Close" }).click();
     await expect(panel).toHaveCount(0);
+    await expect.poll(() => renderedBoundaryAreas(page, [13.3775, 49.7475])).toBeGreaterThan(0);
     const point = await page.evaluate(() => {
       const map = window.__maposMap!;
       const projected = map.project([13.3775, 49.7475]);
@@ -222,10 +219,18 @@ test.describe("map-first Discover boundary", () => {
       return { x: rect.left + projected.x, y: rect.top + projected.y };
     });
     await page.mouse.click(point.x, point.y);
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
+          return getMapStore().areaSelection?.name;
+        })
+      )
+      .toBe("Plzeň-město");
 
+    await page.getByTestId("hamburger-btn").click();
     await expect(panel).toBeVisible();
-    await expect(page.getByTestId("toast")).toContainText("Vybraná oblast: Plzeň");
-
+    await expect(panel.getByRole("heading", { name: "Plzeň-město" })).toBeVisible();
     await page.getByTestId("discover-accordion-boundary").click();
     await page.getByRole("button", { name: "Ukázat celou" }).click();
     await expect.poll(() => page.evaluate(() => window.__maposMap?.isMoving() ?? true)).toBe(false);
@@ -237,7 +242,7 @@ test.describe("map-first Discover boundary", () => {
     ).toBe(true);
   });
 
-  test("shows one regional catalogue level and selects a neighbouring polygon directly", async ({
+  test("shows one regional catalogue level and moves to a neighbouring region from it", async ({
     page
   }) => {
     const requestedCenters: number[] = [];
@@ -295,31 +300,9 @@ test.describe("map-first Discover boundary", () => {
     await options.scrollIntoViewIfNeeded();
     await page.screenshot({ path: "e2e/screenshots/390-discover-regions.png", fullPage: true });
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.evaluate(
-      () =>
-        new Promise<void>((resolve) => {
-          window.__maposMap!.resize();
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-        })
-    );
-    await expect
-      .poll(() =>
-        page.evaluate(() => {
-          const map = window.__maposMap!;
-          return map
-            .queryRenderedFeatures(map.project([13.72, 49.75]), { layers: ["discover-fill"] })
-            .some((feature) => feature.properties?.kind === "candidate");
-        })
-      )
-      .toBe(true);
-
-    const point = await page.evaluate(() => {
-      const projected = window.__maposMap!.project([13.72, 49.75]);
-      const rect = window.__maposMap!.getCanvas().getBoundingClientRect();
-      return { x: rect.left + projected.x, y: rect.top + projected.y };
-    });
-    await page.mouse.click(point.x, point.y);
-    await expect(page.getByTestId("toast")).toContainText("Přepínám na oblast: Karlovarský kraj");
+    // On the map the outlines come from the boundary tiles (selecting one is covered by
+    // discoverBoundaries.spec); the catalogue list is the panel's own way to the neighbour.
+    await page.getByTestId("discover-region-option-CZ041").click();
     await expect
       .poll(() => page.evaluate(() => window.__maposMap!.getCenter().lng))
       .toBeGreaterThan(13.65);
@@ -554,7 +537,10 @@ test.describe("map-first Discover boundary", () => {
     await expect(chip).toBeHidden();
   });
 
-  test("keeps a detailed POI clickable above the regional overlay", async ({ page }) => {
+  test("keeps a detailed POI clickable above the area outlines", async ({ page }) => {
+    await stubBoundaryTiles(page, [
+      boundaryArea("CZ0323", "Plzeň-město", "adm2", boundary.coordinates[0]!)
+    ]);
     await stubDiscoverContext(page, {
       boundary: {
         status: "ready",
@@ -598,9 +584,11 @@ test.describe("map-first Discover boundary", () => {
       })
     );
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
+    // The app starts with no layers; the POI layer is switched on explicitly.
+    await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10&layers=osm-poi");
     await page.getByTestId("discover-accordion-boundary").click();
     await expect(page.getByTestId("discover-boundary-ready")).toBeVisible();
+    await expect.poll(() => renderedBoundaryAreas(page, [13.3775, 49.7475])).toBeGreaterThan(0);
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -620,5 +608,12 @@ test.describe("map-first Discover boundary", () => {
     });
     await page.mouse.click(point.x, point.y);
     await expect(page.getByTestId("pin-detail")).toContainText("Kavárna nad hranicí");
+    // The pin took the click; the area under it was not selected as well.
+    expect(
+      await page.evaluate(async () => {
+        const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
+        return getMapStore().areaSelection;
+      })
+    ).toBeNull();
   });
 });

@@ -42,20 +42,26 @@ test.describe("transparent global search", () => {
     await input.fill("Plzeň");
     await expect.poll(() => geocodeFixtures).toBeGreaterThan(0);
 
-    const geocoderResult = page.getByRole("button", { name: /Plzeň, Česko/ });
-    await expect(geocoderResult).toContainText("Obec");
+    // One line of name and one of hierarchy; the kind is the icon's label and the geocoder is
+    // credited once for the whole list rather than on every row.
+    const geocoderResult = page.getByRole("option", { name: /Plzeň/ });
+    await expect(geocoderResult).toHaveAccessibleName(/Obec|Municipality/);
     await expect(geocoderResult).toContainText("Plzeňský kraj › Česko");
-    await expect(geocoderResult).toContainText("MapOS offline geokodér");
+    await expect(
+      page.getByRole("dialog", { name: /Návrhy hledání|Search suggestions/ })
+    ).toContainText("MapOS offline geokodér");
     expect(aiRequests).toBe(0);
 
     await input.fill("najdi mi nejbližší bar");
-    // Asking starts one sourced answer using the current context, and applies verified results in the left conversation panel.
-    await expect(page.getByTestId("search-offer-ai")).toContainText("najdi mi nejbližší bar");
+    // Anything that is not a suggestion is a question: Enter asks it, with the current context,
+    // and verified results land in the left conversation panel.
+    await expect(page.getByTestId("search-ai-hint")).toBeVisible();
+    expect(aiRequests).toBe(0);
     const aiRequest = page.waitForRequest(
       (request) =>
         request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/ai/chat"
     );
-    await page.getByTestId("search-offer-ai").click();
+    await input.press("Enter");
     const request = await aiRequest;
     expect(request.postDataJSON()).toMatchObject({
       message: "najdi mi nejbližší bar",

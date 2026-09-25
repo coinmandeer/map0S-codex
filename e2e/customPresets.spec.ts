@@ -27,18 +27,24 @@ test.describe("custom presets", () => {
     await expect(dialog).toHaveCount(0);
 
     // The saved set shows up in the preset picker next to the built-in use cases.
-    const presetPicker = page.getByLabel("Preset");
-    await expect(presetPicker).toContainText("Vanlife weekend");
+    await page.getByLabel("Preset").click();
+    await expect(page.getByRole("option", { name: "Vanlife weekend" })).toBeVisible();
+    await page.keyboard.press("Escape");
 
     // It survives a reload, because it is the user's set rather than this session's.
     await page.reload();
     await page.getByTestId("layers-btn").click();
-    await expect(page.getByLabel("Preset")).toContainText("Vanlife weekend");
-
     await page.getByLabel("Preset").click();
     await page.getByRole("option", { name: "Vanlife weekend" }).click();
     await expect
-      .poll(() => page.evaluate(() => location.search.includes("inaturalist")), { timeout: 20_000 })
+      .poll(
+        () =>
+          page.evaluate(async () => {
+            const { getMapStore } = await import("/src/store/mapStore.ts");
+            return getMapStore().activeLayers["inaturalist"]?.visible ?? false;
+          }),
+        { timeout: 20_000 }
+      )
       .toBe(true);
   });
 });

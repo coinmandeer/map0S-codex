@@ -3,6 +3,7 @@ import type { GeoFeature } from "@mapos/layer-sdk";
 import { PIN_STYLES } from "../ui/presets";
 import { interactivePinOwner } from "./interactivePins";
 import "./pinPreview.css";
+import { t } from "../i18n";
 
 export function previewUrl(value: unknown): string | null {
   if (typeof value !== "string" || value.length > 2048) return null;
@@ -57,7 +58,7 @@ export function createPinPreview(
     timer = setTimeout(() => {
       const root = document.createElement("div");
       root.className = "pin-preview-card";
-      root.setAttribute("aria-label", String(props.name ?? "Místo"));
+      root.setAttribute("aria-label", String(props.name ?? t("pinPreview.place")));
       root.addEventListener("mouseenter", () => {
         held = true;
         clearTimeout(closeTimer);
@@ -82,7 +83,7 @@ export function createPinPreview(
       const title = document.createElement("button");
       title.type = "button";
       title.className = "pin-preview-title";
-      title.textContent = String(props.name ?? "Místo");
+      title.textContent = String(props.name ?? t("pinPreview.place"));
       const detail = () => {
         hide();
         open(layer, {
@@ -91,7 +92,7 @@ export function createPinPreview(
           properties: {
             ...props,
             id: props.id ?? String(hit.id),
-            name: String(props.name ?? "Místo"),
+            name: String(props.name ?? t("pinPreview.place")),
             layerId: layer
           }
         });
@@ -109,9 +110,9 @@ export function createPinPreview(
         root.append(label);
       }
       const links = document.createElement("nav");
-      links.setAttribute("aria-label", "Odkazy místa");
+      links.setAttribute("aria-label", t("pinPreview.links"));
       for (const [field, label] of [
-        ["website", "Web ↗"],
+        ["website", `${t("pinPreview.website")} ↗`],
         ["instagram", "Instagram ↗"],
         ["facebook", "Facebook ↗"]
       ] as const) {
@@ -127,7 +128,7 @@ export function createPinPreview(
       root.append(links);
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = "Detail";
+      button.textContent = t("pinPreview.detail");
       button.addEventListener("click", detail);
       root.append(button);
       popup.setLngLat(coordinates).setDOMContent(root).addTo(map);

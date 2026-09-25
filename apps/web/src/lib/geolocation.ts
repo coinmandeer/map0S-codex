@@ -98,6 +98,8 @@ let lastFix: Fix | null = null;
 let lastError: GeolocationError | null = null;
 let watchId: number | null = null;
 const listeners = new Set<(fix: Fix) => void>();
+/** Hear about fixes other code asked for, without starting a watch (and a permission prompt). */
+const passiveListeners = new Set<(fix: Fix) => void>();
 const errorListeners = new Set<(error: GeolocationError) => void>();
 /** In-flight one-shot request, shared so simultaneous callers don't each start their own. */
 let pending: Promise<Fix> | null = null;
@@ -106,6 +108,7 @@ function publish(fix: Fix) {
   lastError = null;
   lastFix = fix;
   for (const listener of listeners) listener(fix);
+  for (const listener of passiveListeners) listener(fix);
 }
 function publishError(error: GeolocationError) {
   lastError = error;
@@ -206,6 +209,15 @@ export const geolocation = {
       listeners.delete(listener);
       if (onError) errorListeners.delete(onError);
       stopWatch();
+    };
+  },
+
+  /** Called with every fix, but never asks for one: for UI that should wake up only once the
+   *  user has chosen to share their position. */
+  onFix(listener: (fix: Fix) => void): () => void {
+    passiveListeners.add(listener);
+    return () => {
+      passiveListeners.delete(listener);
     };
   },
 

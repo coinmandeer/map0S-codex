@@ -1,3 +1,4 @@
+import { catalogSwitch } from "./fixtures/mapPanel";
 import { expect, test } from "./fixtures/offlineTest";
 
 /**
@@ -78,22 +79,22 @@ test.describe("infrastruktura", () => {
       .toBe("visible");
     await expect.poll(visibilityOf(page, "vt-openinframap-water-pipeline")).toBe("none");
 
-    await page.getByTestId("layers-btn").click();
-    // Spelled out under the layer, not folded into a filter popover: the layer means nothing
-    // until one of these four is picked, so the choice is visible where the switch is.
-    await page.getByTestId("layer-filter-btn-openinframap").click();
-    const subswitches = page.getByTestId("filter-openinframap-network");
-    await expect(subswitches).toBeVisible();
-    await page.getByTestId("filter-openinframap-network-water").click();
+    // Each network is its own catalogue row over the one shared tile source, so the choice is
+    // visible where the switches are rather than in a filter popover.
+    for (const network of ["power", "network", "petroleum", "water"])
+      await expect(await catalogSwitch(page, "openinframap", network)).toBeVisible();
+    await expect(await catalogSwitch(page, "openinframap", "power")).toBeChecked();
+    const water = await catalogSwitch(page, "openinframap", "water");
+    await water.click();
 
     await expect
       .poll(visibilityOf(page, "vt-openinframap-water-pipeline"), { timeout: 20_000 })
       .toBe("visible");
 
-    // Turning the layer off takes the sub-switches with it.
-    await page.keyboard.press("Escape");
-    await page.getByTestId("overflow-openinframap").click();
-    await expect(subswitches).toHaveCount(0);
+    // And off again: one network, not the whole layer.
+    await water.click();
+    await expect.poll(visibilityOf(page, "vt-openinframap-water-pipeline")).toBe("none");
+    await expect.poll(visibilityOf(page, "vt-openinframap-power-line")).toBe("visible");
   });
 
   test("switching it off leaves nothing behind", async ({ page }) => {
@@ -108,8 +109,7 @@ test.describe("infrastruktura", () => {
       )
       .toBe(true);
 
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("overflow-openinframap").click();
+    await (await catalogSwitch(page, "openinframap", "power")).click();
     await page.getByTestId("layers-btn").click();
 
     await expect

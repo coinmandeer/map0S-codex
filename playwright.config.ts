@@ -15,7 +15,10 @@ export default defineConfig({
     /runtime-starter\.spec\.ts/,
     /offline-smoke\.spec\.ts/,
     /accessibility\.spec\.ts/,
-    /security\.spec\.ts/
+    /security\.spec\.ts/,
+    // The memory benchmark measures heap and long tasks; beside two other WebGL workers it
+    // measures the machine instead, so it runs alone in its own profile.
+    /performanceMap\.spec\.ts/
   ],
   timeout: 60_000,
   // Sheets and the game layer are lazy chunks, and behind a dev server the first request for one

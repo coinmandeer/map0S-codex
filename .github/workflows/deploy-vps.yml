@@ -1,0 +1,110 @@
+name: Deploy VPS
+
+# Runs scripts/deploy-vps.sh against the production VPS from a GitHub runner: a staged build while
+# the current release stays live, a verified database backup and restore drill, an atomic switch
+# and an automatic rollback when the new release is unhealthy.
+#
+# Triggers
+# - Label a pull request from this repository `deploy:vps` to deploy its head commit; the label is
+#   removed again afterwards, so labelling once more redeploys.
+# - Actions → Deploy VPS → Run workflow (available once this file is on the default branch).
+#
+# Repository secrets (Settings → Secrets and variables → Actions)
+# - VPS_SSH_KEY: private key authorised for the deploy user, preferred; or
+# - VPS_PASSWORD: that user's SSH password.
+# - VPS_KNOWN_HOSTS (optional): pinned `ssh-keyscan` output. Without it the host key is read once
+#   per run, which trusts the network path of that run.
+# Repository variable VPS_HOST (optional) overrides the default user@host.
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to deploy
+        required: true
+        default: main
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.label.name == 'deploy:vps' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DEPLOY_HOST: ${{ vars.VPS_HOST || 'root@72.61.188.39' }}
+      DEPLOY_REMOTE_DIR: /opt/ps3000/apps/mapos-v3
+      DEPLOY_PUBLIC_HOST: mapos.promptstudio3000.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || inputs.ref }}
+
+      - name: SSH access
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+          install -d -m 700 ~/.ssh
+          host="${DEPLOY_HOST#*@}"
+          if [[ -n "${VPS_KNOWN_HOSTS}" ]]; then
+            printf '%s\n' "${VPS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -T 20 "${host}" > ~/.ssh/known_hosts
+          fi
+          chmod 600 ~/.ssh/known_hosts
+          if [[ -n "${VPS_SSH_KEY}" ]]; then
+            eval "$(ssh-agent -s)"
+            printf '%s\n' "${VPS_SSH_KEY}" | ssh-add -
+            echo "SSH_AUTH_SOCK=${SSH_AUTH_SOCK}" >> "${GITHUB_ENV}"
+            echo "SSH_AGENT_PID=${SSH_AGENT_PID}" >> "${GITHUB_ENV}"
+          elif [[ -n "${VPS_PASSWORD}" ]]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq sshpass >/dev/null
+            # The deploy script calls plain ssh/scp; wrappers answer the password prompt from the
+            # SSHPASS environment variable, so the secret never appears on a command line.
+            bin="${RUNNER_TEMP}/ssh-bin"
+            install -d "${bin}"
+            for tool in ssh scp; do
+              printf '#!/usr/bin/env bash\nexec sshpass -e /usr/bin/%s -o PubkeyAuthentication=no "$@"\n' "${tool}" > "${bin}/${tool}"
+              chmod +x "${bin}/${tool}"
+            done
+            echo "${bin}" >> "${GITHUB_PATH}"
+          else
+            echo "::error::Set the VPS_SSH_KEY or VPS_PASSWORD repository secret." >&2
+            exit 1
+          fi
+
+      - name: Deploy
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          tag="$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short=7 HEAD)"
+          DRY_RUN=0 ./scripts/deploy-vps.sh "${tag}"
+          echo "Deployed ${tag} to https://${DEPLOY_PUBLIC_HOST}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Public smoke check
+        run: ./scripts/smoke-vps-public.sh "https://${DEPLOY_PUBLIC_HOST}"
+
+      - name: Remove the deploy label
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh api -X DELETE
+          "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/deploy:vps"
+          || true

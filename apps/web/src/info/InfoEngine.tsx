@@ -20,7 +20,7 @@ import { PracticalPanel } from "./panels/PracticalPanel";
 import { TabBar } from "../ui/primitives";
 import { ModuleErrorBoundary } from "../ui/primitives/ModuleErrorBoundary";
 import { PIN_STYLES } from "../ui/presets";
-import { safeExternalUrl } from "./detailModel";
+import { formatDetailDate, safeExternalUrl } from "./detailModel";
 import { infoPanelsFor, type InfoPanel } from "./registry";
 import { intlLocale } from "../i18n";
 
@@ -203,6 +203,7 @@ function fieldContent(field: DetailFieldValue): ReactNode {
   }
   if (field.kind === "email") return <a href={`mailto:${String(value)}`}>{String(value)}</a>;
   if (typeof value === "boolean") return value ? t("polish.yes") : t("polish.no");
+  if (field.kind === "date") return formatDetailDate(value, intlLocale()) ?? String(value);
   return String(value);
 }
 
@@ -507,7 +508,8 @@ function UnifiedInfoEngine({
         <div data-testid="provenance">
           {sources.map((source) => (
             <p key={source.source}>
-              {PLACE_SOURCE_BY_ID[source.source]?.label ?? source.source} · {source.refreshedAt}
+              {PLACE_SOURCE_BY_ID[source.source]?.label ?? source.source} ·{" "}
+              {formatDetailDate(source.refreshedAt, intlLocale()) ?? source.refreshedAt}
             </p>
           ))}
         </div>

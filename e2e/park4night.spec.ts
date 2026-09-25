@@ -1,3 +1,4 @@
+import { openCatalogSettings } from "./fixtures/mapPanel";
 import { expect, test } from "./fixtures/offlineTest";
 import { openAccessibleMapFeature, stubDiscoverContext } from "./fixtures/discoverContext";
 
@@ -73,8 +74,7 @@ test.describe("Park4Night", () => {
     await expect(page.getByTestId("mode-bar")).toBeVisible({ timeout: 30_000 });
     await expect.poll(() => urls.length, { timeout: 20_000 }).toBeGreaterThan(0);
 
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("layer-filter-btn-park4night").click();
+    await openCatalogSettings(page, "park4night");
     await page.getByTestId("filter-park4night-categories-p4n-night").click();
     await page.getByTestId("filter-park4night-services-electricity").click();
 
@@ -100,8 +100,7 @@ test.describe("Park4Night", () => {
     await page.goto("/?layers=park4night&lng=13.3775&lat=49.7475&z=12");
     await expect.poll(() => urls.length, { timeout: 30_000 }).toBeGreaterThan(0);
 
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("layer-filter-btn-park4night").click();
+    await openCatalogSettings(page, "park4night");
     const slider = page.getByTestId("filter-park4night-minRating").getByRole("slider");
     await slider.focus();
     // Whole stars, so four presses is "rated 4 and up".
@@ -119,7 +118,7 @@ test.describe("Park4Night", () => {
     await recordRequests(page);
     await stubDiscoverContext(page);
 
-    await page.goto("/?layers=park4night&mode=discover");
+    await page.goto("/?layers=park4night&mode=discover&lng=13.3775&lat=49.7475&z=12");
     await openAccessibleMapFeature(page, "Kemp u řeky");
 
     const detail = page.getByTestId("pin-detail");
@@ -127,14 +126,13 @@ test.describe("Park4Night", () => {
     // The rating carries the headline, because "how good is it" is the first thing asked.
     await expect(detail).toContainText("★ 4.5");
 
-    // The rest are practical facts, which is the surface they belong on.
-    await page.getByTestId("detail-section-practical").click();
-    const body = page.getByTestId("info-panel-body");
-    await expect(body).toContainText("Počet recenzí");
-    await expect(body).toContainText("Vybavení");
+    // The rest are practical facts, shown on the overview with the provider's own fields.
+    const body = detail;
+    await expect(body).toContainText(/Počet recenzí|Reviews/);
+    await expect(body).toContainText(/Vybavení|Amenities/);
     // Shown in words, not as the enum ids the filter sends.
     await expect(body).toContainText("Elektřina");
     await expect(body).not.toContainText("electricity");
-    await expect(body).toContainText("Zdroj");
+    await expect(body).toContainText(/Zdroj|Source/);
   });
 });

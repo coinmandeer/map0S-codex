@@ -1,9 +1,15 @@
 import type { StyleSpecification } from "maplibre-gl";
 
+/** Raster styles have no fonts of their own, yet pins, cluster counts and stop numbers are
+ *  symbol layers. Without a glyph endpoint MapLibre rejects every `text-field` layer on a raster
+ *  basemap, silently. OpenFreeMap already serves the vector basemaps and carries Noto Sans. */
+export const RASTER_STYLE_GLYPHS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf";
+
 /** Soft raster fallbacks — used only if the vector style JSON can't be fetched at all
  * (see MapCore's `error` handler). */
 export const MAP_STYLE_RASTER_FALLBACK: StyleSpecification = {
   version: 8,
+  glyphs: RASTER_STYLE_GLYPHS,
   name: "MapOS Tourist Fallback",
   sources: {
     osm: {
@@ -31,6 +37,7 @@ export const MAP_STYLE_RASTER_FALLBACK: StyleSpecification = {
 
 export const MAP_STYLE_RASTER_FALLBACK_DARK: StyleSpecification = {
   version: 8,
+  glyphs: RASTER_STYLE_GLYPHS,
   name: "MapOS Dark Fallback",
   sources: {
     dark: {

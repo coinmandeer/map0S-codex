@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BASEMAP_GROUP_LABELS,
+  BASEMAP_GROUP_LABELS_EN,
   availableBasemaps,
   labelOverlayFor,
   type BasemapDefinition
 } from "@mapos/layer-sdk";
 import { t } from "../../i18n";
+import { st } from "../../statistics/labels";
 import { resolveBasemap } from "../../map/basemapStyle";
 import { getMapStore } from "../../store/mapStore";
 import { useMapStoreSnapshot } from "../../store/useMapStoreSnapshot";
-import { Chip, Icon, InfoTip, Section, Switch } from "../kit";
+import { Chip, Icon, InfoTip, Section, Switch, type IconName } from "../kit";
 import { groupBasemaps } from "../basemapGroups";
 import { BasemapThumb } from "./BasemapThumb";
 import { shortHint } from "./basemapPresentation";
@@ -101,7 +103,7 @@ export function BasemapsDrawer() {
           <BasemapGroupAccordion
             key={group}
             group={group}
-            label={BASEMAP_GROUP_LABELS[group]}
+            label={st(BASEMAP_GROUP_LABELS[group], BASEMAP_GROUP_LABELS_EN[group])}
             items={items}
             selectedId={basemapId}
             drawnId={drawn.id}
@@ -116,6 +118,15 @@ export function BasemapsDrawer() {
     </div>
   );
 }
+
+const BASEMAP_GROUP_ICON: Record<string, IconName> = {
+  street: "map",
+  outdoor: "hiking",
+  satellite: "satellite_alt",
+  terrain: "terrain",
+  historic: "museum",
+  national: "flag"
+};
 
 function BasemapGroupAccordion({
   group,
@@ -150,6 +161,7 @@ function BasemapGroupAccordion({
         data-testid={`basemap-group-${group}`}
         onClick={() => setOpen((previous) => !previous)}
       >
+        <Icon name={BASEMAP_GROUP_ICON[group] ?? "map"} size={20} className="catalog-group-icon" />
         <span className="basemap-group-title">{label}</span>
         <span className="kit-accordion-count">{items.length}</span>
         <Icon name="expand_more" size={20} className="kit-accordion-chevron" />

@@ -1,6 +1,16 @@
 import { StatisticsDialog } from "../../statistics/StatisticsDialog";
+import { flushSync } from "react-dom";
 import { chatSession } from "../ai/chatSession";
-import { lazy, Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode
+} from "react";
 import type { Fix } from "../../lib/geolocation";
 import { getLayerManifestV2 } from "../../layers/registry";
 import {
@@ -21,6 +31,7 @@ import { legendContributions, timelineContributions } from "../footerContributio
 import { ModuleErrorBoundary } from "../primitives/ModuleErrorBoundary";
 import { Button } from "../kit";
 
+import { DiscoverHereButton } from "../DiscoverHereButton";
 import { DesktopModeBar } from "./DesktopModeBar";
 import { MapFooterStack } from "./MapFooterStack";
 import { LegendStack } from "./LegendStack";
@@ -51,9 +62,48 @@ const BasemapSheet = lazy(() =>
 const GlobalTimeline = lazy(() =>
   import("../GlobalTimeline").then((module) => ({ default: module.GlobalTimeline }))
 );
-const GameHud = lazy(() =>
-  import("../../world/WorldHud").then((module) => ({ default: module.WorldHud }))
-);
+/**
+ * The game panel is opened while the board redraws every frame and the HUD clock ticks. A lazy
+ * component resumes through a Suspense retry, which React never expires, and on a slow phone those
+ * constant updates kept the retry from ever committing: the panel stayed a spinner. It loads
+ * through ordinary state instead (which React does commit), and starts loading when the game mode
+ * does, so opening it is usually instant.
+ */
+let worldHudModule: Promise<typeof import("../../world/WorldHud")> | null = null;
+let loadedWorldHud: ComponentType | null = null;
+function loadWorldHud() {
+  worldHudModule ??= import("../../world/WorldHud").then(
+    (module) => {
+      loadedWorldHud = module.WorldHud;
+      return module;
+    },
+    (error: unknown) => {
+      worldHudModule = null;
+      throw error;
+    }
+  );
+  return worldHudModule;
+}
+function GameHud() {
+  const [WorldHud, setWorldHud] = useState<ComponentType | null>(() => loadedWorldHud);
+  const [failure, setFailure] = useState<unknown>(null);
+  useEffect(() => {
+    if (WorldHud) return;
+    let live = true;
+    loadWorldHud().then(
+      // Synchronously: the panel is what was just asked for, and a normal update can still wait
+      // behind the board's own updates for seconds before React forces it through.
+      (module) => live && flushSync(() => setWorldHud(() => module.WorldHud)),
+      (error: unknown) => live && setFailure(error)
+    );
+    return () => {
+      live = false;
+    };
+  }, [WorldHud]);
+  // Thrown during render so the surrounding module boundary offers its retry.
+  if (failure) throw failure;
+  return WorldHud ? <WorldHud /> : <span className="spinner" aria-label="Načítám: Herní panel" />;
+}
 const GameHudOverlay = lazy(() =>
   import("../../world/GameHudOverlay").then((module) => ({ default: module.GameHudOverlay }))
 );
@@ -130,6 +180,9 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
   const activePlan = useMapStoreSnapshot((state) => state.activePlan);
   const selectedPin = useMapStoreSnapshot((state) => state.selectedPin);
   const discoverFocus = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (mode === "game") void loadWorldHud().catch(() => {});
+  }, [mode]);
   const previousContext = useRef(leftContext.type);
   useEffect(() => {
     if (
@@ -235,6 +288,11 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
         placement="overlay"
       >
         <DesktopModeBar />
+      </ModuleErrorBoundary>
+      {/* Discover's "What is here?" chip. Styles keep it hidden until the open discover panel
+          marks the document, so it only appears while that panel can show the answer. */}
+      <ModuleErrorBoundary moduleId="discover-here" title="Co je tady" compact placement="overlay">
+        <DiscoverHereButton />
       </ModuleErrorBoundary>
 
       {/* The arcade HUD floats over the board: in game mode the map panel stays closed and the

@@ -40,6 +40,7 @@
     "test:e2e:accessibility": "playwright test --config=playwright.accessibility.config.ts",
     "test:e2e:visual": "playwright test --config=playwright.visual.config.ts",
     "test:e2e:runtime": "playwright test --config=playwright.runtime-starter.config.ts",
+    "test:e2e:performance": "playwright test --config=playwright.performance.config.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

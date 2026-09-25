@@ -53,10 +53,12 @@ test.describe("target Settings drawer", () => {
     await expect(page.getByTestId("plan-ai-toggle")).toHaveCount(0);
     const search = page.getByTestId("place-search");
     await search.fill("najdi mi nejbližší bar");
-    await expect(page.getByTestId("search-offer-ai")).toHaveCount(0);
-    await expect(page.getByRole("dialog", { name: "Návrhy hledání" })).toContainText(
-      "MapOS offline geokodér"
-    );
+    await expect(page.getByTestId("search-ai-hint")).toHaveCount(0);
+    await search.fill("Plzeň");
+    await expect(
+      page.getByRole("dialog", { name: /Návrhy hledání|Search suggestions/ })
+    ).toContainText("MapOS offline geokodér");
+    await expect(page.getByTestId("search-ai-hint")).toHaveCount(0);
   });
 
   test("global Settings no longer duplicates basemaps, providers or game controls", async ({

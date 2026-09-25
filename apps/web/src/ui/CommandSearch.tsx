@@ -22,7 +22,8 @@ import { emit } from "../lib/events";
 import { geolocation, type Fix } from "../lib/geolocation";
 import { t } from "../i18n";
 import { LAYER_MODES } from "./modes";
-import { Icon } from "./kit";
+import type { MessageKey } from "../i18n";
+import { Icon, type IconName } from "./kit";
 
 interface GeoHit {
   display_name: string;
@@ -48,16 +49,36 @@ interface SearchResponse {
   tagHits: TagHit[];
 }
 
-function geocodeTypeLabel(value: string | undefined): string {
+type GeocodeKind = "address" | "municipality" | "region" | "district" | "poi" | "peak" | "place";
+
+function geocodeKind(value: string | undefined): GeocodeKind {
   const normalized = value?.toLocaleLowerCase("cs-CZ").replace(/^regional\./, "") ?? "";
-  if (["house", "building", "address", "residential"].includes(normalized)) return "Adresa";
-  if (["city", "town", "village", "municipality", "locality"].includes(normalized)) return "Obec";
-  if (["state", "region", "county", "administrative", "regional"].includes(normalized))
-    return "Region";
+  if (["house", "building", "address", "residential", "street"].includes(normalized))
+    return "address";
+  if (["city", "town", "village", "municipality", "locality", "hamlet"].includes(normalized))
+    return "municipality";
+  if (["state", "region", "county", "administrative", "regional", "country"].includes(normalized))
+    return "region";
   if (["suburb", "neighbourhood", "city_district", "municipality_part"].includes(normalized))
-    return "Část města";
-  if (["poi", "amenity", "tourism", "shop", "leisure"].includes(normalized)) return "Místo / POI";
-  return "Místo";
+    return "district";
+  if (["peak", "mountain", "natural", "volcano"].includes(normalized)) return "peak";
+  if (["poi", "amenity", "tourism", "shop", "leisure"].includes(normalized)) return "poi";
+  return "place";
+}
+
+const GEOCODE_ICON: Record<GeocodeKind, IconName> = {
+  address: "pin_drop",
+  municipality: "location_city",
+  region: "map",
+  district: "apartment",
+  poi: "place",
+  peak: "landscape",
+  place: "place"
+};
+
+/** The first part of a geocoder label is the place; the rest is the hierarchy shown under it. */
+function geocodeName(hit: GeoHit): string {
+  return hit.display_name.split(",")[0]?.trim() || hit.display_name;
 }
 
 function geocodeHierarchy(hit: GeoHit): string {
@@ -137,6 +158,8 @@ export function CommandSearch({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [retrySearch, setRetrySearch] = useState(0);
   const [focused, setFocused] = useState(false);
+  /** The place row the arrow keys are on; -1 means Enter runs the typed query. */
+  const [activeHit, setActiveHit] = useState(-1);
   const searchRootRef = useRef<HTMLDivElement>(null);
   const [, setRecentRevision] = useState(0);
   const [aiBusy] = useChatField("busy");
@@ -255,8 +278,9 @@ export function CommandSearch({
             };
           },
           ({ hits: nextHits, tagHits: nextTagHits }) => {
-            setHits(nextHits);
+            setHits(nextHits.slice(0, 6));
             setTagHits(nextTagHits);
+            setActiveHit(-1);
           }
         )
         .catch(() => {
@@ -532,6 +556,14 @@ export function CommandSearch({
     intent.kind === "poi" ||
     intent.kind === "place" ||
     intent.kind === "category";
+  // Anything that is not a place, a coordinate or a tag is a question for the assistant.
+  const askableQuery =
+    query.trim().length > 1 &&
+    (networkIntent || intent.kind === "ai") &&
+    intent.kind !== "category";
+  const hitSources = [
+    ...new Set(hits.map((hit) => hit.source?.label?.trim() || "MapOS geokodér"))
+  ].join(", ");
 
   return (
     <div
@@ -555,15 +587,36 @@ export function CommandSearch({
           aria-expanded={showMenu}
           aria-controls="command-search-suggestions"
           onFocus={() => setFocused(true)}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setActiveHit(-1);
+          }}
+          aria-activedescendant={activeHit >= 0 ? `command-search-hit-${activeHit}` : undefined}
+          type="search"
+          enterKeyHint="search"
+          autoComplete="off"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               setFocused(false);
               return;
             }
+            if ((event.key === "ArrowDown" || event.key === "ArrowUp") && hits.length) {
+              event.preventDefault();
+              const step = event.key === "ArrowDown" ? 1 : -1;
+              setActiveHit((current) =>
+                current + step < -1
+                  ? hits.length - 1
+                  : current + step >= hits.length
+                    ? -1
+                    : current + step
+              );
+              return;
+            }
             if (event.key === "Enter") {
               event.preventDefault();
-              executeIntent();
+              const chosen = activeHit >= 0 ? hits[activeHit] : undefined;
+              if (chosen) pickHit(chosen);
+              else executeIntent();
             }
           }}
         />
@@ -604,7 +657,7 @@ export function CommandSearch({
           ref={menuRef}
           id="command-search-suggestions"
           role="dialog"
-          aria-label="Návrhy hledání"
+          aria-label={t("search.suggestions")}
         >
           {aiEnabled && !query.trim() && (
             <section className="command-search-section" aria-label="AI / konverzace">
@@ -652,7 +705,6 @@ export function CommandSearch({
                 ))}
             </section>
           )}
-          <SearchLayers query={query} />
           {intent.kind === "empty" ? (
             emptySections.map((section) => (
               <section className="command-search-section" key={section.id}>
@@ -686,7 +738,7 @@ export function CommandSearch({
             ))
           ) : (
             <>
-              {label && !networkIntent && (
+              {label && !networkIntent && (intent.kind !== "ai" || !aiEnabled) && (
                 <button
                   type="button"
                   className="search-hit command-search-intent"
@@ -706,16 +758,41 @@ export function CommandSearch({
                   )}
                 </button>
               )}
-              {networkIntent && intent.kind !== "category" && aiEnabled && (
-                <button
-                  type="button"
-                  className="search-hit command-search-ai-offer"
-                  data-testid="search-offer-ai"
-                  disabled={aiBusy}
-                  onClick={confirmAiSearch}
+              {hits.length > 0 && (
+                <section
+                  className="command-search-section"
+                  role="listbox"
+                  aria-label={t("search.group.places")}
                 >
-                  <strong>{aiBusy ? "AI hledá…" : `Zeptat se AI: „${query.trim()}“`}</strong>
-                </button>
+                  {hits.map((hit, index) => {
+                    const kind = geocodeKind(hit.type);
+                    const hierarchy = geocodeHierarchy(hit);
+                    return (
+                      <button
+                        key={`${hit.lat},${hit.lon},${hit.display_name}`}
+                        id={`command-search-hit-${index}`}
+                        type="button"
+                        role="option"
+                        aria-selected={index === activeHit}
+                        className="search-hit command-search-place"
+                        data-kind={kind}
+                        onPointerEnter={() => setActiveHit(index)}
+                        onClick={() => pickHit(hit)}
+                      >
+                        <Icon
+                          name={GEOCODE_ICON[kind]}
+                          size={20}
+                          className="command-search-place-icon"
+                          title={t(`search.kind.${kind}` as MessageKey)}
+                        />
+                        <span className="command-search-place-text">
+                          <strong className="search-hit-name">{geocodeName(hit)}</strong>
+                          {hierarchy && <span className="search-hit-hierarchy">{hierarchy}</span>}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </section>
               )}
               {tagHits.map((item) => (
                 <button
@@ -727,23 +804,7 @@ export function CommandSearch({
                   #{item.tag} <span className="meta">({item.count})</span>
                 </button>
               ))}
-              {hits.map((hit) => (
-                <button
-                  key={`${hit.lat},${hit.lon},${hit.display_name}`}
-                  type="button"
-                  className="search-hit"
-                  onClick={() => pickHit(hit)}
-                >
-                  <strong className="search-hit-name">{hit.display_name}</strong>
-                  {geocodeHierarchy(hit) && (
-                    <span className="search-hit-hierarchy">{geocodeHierarchy(hit)}</span>
-                  )}
-                  <span className="search-hit-facts">
-                    <span>{geocodeTypeLabel(hit.type)}</span>
-                    <span>{hit.source?.label?.trim() || "MapOS geokodér"}</span>
-                  </span>
-                </button>
-              ))}
+              <SearchLayers query={query} limit={3} />
               {searchError && (
                 <div role="alert" className="command-search-section">
                   <span>{searchError}</span>
@@ -767,17 +828,33 @@ export function CommandSearch({
                   </button>
                 </div>
               )}
-              {networkIntent &&
+              {!aiEnabled &&
+                networkIntent &&
                 searchSettled &&
                 !searchError &&
                 !searching &&
                 !hits.length &&
                 !tagHits.length && (
                   <div className="command-search-empty" role="status">
-                    {aiEnabled ? "Enter odešle dotaz AI." : "Žádná místa. Zkus přesnější název."}
+                    {t("search.noPlaces")}
                   </div>
                 )}
             </>
+          )}
+          {(hitSources || (aiEnabled && askableQuery)) && (
+            <footer className="command-search-footer">
+              {aiEnabled && askableQuery && (
+                <span className="command-search-hint" data-testid="search-ai-hint">
+                  <Icon name="keyboard_return" size={16} />
+                  {hits.length ? t("search.enterPicksOrAsks") : t("search.enterAsksAi")}
+                </span>
+              )}
+              {hitSources && (
+                <span className="command-search-attribution">
+                  {t("search.sources", { sources: hitSources })}
+                </span>
+              )}
+            </footer>
           )}
         </div>
       )}

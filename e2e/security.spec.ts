@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "./fixtures/offlineTest";
+import { openAccessibleMapFeature } from "./fixtures/discoverContext";
 
 const SECURITY_HEADERS = readFileSync(
   new URL("../infra/security-headers.inc", import.meta.url),
@@ -97,16 +98,11 @@ test("untrusted UI text stays inert and production CSP blocks and reports an inl
   });
 
   await page.goto("/?layers=osm-poi&lng=13.3775&lat=49.7475&z=14");
-  // The planner's suggestion list is gone; the place sheet is now the DOM surface that renders
-  // a provider-controlled name. The pin sits at the fixture's bbox centre, so it is the thing
-  // under the middle of the map.
-  const centre = await page.evaluate(() => {
-    const map = window.__maposMap!;
-    const projected = map.project(map.getCenter());
-    const rect = map.getCanvas().getBoundingClientRect();
-    return { x: rect.left + projected.x, y: rect.top + projected.y };
-  });
-  await page.mouse.click(centre.x, centre.y);
+  // The provider-controlled name reaches the DOM twice: in Discover's list of places on the map
+  // and in the place sheet it opens. This profile runs the production bundle, which exposes no
+  // map handle to click through, so the pin is opened the way a keyboard user opens it.
+  await openAccessibleMapFeature(page, XSS_TEXT);
+  await expect(page.getByTestId("discover-map-features")).toContainText(XSS_TEXT);
   const textSurface = page.getByTestId("pin-detail");
   await expect(textSurface).toContainText(XSS_TEXT, { timeout: 20_000 });
   await expect(textSurface.locator("script")).toHaveCount(0);

@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { openCatalogSettings } from "./fixtures/mapPanel";
 import { expect, test } from "./fixtures/offlineTest";
 
 test.use({ hasTouch: true });
@@ -119,8 +120,7 @@ test.describe("adaptive weather map UI", () => {
       (window as typeof window & { __weatherModelMap?: Window["__maposMap"] }).__weatherModelMap =
         window.__maposMap;
     });
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("catalog-settings-btn-weather-weather-temperature").click();
+    await openCatalogSettings(page, "weather-temperature");
     for (const model of ["icon_seamless", "chmi_aladin_seamless"]) {
       await page.getByTestId("weather-model-weather-temperature").selectOption(model);
       await expect.poll(() => requestedModels.includes(model)).toBe(true);
@@ -240,6 +240,26 @@ test.describe("adaptive weather map UI", () => {
     await expect
       .poll(() =>
         page.evaluate(() => window.__maposMap!.isSourceLoaded("source-weather-temperature-sectors"))
+      )
+      .toBe(true);
+
+    // Hover and tap must read the same field. After the phone resize a late padding change (the
+    // sheet settling) can still move the camera and replace the grid once, which on a slow runner
+    // landed between the two and made them disagree; wait until the requests stop and the map is
+    // idle before choosing the point.
+    await expect
+      .poll(
+        async () => {
+          const before = gridRequests.length;
+          await page.waitForTimeout(1_000);
+          return (
+            gridRequests.length === before &&
+            (await page.evaluate(
+              () => !window.__maposMap!.isMoving() && window.__maposMap!.loaded()
+            ))
+          );
+        },
+        { timeout: 30_000 }
       )
       .toBe(true);
 
