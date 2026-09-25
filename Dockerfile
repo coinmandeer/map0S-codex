@@ -49,6 +49,11 @@ ENV VITE_MAP_RUNTIME_V2=$VITE_MAP_RUNTIME_V2
 ENV VITE_DISCOVER_BOUNDARIES=$VITE_DISCOVER_BOUNDARIES
 COPY --from=base /app ./
 RUN npm run build -w @mapos/web
+# Compress once at build time instead of on every request on a busy host; nginx serves the
+# `.gz` next to each file (`gzip_static`). Fonts and images are already compressed.
+RUN find apps/web/dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.svg' \
+      -o -name '*.json' -o -name '*.webmanifest' -o -name '*.txt' \) -size +1k \
+    -exec sh -c 'for f; do gzip -9 -c "$f" > "$f.gz"; done' sh {} +
 
 FROM nginx:alpine AS web
 COPY --from=web-build /app/apps/web/dist /usr/share/nginx/html

@@ -31,6 +31,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import compress from "@fastify/compress";
+import { COMPRESSIBLE_TYPES } from "./utils/compressibleTypes.js";
 import type { Bbox, ContentDraft, DataProvider, TripPlan } from "@mapos/layer-sdk";
 import {
   registerUser,
@@ -298,7 +299,11 @@ export async function buildApp(options: BuildAppOptions = {}) {
     maxAge: 600
   });
   await app.register(cookie);
-  await app.register(compress, { global: true, threshold: 512 });
+  await app.register(compress, {
+    global: true,
+    threshold: 512,
+    customTypes: COMPRESSIBLE_TYPES
+  });
   app.addHook("onRequest", requireAllowedMutationOrigin(corsOrigins));
   app.addHook(
     "preHandler",
