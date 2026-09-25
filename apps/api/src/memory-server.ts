@@ -113,6 +113,9 @@ import { memoryPlanDocumentRepository } from "./services/planDocumentMemoryRepos
 import { memoryPlanShareRepository } from "./services/planShareMemoryRepository.js";
 import { memoryPlanDiscussionRepository } from "./services/planDiscussionMemoryRepository.js";
 import { createMemoryAdjacentRouteProvider } from "./services/adjacentRouteProvider.js";
+import { searchOfflineGazetteer } from "./data/offlineGazetteer.js";
+import { dataSourceProviders } from "./services/dataSources/index.js";
+import { withOfflinePlaces } from "./services/ai/offlinePlaces.js";
 import { EventService } from "./services/events/eventService.js";
 import { MemoryEventRepository } from "./services/events/eventMemoryRepository.js";
 import { buildMemoryEventFixtures } from "./services/events/eventFixtures.js";
@@ -436,10 +439,12 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
     // e2e profile exercises: same catalog, same tool, no network.
     chatTurn: createAiChatTurnFactory({
       conversations: aiRuntime.conversations,
-      providers: createFixtureChatToolProviders({
-        fixtures: memoryPoiFixtures,
-        discover: discoverContext
-      }),
+      providers: withOfflinePlaces(
+        createFixtureChatToolProviders({
+          fixtures: memoryPoiFixtures,
+          discover: discoverContext
+        })
+      ),
       onToolTrace: recordAiToolTrace,
       planEditor: planProposals.editor
     }),
@@ -721,6 +726,17 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
         // nothing for the sweep cache to protect and no database to hold it.
         return memoryQuestAnchorFeatures(bbox, request.query.sources);
       }
+      // Stateless live sources (Golemio, BTC Map, Europeana, SpaceAPI, GBFS…) need no database,
+      // so a developer running without Postgres still sees them. The offline profile keeps them
+      // off: its fetch guard would refuse the upstream anyway, and the e2e run must stay local.
+      const live = offlineFixture
+        ? undefined
+        : dataSourceProviders.find((provider) => provider.id === layerId);
+      if (live?.features)
+        return await live.features({
+          bbox,
+          query: request.query as Record<string, string | undefined>
+        });
       return reply.code(404).send({ message: "Layer not found" });
     } catch (err) {
       return reply
@@ -1612,18 +1628,16 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
 
   app.get("/photos/resolve", async () => ({ url: null }));
 
-  app.get("/geocode", async () => ({
-    results: [
-      {
-        display_name: "Plzeň, Česko",
-        lat: "49.7475",
-        lon: "13.3775",
-        type: "city",
-        hierarchy: ["Plzeňský kraj", "Česko"],
-        source: { id: "fixture", label: "MapOS offline geokodér" },
-        confidence: { level: "high", label: "vysoká", basis: "provider-order" }
-      }
-    ]
+  app.get<{ Querystring: { q?: string } }>("/geocode", async (request) => ({
+    results: searchOfflineGazetteer(request.query.q ?? "").map((entry) => ({
+      display_name: `${entry.name}, Česko`,
+      lat: String(entry.latitude),
+      lon: String(entry.longitude),
+      type: entry.type,
+      hierarchy: entry.hierarchy,
+      source: { id: "fixture", label: "MapOS offline geokodér" },
+      confidence: { level: "high", label: "vysoká", basis: "provider-order" }
+    }))
   }));
 
   app.get("/geocode/reverse", async () => ({ country: "CZ", name: "Offline test area" }));

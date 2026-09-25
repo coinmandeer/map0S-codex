@@ -49,9 +49,11 @@ app will tell you so, but the feature cannot work over plain HTTP on a LAN addre
 
 ## Map data providers
 
-| Variable       | Required | Default | Used by                                                                                                                                                                             |
-| -------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MAPY_API_KEY` | no       | —       | `mapyService` — tiles, geocode, suggest, routing, elevation. Without it the Mapy.com provider toggle is disabled in Settings and everything falls back to OSM/CARTO/OSRM/Nominatim. |
+| Variable            | Required | Default | Used by                                                                                                                                                                             |
+| ------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MAPY_API_KEY`      | no       | —       | `mapyService` — tiles, geocode, suggest, routing, elevation. Without it the Mapy.com provider toggle is disabled in Settings and everything falls back to OSM/CARTO/OSRM/Nominatim. |
+| `GOLEMIO_API_KEY`   | no       | —       | Prague open-data layers (`golemio-*`). Sent as `X-Access-Token`; without it the layers are listed under "Needs setup".                                                              |
+| `EUROPEANA_API_KEY` | no       | —       | The `europeana` cultural-records layer (Search API `wskey`).                                                                                                                        |
 
 Mapy.com Basic plan gives 250k credits/month for free. Credits are consumed per request
 type (tiles are the cheapest, routing the most expensive), so `mapyPoiService` caches

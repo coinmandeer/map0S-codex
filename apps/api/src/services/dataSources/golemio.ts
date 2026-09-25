@@ -9,6 +9,60 @@ const text = (v: unknown) =>
         .trim()
         .slice(0, 1500)
     : undefined;
+/** Golemio v2 sends addresses as schema.org-like objects; a plain `text()` dropped them all. */
+export function golemioAddress(value: unknown): string | undefined {
+  if (typeof value === "string") return text(value) || undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const a = value as Record<string, unknown>;
+  const formatted = text(a.address_formatted);
+  if (formatted) return formatted;
+  const locality = [text(a.postal_code), text(a.address_locality)].filter(Boolean).join(" ");
+  const parts = [text(a.street_address), locality].filter(Boolean);
+  return parts.length ? parts.join(", ") : undefined;
+}
+
+/** "praha-1" → "Praha 1", "praha-kunratice" → "Praha-Kunratice". Golemio districts are slugs. */
+export function golemioDistrict(value: unknown): string | undefined {
+  const raw = text(value);
+  if (!raw) return undefined;
+  if (!/^[a-z0-9-]+$/u.test(raw)) return raw;
+  const words = raw.split("-").filter(Boolean);
+  return words
+    .map((word, index) => {
+      const cased = /^\d+$/u.test(word) ? word : word[0]!.toUpperCase() + word.slice(1);
+      if (index === 0) return cased;
+      return (/^\d+$/u.test(word) ? " " : "-") + cased;
+    })
+    .join("");
+}
+
+const DAYS: Record<string, string> = {
+  monday: "Po",
+  tuesday: "Út",
+  wednesday: "St",
+  thursday: "Čt",
+  friday: "Pá",
+  saturday: "So",
+  sunday: "Ne",
+  publicholidays: "Svátky"
+};
+
+/** Opening hours arrive as `[{day_of_week, opens, closes}]`; shown as one readable line. */
+export function golemioOpeningHours(value: unknown): string | undefined {
+  if (typeof value === "string") return text(value) || undefined;
+  if (!Array.isArray(value)) return undefined;
+  const parts = value.slice(0, 14).flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const r = row as Record<string, unknown>;
+    const day = typeof r.day_of_week === "string" ? r.day_of_week.toLowerCase() : "";
+    const opens = text(r.opens);
+    const closes = text(r.closes);
+    if (!opens || !closes) return [];
+    return [`${DAYS[day] ?? text(r.day_of_week) ?? ""} ${opens}–${closes}`.trim()];
+  });
+  return parts.length ? parts.join("; ") : undefined;
+}
+
 export function golemioFeatures(data: unknown, layerId: string, bbox: Bbox): GeoFeature[] {
   const rows = (data as { features?: unknown[] } | null)?.features;
   if (!Array.isArray(rows)) return [];
@@ -33,18 +87,18 @@ export function golemioFeatures(data: unknown, layerId: string, bbox: Bbox): Geo
     return [
       point(
         `${layerId}:${String(p.id)}`,
-        text(p.name) ?? text(p.address) ?? "Místo Golemio",
+        text(p.name) ?? golemioAddress(p.address) ?? "Místo Golemio",
         lng!,
         lat!,
         layerId,
         {
           category: layerId,
-          address: text(p.address),
-          district: text(p.district),
+          address: golemioAddress(p.address),
+          district: golemioDistrict(p.district),
           description: text(p.description ?? p.perex ?? p.note),
           updatedAt: text(p.updated_at),
           website: text(p.web ?? p.url),
-          openingHours: text(p.opening_hours ?? p.operating_hours),
+          openingHours: golemioOpeningHours(p.opening_hours ?? p.operating_hours),
           source: "Golemio / Operátor ICT a poskytovatel datasetu",
           sourceUrl: "https://api.golemio.cz/docs/openapi/",
           // Station locations are not a fabricated current pollution / traffic measurement.

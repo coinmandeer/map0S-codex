@@ -20,6 +20,61 @@ test("Golemio filters viewport and preserves dedicated layer identity", () => {
   assert.equal(rows[0]?.properties.name, "Knihovna");
   assert.equal(rows[0]?.properties.measurement, undefined);
 });
+test("Golemio v2 address objects, district slugs and opening hours become readable text", () => {
+  const [row] = golemioFeatures(
+    {
+      features: [
+        {
+          geometry: { type: "Point", coordinates: [14.42, 50.08] },
+          properties: {
+            id: "g-1",
+            address: {
+              address_formatted: "Dlouhá 12, 110 00 Praha 1, Česko",
+              street_address: "Dlouhá 12"
+            },
+            district: "praha-1",
+            opening_hours: [
+              { day_of_week: "Monday", opens: "08:00", closes: "18:00" },
+              { day_of_week: "Saturday", opens: "09:00", closes: "12:00" }
+            ]
+          }
+        }
+      ]
+    },
+    "golemio-gardens",
+    bbox
+  );
+  assert.equal(
+    row?.properties.name,
+    "Dlouhá 12, 110 00 Praha 1, Česko",
+    "an unnamed place is its address"
+  );
+  assert.equal(row?.properties.address, "Dlouhá 12, 110 00 Praha 1, Česko");
+  assert.equal(row?.properties.district, "Praha 1");
+  assert.equal(row?.properties.openingHours, "Po 08:00–18:00; So 09:00–12:00");
+  const second = golemioFeatures(
+    {
+      features: [
+        {
+          geometry: { type: "Point", coordinates: [14.5, 50.02] },
+          properties: {
+            id: "g-2",
+            address: {
+              street_address: "Kunratická 1",
+              postal_code: "148 00",
+              address_locality: "Praha"
+            },
+            district: "praha-kunratice"
+          }
+        }
+      ]
+    },
+    "golemio-gardens",
+    bbox
+  )[0];
+  assert.equal(second?.properties.address, "Kunratická 1, 148 00 Praha");
+  assert.equal(second?.properties.district, "Praha-Kunratice");
+});
 test("SpaceAPI never reports a stale or missing open state as closed", () => {
   const now = 1800000000000;
   const entry = {

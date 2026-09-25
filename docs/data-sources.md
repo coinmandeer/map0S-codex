@@ -29,6 +29,8 @@ only produce an error.
 | Place photos and ratings | https://location.foursquare.com/developer/        | `FSQ_API_KEY`            | Enriches a single place on demand, not bulk search                                                         |
 | Weather tile overlays    | https://openweathermap.org/api                    | `OWM_API_KEY`            | Only the tile layers; forecasts come from Open-Meteo, keyless                                              |
 | Animated weather tiles   | https://cloud.maptiler.com                        | `MAPTILER_API_KEY`       | MapTiler Weather: radar, wind, temperature, precipitation, pressure (72 h); also unlocks MapTiler basemaps |
+| Prague open data         | https://api.golemio.cz/api-keys                   | `GOLEMIO_API_KEY`        | Golemio v2: gardens, playgrounds, libraries, health, police, air, cycling, waste yards; Prague bbox only   |
+| Cultural heritage        | https://pro.europeana.eu/page/get-api             | `EUROPEANA_API_KEY`      | Search API `wskey`; a personal key is enough for the point layer                                           |
 | Place summaries (CML)    | https://platform.openai.com / https://ollama.com  | `OPENAI_API_KEY`         | Paid, or `OLLAMA_API_KEY` for the free tier                                                                |
 
 `MAPOS_CONTACT` is not a key but set it anyway on anything public: Nominatim, Overpass and the
