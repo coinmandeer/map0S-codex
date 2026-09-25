@@ -404,6 +404,38 @@ test("preset undo restores its fields but preserves a later manual opacity edit"
   assert.equal(store.activeLayers["osm-poi"]?.opacity, 0.42);
 });
 
+test("a shared plan link keeps its mode when the camera rewrites the URL", async () => {
+  installBrowserStub();
+  const location = (window as unknown as { location: { search: string; hash?: string } }).location;
+  location.search = "?mode=planning";
+  location.hash = "#plan=abc";
+  const { MapStore } = await import("./mapStore");
+  const store = new MapStore();
+  store.setView({ lng: 14.42, lat: 50.08, zoom: 12 });
+  assert.equal(new URLSearchParams(window.location.search).get("mode"), "planning");
+  // Ordinary navigation still keeps only the camera.
+  location.hash = "";
+  store.setView({ lng: 14.43, lat: 50.08, zoom: 12 });
+  assert.equal(new URLSearchParams(window.location.search).get("mode"), null);
+});
+
+test("the timeline filling in this week does not turn an applied preset into Custom", async () => {
+  installBrowserStub();
+  const { MapStore } = await import("./mapStore");
+  const store = new MapStore();
+  store.applyPreset({ id: "city-test", layers: ["osm-poi", "events"], categories: ["cafe"] });
+  assert.equal(store.activePresetId, "city-test");
+  store.setLayerFilters("events", {
+    ...store.activeLayers.events?.filters,
+    from: "2026-09-25T00:00:00.000Z",
+    to: "2026-10-02T23:59:59.999Z"
+  });
+  assert.equal(store.activePresetId, "city-test");
+  // A real change to the preset's layers still counts as leaving it.
+  store.setLayerOpacity("events", 0.3);
+  assert.equal(store.activePresetId, null);
+});
+
 test("activating a route network commits requested filters in the same state change", async () => {
   installBrowserStub();
   const { MapStore } = await import("./mapStore");
@@ -463,4 +495,14 @@ test("refresh clears 3D and persisted world overlays while retaining basemap and
     if (value) window.localStorage.setItem(key, value);
     else window.localStorage.removeItem(key);
   }
+});
+
+test("opening straight into game mode starts the game scene", async () => {
+  installBrowserStub();
+  (globalThis as { window: { location: { search: string } } }).window.location.search =
+    "?mode=game";
+  const { MapStore } = await import("./mapStore");
+  const store = new MapStore();
+  assert.equal(store.mode, "game");
+  assert.ok(store.activeLayers.game?.visible, "a ?mode=game link must not show an empty board");
 });
