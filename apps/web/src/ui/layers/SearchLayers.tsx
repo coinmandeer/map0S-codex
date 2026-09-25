@@ -9,7 +9,8 @@ import { CATALOG_GROUPS, catalogItemState, type CatalogItem } from "./catalogMod
 import { useCatalogActions } from "./useCatalogActions";
 import { Switch, Slider } from "../kit";
 
-export function SearchLayers({ query }: { query: string }) {
+/** `limit` keeps layers from crowding out places while the user is typing a place name. */
+export function SearchLayers({ query, limit = 8 }: { query: string; limit?: number }) {
   const [version, setVersion] = useState(0);
   useEffect(() => on("layers-changed", () => setVersion((v) => v + 1)), []);
   const layers = useMapStoreSnapshot((s) => s.activeLayers);
@@ -43,8 +44,8 @@ export function SearchLayers({ query }: { query: string }) {
       }))
       .filter((m) => m.score > 0)
       .sort((a, b) => b.score - a.score || a.item.cs.localeCompare(b.item.cs))
-      .slice(0, 8);
-  }, [query, version]);
+      .slice(0, limit);
+  }, [query, version, limit]);
   if (!matches.length) return null;
   return (
     <section className="command-search-section" aria-label="Vrstvy">
