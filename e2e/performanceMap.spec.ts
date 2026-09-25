@@ -17,7 +17,10 @@ import { expect, test } from "./fixtures/offlineTest";
 for (const count of [6, 12])
   test(`bounded map memory with ${count} layers`, async ({ page, browserName }) => {
     test.skip(browserName !== "chromium", "Chromium CDP is required for explicit GC");
-    test.setTimeout(180_000);
+    // ~90 cycles of pan/toggle/restyle take about 1.5 min alone on a software-GL runner and more
+    // than 3 min beside two other WebGL workers. The budget is for that wall clock; what the test
+    // asserts is the heap allowance and the bounded source/layer/listener counts.
+    test.setTimeout(360_000);
     const buildLabel = process.env.MAPOS_PERF_PRODUCTION === "1" ? "production" : "development";
     const pins = process.env.MAPOS_PERF_RENDERER === "pins";
     const artifactLabel = `${buildLabel}${pins ? "-pins" : ""}`;
