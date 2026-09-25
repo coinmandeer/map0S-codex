@@ -97,3 +97,31 @@ export function presentNominatimGeocodeResult(
     confidence: geocodeConfidence(index)
   };
 }
+
+/**
+ * Reads the `near=lng,lat` search bias. Rounded to two decimals (about a kilometre): enough to
+ * rank the right town first, coarse enough that the provider never learns the exact view and
+ * repeated searches over one city share a cached answer. Anything malformed is simply no bias.
+ */
+export function parseNearPoint(value: string | undefined): [number, number] | null {
+  if (!value || value.length > 64) return null;
+  const parts = value.split(",");
+  if (parts.length !== 2) return null;
+  const [lng, lat] = parts.map((part) => Number(part.trim())) as [number, number];
+  if (!Number.isFinite(lng) || !Number.isFinite(lat) || Math.abs(lng) > 180 || Math.abs(lat) > 90)
+    return null;
+  return [Math.round(lng * 100) / 100, Math.round(lat * 100) / 100];
+}
+
+/** A Nominatim `viewbox` (left,top,right,bottom) of roughly a city region around the point. */
+export function nearViewbox([lng, lat]: [number, number], span = 0.3): string {
+  const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value));
+  return [
+    clamp(lng - span, 180),
+    clamp(lat + span, 90),
+    clamp(lng + span, 180),
+    clamp(lat - span, 90)
+  ]
+    .map((value) => Number(value.toFixed(2)))
+    .join(",");
+}

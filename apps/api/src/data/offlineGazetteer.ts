@@ -135,7 +135,13 @@ function fold(value: string): string {
 }
 
 /** Entries whose name the query starts, contains, or is contained in — never a blind default. */
-export function searchOfflineGazetteer(query: string, limit = 5): OfflineGazetteerEntry[] {
+/** Matches by name; with `near`, equally good matches are ordered by distance from it, the way
+ *  the live geocoders rank the place on screen first. */
+export function searchOfflineGazetteer(
+  query: string,
+  limit = 5,
+  near?: [number, number] | null
+): OfflineGazetteerEntry[] {
   const needle = fold(query);
   if (needle.length < 2) return [];
   const scored = OFFLINE_GAZETTEER.map((entry) => {
@@ -150,8 +156,10 @@ export function searchOfflineGazetteer(query: string, limit = 5): OfflineGazette
             : 0;
     return { entry, score };
   }).filter(({ score }) => score > 0);
+  const distance = (entry: OfflineGazetteerEntry) =>
+    near ? Math.hypot(entry.longitude - near[0], entry.latitude - near[1]) : 0;
   return scored
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => b.score - a.score || distance(a.entry) - distance(b.entry))
     .slice(0, limit)
     .map(({ entry }) => entry);
 }

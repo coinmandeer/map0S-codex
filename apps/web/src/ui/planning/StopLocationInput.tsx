@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "../../lib/api";
+import { getMapStore } from "../../store/mapStore";
+import { geocodeNearParam } from "../../search/nearBias";
 import {
   isValidCoordinates,
   LatestRequestRunner,
@@ -105,7 +107,7 @@ export function StopLocationInput({
       void runner
         .run(async (signal) => {
           const response = await fetch(
-            `${API_BASE}/geocode?q=${encodeURIComponent(intent.query)}&provider=${encodeURIComponent(provider)}`,
+            `${API_BASE}/geocode?q=${encodeURIComponent(intent.query)}&provider=${encodeURIComponent(provider)}${geocodeNearParam(getMapStore().view)}`,
             { signal }
           );
           if (!response.ok) return [];

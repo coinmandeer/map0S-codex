@@ -71,6 +71,8 @@ import {
 } from "./services/socialService.js";
 import { mapyGeocode, mapySuggest } from "./services/mapyService.js";
 import {
+  nearViewbox,
+  parseNearPoint,
   presentMapyGeocodeResult,
   presentNominatimGeocodeResult,
   type NominatimGeocodeItem
@@ -1554,48 +1556,55 @@ export async function buildApp(options: BuildAppOptions = {}) {
     return { url };
   });
 
-  app.get<{ Querystring: { q?: string; provider?: string; autocomplete?: string } }>(
-    "/geocode",
-    async (request, reply) => {
-      const q = (request.query.q ?? "").trim();
-      if (q.length < 2) return { results: [] };
+  app.get<{
+    Querystring: { q?: string; provider?: string; autocomplete?: string; near?: string };
+  }>("/geocode", async (request, reply) => {
+    const q = (request.query.q ?? "").trim();
+    if (q.length < 2) return { results: [] };
+    // The centre of the map on screen, so a search ranks places there first. A bias, never a
+    // filter: a place elsewhere is still found.
+    const near = parseNearPoint(request.query.near);
 
-      // Mapy geocoding is markedly better in CZ/SK; Nominatim stays the keyless default and the
-      // fallback whenever Mapy is unavailable, so search never goes dead.
-      if (request.query.provider !== "osm" && capabilities().mapy) {
-        try {
-          const items =
-            request.query.autocomplete === "true"
-              ? await mapySuggest({ query: q, limit: 5, type: "all" })
-              : await mapyGeocode(q, "cs", 5);
-          if (items.length) {
-            return {
-              results: items.map(presentMapyGeocodeResult)
-            };
-          }
-        } catch (err) {
-          app.log.warn(safeErrorLogFields(err), "mapy geocode failed, falling back to nominatim");
-        }
-      }
-
-      if (request.query.autocomplete === "true") return { results: [] };
+    // Mapy geocoding is markedly better in CZ/SK; Nominatim stays the keyless default and the
+    // fallback whenever Mapy is unavailable, so search never goes dead.
+    if (request.query.provider !== "osm" && capabilities().mapy) {
       try {
-        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${encodeURIComponent(q)}`;
-        const data = await fetchJson<NominatimGeocodeItem[]>(url, {
-          providerId: "nominatim",
-          ttlMs: 24 * 60 * 60_000,
-          timeoutMs: 8_000,
-          minIntervalMs: 1_100,
-          maxResponseBytes: 512 * 1024
-        });
-        return {
-          results: data.map(presentNominatimGeocodeResult)
-        };
-      } catch {
-        return reply.code(502).send({ results: [] });
+        const items =
+          request.query.autocomplete === "true"
+            ? await mapySuggest({
+                query: q,
+                limit: 5,
+                type: "all",
+                ...(near ? { preferNear: near } : {})
+              })
+            : await mapyGeocode(q, "cs", 5, undefined, near ?? undefined);
+        if (items.length) {
+          return {
+            results: items.map(presentMapyGeocodeResult)
+          };
+        }
+      } catch (err) {
+        app.log.warn(safeErrorLogFields(err), "mapy geocode failed, falling back to nominatim");
       }
     }
-  );
+
+    if (request.query.autocomplete === "true") return { results: [] };
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${encodeURIComponent(q)}${near ? `&viewbox=${nearViewbox(near)}&bounded=0` : ""}`;
+      const data = await fetchJson<NominatimGeocodeItem[]>(url, {
+        providerId: "nominatim",
+        ttlMs: 24 * 60 * 60_000,
+        timeoutMs: 8_000,
+        minIntervalMs: 1_100,
+        maxResponseBytes: 512 * 1024
+      });
+      return {
+        results: data.map(presentNominatimGeocodeResult)
+      };
+    } catch {
+      return reply.code(502).send({ results: [] });
+    }
+  });
 
   app.get<{ Querystring: { lat?: string; lng?: string } }>("/geocode/reverse", async (request) => {
     const lat = Number(request.query.lat);
