@@ -23,6 +23,7 @@ export function attachBoundaryOverlay(map: maplibregl.Map, store: MapStore): () 
     retiring: Slot | null = null,
     serial = 0;
   let template = "",
+    manifestRequested = false,
     revision = "",
     level: BoundaryLevel | undefined,
     disposed = false;
@@ -81,8 +82,23 @@ export function attachBoundaryOverlay(map: maplibregl.Map, store: MapStore): () 
     map.setPaintProperty(slot.fill, "fill-color", accent);
     map.setPaintProperty(slot.fill, "fill-opacity", theming() ? 0 : ["case", active, 0.12, 0.025]);
   }
+  // `isStyleLoaded()` is also false while any tile is still arriving. The manifest and most
+  // store changes land exactly then, and bailing without a retry left the outlines missing until
+  // some unrelated change happened to call sync again.
+  let awaitingIdle = false;
+  const syncWhenIdle = () => {
+    awaitingIdle = false;
+    sync();
+  };
   function sync() {
-    if (disposed || !map.isStyleLoaded()) return;
+    if (disposed) return;
+    if (!map.isStyleLoaded()) {
+      if (!awaitingIdle) {
+        awaitingIdle = true;
+        map.once("idle", syncWhenIdle);
+      }
+      return;
+    }
     for (const id of ["discover-fill", "discover-line"])
       if (map.getLayer(id) && map.getLayoutProperty(id, "visibility") !== "none")
         map.setLayoutProperty(id, "visibility", "none");
@@ -101,7 +117,13 @@ export function attachBoundaryOverlay(map: maplibregl.Map, store: MapStore): () 
       pending = current = null;
       return;
     }
-    if (!template) return;
+    if (!template) {
+      // The manifest is skipped while the global world is shown; switching to a local world
+      // must not wait for the minute timer before the first outlines appear. Retrying a manifest
+      // that is not ready stays the timer's job.
+      if (!manifestRequested) void refresh();
+      return;
+    }
     if (current && !map.getSource(current.source)) current = null;
     if (pending && !map.getSource(pending.source)) pending = null;
     level =
@@ -319,6 +341,7 @@ export function attachBoundaryOverlay(map: maplibregl.Map, store: MapStore): () 
   async function refresh() {
     if (store.experienceId === "global") return;
     if (fetching || disposed) return;
+    manifestRequested = true;
     fetching = true;
     try {
       const result = await apiGet<{ ready: boolean; revision: string; tileTemplate: string }>(
@@ -371,6 +394,7 @@ export function attachBoundaryOverlay(map: maplibregl.Map, store: MapStore): () 
     map.off("zoomend", zoomed);
     map.off("sourcedata", loaded);
     map.off("idle", loaded);
+    map.off("idle", syncWhenIdle);
     remove(pending);
     remove(current);
     popup.remove();

@@ -21,6 +21,7 @@ import { apiGet } from "../lib/api";
 import { emit, on } from "../lib/events";
 import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
+import { useShellStoreSnapshot } from "../store/useShellStoreSnapshot";
 import { taskRegistry } from "../tasks/TaskRegistry";
 import { PanelShell } from "./PanelShell";
 import {
@@ -451,12 +452,14 @@ export function DiscoverPanel() {
   }, [context, highlightBoundary, mode, overviewArea?.level, statisticsOn, view.zoom]);
 
   // The map asks the question and the panel answers it: the chip only makes sense while the
-  // discover panel is open, and it refreshes the context for wherever the map is now centred.
+  // discover panel is open and in view, and it refreshes the context for wherever the map is now
+  // centred. A place detail opened from Discover hides the panel, so the chip goes with it.
+  const panelInView = useShellStoreSnapshot((state) => state.leftContext.type === "mode");
   useEffect(() => {
-    const active = mode === "discover" && open;
+    const active = mode === "discover" && open && panelInView;
     document.documentElement.toggleAttribute("data-discover-here", active);
     return () => document.documentElement.removeAttribute("data-discover-here");
-  }, [mode, open]);
+  }, [mode, open, panelInView]);
 
   useEffect(
     () =>
@@ -876,7 +879,9 @@ export function DiscoverPanel() {
           <header className="discover-hero">
             <span className="kit-eyebrow">{overviewArea ? "Vybraná oblast" : "Střed mapy"}</span>
             <h2 className="discover-hero-title">
-              {context?.region?.name ?? "Neidentifikovaná oblast"}
+              {/* A chosen area is what the panel is about, and its name is already known from
+                  the boundary itself — even when the guide for it cannot be fetched. */}
+              {overviewArea?.name ?? context?.region?.name ?? "Neidentifikovaná oblast"}
               {contextState.status === "loading" && !context && (
                 <ProgressCircular size={16} label="Zjišťuji oblast" />
               )}
