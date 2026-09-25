@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures/offlineTest";
+import { catalogSwitch, openBasemaps } from "./fixtures/mapPanel";
 
 /** A 1x1 transparent PNG, so the specs never depend on the real tile servers being up. */
 const PNG = Buffer.from(
@@ -23,19 +24,19 @@ test.describe("keyless tile overlays", () => {
   test("each registered overlay appears with the structural map surfaces", async ({ page }) => {
     await stubTiles(page);
     await page.goto("/");
-    await page.getByTestId("basemap-btn").click();
-    await expect(page.getByTestId("tiles-sheet")).toBeVisible();
-
-    for (const id of [
-      "cyclosm",
-      "waymarked-trails",
-      "openrailwaymap",
-      "openseamap",
-      "opentopomap",
-      "opensnowmap"
+    // Tile overlays are catalogue layers; OpenTopoMap became a background in its own right.
+    for (const [layer, row] of [
+      ["cyclosm", "cyclosm"],
+      ["waymarked-trails", "walking"],
+      ["openrailwaymap", "openrailwaymap"],
+      ["openseamap", "openseamap"],
+      ["opensnowmap", "opensnowmap"]
     ]) {
-      await expect(page.getByTestId(`overflow-${id}`)).toBeVisible();
+      await expect(await catalogSwitch(page, layer!, row)).toBeVisible();
     }
+    await openBasemaps(page);
+    await page.getByTestId("basemap-group-terrain").click();
+    await expect(page.getByTestId("basemap-opentopomap")).toBeVisible();
   });
 
   test("toggling an overlay requests its tiles and keeps the map alive", async ({ page }) => {
@@ -49,8 +50,7 @@ test.describe("keyless tile overlays", () => {
     });
 
     await page.goto("/");
-    await page.getByTestId("basemap-btn").click();
-    await page.getByTestId("overflow-cyclosm").click();
+    await (await catalogSwitch(page, "cyclosm")).click();
 
     await expect.poll(() => requested.length, { timeout: 15_000 }).toBeGreaterThan(0);
     expect(pageErrors, pageErrors.map((e) => e.message).join("\n")).toHaveLength(0);
@@ -59,17 +59,17 @@ test.describe("keyless tile overlays", () => {
   test("turning an overlay off removes it from the map", async ({ page }) => {
     await stubTiles(page);
     await page.goto("/");
-    await page.getByTestId("basemap-btn").click();
-    await page.getByTestId("overflow-opentopomap").click();
+    const toggle = await catalogSwitch(page, "cyclosm");
+    await toggle.click();
 
-    const layerId = "raster-tile-opentopomap";
+    const layerId = "raster-tile-cyclosm";
     await expect
       .poll(() => page.evaluate((id) => Boolean(window.__maposMap?.getLayer(id)), layerId), {
         timeout: 15_000
       })
       .toBe(true);
 
-    await page.getByTestId("overflow-opentopomap").click();
+    await toggle.click();
     // Detach has to actually remove source and layer; leaving them behind would keep MapLibre
     // fetching tiles for an overlay the user switched off.
     await expect

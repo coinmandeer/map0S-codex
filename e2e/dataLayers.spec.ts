@@ -1,3 +1,4 @@
+import { catalogResultRow, catalogSwitch, openLayersPanel } from "./fixtures/mapPanel";
 import { expect, test } from "./fixtures/offlineTest";
 
 /** Points are placed inside whatever bbox the app asked for — a fixture with fixed coordinates
@@ -33,8 +34,7 @@ test.describe("keyless data layers", () => {
     );
 
     await page.goto("/?lng=13.3775&lat=49.7475&z=14");
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("overflow-inaturalist").click();
+    await (await catalogSwitch(page, "inaturalist", "nature-Aves")).click();
 
     await expect
       .poll(
@@ -61,24 +61,27 @@ test.describe("keyless data layers", () => {
     );
 
     await page.goto("/");
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("overflow-commons-photos").click();
+    await (await catalogSwitch(page, "commons-photos")).click();
 
-    // An empty layer and a refused request must not look the same to the user.
-    await expect(page.getByTestId("layer-notice")).toContainText("Přibliž mapu", {
+    // An empty layer and a refused request must not look the same to the user: the row that
+    // switched it on says why it is empty.
+    await expect(catalogResultRow(page, "commons-photos")).toContainText("Přibliž mapu", {
       timeout: 20_000
     });
   });
 
   test("layers needing a key are absent until the server reports it", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("layers-btn").click();
-    await expect(page.getByTestId("overflow-menu")).toBeVisible();
+    await openLayersPanel(page);
 
-    // The dev server holds no keys, so these must not be offered at all.
-    await expect(page.getByTestId("overflow-charging-stations")).toHaveCount(0);
-    await expect(page.getByTestId("overflow-mapillary")).toHaveCount(0);
+    // The dev server holds no keys, so these are not switchable: they sit under "Needs setup"
+    // with the variable to set, rather than as a switch that does nothing.
+    for (const id of ["charging-stations", "mapillary"]) {
+      await page.getByTestId("layers-search").fill(id);
+      const toggle = page.getByTestId("layers-results").locator(`[data-testid$="-switch-${id}"]`);
+      if (await toggle.count()) await expect(toggle.first()).toBeDisabled();
+    }
     // ...while the keyless ones are.
-    await expect(page.getByTestId("overflow-earthquakes")).toBeVisible();
+    await expect(await catalogSwitch(page, "earthquakes")).toBeEnabled();
   });
 });

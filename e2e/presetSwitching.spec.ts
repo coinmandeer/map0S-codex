@@ -55,7 +55,12 @@ test("switching presets keeps shared sources alive and swaps the POI facet witho
     return getMapStore().activeLayers["osm-poi"]?.filters.categories;
   });
   expect(categories).toContain("castle");
-  expect(await page.evaluate(() => location.search)).toContain("preset=day-trip");
+  expect(
+    await page.evaluate(async () => {
+      const { getMapStore } = await import("/src/store/mapStore.ts");
+      return getMapStore().activePresetId;
+    })
+  ).toBe("day-trip");
   await tagPoiSource();
 
   // Výlet → Město: same osm-poi source object, one facet fetch, categories swapped.
@@ -79,9 +84,14 @@ test("switching presets keeps shared sources alive and swaps the POI facet witho
   await page.waitForTimeout(600);
   expect(poiRequests.length).toBe(requestsAtDetach);
 
-  // Planeta → Výlet: reattach + fetch for the fresh viewport, preset in URL.
+  // Planeta → Výlet: reattach + fetch for the fresh viewport, preset active again.
   await applyPreset("day-trip");
   await expect.poll(poiSourceId).toBe(true);
   await expect.poll(() => poiRequests.length).toBeGreaterThan(requestsAtDetach);
-  expect(await page.evaluate(() => location.search)).toContain("preset=day-trip");
+  expect(
+    await page.evaluate(async () => {
+      const { getMapStore } = await import("/src/store/mapStore.ts");
+      return getMapStore().activePresetId;
+    })
+  ).toBe("day-trip");
 });

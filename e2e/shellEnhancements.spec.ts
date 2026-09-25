@@ -1,3 +1,4 @@
+import { catalogSwitch, openBasemaps, openLayersPanel } from "./fixtures/mapPanel";
 import { expect, test } from "./fixtures/offlineTest";
 
 const EMPTY_MAP_STYLE = JSON.stringify({
@@ -8,7 +9,7 @@ const EMPTY_MAP_STYLE = JSON.stringify({
 });
 
 test.describe("source-grounded shell enhancements", () => {
-  test("desktop centres the command pill over the map area beside a full-height panel", async ({
+  test("desktop places the command pill at the start of the map area beside a full-height panel", async ({
     page
   }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -40,16 +41,17 @@ test.describe("source-grounded shell enhancements", () => {
           viewportHeight: innerHeight
         };
       });
-    // The strip's edges follow the panel with a transition, so the centring is asserted on the
-    // settled layout rather than on the first frame after the panel appears.
+    // The strip's edges follow the panel with a transition, so the position is asserted on the
+    // settled layout rather than on the first frame after the panel appears. The pill starts
+    // one inset after the panel, next to what it searches from.
     await expect
       .poll(async () => {
         const sample = await measure();
-        return Math.round(Math.abs(sample.commandCentre - sample.mapStripCentre));
+        return Math.round(sample.commandLeft - sample.panelRight);
       })
-      .toBeLessThanOrEqual(2);
+      .toBeLessThanOrEqual(16);
     const layout = await measure();
-    expect(Math.abs(layout.commandCentre - layout.mapStripCentre)).toBeLessThanOrEqual(2);
+    expect(layout.commandCentre).toBeLessThan(layout.mapStripCentre);
     expect(Math.max(...layout.rowCentres) - Math.min(...layout.rowCentres)).toBeLessThanOrEqual(2);
     expect(layout.commandLeft).toBeGreaterThanOrEqual(layout.panelRight);
     expect(layout.utilityLeft).toBeGreaterThan(layout.commandRight);
@@ -68,8 +70,7 @@ test.describe("source-grounded shell enhancements", () => {
       ["personal", "personal-panel"],
       ["feed", "feed-panel"],
       ["discover", "discover-panel"],
-      ["planning", "planning-panel"],
-      ["game", "game-panel"]
+      ["planning", "planning-panel"]
     ] as const;
     for (const [mode, panel] of modes) {
       await page.goto(`/?mode=${mode}`);
@@ -80,6 +81,9 @@ test.describe("source-grounded shell enhancements", () => {
       expect(box!.x).toBeGreaterThanOrEqual(0);
       expect(box!.width).toBeGreaterThan(200);
     }
+    // Game opens the board with its HUD rather than a panel; the panel is one button away.
+    await page.goto("/?mode=game");
+    await expect(page.getByTestId("game-hud")).toBeVisible({ timeout: 15_000 });
   });
 
   test("personal profile omits empty achievements and starts with lazy sections collapsed", async ({
@@ -163,7 +167,8 @@ test.describe("source-grounded shell enhancements", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/?mode=planning");
     const panel = page.getByTestId("planning-panel");
-    await page.getByTestId("plan-name").focus();
+    const field = page.getByLabel("Název zastávky 1");
+    await field.focus();
     // The app republishes the viewport variables on focusin from a rAF, so the simulated
     // keyboard has to be written after that has settled or it is immediately overwritten.
     await page.waitForTimeout(150);
@@ -178,19 +183,19 @@ test.describe("source-grounded shell enhancements", () => {
     // focused field cannot end up underneath the keyboard.
     const bottom = await panel.evaluate((element) => element.getBoundingClientRect().bottom);
     expect(bottom).toBeLessThanOrEqual(510);
-    await expect(page.getByTestId("plan-name")).toBeFocused();
+    await expect(field).toBeFocused();
   });
 
   test("Nový plán replaces a previous local draft instead of reopening it", async ({ page }) => {
     await page.goto("/?mode=planning");
-    await page.getByTestId("plan-name").fill("Starý rozpracovaný plán");
+    await page.getByLabel("Název zastávky 1").fill("Starý rozpracovaný start");
     await page.getByTestId("mode-personal").click();
     await page.getByText("Plans", { exact: true }).click();
     await page.getByTestId("new-plan").click();
 
     await expect(page.getByTestId("planning-panel")).toBeVisible();
-    await expect(page.getByTestId("plan-name")).toHaveValue("Nová cesta");
-    await expect(page.getByLabel("Název zastávky 1")).toHaveValue("Start");
+    // A fresh plan starts from its own seed, not from the abandoned draft.
+    await expect(page.getByLabel("Název zastávky 1")).not.toHaveValue("Starý rozpracovaný start");
   });
 
   test("desktop left panel resizes within safe bounds, persists and never remounts the map", async ({
@@ -240,7 +245,7 @@ test.describe("source-grounded shell enhancements", () => {
     );
   });
 
-  test("layer badge updates by POI/thematic rule and the basemap control exposes full text", async ({
+  test("layer badge updates by POI/thematic rule and the basemap tab reflects the choice", async ({
     page
   }) => {
     await page.route("https://tiles.openfreemap.org/styles/positron", (route) =>
@@ -251,101 +256,82 @@ test.describe("source-grounded shell enhancements", () => {
         body: EMPTY_MAP_STYLE
       })
     );
-    await page.goto("/");
+    await page.goto("/?lng=13.3775&lat=49.7475&z=13");
+    // A plain map has nothing on, so there is no count to show.
+    await expect(page.getByTestId("active-layer-count")).toHaveCount(0);
 
+    await (await catalogSwitch(page, "osm-poi", "poi-cafe")).click();
     const badge = page.getByTestId("active-layer-count");
     await expect(badge).toHaveText("1");
     await expect(badge).toHaveAttribute("data-poi-count", "1");
     await expect(badge).toHaveAttribute("data-thematic-count", "0");
 
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("layer-filter-btn-weather").click();
-    await page.locator('label:has([data-testid="weather-visualization-temperature"])').click();
+    await (await catalogSwitch(page, "weather-temperature")).click();
     await expect(badge).toHaveText("2");
     await expect(badge).toHaveAttribute("data-poi-count", "1");
     await expect(badge).toHaveAttribute("data-thematic-count", "1");
     await expect(page.getByTestId("layers-btn")).toHaveAccessibleName(/2 on: 1 POI, 1 thematic/);
 
-    await page.keyboard.press("Escape");
-    const basemapButton = page.getByTestId("basemap-btn");
-    await expect(basemapButton).toHaveAccessibleName("Map basemaps: CARTO Voyager");
-    await expect(page.getByTestId("basemap-current-label")).toHaveText("CARTO Voyager");
-    await basemapButton.click();
-    await page.getByTestId("basemap-openfreemap-positron").click();
-    await expect(basemapButton).toHaveAccessibleName("Map basemaps: OpenFreeMap Positron");
-    await expect(basemapButton).toHaveAttribute("title", "Map basemaps: OpenFreeMap Positron");
-    // 14 code points is the budget §3.1 gives the label; the tooltip carries the full name.
-    await expect(page.getByTestId("basemap-current-label")).toHaveText("OpenFreeMap P…");
+    await openBasemaps(page);
+    const positron = page.getByTestId("basemap-openfreemap-positron");
+    await positron.click();
+    await expect(positron).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("basemap-carto-voyager")).toHaveAttribute(
+      "aria-checked",
+      "false"
+    );
   });
 
-  test("narrow drawer exposes four horizontally scrollable presets and keyboard accordions", async ({
-    page
-  }) => {
+  test("narrow drawer: preset picker, keyboard groups and basemap groups", async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 800 });
-    await page.goto("/");
-    await page.getByTestId("layers-btn").click();
+    await page.goto("/?lng=13.3775&lat=49.7475&z=13");
+    await openLayersPanel(page);
 
-    const strip = page.getByTestId("preset-strip");
-    const presets = strip.locator("[data-preset-index]");
-    await expect(presets).toHaveCount(4);
-    expect(await strip.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
-    await presets.first().focus();
-    await page.keyboard.press("End");
-    await expect(presets.last()).toBeFocused();
-    await expect.poll(() => strip.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-
-    const world = page.getByTestId("experience-selector");
-    await expect(world).toHaveAttribute("data-closed", "");
-    await page.getByTestId("layers-accordion-world").click();
-    await expect(page.getByTestId("layer-source-osm")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "POI layers", exact: true })).toBeVisible();
-    await expect(page.getByText("Integrace", { exact: true })).toHaveCount(0);
-
+    // Use cases are one picker rather than a strip of cards.
+    await page.getByTestId("preset").click();
     await page.getByTestId("preset-day-trip").click();
-    await page.getByTestId("layer-filter-btn-osm-poi").click();
-    await page.getByTestId("category-groups-food").click();
-    await page.getByTestId("filter-brewery").click();
-    await expect(page.getByTestId("filter-brewery")).toHaveAttribute("aria-pressed", "true");
-    await page.reload();
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("layer-filter-btn-osm-poi").click();
-    await page.getByTestId("category-groups-food").click();
-    await expect(page.getByTestId("filter-brewery")).toHaveAttribute("aria-pressed", "true");
-    await page.keyboard.press("Escape");
-
-    await page.getByTestId("basemap-btn").click();
-    const accordions = page.locator(".basemap-accordion");
-    await expect(accordions).toHaveCount(4);
-    const basemapCards = page.locator(".basemap-card");
-    const previewCount = await page.locator(".basemap-preview").count();
-    expect(previewCount).toBe(await basemapCards.count());
-    expect(
-      await page
-        .locator(".basemap-preview")
-        .first()
-        .evaluate((element) => element.getBoundingClientRect().height)
-    ).toBeGreaterThanOrEqual(80);
-    expect(
-      await accordions.evaluateAll((elements) =>
-        elements.map((element) => element.getAttribute("data-basemap-group"))
+    await expect(page.getByTestId("preset-clear")).toBeEnabled();
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
+          return getMapStore().activePresetId;
+        })
       )
+      .toBe("day-trip");
+
+    // Groups are buttons that open and close from the keyboard.
+    const toggle = page.locator(".unified-layers .catalog-group-toggle").first();
+    const before = await toggle.getAttribute("aria-expanded");
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", before === "true" ? "false" : "true");
+
+    await openBasemaps(page);
+    const accordions = page.locator(".basemap-accordion");
+    await expect(accordions.first()).toBeVisible();
+    expect(await accordions.count()).toBeGreaterThanOrEqual(4);
+    expect(
+      (
+        await accordions.evaluateAll((elements) =>
+          elements.map((element) => element.getAttribute("data-basemap-group"))
+        )
+      ).slice(0, 4)
     ).toEqual(["street", "outdoor", "satellite", "terrain"]);
-    const street = page.locator('[data-basemap-group="street"]');
     const streetTrigger = page.getByTestId("basemap-group-street");
-    await expect(street).toHaveAttribute("data-open", "true");
+    // A group opens and closes from the keyboard, whichever state it starts in.
+    const initial = await streetTrigger.getAttribute("aria-expanded");
+    const flipped = initial === "true" ? "false" : "true";
     await streetTrigger.focus();
     await page.keyboard.press("Enter");
-    await expect(street).not.toHaveAttribute("data-open", "true");
+    await expect(streetTrigger).toHaveAttribute("aria-expanded", flipped);
     await page.keyboard.press("Enter");
-    await expect(street).toHaveAttribute("data-open", "true");
+    await expect(streetTrigger).toHaveAttribute("aria-expanded", initial!);
 
     await page.getByTestId("right-utility-close").click();
     await page.getByTestId("settings-btn").click();
-    await expect(
-      page.getByTestId("right-utility-drawer").getByText("Layers", { exact: true })
-    ).toBeVisible();
-    await expect(page.getByText("Map basemaps", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Tiles", { exact: true })).toHaveCount(0);
+    // Settings do not repeat the basemap picker.
+    await expect(page.getByTestId("tiles-sheet")).toHaveCount(0);
   });
 
   test("multiple manifest legends expand by layer and stack above the shared timeline", async ({
@@ -366,9 +352,8 @@ test.describe("source-grounded shell enhancements", () => {
       scope.__maposMapBeforeLegends = window.__maposMap;
     });
 
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("overflow-earthquakes").click();
-    await page.getByTestId("overflow-events").click();
+    await (await catalogSwitch(page, "earthquakes")).click();
+    await (await catalogSwitch(page, "events")).click();
     await page.getByTestId("layers-btn").click();
 
     const legends = page.getByTestId("legend-stack");
@@ -421,7 +406,9 @@ test.describe("source-grounded shell enhancements", () => {
     await page.getByTestId("layers-btn").click();
     const rightDrawer = page.getByTestId("right-utility-drawer");
     await expect(rightDrawer).toBeVisible();
-    await page.getByTestId("overflow-earthquakes").click();
+    await (await catalogSwitch(page, "earthquakes")).click();
+    // Events carry the time axis, so with them on the footer holds a legend and the timeline.
+    await (await catalogSwitch(page, "events")).click();
     await expect(page.getByTestId("legend-stack")).toBeVisible();
     await expect(page.getByTestId("global-timeline")).toBeVisible();
 

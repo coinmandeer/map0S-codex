@@ -1,3 +1,4 @@
+import { catalogSwitch, openCatalogSettings } from "./fixtures/mapPanel";
 import { expect, test } from "./fixtures/offlineTest";
 
 /**
@@ -60,9 +61,9 @@ test.describe("chráněná území", () => {
     await expect(page.getByTestId("mode-bar")).toBeVisible({ timeout: 30_000 });
     await expect.poll(() => urls.length, { timeout: 20_000 }).toBeGreaterThan(0);
 
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("layer-filter-btn-natura2000").click();
-    await page.getByTestId("filter-natura2000-directive-birds").click();
+    // Both directives start on; leaving only the bird areas means switching the habitats off.
+    await openCatalogSettings(page, "natura2000");
+    await page.getByTestId("filter-natura2000-directive-habitats").click();
 
     await expect
       .poll(() => new URL(urls.at(-1)!).searchParams.get("layers"), { timeout: 20_000 })
@@ -93,8 +94,7 @@ test.describe("chráněná území", () => {
       })
       .toBe(true);
 
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("overflow-natura2000").click();
+    await (await catalogSwitch(page, "natura2000")).click();
 
     await expect
       .poll(() => page.evaluate((id) => Boolean(window.__maposMap?.getSource(id)), SOURCE_ID))

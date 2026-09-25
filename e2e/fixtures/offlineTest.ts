@@ -145,6 +145,28 @@ const ASSET_FIXTURES: Array<{
   },
   // The six structural raster overlays. Waymarked Trails swaps the path per activity, so all
   // five networks are matched rather than only the default.
+  // Glyphs for labels on raster backgrounds (cluster counts, stop numbers). An empty protobuf
+  // is a valid glyph range with no glyphs in it.
+  {
+    origin: /^https:\/\/tiles\.openfreemap\.org$/,
+    path: /^\/fonts\/[^/]+\/\d+-\d+\.pbf$/,
+    body: EMPTY_MVT,
+    contentType: "application/x-protobuf"
+  },
+  // Esri World Imagery / Topo tiles, drawn by basemap previews and the aerial background.
+  {
+    origin: /^https:\/\/server\.arcgisonline\.com$/,
+    path: /^\/ArcGIS\/rest\/services\/[A-Za-z_]+\/MapServer\/tile\/\d+\/\d+\/\d+$/,
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
+  // JRC Global Surface Water seasonality, published as static tiles on Google Cloud Storage.
+  {
+    origin: /^https:\/\/storage\.googleapis\.com$/,
+    path: new RegExp(String.raw`^\/water-world\/tiles\d{4}\/[a-z_]+\/${XYZ}\.png$`),
+    body: TRANSPARENT_PNG,
+    contentType: "image/png"
+  },
   {
     origin: /^https:\/\/[a-c]\.tile-cyclosm\.openstreetmap\.fr$/,
     path: new RegExp(String.raw`^\/cyclosm(?:-lite)?\/${XYZ}\.png$`),

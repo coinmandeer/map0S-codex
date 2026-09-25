@@ -1,3 +1,4 @@
+import { namedLayerSwitch } from "./fixtures/mapPanel";
 import { expect, test } from "./fixtures/offlineTest";
 
 /**
@@ -35,13 +36,12 @@ test("long WMS time series uses a compact selector on mobile and changes request
   await dialog.getByTestId("add-source-name").fill("Time series");
   await dialog.getByTestId("add-source-save").click();
   await expect(dialog).toBeHidden();
-  await page.getByTestId("layers-btn").click();
-  await page.getByTestId("overflow-menu").getByRole("switch", { name: "Time series" }).click();
+  await (await namedLayerSwitch(page, "Time series")).click();
   await expect.poll(() => dates.includes("2026-09-01")).toBe(true);
   // The one settings editor lives inline under the row, not in a strip over the map.
   await page
     .getByTestId("overflow-menu")
-    .getByRole("button", { name: "Nastavení: Time series" })
+    .getByRole("button", { name: /(Nastavení|Settings): Time series/ })
     .click();
   await page.getByRole("combobox", { name: "Čas UTC" }).click();
   await page.getByRole("option", { name: "2026-08-15", exact: true }).click();
@@ -90,11 +90,8 @@ test.describe("přidat zdroj z URL", () => {
 
     // Switching it on has to reach the service with a real GetMap, which is the only proof the
     // stored manifest is renderable rather than merely valid.
-    await page.getByTestId("layers-btn").click();
-    const drawer = page.getByTestId("overflow-menu");
-    await expect(drawer).toBeVisible();
     // Found by its name, because the layer's id was minted by the server.
-    await drawer.getByRole("switch", { name: "Zaplavy z URL" }).click();
+    await (await namedLayerSwitch(page, "Zaplavy z URL")).click();
     await expect.poll(() => tileRequests.length, { timeout: 20_000 }).toBeGreaterThan(0);
 
     const params = new URL(tileRequests[0]!).searchParams;
@@ -108,7 +105,7 @@ test.describe("přidat zdroj z URL", () => {
     // The inline settings editor under the catalogue row changes the time dimension in place.
     await page
       .getByTestId("overflow-menu")
-      .getByRole("button", { name: "Nastavení: Zaplavy z URL" })
+      .getByRole("button", { name: /(Nastavení|Settings): Zaplavy z URL/ })
       .click();
     await page.getByRole("button", { name: "2026-09-02", exact: true }).click();
     await expect
@@ -170,8 +167,7 @@ test("WMTS URL is parsed, saved and rendered; choosing a second layer replaces t
   await dialog.getByTestId("add-source-name").fill("WMTS Snow");
   await dialog.getByTestId("add-source-save").click();
   await expect(dialog).toBeHidden();
-  await page.getByTestId("layers-btn").click();
-  await page.getByTestId("overflow-menu").getByRole("switch", { name: "WMTS Snow" }).click();
+  await (await namedLayerSwitch(page, "WMTS Snow")).click();
   await expect.poll(() => requests.length).toBeGreaterThan(0);
   expect(requests.every((url) => /\/tiles\/snow\/\d+\/\d+\/\d+\.png$/.test(url))).toBe(true);
 });
@@ -196,9 +192,7 @@ test("FeatureServer import queries the stored source on activation and after a m
   await dialog.getByTestId("add-source-name").fill("ArcGIS Points");
   await dialog.getByTestId("add-source-save").click();
   await expect(dialog).toBeHidden();
-  await page.getByTestId("layers-btn").click();
-  const drawer = page.getByTestId("overflow-menu");
-  await drawer.getByRole("switch", { name: "ArcGIS Points" }).click();
+  await (await namedLayerSwitch(page, "ArcGIS Points")).click();
   await expect.poll(() => boxes.length).toBeGreaterThan(0);
   await expect
     .poll(() =>
@@ -211,7 +205,8 @@ test("FeatureServer import queries the stored source on activation and after a m
     )
     .toBe(true);
   const first = boxes[0];
-  await page.keyboard.press("Escape");
+  // Close the drawer so the drag lands on the map, not on the panel over it.
+  await page.getByTestId("right-utility-close").click();
   const canvas = page.locator(".maplibregl-canvas");
   const bounds = await canvas.boundingBox();
   expect(bounds).toBeTruthy();

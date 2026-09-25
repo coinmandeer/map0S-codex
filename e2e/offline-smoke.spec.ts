@@ -1,5 +1,6 @@
 import type { FeatureCollection } from "geojson";
 import { expect, test } from "./fixtures/offlineTest";
+import { catalogSwitch } from "./fixtures/mapPanel";
 
 test("planning shell and synthetic API boot with zero external network", async ({
   page,
@@ -259,9 +260,7 @@ test("CAMS overlay paints model cells and changing pollutant reuses the same dat
   });
   await page.goto("/?mode=discover&lng=1.25&lat=41.12&z=12");
   await page.waitForLoadState("networkidle");
-  await page.getByTestId("layers-btn").click();
-  await page.getByTestId("layers-search").fill("Air quality");
-  await page.getByTestId("weather-switch-cams-air-quality").click();
+  await (await catalogSwitch(page, "cams-air-quality")).click();
   await page.keyboard.press("Escape");
   await expect
     .poll(() =>

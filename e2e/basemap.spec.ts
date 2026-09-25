@@ -166,14 +166,25 @@ test.describe("basemap picker", () => {
       .poll(() => page.evaluate(() => Boolean(window.__maposMap?.getLayer("raster-tile-cyclosm"))))
       .toBe(true);
 
-    await page.evaluate(() => {
-      const map = window.__maposMap;
-      if (!map) throw new Error("Map is not available");
-      map.fire("error", {
-        sourceId: "basemap",
-        error: new Error("simulated basemap tile failure")
-      } as never);
-    });
+    const failTiles = (count: number) =>
+      page.evaluate((times) => {
+        const map = window.__maposMap;
+        if (!map) throw new Error("Map is not available");
+        for (let index = 0; index < times; index += 1)
+          map.fire("error", {
+            sourceId: "basemap",
+            error: new Error("simulated basemap tile failure")
+          } as never);
+      }, count);
+
+    // One tile lost at the edge of coverage is not an outage: the chosen background stays.
+    await failTiles(1);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.__maposMap?.getStyle()?.name ?? "")).not.toBe(
+      "MapOS Tourist Fallback"
+    );
+    // A background whose tiles keep failing is, and the map says so.
+    await failTiles(8);
     await expect(page.getByTestId("toast")).toContainText("nouzovou mapu");
     await expect(page.getByTestId("toast")).toContainText("vrstvy zůstaly zapnuté");
     await expect

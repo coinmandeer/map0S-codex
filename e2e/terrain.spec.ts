@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures/offlineTest";
+import { openBasemaps } from "./fixtures/mapPanel";
 
 /**
  * §6.6 wave A: 3D terrain from the Tilezen DEM.
@@ -13,7 +14,7 @@ import { expect, test } from "./fixtures/offlineTest";
 test.describe("3D terrain", () => {
   test("terrain applies over a raster background, unlike extruded buildings", async ({ page }) => {
     await page.goto("/?lng=13.3775&lat=49.7475&z=10");
-    await page.getByTestId("basemap-btn").click();
+    await openBasemaps(page);
 
     // Aerial imagery carries no building outlines, so buildings are unavailable over it while
     // terrain must not be: that difference is the whole design.
@@ -45,7 +46,7 @@ test.describe("3D terrain", () => {
 
   test("the DEM declares terrarium encoding, not MapLibre's default", async ({ page }) => {
     await page.goto("/?lng=13.3775&lat=49.7475&z=10");
-    await page.getByTestId("basemap-btn").click();
+    await openBasemaps(page);
     await page.getByTestId("toggle-terrain-3d").click();
 
     await expect
@@ -66,7 +67,7 @@ test.describe("3D terrain", () => {
 
   test("switching it off releases the mesh and its source", async ({ page }) => {
     await page.goto("/?lng=13.3775&lat=49.7475&z=10");
-    await page.getByTestId("basemap-btn").click();
+    await openBasemaps(page);
     const toggle = page.getByTestId("toggle-terrain-3d");
 
     await toggle.click();
@@ -90,7 +91,7 @@ test.describe("3D terrain", () => {
 
   test("the choice survives a background switch", async ({ page }) => {
     await page.goto("/?lng=13.3775&lat=49.7475&z=10");
-    await page.getByTestId("basemap-btn").click();
+    await openBasemaps(page);
     await page.getByTestId("toggle-terrain-3d").click();
     await expect
       .poll(() => page.evaluate(() => Boolean(window.__maposMap?.getTerrain())), {

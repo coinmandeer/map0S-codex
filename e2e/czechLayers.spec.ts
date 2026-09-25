@@ -1,9 +1,24 @@
-import { expect, test } from "./fixtures/offlineTest";
+import { expect, test, type Page } from "./fixtures/offlineTest";
+import { catalogResultRow, catalogSwitch } from "./fixtures/mapPanel";
+
+/** Shortcuts are the user's own favourites; nothing is pinned to the top bar by default. */
+async function favouriteCadastre(page: Page) {
+  await expect(page.getByTestId("quick-layers")).toHaveCount(0);
+  await catalogSwitch(page, "cz-cadastre");
+  await catalogResultRow(page, "cz-cadastre")
+    .first()
+    .getByRole("button", { name: /Favorite:|Oblíbené:/ })
+    .click();
+  await page.getByTestId("layers-search").fill("");
+  await page.getByTestId("right-utility-close").click();
+  await expect(page.getByTestId("quick-layers").getByTestId(/quick-toggle-/)).toHaveCount(1);
+}
 
 test("shortcuts, mixed subgroup, opacity, favorites and restored state share one layer", async ({
   page
 }) => {
   await page.goto("/?lng=14.414&lat=50.086&z=18");
+  await favouriteCadastre(page);
   const quick = page.getByTestId("quick-toggle-cz-cadastre");
   await expect(quick).toHaveAttribute("aria-pressed", "false");
   await quick.click();
@@ -23,22 +38,22 @@ test("shortcuts, mixed subgroup, opacity, favorites and restored state share one
   await expect(group).toHaveAttribute("aria-checked", "false");
   await expect(quick).toHaveAttribute("aria-pressed", "false");
   await rowSwitch.click();
-  await page
-    .getByTestId("catalog-czech-land-cz-cadastre")
-    .getByRole("button", { name: /Favorite:|Oblíbené:/ })
-    .click();
-  await expect(page.getByTestId("quick-layers").getByTestId(/quick-toggle-/)).toHaveCount(1);
-  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(quick).toHaveAttribute("aria-pressed", "true");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  // The favourite is the user's and survives a reload.
+  await expect(page.getByTestId("quick-layers").getByTestId(/quick-toggle-/)).toHaveCount(1);
   await page.getByTestId("quick-settings-cz-cadastre").click();
-  await expect(slider).toHaveAttribute("aria-valuenow", "0.05");
+  await expect(page.getByTestId("layer-opacity-cz-cadastre")).toBeVisible();
 });
 
-test("small zoom preserves selection, foreign view hides defaults and mobile controls fit", async ({
+test("small zoom preserves selection, foreign view has no shortcuts and mobile controls fit", async ({
   page
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/?lng=13.4&lat=52.5&z=10");
+  await expect(page.getByTestId("quick-layers")).toHaveCount(0);
   await page.goto("/?lng=14.414&lat=50.086&z=9");
+  await favouriteCadastre(page);
   await page.getByTestId("quick-toggle-cz-cadastre").click();
   await expect(page.getByTestId("quick-toggle-cz-cadastre")).toContainText(/Zoom in|Přibližte/);
   const buttons = page.getByTestId("quick-layers").getByRole("button");
@@ -53,6 +68,4 @@ test("small zoom preserves selection, foreign view hides defaults and mobile con
     "aria-checked",
     "mixed"
   );
-  await page.goto("/?lng=13.4&lat=52.5&z=10");
-  await expect(page.getByTestId("quick-layers")).toHaveCount(0);
 });

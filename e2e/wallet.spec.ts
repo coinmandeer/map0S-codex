@@ -47,8 +47,10 @@ test("the wallet section lists a linked wallet and can disconnect it", async ({ 
   expect(linked.status).toBe(200);
   const identity = (linked.body as { identity: { id: string; subject: string } }).identity;
 
-  // Reopening the panel re-reads the section, which is what a user gets after connecting.
+  // Reopening the panel re-reads the section, which is what a user gets after connecting. A
+  // reload is a clean start (the URL keeps only the camera), so Personal is opened again.
   await page.reload();
+  await page.getByTestId("mode-personal").click();
   await expect(mine).toBeVisible();
   await mine.getByText("Wallet", { exact: true }).click();
   const row = mine.getByTestId(`personal-wallet-${identity.id}`);

@@ -2,6 +2,8 @@ import { expect, test } from "./fixtures/offlineTest";
 import { mkdir } from "node:fs/promises";
 import { openAccessibleMapFeature, stubDiscoverContext } from "./fixtures/discoverContext";
 import { stubEvents } from "./fixtures/events";
+import { openBasemaps } from "./fixtures/mapPanel";
+import { closeShareDialog, createInitialPlan, openShareDialog } from "./fixtures/planning";
 
 const DIR = "e2e/screenshots";
 const BASELINE_MATRIX = [
@@ -115,10 +117,12 @@ test.describe("visual snapshots", () => {
       if (mobile) {
         await page.getByTestId("bottom-nav").getByTestId("mode-planning").click();
       } else {
-        await page.getByTestId("mode-bar").getByTestId("mode-planning").click();
+        await page.getByTestId("desktop-modebar").getByTestId("mode-planning").click();
       }
       await page.getByTestId("planning-panel").waitFor({ timeout: 15_000 });
       await page.screenshot({ path: `${DIR}/${width}-default.png`, fullPage: true });
+      // The plan's actions and AI discussion belong to a plan, which starts at two stops.
+      await createInitialPlan(page);
 
       const aiPlanToggle = page.getByTestId("plan-ai-toggle");
       await aiPlanToggle.scrollIntoViewIfNeeded();
@@ -135,7 +139,7 @@ test.describe("visual snapshots", () => {
       if (mobile) {
         await page.getByTestId("bottom-nav").getByTestId("mode-discover").click();
       } else {
-        await page.getByTestId("mode-bar").getByTestId("mode-discover").click();
+        await page.getByTestId("desktop-modebar").getByTestId("mode-discover").click();
       }
       await page.getByTestId("discover-panel").waitFor({ timeout: 15_000 });
       await page.getByTestId("discover-summary").waitFor({ timeout: 15_000 });
@@ -156,7 +160,7 @@ test.describe("visual snapshots", () => {
       // how you get there.
       await page.goto("/?mode=game");
       await page
-        .getByTestId(mobile ? "bottom-nav" : "mode-bar")
+        .getByTestId(mobile ? "bottom-nav" : "desktop-modebar")
         .getByTestId("mode-game")
         .click({ force: true });
       await page.getByTestId("game-hud").waitFor({ timeout: 30_000 });
@@ -192,11 +196,12 @@ test.describe("visual snapshots", () => {
       await page.goto("/?mode=planning&lng=13.3775&lat=49.7475&z=14");
       if (width < 768) await page.getByTestId("bottom-nav").getByTestId("mode-planning").click();
       await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 20_000 });
+      await createInitialPlan(page);
       await page.getByTestId("plan-name").fill(`Víkendový plán ${width}`);
       await page.getByTestId("save-plan").click();
       await expect(page.getByTestId("toast")).toContainText("uložený v Moje");
       // §29.3: share, export and hand-off are one dialog with tabs, not three footer surfaces.
-      await page.getByRole("button", { name: "Share", exact: true }).click();
+      await openShareDialog(page, "share");
       const shareDialog = page.getByTestId("plan-share-dialog");
       await expect(shareDialog.getByTestId("plan-share-manager")).toBeVisible();
       await expect(page.getByTestId("create-plan-share")).toBeEnabled();
@@ -206,8 +211,7 @@ test.describe("visual snapshots", () => {
         path: `${DIR}/${width}-planning-share.png`,
         fullPage: true
       });
-      await shareDialog.getByRole("button", { name: "Close" }).click();
-      await expect(shareDialog).toHaveCount(0);
+      await closeShareDialog(page);
       await page.getByTestId("plan-ai-toggle").click();
       await page
         .getByLabel("Co chceš s plánem probrat?")
@@ -234,18 +238,21 @@ test.describe("visual snapshots", () => {
       await page.getByTestId("layers-btn").click();
       const layerDrawer = page.getByTestId("right-utility-drawer");
       await expect(layerDrawer).toBeVisible();
-      const expectedDrawerWidth = Math.min(400, width);
+      // Docked to the right edge: the design width (`--drawer-w`, 380 px) on a desktop, the whole
+      // width on a phone.
       await expect
-        .poll(async () => Math.round((await layerDrawer.boundingBox())!.x))
-        .toBe(width - expectedDrawerWidth);
-      if (width === 390) {
-        expect((await layerDrawer.boundingBox())!.width).toBeGreaterThanOrEqual(389);
-      }
+        .poll(async () => {
+          const box = (await layerDrawer.boundingBox())!;
+          return Math.round(box.x + box.width);
+        })
+        .toBe(width);
+      const drawerWidth = (await layerDrawer.boundingBox())!.width;
+      if (width === 390) expect(drawerWidth).toBeGreaterThanOrEqual(389);
+      else expect(Math.round(drawerWidth)).toBe(380);
       await page.screenshot({ path: `${DIR}/${width}-layers-redesign.png`, fullPage: true });
       await page.getByTestId("right-utility-close").click();
 
-      await page.getByTestId("basemap-btn").click();
-      await expect(page.getByTestId("tiles-sheet")).toBeVisible();
+      await openBasemaps(page);
       await expect(page.locator(".basemap-preview").first()).toBeVisible();
       await page.screenshot({ path: `${DIR}/${width}-basemaps-redesign.png`, fullPage: true });
       await page.getByTestId("right-utility-close").click();
@@ -349,18 +356,6 @@ test.describe("visual snapshots", () => {
         }
       });
     });
-    await page.route("**/info/brief**", (route) =>
-      route.fulfill({
-        json: {
-          text: "Zřícenina gotického hradu v zaříznutém údolí, přístupná po značené cestě od parkoviště.",
-          model: "fixture",
-          nearby: [
-            { name: "Parkoviště", category: "parking", categoryLabel: "Parkoviště", distanceM: 320 }
-          ],
-          attribution: "OpenStreetMap, Wikidata"
-        }
-      })
-    );
     const aiPlace = {
       id: "osm:41",
       layerId: "osm-poi",
@@ -407,12 +402,14 @@ test.describe("visual snapshots", () => {
       await page.goto("/?layers=osm-poi&mode=discover&lng=13.3775&lat=49.7475&z=14");
       await openAccessibleMapFeature(page, "Hrad Okoř");
       await expect(page.getByTestId("pin-detail")).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByTestId("brief-text")).toBeVisible({ timeout: 20_000 });
+      // The AI overview is opt-in (it runs only when expanded), so the detail is photographed
+      // with its facts.
+      await expect(page.getByTestId("pin-detail")).toContainText("Út-Ne 09:00-17:00");
       await page.screenshot({ path: `${DIR}/${width}-place-detail.png`, fullPage: true });
 
+      // A question is not a place: Enter hands it to the assistant panel.
       await page.getByTestId("place-search").fill("kde najdu klidný kemp u vody?");
-      await page.getByTestId("search-offer-ai").click();
-      await page.getByTestId("search-ai-open-panel").click();
+      await page.getByTestId("place-search").press("Enter");
       await expect(page.getByTestId("ai-panel-thread")).toContainText("klidné kempy", {
         timeout: 20_000
       });
@@ -451,7 +448,7 @@ test.describe("visual snapshots", () => {
     }
   });
 
-  test("capture grounded search and explicitly confirmed AI results", async ({ page }) => {
+  test("capture grounded search and the AI answer Enter asks for", async ({ page }) => {
     await mkdir(DIR, { recursive: true });
     await page.route(/geocode/u, (route) =>
       route.fulfill({
@@ -476,13 +473,15 @@ test.describe("visual snapshots", () => {
       await page.goto("/?lng=13.3775&lat=49.7475&z=13");
       const input = page.getByTestId("place-search");
       await input.fill("najdi mi nejbližší bar");
-      await expect(page.getByRole("button", { name: /Plzeň, Česko/ })).toContainText(
-        "Jistota: vysoká"
+      // One line of name and one of hierarchy; the geocoder is credited once in the footer.
+      await expect(page.getByRole("option", { name: /Plzeň/ })).toContainText(
+        "Plzeňský kraj › Česko"
       );
+      await expect(page.getByTestId("search-ai-hint")).toBeVisible();
       await page.screenshot({ path: `${DIR}/${width}-search-grounded.png`, fullPage: true });
 
-      await page.getByTestId("search-offer-ai").click();
-      await expect(page.getByTestId("search-ai-results")).toContainText("Irish Pub", {
+      await input.press("Enter");
+      await expect(page.getByTestId("ai-panel-thread")).toContainText("Irish Pub", {
         timeout: 20_000
       });
       await page.screenshot({ path: `${DIR}/${width}-search-ai-results.png`, fullPage: true });

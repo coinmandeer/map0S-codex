@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "./fixtures/offlineTest";
+import { catalogSwitch } from "./fixtures/mapPanel";
 
 /** The layers drawer now starts collapsed, so every group has to be opened before its rows exist
  *  in the DOM. Expanding by the group's own label keeps the test about behaviour, not internals. */
@@ -29,9 +30,7 @@ test.describe("new layers", () => {
 
   test("sky darkness adds a keyless raster overlay", async ({ page }) => {
     await page.goto("/?lng=14.42&lat=50.08&z=8");
-    await openLayers(page);
-    await page.getByRole("button", { name: "Environment" }).click();
-    await page.getByTestId("environment-switch-dark-sky").click();
+    await (await catalogSwitch(page, "dark-sky")).click();
 
     await expect
       .poll(
@@ -45,11 +44,11 @@ test.describe("new layers", () => {
     page
   }) => {
     await page.goto("/?lng=14.42&lat=50.08&z=8");
-    await openLayers(page);
-    await page.getByRole("button", { name: "Weather" }).click();
-    await page.getByTestId("weather-switch-weather-radar").click();
-    await page.getByTestId("weather-switch-weather-temperature").click();
+    await (await catalogSwitch(page, "weather-radar")).click();
+    await (await catalogSwitch(page, "weather-temperature")).click();
 
+    await page.getByTestId("layers-search").fill("");
+    await page.getByTestId("layers-view-active").click();
     await expect(page.getByTestId("active-switch-weather-radar")).toBeChecked();
     await expect(page.getByTestId("active-switch-weather-temperature")).toBeChecked();
   });

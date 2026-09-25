@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { openCatalogSettings } from "./fixtures/mapPanel";
 import { expect, test } from "./fixtures/offlineTest";
 
 test.use({ hasTouch: true });
@@ -119,8 +120,7 @@ test.describe("adaptive weather map UI", () => {
       (window as typeof window & { __weatherModelMap?: Window["__maposMap"] }).__weatherModelMap =
         window.__maposMap;
     });
-    await page.getByTestId("layers-btn").click();
-    await page.getByTestId("catalog-settings-btn-weather-weather-temperature").click();
+    await openCatalogSettings(page, "weather-temperature");
     for (const model of ["icon_seamless", "chmi_aladin_seamless"]) {
       await page.getByTestId("weather-model-weather-temperature").selectOption(model);
       await expect.poll(() => requestedModels.includes(model)).toBe(true);

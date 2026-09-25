@@ -1,22 +1,7 @@
 import { expect, test } from "./fixtures/offlineTest";
+import { closeShareDialog, createInitialPlan, openShareDialog } from "./fixtures/planning";
 import type { Page } from "@playwright/test";
 import { planV1ToV2 } from "@mapos/layer-sdk";
-
-/** Build the initial draft through the same confirmed coordinates as a user. */
-async function createInitialPlan(page: Page) {
-  if (await page.getByTestId("plan-name").count()) return;
-  for (const [index, coordinates] of [
-    [1, "49.7475, 13.3775"],
-    [2, "49.7575, 13.3975"]
-  ] as const) {
-    await page.getByLabel(`Název zastávky ${index}`, { exact: true }).fill(coordinates);
-    await page.getByRole("option", { name: /Použít GPS/ }).click();
-  }
-  await expect(page.getByTestId("plan-name")).toBeVisible();
-  await page.getByLabel("Název zastávky 1", { exact: true }).fill("Start");
-  await page.getByLabel("Název zastávky 2", { exact: true }).fill("Cíl");
-  await page.getByTestId("plan-name").focus();
-}
 
 /** The options section is an accordion, so every option assertion opens it first. */
 async function openMoreOptions(page: Page) {
@@ -27,26 +12,6 @@ async function openMoreOptions(page: Page) {
 async function chooseVehicle(page: Page, value: string) {
   await page.getByTestId("plan-vehicle").click();
   await page.getByTestId(`plan-vehicle-${value}`).click();
-}
-
-/** Share, export and hand-off are three icons opening one tabbed dialog (§29.3). */
-async function openShareDialog(page: Page, tab: "share" | "export" | "handoff") {
-  const trigger = {
-    share: "open-plan-share",
-    export: "open-plan-export",
-    handoff: "open-plan-handoff"
-  }[tab];
-  await page.getByTestId(trigger).click();
-  await expect(page.getByTestId("plan-share-dialog")).toBeVisible();
-  await expect(page.getByTestId(`plan-share-tabs-${tab}`)).toHaveAttribute("aria-selected", "true");
-}
-
-/** Escape reaches the panel shell and closes the whole panel, so overlays are dismissed
- *  through their own close button. */
-async function closeShareDialog(page: Page) {
-  const dialog = page.getByTestId("plan-share-dialog");
-  await dialog.getByRole("button", { name: "Close" }).click();
-  await expect(dialog).toHaveCount(0);
 }
 
 async function openStopMenu(page: Page, stop: number) {
@@ -149,7 +114,10 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
         new URL(response.url()).pathname === "/api/v2/plans" &&
         response.ok()
     );
+    // A reload is a clean start that keeps only the camera; opening Planning again restores
+    // the saved plan from the server.
     await page.reload();
+    await page.getByTestId("mode-planning").click();
     const hydrationBody = (await (await hydration).json()) as {
       plans: Array<{ name: string }>;
     };
@@ -348,9 +316,15 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
     await expect(toast).toContainText("značenými cyklotrasami", { timeout: 20_000 });
     expect(await page.evaluate(() => localStorage.getItem("mapos:basemap"))).toBe("carto-voyager");
     await toast.getByRole("button", { name: "Zobrazit cyklotrasy" }).click();
+    // The URL carries only the camera; the layer stack is application state.
     await expect
-      .poll(() => new URL(page.url()).searchParams.get("layers") ?? "")
-      .toContain("waymarked-trails");
+      .poll(() =>
+        page.evaluate(async () => {
+          const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
+          return Boolean(getMapStore().activeLayers["waymarked-trails"]?.visible);
+        })
+      )
+      .toBe(true);
     expect(await page.evaluate(() => localStorage.getItem("mapos:basemap"))).toBe("carto-voyager");
     await page.screenshot({ path: "e2e/screenshots/390-planning-bike-map.png", fullPage: false });
   });
@@ -1174,7 +1148,9 @@ test.describe("PlanDocument v2 propojený s Moje", () => {
       timeout: 20_000
     });
 
+    // A reload keeps only the camera; the conversation comes back with the plan in Planning.
     await page.reload();
+    await page.getByTestId("mode-planning").click();
     await page.getByTestId("plan-ai-toggle").click();
     await expect(page.getByTestId("plan-ai-thread").locator("article")).toHaveCount(4, {
       timeout: 20_000

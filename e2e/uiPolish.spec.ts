@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures/offlineTest";
 import { mkdir } from "node:fs/promises";
 import { openAccessibleMapFeature, stubDiscoverContext } from "./fixtures/discoverContext";
+import { catalogSwitch, openCatalogSettings, openLayersPanel } from "./fixtures/mapPanel";
 
 for (const width of [390, 1440])
   for (const locale of ["cs", "en"]) {
@@ -56,37 +57,33 @@ for (const width of [390, 1440])
       await expect(page.getByTestId("place-detail-tabs-panorama")).toHaveCount(0);
       await expect(page.locator("iframe.info-frame")).toHaveCount(0);
       await expect(page.getByTestId("ai-overview")).toHaveCount(0);
-      await expect(page.getByTestId("detail-section-pocasi")).toHaveCount(0);
+      // Weather is one folded-in section of the detail, not a panel of its own.
+      await expect(
+        page.locator('[data-testid="detail-section-pocasi"]:not(.place-detail-disclosure *)')
+      ).toHaveCount(0);
       await mkdir("output/playwright", { recursive: true });
       await page.screenshot({ path: `output/playwright/detail-${width}-${locale}.png` });
 
-      await page.getByTestId("layers-btn").click();
+      await openLayersPanel(page);
       await expect(page.getByTestId("layers-view-all")).toHaveAttribute("aria-pressed", "true");
-      await page.getByTestId("layer-filter-btn-osm-poi").click();
-      const settings = page.getByTestId("layer-filter-osm-poi");
-      await expect(settings).toBeVisible();
+      // Cafés are one row of the shared POI layer; its settings open inline, inside the panel.
+      const settings = await openCatalogSettings(page, "osm-poi", "poi-cafe");
       const bounds = await settings.boundingBox();
       expect(bounds!.x).toBeGreaterThanOrEqual(0);
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1);
-      if (width < 900) expect(bounds!.y + bounds!.height).toBeCloseTo(900, 0);
-      await page.getByTestId("category-groups-food").click();
-      const chip = page.getByTestId("filter-cafe");
-      const previous = await chip.getAttribute("aria-pressed");
-      await chip.click();
-      await expect(chip).toHaveAttribute("aria-pressed", previous === "true" ? "false" : "true");
       await page.screenshot({ path: `output/playwright/layer-settings-${width}-${locale}.png` });
-      await page.keyboard.press("Escape");
-      await expect(settings).toBeHidden();
-      await expect(page.getByTestId("overflow-menu")).toBeVisible();
+      const cafes = await catalogSwitch(page, "osm-poi", "poi-cafe");
+      if (!(await cafes.isChecked())) await cafes.click();
+      await expect(cafes).toBeChecked();
+      await page.getByTestId("layers-search").fill("");
       await page.getByTestId("layers-view-active").click();
-      await expect(page.getByTestId("overflow-osm-poi")).toBeChecked();
-      await expect(page.getByTestId("overflow-earthquakes")).toHaveCount(0);
+      await expect(page.locator('[data-testid="active-switch-poi-cafe"]')).toBeChecked();
+      await expect(page.locator('[data-testid$="-switch-earthquakes"]')).toHaveCount(0);
       await page.reload();
-      await page.getByTestId("layers-btn").click();
-      await expect(page.getByTestId("layers-view-active")).toHaveAttribute("aria-pressed", "true");
+      await openLayersPanel(page);
       await page.getByTestId("layers-view-all").click();
       await page.getByTestId("layers-search").fill(locale === "cs" ? "Kavárny" : "Cafés");
-      await expect(page.getByTestId("filter-cafe")).toBeVisible();
+      await expect(page.locator('[data-testid$="-switch-poi-cafe"]').first()).toBeVisible();
       await page.getByTestId("layers-search").fill("");
       await page.screenshot({ path: `output/playwright/layers-${width}-${locale}.png` });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

@@ -1,3 +1,4 @@
+import { catalogSwitch } from "./fixtures/mapPanel";
 import { expect, test } from "./fixtures/offlineTest";
 import { stubEvents } from "./fixtures/events";
 
@@ -5,8 +6,7 @@ const DAY_MS = 86_400_000;
 
 async function openEvents(page: Parameters<typeof stubEvents>[0]) {
   await page.goto("/");
-  await page.getByTestId("layers-btn").click();
-  await page.getByTestId("overflow-events").click();
+  await (await catalogSwitch(page, "events")).click();
   const drawer = page.getByTestId("right-utility-drawer");
   if (await drawer.isVisible()) await page.getByTestId("right-utility-close").click();
   await expect(page.getByTestId("discover-panel")).toBeVisible({ timeout: 20_000 });
@@ -56,13 +56,12 @@ test.describe("annual events UI", () => {
     await expect(explorer.locator(".event-explorer-card")).toHaveCount(4, { timeout: 20_000 });
     await expect(explorer).toContainText("Cena neuvedena");
 
-    await explorer.getByLabel("Kategorie událostí").selectOption("Music");
+    await explorer.getByLabel(/Kategorie událostí|Event category/).selectOption("Music");
     await expect(explorer.locator(".event-explorer-card")).toHaveCount(1, { timeout: 20_000 });
     await expect(explorer).toContainText("Hudba pod širým nebem");
-    await expect(explorer.getByRole("link", { name: /oficiální stránku/i })).toHaveAttribute(
-      "href",
-      "https://events.example.invalid/music-free"
-    );
+    await expect(
+      explorer.getByRole("link", { name: /oficiální stránku|official event page/i })
+    ).toHaveAttribute("href", "https://events.example.invalid/music-free");
 
     await explorer.getByRole("button", { name: /Hudba pod širým nebem/ }).click();
     await expect(page.getByTestId("event-pin-detail")).toContainText("Hudba pod širým nebem");
@@ -71,8 +70,8 @@ test.describe("annual events UI", () => {
     await page.getByTestId("event-pin-detail-back").click();
     await expect(explorer).toBeVisible();
 
-    await explorer.getByLabel("Kategorie událostí").selectOption("");
-    await explorer.getByLabel("Cena událostí").selectOption("false");
+    await explorer.getByLabel(/Kategorie událostí|Event category/).selectOption("");
+    await explorer.getByLabel(/Cena událostí|Event price/).selectOption("false");
     await expect(explorer.locator(".event-explorer-card")).toHaveCount(2, { timeout: 20_000 });
     await expect(explorer).toContainText("250–500 CZK");
     await expect(explorer).not.toContainText("Souseds & mapa města");
