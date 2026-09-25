@@ -243,6 +243,26 @@ test.describe("adaptive weather map UI", () => {
       )
       .toBe(true);
 
+    // Hover and tap must read the same field. After the phone resize a late padding change (the
+    // sheet settling) can still move the camera and replace the grid once, which on a slow runner
+    // landed between the two and made them disagree; wait until the requests stop and the map is
+    // idle before choosing the point.
+    await expect
+      .poll(
+        async () => {
+          const before = gridRequests.length;
+          await page.waitForTimeout(1_000);
+          return (
+            gridRequests.length === before &&
+            (await page.evaluate(
+              () => !window.__maposMap!.isMoving() && window.__maposMap!.loaded()
+            ))
+          );
+        },
+        { timeout: 30_000 }
+      )
+      .toBe(true);
+
     const point = await hittableSectorPoint(page);
     await page.mouse.move(point.x, point.y);
     const detail = page.getByTestId("weather-map-detail");
