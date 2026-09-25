@@ -7,7 +7,6 @@ import { useMapStoreSnapshot } from "../../store/useMapStoreSnapshot";
 import { useTaskRegistrySnapshot } from "../../tasks/useTaskRegistrySnapshot";
 import { taskRegistry } from "../../tasks/TaskRegistry";
 import { getLayerPlugin } from "../../layers";
-import { SearchHereButton } from "../SearchHereButton";
 import { emit } from "../../lib/events";
 import { experienceRegistry, experienceById } from "../../product/registry";
 import { Icon } from "../kit";
@@ -175,7 +174,6 @@ export function MapStatus({ compact = false }: { compact?: boolean }) {
                 <button onClick={() => taskRegistry.retry(task.id)}>Zkusit znovu</button>
               </div>
             ))}
-          <SearchHereButton />
         </section>
       )}
     </div>

@@ -403,8 +403,10 @@ export class LayerEngine {
     this.refresh(bbox);
   }
 
-  /** Invalidate obsolete work immediately, including the debounce interval. */
-  refresh(bbox: Bbox, force = false) {
+  /** Invalidate obsolete work immediately, including the debounce interval. `userMoved` marks a
+   *  refresh caused by the reader's own pan or zoom, which the manual-refresh preference defers
+   *  until "Search this area". */
+  refresh(bbox: Bbox, force = false, { userMoved = false }: { userMoved?: boolean } = {}) {
     if (this.destroyed) return;
     this.lastBbox = bbox;
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
@@ -433,8 +435,38 @@ export class LayerEngine {
     }
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = null;
-      this.doRefresh(bbox, false);
+      this.doRefresh(bbox, false, userMoved);
     }, DEFAULT_REFRESH_DEBOUNCE_MS);
+  }
+
+  /**
+   * "Search this area": brings every visible layer up to date for this view — the ones waiting
+   * for the button, failed or partial ones, and any whose answer covers a different area — and
+   * leaves alone the ones already loaded or loading for it. Unlike a forced refresh it does not
+   * refetch fresh data or reattach tiles, so pressing it twice costs nothing.
+   */
+  searchHere(bbox: Bbox) {
+    if (this.destroyed) return;
+    this.lastBbox = bbox;
+    this.syncLayers(this.store.activeLayers);
+    for (const [id, managed] of this.managed) {
+      if (!this.store.activeLayers[id]?.visible) continue;
+      const query = this.query(id, managed, bbox);
+      const state = this.states.get(id);
+      if (this.controllers.has(id) && state?.key === query.key) continue;
+      const upToDate =
+        state?.status === "ready" &&
+        state.filterKey === query.filterKey &&
+        state.acceptedAt != null &&
+        Date.now() - state.acceptedAt < (state.ttl ?? query.ttl) &&
+        (query.global ||
+          query.tiled ||
+          query.manual ||
+          state.key === query.key ||
+          Boolean(state.bbox && containsBbox(state.bbox, bbox)));
+      if (!upToDate) this.refreshLayer(id, bbox);
+    }
+    this.updatePending();
   }
 
   private invalidate(id: string) {
@@ -457,7 +489,8 @@ export class LayerEngine {
     this.store.setLayerLoading(id, false);
   }
 
-  private doRefresh(bbox: Bbox, force: boolean) {
+  private doRefresh(bbox: Bbox, force: boolean, userMoved = false) {
+    const manual = userMoved && !force && Boolean(this.store.preferences?.manualRefresh);
     this.syncLayers(this.store.activeLayers);
     for (const [id, managed] of this.managed) {
       if (
@@ -489,13 +522,16 @@ export class LayerEngine {
         (query.global || query.tiled || query.manual || (covered && managed.plugin.kind === "pins"))
       )
         continue;
+      // A long move leaves an expensive layer waiting for "Search this area"; with the manual
+      // preference every viewport layer that already shows data waits after the reader's move.
       if (
         !force &&
         sameFilters &&
         state?.bbox &&
-        viewportCostOf(managed.plugin) === "expensive" &&
         !query.global &&
-        viewportDrift(state.viewport ?? state.bbox, bbox) > PIN_CONFIRM_DRIFT
+        ((viewportCostOf(managed.plugin) === "expensive" &&
+          viewportDrift(state.viewport ?? state.bbox, bbox) > PIN_CONFIRM_DRIFT) ||
+          (manual && !query.tiled && !query.manual))
       ) {
         state.status = "pending";
         layerActivity.state(id, "pending");
@@ -776,23 +812,18 @@ export class LayerEngine {
     }
   }
 
+  /** Only layers that deliberately wait for "Search this area" count. A layer that is loading,
+   *  retrying a partial answer or showing a failure has its own indicator; counting those (and
+   *  every expensive layer between a pan and its debounced load) made the button flicker. */
   private updatePending() {
-    const bbox = this.lastBbox;
     this.store.setSearchHerePending(
-      [...this.managed].some(([id, managed]) => {
-        if (
-          !this.store.activeLayers[id]?.visible ||
-          (managed.plugin.minQueryZoom != null &&
-            this.store.view.zoom < managed.plugin.minQueryZoom)
-        )
-          return false;
-        const state = this.states.get(id);
-        if (state?.status === "partial" || state?.status === "error" || state?.status === "pending")
-          return true;
-        if (!bbox || !state?.bbox || viewportCostOf(managed.plugin) !== "expensive") return false;
-        const query = this.query(id, managed, bbox);
-        return !query.global && !query.tiled && !containsBbox(state.bbox, bbox);
-      })
+      [...this.managed].some(
+        ([id, managed]) =>
+          this.store.activeLayers[id]?.visible &&
+          (managed.plugin.minQueryZoom == null ||
+            this.store.view.zoom >= managed.plugin.minQueryZoom) &&
+          this.states.get(id)?.status === "pending"
+      )
     );
   }
 

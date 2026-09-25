@@ -18,7 +18,7 @@ describe("typed user preferences", () => {
         locale: "en",
         units: "imperial",
         flyAnimations: false,
-        showSearchHere: false,
+        manualRefresh: true,
         aiEnabled: false,
         aiAutoSummary: true
       }),
@@ -29,7 +29,7 @@ describe("typed user preferences", () => {
         locale: "en",
         units: "imperial",
         flyAnimations: false,
-        showSearchHere: false,
+        manualRefresh: true,
         aiEnabled: false,
         aiAutoSummary: true
       }

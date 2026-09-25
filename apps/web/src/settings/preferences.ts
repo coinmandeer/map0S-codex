@@ -16,7 +16,8 @@ export interface UserPreferences {
   units: DistanceUnits;
   lowData: boolean;
   flyAnimations: boolean;
-  showSearchHere: boolean;
+  /** Moving the map loads nothing until "Search this area" is pressed. */
+  manualRefresh: boolean;
   aiEnabled: boolean;
   aiAutoSummary: boolean;
 }
@@ -29,7 +30,7 @@ export const DEFAULT_USER_PREFERENCES: Readonly<UserPreferences> = {
   units: "metric",
   lowData: false,
   flyAnimations: true,
-  showSearchHere: true,
+  manualRefresh: false,
   aiEnabled: true,
   aiAutoSummary: true
 };
@@ -73,7 +74,7 @@ export function parseUserPreferences(value: unknown): UserPreferences {
       : DEFAULT_USER_PREFERENCES.units,
     lowData: booleanOr(record.lowData, DEFAULT_USER_PREFERENCES.lowData),
     flyAnimations: booleanOr(record.flyAnimations, DEFAULT_USER_PREFERENCES.flyAnimations),
-    showSearchHere: booleanOr(record.showSearchHere, DEFAULT_USER_PREFERENCES.showSearchHere),
+    manualRefresh: booleanOr(record.manualRefresh, DEFAULT_USER_PREFERENCES.manualRefresh),
     aiEnabled: booleanOr(record.aiEnabled, DEFAULT_USER_PREFERENCES.aiEnabled),
     aiAutoSummary: booleanOr(record.aiAutoSummary, DEFAULT_USER_PREFERENCES.aiAutoSummary)
   };

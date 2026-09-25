@@ -23,6 +23,7 @@ import { chromeMapPadding, readChromeInsets } from "./chromePadding";
 import { getMapStore, getMapBbox, type LayerMode } from "../store/mapStore";
 import { getShellStore } from "../store/shellStore";
 import { LayerEngine } from "../engine/LayerEngine";
+import { areaQuery } from "../search/areaQuery";
 import { attachBoundaryOverlay } from "../discover/boundaryOverlay";
 import { activeAttribution } from "../layers/attribution";
 import { API_BASE } from "../lib/api";
@@ -116,6 +117,8 @@ export function MapCore() {
     let lastGameFollowAt = 0;
     let pendingViewportRefresh = false;
     let pendingWorldRefresh = false;
+    /** Whether the refresh waiting for `idle` answers a move the reader made. */
+    let pendingUserMove = false;
 
     const applyGameFollow = () => {
       gameFollowTimer = null;
@@ -268,8 +271,11 @@ export function MapCore() {
       recordPendingBasemap("success");
       if (!pendingViewportRefresh) return;
       pendingViewportRefresh = false;
-      engineRef.current?.refresh(getMapBbox(map), pendingWorldRefresh);
+      engineRef.current?.refresh(getMapBbox(map), pendingWorldRefresh, {
+        userMoved: pendingUserMove
+      });
       pendingWorldRefresh = false;
+      pendingUserMove = false;
     });
 
     const resize = () => {
@@ -288,10 +294,14 @@ export function MapCore() {
       emit("discover-viewport", { lng: center.lng, lat: center.lat, zoom, bbox: getMapBbox(map) });
     };
 
-    map.on("moveend", () => {
+    map.on("moveend", (event: { originalEvent?: Event }) => {
       const center = map.getCenter();
       const zoom = map.getZoom();
       if (!Number.isFinite(center.lng) || !Number.isFinite(center.lat) || zoom < 1) return;
+      // MapLibre passes the DOM event through for moves the reader made (drag, wheel, keys,
+      // inertia); programmatic camera moves have none.
+      const userMoved = Boolean(event.originalEvent);
+      if (userMoved) areaQuery.markMoved();
       // Camera state belongs to the shell, not to the basemap lifecycle. On a slow connection the
       // style may still be loading when a user pans under the fixed map-picker pin; dropping that
       // move strands the picker on stale coordinates. Only data refresh needs a ready style.
@@ -299,10 +309,14 @@ export function MapCore() {
       emit("map-view-changed", { lng: center.lng, lat: center.lat, zoom });
       if (map.isStyleLoaded()) {
         pendingViewportRefresh = false;
-        engineRef.current?.refresh(getMapBbox(map), pendingWorldRefresh);
+        pendingUserMove = false;
+        engineRef.current?.refresh(getMapBbox(map), pendingWorldRefresh, { userMoved });
         pendingWorldRefresh = false;
       } else {
+        // Tiles still loading after the move: the refresh runs on the next idle, and it is
+        // still the reader's move if the last one was.
         pendingViewportRefresh = true;
+        pendingUserMove = userMoved;
       }
       emitDiscoverViewport();
     });
@@ -359,15 +373,21 @@ export function MapCore() {
       })
     );
 
-    // Search here is a request, not a hint: pressing it while the style is still settling after a
-    // long jump used to clear the button and fetch nothing, so the ask is deferred to the next
-    // idle instead of dropped.
+    // Search here is a request, not a hint. Callers that jump somewhere (a search result, "my
+    // location", a country) ask right after starting the flight; answering at once loaded the
+    // view being left and the destination then waited for the button, so the ask waits for the
+    // camera to land. Pressing it while the style is still settling after a long jump used to
+    // clear the button and fetch nothing, so that ask is deferred to the next idle.
     const onSearchHere = () => {
-      if (map.isStyleLoaded()) {
-        engineRef.current?.refresh(getMapBbox(map), true);
+      if (map.isMoving()) {
+        map.once("moveend", onSearchHere);
         return;
       }
-      map.once("idle", () => engineRef.current?.refresh(getMapBbox(map), true));
+      if (map.isStyleLoaded()) {
+        engineRef.current?.searchHere(getMapBbox(map));
+        return;
+      }
+      map.once("idle", () => engineRef.current?.searchHere(getMapBbox(map)));
     };
     offs.push(on("search-here", onSearchHere));
     offs.push(on("layer-style-changed", () => engineRef.current?.syncLayers(store.activeLayers)));

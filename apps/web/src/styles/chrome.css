@@ -1216,11 +1216,13 @@
      "Search this area" sits directly above the mode switcher, centred over the map, and is the
      one accent-filled button floating over the map. It used to be a grey pill under the top
      bar, where it read as a status message rather than the offer of fresh data it is. */
+  /* On a phone the open panel is a bottom sheet; the chip floats above its top edge
+     (`--sheet-h`, 0 on desktop) so a half-open sheet never covers it. */
   .search-here-btn {
     position: fixed;
     bottom: calc(
       var(--footer-stack-h, 0px) + var(--modebar-bottom-h, 0px) + var(--map-filter-h, 0px) +
-        var(--bottom-nav-h) + var(--space-6) + var(--safe-bottom)
+        var(--bottom-nav-h) + var(--sheet-h, 0px) + var(--space-6) + var(--safe-bottom)
     );
     left: calc(var(--sidebar-w-open) + var(--chrome-inset) + var(--safe-left));
     right: calc(var(--drawer-w-open) + var(--chrome-inset) + var(--safe-right));
@@ -1254,6 +1256,11 @@
 
   .search-here-btn:disabled {
     opacity: 0.7;
+  }
+
+  /* A full-height sheet covers the map the chip would refresh. */
+  html:has(.panel-left[data-snap="full"]) .search-here-btn {
+    display: none;
   }
 
   /* The discover mode's "What is here?" chip shares the Search-here slot and geometry, but
@@ -1312,7 +1319,8 @@
   html[data-discover-here] .search-here-btn {
     bottom: calc(
       var(--footer-stack-h, 0px) + var(--modebar-bottom-h, 0px) + var(--map-filter-h, 0px) +
-        var(--bottom-nav-h) + var(--tap-min) + var(--space-8) + var(--safe-bottom)
+        var(--bottom-nav-h) + var(--sheet-h, 0px) + var(--tap-min) + var(--space-8) +
+        var(--safe-bottom)
     );
   }
 

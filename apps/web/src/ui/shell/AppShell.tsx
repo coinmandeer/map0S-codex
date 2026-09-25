@@ -32,6 +32,7 @@ import { ModuleErrorBoundary } from "../primitives/ModuleErrorBoundary";
 import { Button } from "../kit";
 
 import { DiscoverHereButton } from "../DiscoverHereButton";
+import { SearchHereButton } from "../SearchHereButton";
 import { DesktopModeBar } from "./DesktopModeBar";
 import { MapFooterStack } from "./MapFooterStack";
 import { LegendStack } from "./LegendStack";
@@ -293,6 +294,10 @@ export function AppShell({ onFlyToMe }: AppChromeProps) {
           marks the document, so it only appears while that panel can show the answer. */}
       <ModuleErrorBoundary moduleId="discover-here" title="Co je tady" compact placement="overlay">
         <DiscoverHereButton />
+      </ModuleErrorBoundary>
+      {/* "Search this area": floats over the map whenever the view is waiting for it. */}
+      <ModuleErrorBoundary moduleId="search-here" title="Hledat tady" compact placement="overlay">
+        <SearchHereButton />
       </ModuleErrorBoundary>
 
       {/* The arcade HUD floats over the board: in game mode the map panel stays closed and the

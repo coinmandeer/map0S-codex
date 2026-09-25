@@ -32,6 +32,7 @@ import { runChatTurn } from "./ai/runChatTurn";
 import { AnswerText } from "./ai/AnswerText";
 import { showStatisticAnswer } from "./ai/statisticAnswer";
 import { chatSession, useChatField } from "./ai/chatSession";
+import { areaQuery } from "../search/areaQuery";
 
 const PRIVACY_DISMISSED_KEY = "mapos:ai-privacy-ack";
 
@@ -128,6 +129,28 @@ export function AiPanel() {
   ]);
 
   const ask = (question: string) => runChatTurn(question, featureRef);
+
+  // The last place search is what "Search this area" on the map asks again once the reader has
+  // moved elsewhere — the same as that turn's own "Refresh for this view" button.
+  const lastTurn = turns.at(-1);
+  const areaTurn =
+    !busy &&
+    lastTurn?.done &&
+    !lastTurn.error &&
+    lastTurn.cards.some((card) => card.type === "places")
+      ? lastTurn
+      : null;
+  const areaTurnId = areaTurn?.id;
+  const areaQuestion = areaTurn?.question;
+  useEffect(() => {
+    if (!areaTurnId || !areaQuestion) return;
+    areaQuery.set({
+      id: areaTurnId,
+      label: areaQuestion,
+      rerun: () => void runChatTurn(areaQuestion, featureRef)
+    });
+    return () => areaQuery.clear(areaTurnId);
+  }, [areaTurnId, areaQuestion, featureRef]);
 
   // A question typed into search opens this panel already asked, so the user does not have to
   // retype it here.
