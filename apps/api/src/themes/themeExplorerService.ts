@@ -4,19 +4,66 @@ import { theme, THEMES } from "./themeRegistry.js";
 import { statDataset } from "@mapos/adapter-sdk";
 import { databaseQueries } from "./themeService.js";
 import { createHash } from "node:crypto";
+import { TtlCache } from "../utils/ttlCache.js";
 
 type Coverage = {
   available: boolean;
   coverageStatus: "none" | "partial" | "full" | "unknown";
   geoLevels: string[];
 };
-const catalogueCache = new Map<string, { until: number; value: Record<string, Coverage> }>();
+type Bbox = [number, number, number, number];
+
+/** The dataset choice changes only at these zooms (see `selectDataset`), and each band snaps the
+ *  view to a grid about a sixth of a typical screen at that zoom. */
+const ZOOM_BANDS = [
+  { min: 8, grid: 0.25 },
+  { min: 6, grid: 1 },
+  { min: 4, grid: 2.5 },
+  { min: 0, grid: 10 }
+] as const;
+
+/**
+ * Coverage is a property of the imports, not of each pan: requests are grouped by the zoom band
+ * the dataset choice follows and by the view snapped outward to that band's grid, so the next
+ * few pans reuse one computation instead of each costing a PostGIS join over every territory.
+ * The snapped area can be slightly larger than the view, which only makes the dot conservative.
+ */
+export function coverageRequest(bbox: Bbox | null, zoom = 0): { bbox: Bbox | null; zoom: number } {
+  const band = ZOOM_BANDS.find((entry) => zoom >= entry.min) ?? ZOOM_BANDS[ZOOM_BANDS.length - 1];
+  if (!bbox) return { bbox: null, zoom: band.min };
+  const snap = (value: number, round: (value: number) => number) =>
+    Number((round(value / band.grid) * band.grid).toFixed(6));
+  const [w, s, e, n] = bbox;
+  return {
+    bbox: [
+      Math.max(-180, snap(w, Math.floor)),
+      Math.max(-90, snap(s, Math.floor)),
+      Math.min(180, snap(e, Math.ceil)),
+      Math.min(90, snap(n, Math.ceil))
+    ],
+    zoom: band.min
+  };
+}
+
+const THEME_DATASET_IDS = [...new Set(THEMES.flatMap((t) => t.sources.map((s) => s.datasetId)))];
+const catalogueCache = new TtlCache<Record<string, Coverage>>({
+  ttlMs: 15 * 60_000,
+  maxEntries: 256
+});
+
 /** One compact request for the drawer. No geometry or individual observations reach the client.
  * Coverage counts matching land territories, so coastlines don't turn complete data yellow. */
-export async function catalogCoverage(bbox: [number, number, number, number] | null, zoom = 0) {
-  const key = JSON.stringify([bbox, Math.floor(zoom), process.env.MAPOS_ALLOW_NONCOMMERCIAL_DATA]);
-  const cached = catalogueCache.get(key);
-  if (cached && cached.until > Date.now()) return cached.value;
+export function catalogCoverage(bbox: Bbox | null, zoom = 0) {
+  const request = coverageRequest(bbox, zoom);
+  const key = JSON.stringify([
+    request.bbox,
+    request.zoom,
+    process.env.MAPOS_ALLOW_NONCOMMERCIAL_DATA
+  ]);
+  return catalogueCache.getOrLoad(key, () => computeCoverage(request.bbox, request.zoom));
+}
+
+async function computeCoverage(bbox: Bbox | null, zoom: number) {
   const [w, s, e, n] = bbox ?? [-180, -85, 180, 85];
   const rows = await sql`WITH geography AS MATERIALIZED (
     SELECT level,code,edition FROM geo_units g
@@ -28,11 +75,10 @@ export async function catalogCoverage(bbox: [number, number, number, number] | n
   SELECT ss.dataset_id,ss.geo_level,COUNT(DISTINCT ss.geo_code)::integer AS matched,MAX(t.total)::integer AS total
   FROM stat_series ss JOIN geography g ON g.level=ss.geo_level AND g.code=ss.geo_code
     AND (ss.boundary_edition IS NULL OR ss.boundary_edition=g.edition)
-  JOIN totals t ON t.level=ss.geo_level WHERE ss.value IS NOT NULL
+  JOIN totals t ON t.level=ss.geo_level
+  WHERE ss.value IS NOT NULL AND ss.dataset_id=ANY(${THEME_DATASET_IDS})
   GROUP BY ss.dataset_id,ss.geo_level`;
-  const available = await databaseQueries.available!([
-    ...new Set(THEMES.flatMap((t) => t.sources.map((s) => s.datasetId)))
-  ]);
+  const available = await databaseQueries.available!(THEME_DATASET_IDS);
   const result: Record<string, Coverage> = {};
   for (const entry of THEMES) {
     const sources = entry.sources.filter((s) => available.includes(s.datasetId));
@@ -57,12 +103,27 @@ export async function catalogCoverage(bbox: [number, number, number, number] | n
       ]
     };
   }
-  if (catalogueCache.size >= 64) catalogueCache.delete(catalogueCache.keys().next().value!);
-  catalogueCache.set(key, { until: Date.now() + 60000, value: result });
   return result;
 }
 
-export async function explorerInventory(id: string, excluded: string[] = [], period = "latest") {
+/** Import runs change a few times a day; two minutes keeps a published import visible soon
+ *  while a burst of detail requests for one theme runs its two queries once. */
+const inventoryCache = new TtlCache<Awaited<ReturnType<typeof loadExplorerInventory>>>({
+  ttlMs: 2 * 60_000,
+  maxEntries: 128
+});
+
+export function explorerInventory(id: string, excluded: string[] = [], period = "latest") {
+  const key = JSON.stringify([
+    id,
+    [...excluded].sort(),
+    period,
+    process.env.MAPOS_ALLOW_NONCOMMERCIAL_DATA
+  ]);
+  return inventoryCache.getOrLoad(key, () => loadExplorerInventory(id, excluded, period));
+}
+
+async function loadExplorerInventory(id: string, excluded: string[], period: string) {
   const ids =
     theme(id)
       ?.sources.map((s) => s.datasetId)

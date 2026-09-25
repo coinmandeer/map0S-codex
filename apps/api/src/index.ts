@@ -1721,6 +1721,13 @@ async function main() {
   const port = Number(process.env.PORT ?? 4033);
   await app.listen({ port, host: "0.0.0.0" });
   console.log(`MapOS API listening on :${port}`);
+  // The first visitor after a restart used to wait ~8 s while the boundary manifest and the
+  // theme catalogue were computed cold. Compute them once now, in the background; a failure
+  // here only means the first real request does the work.
+  void (async () => {
+    for (const url of ["/v2/discover/boundaries", "/v2/themes?zoom=0"])
+      await app.inject({ method: "GET", url }).catch(() => undefined);
+  })();
 }
 
 // Keep imports side-effect free so route/schema tests can build the app without starting a

@@ -35,12 +35,19 @@ export function registerDiscoverBoundaryRoutes(
   );
   let metadata: { value: unknown; expires: number } | undefined;
   let metadataFlight: Promise<unknown> | undefined;
+  // Coverage is a pure function of the published revision and the expensive half of this
+  // answer; only the cheap manifest lookup repeats every minute.
+  let revisionCoverage: { revision: string; coverage: unknown[] } | undefined;
   async function boundaryMetadata() {
     if (metadata && Date.now() < metadata.expires) return metadata.value;
     if (metadataFlight) return metadataFlight;
     metadataFlight = (async () => {
       const revision = await repository.manifest?.();
-      const coverage = await repository.coverage(revision ?? undefined);
+      const coverage =
+        revision && revisionCoverage?.revision === revision
+          ? revisionCoverage.coverage
+          : await repository.coverage(revision ?? undefined);
+      if (revision) revisionCoverage = { revision, coverage };
       const value = {
         coverage,
         ready: coverage.length > 0,
