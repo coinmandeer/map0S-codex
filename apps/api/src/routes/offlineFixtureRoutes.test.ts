@@ -26,6 +26,13 @@ test("offline weather routes return deterministic synthetic data", async (t) => 
   assert.equal(first.statusCode, 200);
   assert.deepEqual(first.json(), second.json());
   assert.equal(first.json().sampleCount, 6);
+  assert.equal(first.json().model, "best_match");
+  const selectedModel = await app.inject(
+    "/weather/grid?bbox=13,49,14,50&model=chmi_aladin_seamless"
+  );
+  assert.equal(selectedModel.statusCode, 200);
+  assert.equal(selectedModel.json().model, "chmi_aladin_seamless");
+  assert.equal((await app.inject("/weather/grid?bbox=13,49,14,50&model=unknown")).statusCode, 400);
   assert.equal(first.json().generatedAt, "2026-09-01T12:00:00.000Z");
 
   const forecast = await app.inject({
@@ -34,8 +41,12 @@ test("offline weather routes return deterministic synthetic data", async (t) => 
   });
   assert.equal(forecast.statusCode, 200);
   assert.equal(forecast.json().daily.length, 7);
-  assert.equal(forecast.json().climate.status, "unavailable");
-  assert.equal(forecast.json().climate.source, null);
+  // The offline fixture carries deterministic climate normals so the graph has something to draw
+  // without a network; it is synthetic and labelled as such.
+  assert.equal(forecast.json().climate.status, "ready");
+  assert.equal(forecast.json().climate.period, "1991-2020");
+  assert.equal(forecast.json().climate.normals.length, 12);
+  assert.equal(forecast.json().climate.source.id, "offline-fixture");
 });
 
 test("offline content routes never advertise a live embed", async (t) => {

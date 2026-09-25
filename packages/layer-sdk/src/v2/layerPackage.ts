@@ -4,6 +4,7 @@ import type { MapOSFeatureV2 } from "./feature.js";
 import type { LayerManifestV2 } from "./layer.js";
 import type { SourceRecordV2, SourceRights } from "./source.js";
 import { assertLayerManifestV2, assertMapOSFeatureV2 } from "./validation.js";
+import { xmlAttribute, xmlChildText, xmlElements } from "./xml.js";
 
 export const MAPOS_LAYER_PACKAGE_SCHEMA = "mapos.layer-package" as const;
 export const MAPOS_LAYER_PACKAGE_VERSION = MAPOS_V2_SCHEMA_VERSION;
@@ -11,7 +12,7 @@ export const LAYER_IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 export const LAYER_IMPORT_MAX_FEATURES = 1_000;
 export const LAYER_IMPORT_PREVIEW_SAMPLE = 20;
 
-export type LayerImportFormatV2 = "mapos-package" | "geojson" | "csv";
+export type LayerImportFormatV2 = "mapos-package" | "geojson" | "csv" | "gpx";
 export type LayerImportPinKindV2 = "place" | "route" | "task";
 export type LayerImportVisibilityV2 = "private" | "public";
 
@@ -45,6 +46,10 @@ export interface LayerImportCandidateV2 {
   kind: LayerImportPinKindV2;
   properties: Record<string, JsonValue>;
   sources: SourceRecordV2[];
+  /** The line a `route` candidate draws. `lng`/`lat` stay the anchor — the point the candidate
+   *  is found, clustered and searched by — because a track still has to behave like one place
+   *  in every list. Absent for a plain point. */
+  path?: Array<[number, number]>;
 }
 
 export interface LayerImportDuplicateV2 {
@@ -402,6 +407,186 @@ function parseCsv(content: string, now: string): LayerImportCandidateV2[] {
   });
 }
 
+/** A watch writes a fix every second, so an afternoon ride arrives as tens of thousands of
+ *  points. Storing and drawing all of them costs far more than it shows: at any zoom a route is
+ *  a line, and the jitter between consecutive fixes is smaller than the line is wide. */
+const GPX_PATH_MAX_POINTS = 2_000;
+/** Roughly a metre. Below GPS accuracy, so removing these points cannot change the drawn line. */
+const GPX_SIMPLIFY_TOLERANCE_DEG = 1e-5;
+
+function gpxPoints(source: string, tag: string): Array<[number, number]> {
+  return xmlElements(source, tag).map((element) =>
+    position([xmlAttribute(element.attributes, "lon"), xmlAttribute(element.attributes, "lat")])
+  );
+}
+
+function perpendicularDistance(
+  point: [number, number],
+  start: [number, number],
+  end: [number, number]
+): number {
+  const runX = end[0] - start[0];
+  const runY = end[1] - start[1];
+  if (runX === 0 && runY === 0) return Math.hypot(point[0] - start[0], point[1] - start[1]);
+  const along =
+    ((point[0] - start[0]) * runX + (point[1] - start[1]) * runY) / (runX * runX + runY * runY);
+  const clamped = Math.min(1, Math.max(0, along));
+  return Math.hypot(point[0] - (start[0] + clamped * runX), point[1] - (start[1] + clamped * runY));
+}
+
+/** Ramer–Douglas–Peucker. Chosen over uniform sampling because it keeps the corners, which is
+ *  the whole shape of a route; dropping every n-th point rounds off exactly the switchbacks
+ *  that make a track recognisable. */
+function simplifyPath(
+  points: readonly [number, number][],
+  tolerance: number
+): Array<[number, number]> {
+  if (points.length < 3) return [...points];
+  const keep = new Uint8Array(points.length);
+  keep[0] = 1;
+  keep[points.length - 1] = 1;
+  const spans: Array<[number, number]> = [[0, points.length - 1]];
+  while (spans.length) {
+    const [first, last] = spans.pop()!;
+    let farthestIndex = -1;
+    let farthest = tolerance;
+    for (let index = first + 1; index < last; index += 1) {
+      const distance = perpendicularDistance(points[index]!, points[first]!, points[last]!);
+      if (distance > farthest) {
+        farthest = distance;
+        farthestIndex = index;
+      }
+    }
+    if (farthestIndex < 0) continue;
+    keep[farthestIndex] = 1;
+    spans.push([first, farthestIndex], [farthestIndex, last]);
+  }
+  return points.filter((_point, index) => keep[index] === 1);
+}
+
+function boundedPath(points: readonly [number, number][]): {
+  path: Array<[number, number]>;
+  reduced: boolean;
+} {
+  let tolerance = GPX_SIMPLIFY_TOLERANCE_DEG;
+  let path = simplifyPath(points, tolerance);
+  // Raising the tolerance geometrically converges in a handful of passes even for a very dense
+  // track, and stops well before a tolerance that would visibly move the line.
+  while (path.length > GPX_PATH_MAX_POINTS && tolerance < 0.01) {
+    tolerance *= 4;
+    path = simplifyPath(points, tolerance);
+  }
+  return { path, reduced: path.length < points.length };
+}
+
+function pathLengthKm(points: readonly [number, number][]): number {
+  let metres = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const [previousLng, previousLat] = points[index - 1]!;
+    const [lng, lat] = points[index]!;
+    const meanLat = (((previousLat + lat) / 2) * Math.PI) / 180;
+    // Equirectangular: the error against haversine over a single fix interval is far below the
+    // accuracy of the fixes themselves, and this is a summary shown to one decimal place.
+    const east = (lng - previousLng) * 111_320 * Math.cos(meanLat);
+    const north = (lat - previousLat) * 110_574;
+    metres += Math.hypot(east, north);
+  }
+  return Math.round(metres) / 1000;
+}
+
+function gpxSource(sourceId: string, now: string): SourceRecordV2[] {
+  return [
+    {
+      providerId: "gpx-import",
+      sourceId,
+      retrievedAt: now,
+      confidence: 1,
+      // A GPX out of a watch or a planner is the importer's own recording. Claiming a licence
+      // for it would be inventing provenance, so it stays `unknown` and cannot be published.
+      attribution: "",
+      license: null,
+      rights: "unknown"
+    }
+  ];
+}
+
+function parseGpx(
+  content: string,
+  now: string
+): { candidates: LayerImportCandidateV2[]; warnings: string[] } {
+  if (!/<gpx[\s>]/i.test(content)) throw new TypeError("GPX has no <gpx> root element.");
+  const candidates: LayerImportCandidateV2[] = [];
+  let reducedTracks = 0;
+
+  xmlElements(content, "wpt").forEach((element, index) => {
+    const [lng, lat] = position([
+      xmlAttribute(element.attributes, "lon"),
+      xmlAttribute(element.attributes, "lat")
+    ]);
+    const sourceFeatureId = `wpt:${index + 1}`;
+    const elevation = Number(xmlChildText(element.inner, "ele"));
+    const time = xmlChildText(element.inner, "time");
+    candidates.push({
+      sourceFeatureId,
+      name: text(xmlChildText(element.inner, "name"), 120, `Bod ${index + 1}`),
+      description:
+        text(xmlChildText(element.inner, "desc") || xmlChildText(element.inner, "cmt"), 2_000) ||
+        null,
+      lng,
+      lat,
+      tags: [],
+      kind: "place",
+      properties: {
+        ...(Number.isFinite(elevation) && elevation !== 0 ? { elevationM: elevation } : {}),
+        ...(time && !Number.isNaN(Date.parse(time)) ? { recordedAt: time } : {})
+      },
+      sources: gpxSource(sourceFeatureId, now)
+    });
+  });
+
+  // Tracks are what a watch records; routes are what a planner exports. They differ in intent
+  // upstream but arrive here as the same thing — an ordered line with a name.
+  for (const [tag, pointTag, label] of [
+    ["trk", "trkpt", "Trasa"],
+    ["rte", "rtept", "Trasa"]
+  ] as const) {
+    xmlElements(content, tag).forEach((element, index) => {
+      const points = gpxPoints(element.inner, pointTag);
+      if (points.length < 2) return;
+      const { path, reduced } = boundedPath(points);
+      if (reduced) reducedTracks += 1;
+      // The name and description sit before the first point in GPX's own ordering, so reading
+      // only the head avoids picking up a name that belongs to a point inside the track.
+      const head =
+        element.inner.split(
+          new RegExp(`<${pointTag === "trkpt" ? "trkseg" : "rtept"}\\b`, "i")
+        )[0] ?? "";
+      const sourceFeatureId = `${tag}:${index + 1}`;
+      candidates.push({
+        sourceFeatureId,
+        name: text(xmlChildText(head, "name"), 120, `${label} ${index + 1}`),
+        description: text(xmlChildText(head, "desc") || xmlChildText(head, "cmt"), 2_000) || null,
+        lng: path[0]![0],
+        lat: path[0]![1],
+        tags: [],
+        kind: "route",
+        properties: { distanceKm: pathLengthKm(points), pointCount: path.length },
+        sources: gpxSource(sourceFeatureId, now),
+        path
+      });
+    });
+  }
+
+  const warnings = ["GPX has no MapOS manifest and can only be imported privately."];
+  if (reducedTracks) {
+    warnings.push(
+      `${reducedTracks === 1 ? "Trasa byla" : `${reducedTracks} trasy byly`} zjednodušena pod ` +
+        `${GPX_PATH_MAX_POINTS} bodů; tvar linie zůstává, jen bez záznamového šumu.`
+    );
+  }
+  return { candidates, warnings };
+}
+
 function publicationErrors(
   manifest: LayerManifestV2 | null,
   candidates: readonly LayerImportCandidateV2[]
@@ -444,7 +629,7 @@ function filenameName(filename: string): string {
   return (
     filename
       .replace(/\.(mapos\.)?(geo)?json$/i, "")
-      .replace(/\.csv$/i, "")
+      .replace(/\.(csv|gpx)$/i, "")
       .slice(0, 120) || "Imported layer"
   );
 }
@@ -459,12 +644,24 @@ export function parseLayerImportV2(
   }
   const encoded = input.content ?? JSON.stringify(input.document);
   if (utf8Bytes(encoded) > LAYER_IMPORT_MAX_BYTES) throw new TypeError("Import exceeds 5 MiB.");
-  const csv = filename.toLowerCase().endsWith(".csv");
+  const lowerName = filename.toLowerCase();
+  // Sniffed as well as named, because a file copied off a watch or out of a share sheet often
+  // keeps a generic name while the content is unambiguous.
+  const gpx =
+    lowerName.endsWith(".gpx") ||
+    (input.content !== undefined && /^\s*(?:<\?xml[^>]*\?>\s*)*<gpx\b/i.test(input.content));
+  const csv = !gpx && lowerName.endsWith(".csv");
   let format: LayerImportFormatV2;
   let manifest: LayerManifestV2 | null = null;
   let candidates: LayerImportCandidateV2[];
   let warnings: string[] = [];
-  if (csv) {
+  if (gpx) {
+    if (input.content === undefined) throw new TypeError("GPX import requires content.");
+    format = "gpx";
+    const parsed = parseGpx(input.content, now);
+    candidates = parsed.candidates;
+    warnings = parsed.warnings;
+  } else if (csv) {
     if (input.content === undefined) throw new TypeError("CSV import requires content.");
     format = "csv";
     candidates = parseCsv(input.content, now);
@@ -511,7 +708,7 @@ export function parseLayerImportV2(
         candidateFromGeoJson(feature, index, format, now)
       );
       warnings = ["GeoJSON has no MapOS manifest and can only be imported privately."];
-    } else throw new TypeError("Supported formats are MapOS package, GeoJSON and CSV.");
+    } else throw new TypeError("Supported formats are MapOS package, GeoJSON, CSV and GPX.");
   }
   if (candidates.length > LAYER_IMPORT_MAX_FEATURES)
     throw new TypeError(`Import contains more than ${LAYER_IMPORT_MAX_FEATURES} features.`);
@@ -531,10 +728,13 @@ export function parseLayerImportV2(
     color: color(manifest?.color),
     requestedVisibility,
     featureCount: candidates.length,
-    sample: candidates.slice(0, LAYER_IMPORT_PREVIEW_SAMPLE).map((candidate) => ({
-      ...candidate,
-      sources: candidate.sources.map((source) => ({ ...source }))
-    })),
+    sample: candidates.slice(0, LAYER_IMPORT_PREVIEW_SAMPLE).map((candidate) => {
+      // The preview answers "is this the right file", which the anchor and the point count
+      // already do. Twenty tracks' worth of coordinates would dwarf the rest of the response
+      // for a view that never draws them.
+      const { path: _path, ...withoutPath } = candidate;
+      return { ...withoutPath, sources: candidate.sources.map((source) => ({ ...source })) };
+    }),
     duplicates: duplicateGroups(candidates),
     warnings,
     publicationErrors: [],

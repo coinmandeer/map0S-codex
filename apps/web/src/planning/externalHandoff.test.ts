@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { planV1ToV2 } from "@mapos/layer-sdk";
-import { buildExternalPlanHandoffs } from "./externalHandoff";
+import { buildExternalPlanHandoffs, buildSegmentHandoffs } from "./externalHandoff";
 
 function plan(stopCount = 20) {
   return planV1ToV2(
@@ -59,5 +59,48 @@ describe("external plan handoff", () => {
     const handoffs = buildExternalPlanHandoffs(plan(2));
     assert.equal(handoffs.length, 3);
     assert.ok(handoffs.every(({ limitation: note }) => note === null));
+  });
+});
+
+describe("per-leg external handoff", () => {
+  it("asks for one leg A→B with the correct coordinate order per provider", () => {
+    const links = buildSegmentHandoffs(
+      { lng: 14, lat: 50 },
+      { lng: 14.4, lat: 50.1 },
+      "car",
+      "fast"
+    );
+    assert.deepEqual(
+      links.map((link) => link.id),
+      ["google", "mapy"]
+    );
+
+    const google = new URL(links[0]!.href);
+    assert.equal(google.hostname, "www.google.com");
+    assert.equal(google.searchParams.get("origin"), "50,14");
+    assert.equal(google.searchParams.get("destination"), "50.1,14.4");
+    assert.equal(google.searchParams.get("travelmode"), "driving");
+    assert.equal(google.searchParams.get("waypoints"), null);
+
+    const mapy = new URL(links[1]!.href);
+    assert.equal(mapy.hostname, "mapy.com");
+    assert.equal(mapy.searchParams.get("start"), "14,50");
+    assert.equal(mapy.searchParams.get("end"), "14.4,50.1");
+    assert.equal(mapy.searchParams.get("waypoints"), null);
+  });
+
+  it("uses the walking and cycling travel modes", () => {
+    assert.equal(
+      new URL(
+        buildSegmentHandoffs({ lng: 0, lat: 0 }, { lng: 1, lat: 1 }, "foot", "fast")[0]!.href
+      ).searchParams.get("travelmode"),
+      "walking"
+    );
+    assert.equal(
+      new URL(
+        buildSegmentHandoffs({ lng: 0, lat: 0 }, { lng: 1, lat: 1 }, "bike", "fast")[0]!.href
+      ).searchParams.get("travelmode"),
+      "bicycling"
+    );
   });
 });

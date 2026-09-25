@@ -1,0 +1,871 @@
+{
+  "candidate": "20260923-stabilization-candidate",
+  "status": "deployed and publicly verified",
+  "browser": {
+    "scenarios": 121,
+    "verification": "Combined current stabilization runs and targeted reruns after fixes; not a claim of one uninterrupted full runner pass.",
+    "results": [
+      {
+        "file": "e2e/accessibility.spec.ts",
+        "title": "primary controls have names and utility focus returns after Escape",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/accessibility.spec.ts",
+        "title": "mobile keeps a non-map surface usable with keyboard and 200% text",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/accessibility.spec.ts",
+        "title": "reduced-motion preference removes meaningful CSS animation",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/accessibility.spec.ts",
+        "title": "Settings stays operable on mobile with 200% text",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/accessibility.spec.ts",
+        "title": "release layout 390px light remains operable",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/accessibility.spec.ts",
+        "title": "release layout 390px dark remains operable",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/accessibility.spec.ts",
+        "title": "release layout 1440px light remains operable",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/accessibility.spec.ts",
+        "title": "release layout 1440px dark remains operable",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI panel › carries the question over from search and answers with sourced place cards",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI panel › says once what leaves the browser, and the context chip lists it in full",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI panel › a suggested place opens its detail and the assistant is one click back",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI panel › a suggested follow-up asks the next question without typing",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI panel › a cleared thread offers the empty state, and a new question asks again",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI panel › a drafted layer reaches the map only when its own action is taken",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI panel › a drafted layer can be kept, and every kept point carries its provenance",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI panel › a proposed plan edit shows its diff and writes nothing until it is confirmed",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI panel › a rejected plan edit is not sent anywhere near the plan",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI panel › a failed turn keeps the question visible and explains itself",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "exact answer results replace one temporary layer without moving the camera or enabling providers",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI V2 preserves streamed text on EOF and clears pending work on new thread",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI V2 place excursion preserves the thread without another chat call",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "AI Overview follows automatic enrichment, retains cited facts on interruption and makes geometry available",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/aiPanel.spec.ts",
+        "title": "statistical answer shows its period and source and clears an unrelated area filter",
+        "passed": true,
+        "run": "area-statistics"
+      },
+      {
+        "file": "e2e/authAndOwnership.spec.ts",
+        "title": "guest-first identity › creates one persistent guest even under React StrictMode",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/authAndOwnership.spec.ts",
+        "title": "guest-first identity › upgrades the guest in place instead of orphaning its progress",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/authAndOwnership.spec.ts",
+        "title": "community pin ownership › renders one copy and prefers the editable personal representation",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/authAndOwnership.spec.ts",
+        "title": "user-layer CRUD and publishing › creates a personal layer through the editor",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/authAndOwnership.spec.ts",
+        "title": "user-layer CRUD and publishing › renames, publishes and deletes a layer and edits its pins",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/basemap.spec.ts",
+        "title": "basemap picker › switching the background swaps the tiles and survives a reload",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/basemap.spec.ts",
+        "title": "basemap picker › credits follow the background that is actually drawn",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/basemap.spec.ts",
+        "title": "basemap picker › labels and 3D buildings are offered only where they mean something",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/basemap.spec.ts",
+        "title": "basemap picker › 3D tilts the camera, and a background without buildings puts it back down",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/basemap.spec.ts",
+        "title": "basemap picker › place sources stay under World while the background remains a single Mapové podklady choice",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/basemap.spec.ts",
+        "title": "basemap picker › a background whose key the server lacks is not offered",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/basemap.spec.ts",
+        "title": "basemap picker › a failed background falls back visibly and restores active overlays",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/basemap.spec.ts",
+        "title": "basemap picker › a card shows its rendered picture and explains an unavailable preview",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/customPresets.spec.ts",
+        "title": "custom presets › a set of layers can be saved, applied and deleted",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/czechLayers.spec.ts",
+        "title": "shortcuts, mixed subgroup, opacity, favorites and restored state share one layer",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/czechLayers.spec.ts",
+        "title": "small zoom preserves selection, foreign view hides defaults and mobile controls fit",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/discoverBoundaries.spec.ts",
+        "title": "Discover renders more than sixteen local regions and hover never loads guide data",
+        "passed": true,
+        "run": "area-statistics"
+      },
+      {
+        "file": "e2e/game-performance.spec.ts",
+        "title": "dlouhý herní výkon › pět minut pohybu a přepínání nevytvoří druhý loop ani únik scény",
+        "passed": true,
+        "run": "long-game"
+      },
+      {
+        "file": "e2e/game.spec.ts",
+        "title": "Game › herní panel se otevírá samostatně a HUD zůstává dostupný",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/game.spec.ts",
+        "title": "Game › game mode suspends other layers and restores them on exit",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/game.spec.ts",
+        "title": "Game › guest World rewards are idempotent and survive reconnection",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/game.spec.ts",
+        "title": "Game › combat loot upgrades once and persists after a reload",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/game.spec.ts",
+        "title": "herní scéna › rasterový podklad ukáže hráče i autoritativní svět bez povinného GLB",
+        "passed": true,
+        "run": "remaining-browser"
+      },
+      {
+        "file": "e2e/game.spec.ts",
+        "title": "herní scéna › po odchodu ze hry uvolní 3D scénu i při opakovaném přepínání",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/game.spec.ts",
+        "title": "herní scéna › projects with a usable camera matrix",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/game.spec.ts",
+        "title": "herní scéna › puts the player and server world into the scene",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/game.spec.ts",
+        "title": "herní scéna › runs two games over one avatar and one render loop",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/game.spec.ts",
+        "title": "herní scéna › moves through the public world and switches cameras and avatars without duplicates",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/gpxImport.spec.ts",
+        "title": "a GPX from a watch imports as a layer holding both the track and its waypoint",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/offline-smoke.spec.ts",
+        "title": "planning shell and synthetic API boot with zero external network",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/offline-smoke.spec.ts",
+        "title": "local dot preview survives unrelated state changes and closes on Escape",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/offline-smoke.spec.ts",
+        "title": "public exploration owns arrows and stops on blur without GPS rewards",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/offline-smoke.spec.ts",
+        "title": "coincident pins across layers spread locally and keep original coordinates",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/offline-smoke.spec.ts",
+        "title": "CAMS overlay paints model cells and changing pollutant reuses the same data",
+        "passed": true,
+        "run": "remaining-browser"
+      },
+      {
+        "file": "e2e/performanceMap.spec.ts",
+        "title": "bounded map memory with 6 layers",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/performanceMap.spec.ts",
+        "title": "bounded map memory with 12 layers",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/personal.spec.ts",
+        "title": "source-grounded Personal UI › shows private counts up front and composes search with category filters",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/personal.spec.ts",
+        "title": "source-grounded Personal UI › keeps empty plans compact and the new-plan action available",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/personal.spec.ts",
+        "title": "source-grounded Personal UI › is responsive at 200% text and produces inspected Personal captures",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/personal.spec.ts",
+        "title": "source-grounded Personal UI › edits a saved note and asks before deleting a plan",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/personal.spec.ts",
+        "title": "source-grounded Personal UI › keeps personal pin priority and information hierarchy in dark mode",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › ordinary detail shows facts and follows automatic overview enrichment",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › switching overview source mode does not start research",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › overview sends stable pin identity and separates local context from sourced evidence",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › closing the detail returns to the panel it covered",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › opens on the overview, showing fields the map carried",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › a photo layer's pin leads with its photo and credits it",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › arrows over the photo change the photo without moving between places",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › practical facts lead and secondary requests wait for disclosure",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › opening Wiki loads the article while retaining the basic facts",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › a panel with no content says so instead of showing an error",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › a service that refuses framing offers its link instead of a blank frame",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › an embeddable service is framed",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "place detail › a place with no extra sources still opens with the basics",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/placeDetail.spec.ts",
+        "title": "low data keeps place images off the network until explicitly requested",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › ručně vytvoří, upraví, uloží, serverově obnoví a exportuje plán bez AI",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › Více možností zpřístupní datum, vozidlo a všechny profily pouze klávesnicí",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › dobrodružný režim vysvětlí skóre, hlídá zajížďku a přidá ověřené OSM místo",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › bike nabídne značené cyklotrasy bez přepsání ručního podkladu",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › porovná a zvolí variantu jednoho segmentu a hned překreslí trasu",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › zastávku vybere pevným středovým pinem a přesná GPS zůstane v detailu",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › klik do mapy zapíše zastávku hned a schová ostatní vrstvu ovládání",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › nový plán nemá čas ani časovou osu, dokud si o ně uživatel neřekne",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › souvislá trasa zachová každý skutečný úsek a úsek se vybere přímo v mapě",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › zamítnutá GPS nabídne ruční a mapový fallback, povolená poloha zastávku aktualizuje",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › velký plán nemá produktový limit a trasuje se v překrývajících dávkách",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › externí mapy dostanou podporované odkazy bez tichého zahození bodů",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › multifunkční zastávka rozliší GPS, geokodér a potvrzovaný AI návrh",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › spodní akce kopírují itinerář a AI diskutuje plán bez automatické změny",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "PlanDocument v2 propojený s Moje › uložený plán má odvolatelný read-only odkaz a trvalou vícekolovou AI konverzaci",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "late saved-plan hydration preserves a start being entered",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/planning.spec.ts",
+        "title": "a route response cannot overwrite a newer plan edit",
+        "passed": true,
+        "run": "core-browser"
+      },
+      {
+        "file": "e2e/search.spec.ts",
+        "title": "transparent global search › shows grounded geocoder metadata and never calls AI before explicit confirmation",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/search.spec.ts",
+        "title": "transparent global search › empty search opens the reusable map picker and confirms the current centre",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › mode bar is visible with layers control",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › the command pill shows the wordmark when the map has the window to itself",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › planning panel opens",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › layers drawer exposes the seven canonical presets",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › the sport usecase turns on its categories and the trail overlay",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › filter categories toggle in layers megamenu",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › settings uses the target registry while place sources stay in Layers",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › auth sheet upgrades the guest profile or lets it sign into an existing account",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › park4night explains its unavailable deployment capability",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › park4night appears once the server reports the capability",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › game mode lazy-loads the three.js layer without crashing",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › search input is always visible with my location",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › mobile exposes exactly the canonical modes and keeps weather additive",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › discover mode shows a sourced region hierarchy",
+        "passed": true,
+        "run": "final-browser"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › discover weather is visible but spends data only after the accordion opens",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › discover keeps the guide and provenance inline without legacy tabs",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/smoke.spec.ts",
+        "title": "MapOS V3 smoke › the guide names the source of each highlight and admits what did not load",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/tableImport.spec.ts",
+        "title": "import tabulky › a semicolon CSV in Windows-1250 is detected, joined and drawn",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/viewportRefresh.spec.ts",
+        "title": "viewport refresh › an ordinary pan refetches without asking",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/viewportRefresh.spec.ts",
+        "title": "viewport refresh › a jump across the country asks first, and asking refetches",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/viewportRefresh.spec.ts",
+        "title": "partial POI results render immediately and later sources appear without moving the map",
+        "passed": true,
+        "run": "remaining-r2"
+      },
+      {
+        "file": "e2e/weatherAdaptive.spec.ts",
+        "title": "adaptive weather map UI › switches forecast models without recreating the map",
+        "passed": true,
+        "run": "weather-regression"
+      },
+      {
+        "file": "e2e/weatherAdaptive.spec.ts",
+        "title": "adaptive weather map UI › keeps an existing coloured source stable and exposes equal hover/tap cell detail",
+        "passed": true,
+        "run": "weather-regression"
+      },
+      {
+        "file": "e2e/weatherAdaptive.spec.ts",
+        "title": "adaptive weather map UI › loads a bounded grid and prints sector values at city zoom",
+        "passed": true,
+        "run": "weather-regression"
+      }
+    ]
+  },
+  "runs": [
+    {
+      "id": "core-browser",
+      "sha256": "d6ef59f88493c86e6b805262691df780f65cf5c03f2db4e243ef071bce3af430",
+      "log": "output/release/runs/core-browser.log"
+    },
+    {
+      "id": "remaining-browser",
+      "sha256": "2ade09e13994a00e8bddb16622b7349bd5099dcaf305fa1d53dadf2bfced181c",
+      "log": "output/release/runs/remaining-browser.log"
+    },
+    {
+      "id": "remaining-r2",
+      "sha256": "6a8bd8e3f4250dddef369262fa1c63fe4278aff9e7e6db797a233bb4affae785",
+      "log": "output/release/runs/remaining-r2.log"
+    },
+    {
+      "id": "area-statistics",
+      "sha256": "24f097702e6c98a5528d6ef2dfa8a57ba3d584083770c242452a54b00e2d461f",
+      "log": "output/release/runs/area-statistics.log"
+    },
+    {
+      "id": "final-browser",
+      "sha256": "8a49896f4a2e2924f412544b5b5e79a7a11c34626eac0bdf9820b917a990f040",
+      "log": "output/release/runs/final-browser.log"
+    },
+    {
+      "id": "long-game",
+      "sha256": "57fff5789ccf577991c9ef6871056351685da219344e2c1478f0a373aa8416ef",
+      "log": "output/release/runs/long-game.log"
+    },
+    {
+      "id": "weather-regression",
+      "sha256": "f0b84d0f3750eb1fdf6703744b7324756ddf9b440b9949dc77771b69aa3772cd",
+      "log": "output/release/runs/weather-regression.log"
+    },
+    {
+      "id": "final-checks",
+      "log": "output/release/runs/final-checks.log",
+      "sha256": "a9d2c05914a85d7e1e98e6e8d9f2dc2d0be6f0f8b5003182ed0b7207438d2998"
+    },
+    {
+      "id": "final-public",
+      "log": "output/release/runs/final-public.log",
+      "sha256": "7f8535b7811a56f7d318f167064114e4f6b4cd7e2c06b41bbd2dc6c25debc9c7"
+    },
+    {
+      "id": "final-package",
+      "log": "output/release/runs/final-package.log",
+      "sha256": "09851ccabdd788319f7ea83335bc26821959a522c1e1c6d6fc7089e71fd4b0fc"
+    }
+  ],
+  "notVerified": [
+    "Docker build",
+    "PostgreSQL/PostGIS migration execution and backup restoration",
+    "deployment and rollback on mapos2",
+    "external provider coverage and slow physical phones"
+  ],
+  "runtime": "Node v24.19.0; installed Chrome; offline memory API",
+  "static": {
+    "sdkRuntime": 193,
+    "api": {
+      "passed": 772,
+      "skipped": 2
+    },
+    "web": {
+      "passed": 554,
+      "skipped": 7,
+      "separateSourceRightsPassed": 7
+    },
+    "cli": 9,
+    "releaseIdentity": 2,
+    "types": "passed: API, web, runtime starter",
+    "build": "passed: shared packages, API, web, runtime starter",
+    "gates": [
+      "manifest validator",
+      "layer fixture contract",
+      "lint",
+      "format",
+      "architecture boundaries",
+      "CSS tokens",
+      "secrets"
+    ]
+  },
+  "productionObserved": {
+    "origin": "https://mapos2.promptstudio3000.com",
+    "release": "20260921-mapos2-layers-r2",
+    "webApiIdentity": "passed",
+    "publicSafetySmoke": "passed",
+    "candidateDeployed": false
+  },
+  "build": {
+    "release": "20260923-stabilization-candidate",
+    "builtAt": "2026-09-23T00:20:10.435Z"
+  },
+  "sourceDigests": {
+    "package-lock.json": "09293d9c44d0c7dfeeb48e6b1c50fd242bb618da1524a622e66ecfd122c4b102",
+    "apps/web/src/store/mapStore.ts": "e670dd3e7e2651bff7cc65872593351d9c595e1e8f470b83ea39c94ba6922987",
+    "apps/web/src/ui/PlanningPanel.tsx": "437306713fbc888fd23e338bf58b63179305d829db72d92a293057948a66e6b2",
+    "apps/web/src/map/MapCore.tsx": "28199eab38803421ee1bc6148a2e88fd5bbe8d285755067b4c0096aa21a1b53b",
+    "apps/web/src/layers/weather/adaptiveOverlay.ts": "bf0f969b0e59155afd4f5fa67271295eb31cc77d2d1d40e144d0e46bf9499b4f"
+  },
+  "deployment": {
+    "release": "20260923-stabilization-candidate",
+    "source_commit": "52ceaf5e1bdfa73ad8e10d39fd2eb90a107ba526",
+    "target": "/opt/ps3000/apps/mapos2",
+    "active_release": "/opt/ps3000/apps/mapos2/releases/20260923-stabilization-candidate",
+    "services": {
+      "web": "healthy",
+      "api": "healthy",
+      "postgres": "healthy"
+    },
+    "backup": {
+      "path": "/opt/ps3000/apps/mapos2/backups/20260923-stabilization-candidate/mapos.dump",
+      "bytes": 223159537,
+      "sha256": "96f28069c23a3f1c0c17b75e2da904f986b967741e09173cb1cb93541ca41b2f",
+      "restore_drill": "pass",
+      "migration_idempotence": "pass",
+      "previous_api_read_write_compatibility": "pass"
+    },
+    "public_smoke": {
+      "release_identity": "pass",
+      "web_health": "pass",
+      "api_health": "pass",
+      "security_headers": "pass",
+      "csp_reporting": "pass",
+      "hostile_cors": "blocked",
+      "unauthenticated_account_delete": "blocked",
+      "operations_endpoint": "protected"
+    },
+    "limitations": [
+      "VPS disk was approximately 98% utilized after deployment; restore free-space margin before the next release.",
+      "Production web build warns about JavaScript chunks over 500 kB."
+    ]
+  }
+}

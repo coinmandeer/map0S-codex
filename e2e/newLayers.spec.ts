@@ -1,0 +1,56 @@
+import { expect, test, type Page } from "./fixtures/offlineTest";
+
+/** The layers drawer now starts collapsed, so every group has to be opened before its rows exist
+ *  in the DOM. Expanding by the group's own label keeps the test about behaviour, not internals. */
+async function openLayers(page: Page) {
+  await page.getByTestId("layers-btn").click();
+  await expect(page.getByTestId("overflow-menu")).toBeVisible();
+}
+
+test.describe("new layers", () => {
+  test("MeshCore nodes render as points once the layer is on", async ({ page }) => {
+    await page.goto("/?lng=14.42&lat=50.08&z=10");
+    await openLayers(page);
+    await page.getByRole("button", { name: "Community" }).click();
+    await page.getByTestId("community-switch-meshcore").click();
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const map = window.__maposMap;
+            if (!map?.getLayer("pins-meshcore-dot")) return -1;
+            return map.querySourceFeatures("source-meshcore").length;
+          }),
+        { timeout: 20_000 }
+      )
+      .toBeGreaterThan(0);
+  });
+
+  test("sky darkness adds a keyless raster overlay", async ({ page }) => {
+    await page.goto("/?lng=14.42&lat=50.08&z=8");
+    await openLayers(page);
+    await page.getByRole("button", { name: "Environment" }).click();
+    await page.getByTestId("environment-switch-dark-sky").click();
+
+    await expect
+      .poll(
+        () => page.evaluate(() => Boolean(window.__maposMap?.getLayer("raster-tile-dark-sky"))),
+        { timeout: 20_000 }
+      )
+      .toBe(true);
+  });
+
+  test("each weather quantity is its own layer and several can be on together", async ({
+    page
+  }) => {
+    await page.goto("/?lng=14.42&lat=50.08&z=8");
+    await openLayers(page);
+    await page.getByRole("button", { name: "Weather" }).click();
+    await page.getByTestId("weather-switch-weather-radar").click();
+    await page.getByTestId("weather-switch-weather-temperature").click();
+
+    await expect(page.getByTestId("active-switch-weather-radar")).toBeChecked();
+    await expect(page.getByTestId("active-switch-weather-temperature")).toBeChecked();
+  });
+});

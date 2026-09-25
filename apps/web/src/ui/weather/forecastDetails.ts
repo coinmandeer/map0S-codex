@@ -1,3 +1,4 @@
+import { intlLocale } from "../../i18n";
 export interface ForecastHour {
   time: string;
   temperature: number | null;
@@ -27,7 +28,7 @@ export function detailedHoursForDay(
 export function forecastDayLabel(date: string): string {
   const parsed = new Date(`${date}T12:00:00`);
   if (!Number.isFinite(parsed.getTime())) return date;
-  return new Intl.DateTimeFormat("cs-CZ", {
+  return new Intl.DateTimeFormat(intlLocale(), {
     weekday: "short",
     day: "numeric",
     month: "numeric"

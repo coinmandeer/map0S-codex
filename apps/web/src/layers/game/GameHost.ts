@@ -1,3 +1,5 @@
+import type { GeoThread } from "@mapos/layer-sdk";
+import type { WorldSnapshot, PublicPresence } from "@mapos/layer-sdk";
 import type maplibregl from "maplibre-gl";
 import { on } from "../../lib/events";
 import { getMapStore } from "../../store/mapStore";
@@ -87,6 +89,19 @@ export class GameHost {
     for (const runtime of this.modules.values()) runtime.onPlayerPosition?.(position);
   }
 
+  syncWorld(snapshot: WorldSnapshot, presence: PublicPresence[], notes: GeoThread[] = []) {
+    this.scene.syncWorld(snapshot, presence, notes);
+  }
+  setLiveAvatar(url: string) {
+    return this.scene.setLiveAvatar(url);
+  }
+  worldEffect(type: string, targetId: string) {
+    this.scene.worldEffect(type, targetId);
+  }
+  pickWorld(x: number, y: number) {
+    return this.scene.pickWorld(x, y);
+  }
+
   setAvatarStyle(style: "cube" | "aavegotchi", tokenId?: string) {
     this.scene.setAvatarStyle(style, tokenId);
   }
@@ -105,6 +120,9 @@ export class GameHost {
 
   syncZones(values: GameZone[]) {
     if (this.activeIds.includes("aavegotchi")) this.scene.syncZones(values);
+  }
+  hoverWorld(x: number, y: number) {
+    return this.activeIds.includes("aavegotchi") ? this.scene.hoverWorld(x, y) : null;
   }
   syncQuests(values: GameQuest[]) {
     if (this.activeIds.includes("aavegotchi")) this.scene.syncQuests(values);

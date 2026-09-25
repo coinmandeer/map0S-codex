@@ -1,12 +1,8 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef } from "react";
+import { lazy, Suspense, useLayoutEffect, useRef } from "react";
 import type { LegacyModalSheet } from "../../store/shellState";
-import { getShellStore } from "../../store/shellStore";
 import { useShellStoreSnapshot } from "../../store/useShellStoreSnapshot";
 import { captureFocusedElement, restoreFocus } from "./focusRestore";
 
-const PinDetail = lazy(() =>
-  import("../PinDetail").then((module) => ({ default: module.PinDetail }))
-);
 const AuthSheet = lazy(() =>
   import("../AuthSheet").then((module) => ({ default: module.AuthSheet }))
 );
@@ -27,7 +23,6 @@ export function ModalHost() {
 }
 
 function OpenModalHost({ sheet }: { sheet: LegacyModalSheet }) {
-  const shell = getShellStore();
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   useLayoutEffect(() => {
@@ -37,23 +32,9 @@ function OpenModalHost({ sheet }: { sheet: LegacyModalSheet }) {
     };
   }, []);
 
-  // PinDetail predates the shared Sheet primitive; give its compatibility surface the same
-  // Escape behavior while it is being migrated into the left feature context.
-  useEffect(() => {
-    if (sheet !== "pin") return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      shell.closeModal();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [sheet, shell]);
-
   return (
     <div className="shell-modal-host" data-testid="modal-host" data-modal={sheet}>
       <Suspense fallback={null}>
-        {sheet === "pin" && <PinDetail />}
         {sheet === "auth" && <AuthSheet />}
         {sheet === "edit" && <EditLayerSheet />}
         {sheet === "route" && <RouteSheet />}

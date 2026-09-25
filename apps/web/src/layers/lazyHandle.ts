@@ -13,29 +13,26 @@ export class LazyHandle implements LayerHandle {
   private real: LayerHandle | null = null;
   private pendingVisible: boolean | null = null;
   private pendingOpacity: number | null = null;
-  private pendingUpdate: { bbox: Bbox; filters: FilterValues } | null = null;
+  private readonly ready: Promise<LayerHandle>;
+  private revision = 0;
   private detached = false;
 
   constructor(load: () => Promise<LayerHandle>) {
-    void load().then((handle) => {
+    this.ready = load().then((handle) => {
       // Detaching mid-download has to still tear down whatever the import produced, otherwise
       // the layer's map sources outlive the layer.
       if (this.detached) {
         handle.detach();
-        return;
+        return handle;
       }
       this.real = handle;
       if (this.pendingVisible !== null) handle.setVisible(this.pendingVisible);
       if (this.pendingOpacity !== null) handle.setOpacity(this.pendingOpacity);
-      // Switching to a mode fires exactly one refresh, and it almost always lands before the
-      // chunk finishes downloading. Dropping it left the world empty until the user happened to
-      // pan — which is what made game mode look broken on first entry.
-      if (this.pendingUpdate) {
-        const { bbox, filters } = this.pendingUpdate;
-        this.pendingUpdate = null;
-        void handle.update(bbox, filters);
-      }
+      return handle;
     });
+    // The engine receives the rejection from update; a detached, never-used handle must not
+    // create an unhandled rejection while its module is downloading.
+    void this.ready.catch(() => {});
   }
 
   async update(
@@ -43,12 +40,14 @@ export class LazyHandle implements LayerHandle {
     filters: FilterValues,
     signal?: AbortSignal
   ): Promise<FeatureCollection | null> {
-    if (!this.real) {
-      // Only the newest viewport is worth replaying; older ones are already stale.
-      this.pendingUpdate = { bbox, filters };
-      return null;
+    const revision = ++this.revision;
+    signal?.throwIfAborted();
+    const handle = await this.ready;
+    signal?.throwIfAborted();
+    if (this.detached || revision !== this.revision) {
+      throw new DOMException("Layer update superseded", "AbortError");
     }
-    return this.real.update(bbox, filters, signal);
+    return handle.update(bbox, filters, signal);
   }
 
   setData(data: FeatureCollection) {
@@ -67,7 +66,7 @@ export class LazyHandle implements LayerHandle {
 
   detach() {
     this.detached = true;
-    this.pendingUpdate = null;
+    this.revision++;
     this.real?.detach();
     this.real = null;
   }

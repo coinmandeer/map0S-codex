@@ -32,6 +32,7 @@ export const memoryPlanDocumentRepository: PlanDocumentRepository = {
 
   async create(ownerId, input) {
     assertPlanDocumentV2(input);
+    if (input.stops.length < 2) throw new ClientError("Před uložením plánu přidejte cíl", 400);
     const timestamp = new Date().toISOString();
     const plan = persisted({
       ...clone(input),
@@ -47,6 +48,7 @@ export const memoryPlanDocumentRepository: PlanDocumentRepository = {
 
   async replace(ownerId, id, input, expectedRevision) {
     assertPlanDocumentV2(input);
+    if (input.stops.length < 2) throw new ClientError("Před uložením plánu přidejte cíl", 400);
     const row = memoryDb.planDocuments.find(
       (candidate) => candidate.userId === ownerId && candidate.plan.id === id
     );

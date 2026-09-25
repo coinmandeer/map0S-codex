@@ -69,6 +69,58 @@ test("runtime provider fallback remains visible alongside capability fallback", 
   assert.match(warnings, /segment použil osm/);
 });
 
+test("an adventurous ride is routed by BRouter's mtb profile, with its elevation", async () => {
+  const asked: Array<{ profile: string; points: readonly string[] }> = [];
+  const provider = createAdjacentRouteProvider("osm", {
+    routeFetcher: async () => {
+      throw new Error("the plan provider must not be asked for an adventure");
+    },
+    brouterFetcher: async (request) => {
+      asked.push({ profile: request.profile, points: request.points });
+      return [
+        {
+          coordinates: endpoints.map((point) => [...point] as [number, number]),
+          distanceM: 1_450,
+          durationS: 320,
+          elevation: [310, 348]
+        }
+      ];
+    }
+  });
+
+  const response = await provider.route({
+    endpoints,
+    profile: "bike",
+    preference: "adventure",
+    avoid: []
+  });
+
+  assert.deepEqual(asked, [{ profile: "mtb", points: ["14.4,50.1", "14.5,50.2"] }]);
+  assert.equal(response.alternatives.length, 1);
+  assert.equal(response.alternatives[0]?.profile, "mtb");
+  assert.equal(response.alternatives[0]?.distanceM, 1_450);
+  assert.deepEqual(response.alternatives[0]?.warnings, [], "a native profile has nothing to warn");
+});
+
+test("a BRouter outage falls back to the plan's provider and says so", async () => {
+  const provider = createAdjacentRouteProvider("osm", {
+    routeFetcher: async (_from, _to, profile) => [result("osm", profile ?? "foot")],
+    brouterFetcher: async () => {
+      throw new Error("brouter is down");
+    }
+  });
+
+  const response = await provider.route({
+    endpoints,
+    profile: "foot",
+    preference: "adventure",
+    avoid: []
+  });
+
+  assert.equal(response.alternatives[0]?.profile, "foot", "the asked-for way of travelling stays");
+  assert.match(response.alternatives[0]?.warnings?.join(" ") ?? "", /BRouter nebyl dostupný/);
+});
+
 test("keeps bounded provider alternatives in recommendation order", async () => {
   const second = {
     ...result("osm", "bike"),

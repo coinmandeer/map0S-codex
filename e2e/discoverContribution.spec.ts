@@ -7,12 +7,11 @@ test("Discover contribution is a sourced revision submitted for review, not inst
   await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=12");
   const panel = page.getByTestId("discover-panel");
   await expect(panel).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("discover-contribute")).toContainText(
-    /Koncept.*Kontrola.*Zveřejnění/
-  );
+  // The review workflow is explained in the wizard now; the panel header only offers the action.
+  await expect(page.getByTestId("discover-contribute")).toBeVisible();
   await page.screenshot({ path: "e2e/screenshots/1440-discover-contribute.png", fullPage: true });
 
-  await page.getByTestId("discover-contribute").getByRole("button").click();
+  await page.getByTestId("discover-contribute").click();
   const wizard = page.getByTestId("create-wizard");
   await expect(wizard).toBeVisible();
   await expect(page.getByTestId("wizard-contribution")).toContainText(/dohledatelným původem/i);
@@ -53,12 +52,11 @@ test("Discover contribution stays readable in the mobile panel and sheet", async
   await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=12");
   const contribution = page.getByTestId("discover-contribute");
   await expect(contribution).toBeVisible({ timeout: 30_000 });
-  expect(await contribution.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
-    true
-  );
+  const panel = page.getByTestId("discover-panel");
+  expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.screenshot({ path: "e2e/screenshots/390-discover-contribute.png", fullPage: true });
 
-  await contribution.getByRole("button").click();
+  await contribution.click();
   const wizard = page.getByTestId("create-wizard");
   await expect(wizard).toBeVisible();
   expect(await wizard.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);

@@ -16,7 +16,7 @@ describe("accessible legend presentation", () => {
       { label: "1 M", color: "#fecaca" },
       { label: "7 M", color: "#7f1d1d" }
     ]);
-    assert.equal(legendCompactDescription(legend), "Jednotka M · 2 hodnot");
+    assert.equal(legendCompactDescription(legend), "Jednotka M");
   });
 
   it("keeps category descriptions available without relying on color", () => {

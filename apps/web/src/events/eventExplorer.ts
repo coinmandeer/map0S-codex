@@ -1,4 +1,10 @@
-import { distanceMeters, type GeoFeature, type MapViewState } from "@mapos/layer-sdk";
+import {
+  distanceMeters,
+  featureAnchor,
+  type GeoFeature,
+  type MapViewState
+} from "@mapos/layer-sdk";
+import { intlLocale } from "../i18n";
 
 export interface EventExplorerItem {
   feature: GeoFeature;
@@ -38,10 +44,10 @@ export function eventPriceLabel(properties: GeoFeature["properties"]): string {
   const currency = text(properties.currency) ?? "";
   if (minimum !== null && maximum !== null) {
     return minimum === maximum
-      ? `${minimum.toLocaleString("cs-CZ")} ${currency}`.trim()
-      : `${minimum.toLocaleString("cs-CZ")}–${maximum.toLocaleString("cs-CZ")} ${currency}`.trim();
+      ? `${minimum.toLocaleString(intlLocale())} ${currency}`.trim()
+      : `${minimum.toLocaleString(intlLocale())}–${maximum.toLocaleString(intlLocale())} ${currency}`.trim();
   }
-  if (minimum !== null) return `od ${minimum.toLocaleString("cs-CZ")} ${currency}`.trim();
+  if (minimum !== null) return `od ${minimum.toLocaleString(intlLocale())} ${currency}`.trim();
   if (properties.free === false) return "Placené · cena neuvedena";
   return "Cena neuvedena";
 }
@@ -54,7 +60,7 @@ export function buildEventExplorerItems(
   const maximumM = maxDistanceKm === null ? Number.POSITIVE_INFINITY : maxDistanceKm * 1_000;
   return features
     .flatMap((feature): EventExplorerItem[] => {
-      const [lng, lat] = feature.geometry.coordinates;
+      const [lng, lat] = featureAnchor(feature);
       if (!Number.isFinite(lng) || !Number.isFinite(lat)) return [];
       const distanceM = distanceMeters(view, { lng, lat });
       if (distanceM > maximumM) return [];
@@ -79,6 +85,6 @@ export function buildEventExplorerItems(
         (left.startsAt ? Date.parse(left.startsAt) : Number.POSITIVE_INFINITY) -
           (right.startsAt ? Date.parse(right.startsAt) : Number.POSITIVE_INFINITY) ||
         left.distanceM - right.distanceM ||
-        left.title.localeCompare(right.title, "cs")
+        left.title.localeCompare(right.title, intlLocale())
     );
 }

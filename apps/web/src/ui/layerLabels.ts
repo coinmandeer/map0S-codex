@@ -11,7 +11,8 @@ export const LAYER_CATEGORY_LABELS: Record<LayerCategory, string> = {
   weather: "Počasí",
   game: "Hra",
   user: "Moje",
-  routing: "Trasy"
+  routing: "Trasy",
+  statistics: "Témata"
 };
 
 /** Order the sections appear in. Anything missing falls to the end, so a new category shows up
@@ -21,6 +22,7 @@ export const LAYER_CATEGORY_ORDER: LayerCategory[] = [
   "transport",
   "travel",
   "environment",
+  "statistics",
   "community",
   "weather",
   "game",

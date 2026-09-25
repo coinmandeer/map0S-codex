@@ -1,13 +1,16 @@
-/** Content routes for the place detail's panels. Registered on both servers — none of them need
- *  a database, so the detail stays fully functional against the in-memory API. */
+import { panoramaxPanorama, streetPanorama } from "../services/panoramaService.js";
+import { areaPopulation } from "../services/populationAreaService.js";
+import { foursquarePlaces } from "../services/foursquarePlaces.js";
+import { ProviderBudgetError } from "../services/providerBudget/policy.js";
+import { withRequestSignal } from "../utils/requestSignal.js";
+/** Shared detail routes. Quota-limited enrichment requires the persistent budget database;
+ * unavailable admission fails closed while open detail sources remain usable. */
 
 import type { FastifyInstance } from "fastify";
 import { FixedWindowRateLimiter, rateLimitByIp } from "../security/publicApiHardening.js";
-import { getPlaceBrief } from "../services/briefService.js";
 import { checkEmbeddable } from "../services/embedService.js";
 import { getGeologyAt } from "../services/geologyService.js";
 import {
-  getFoursquareDetail,
   getPointForecast,
   getWikidataFacts,
   getWikipediaArticle
@@ -23,13 +26,74 @@ const BRIEF_QUERY_SCHEMA = {
     lat: { type: "string", minLength: 1, maxLength: 24 },
     name: { type: "string", maxLength: 120 },
     category: { type: "string", maxLength: 64 },
-    qid: { type: "string", pattern: "^Q[1-9][0-9]{0,11}$" }
+    qid: { type: "string", pattern: "^Q[1-9][0-9]{0,11}$" },
+    layerId: { type: "string", maxLength: 100 },
+    layerName: { type: "string", maxLength: 100 },
+    /** `label=value` pairs joined by `|`: the pin's own fields, which is what makes the summary
+     *  about this pin rather than about this street corner. */
+    facts: { type: "string", maxLength: 800 },
+    web: { type: "string", enum: ["1"] }
   }
 } as const;
 
 /** A panel that has nothing to show should collapse quietly rather than render an error, so a
  *  missing article is a 404 with a message and never a 500. */
 export function registerInfoRoutes(app: FastifyInstance) {
+  app.get<{ Querystring: { lng: string; lat: string; pano?: string } }>(
+    "/info/panorama",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          required: ["lng", "lat"],
+          properties: {
+            lng: { type: "number", minimum: -180, maximum: 180 },
+            lat: { type: "number", minimum: -90, maximum: 90 },
+            pano: { type: "string", enum: ["1", "0"] }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      try {
+        return await withRequestSignal(request, reply, (signal) =>
+          streetPanorama(Number(request.query.lng), Number(request.query.lat), signal, {
+            panoramasOnly: request.query.pano === "1"
+          })
+        );
+      } catch {
+        return reply.code(502).send({
+          message: "Pohled z ulice se nepodařilo načíst. Zkus to znovu nebo otevři poskytovatele."
+        });
+      }
+    }
+  );
+  app.get<{ Querystring: { lng: string; lat: string } }>(
+    "/info/panorama/panoramax",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          required: ["lng", "lat"],
+          properties: {
+            lng: { type: "number", minimum: -180, maximum: 180 },
+            lat: { type: "number", minimum: -90, maximum: 90 }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      try {
+        return await withRequestSignal(request, reply, (signal) =>
+          panoramaxPanorama(Number(request.query.lng), Number(request.query.lat), signal)
+        );
+      } catch {
+        return reply.code(502).send({ message: "Panoramax se nepodařilo načíst." });
+      }
+    }
+  );
   app.get<{ Querystring: { qid?: string; title?: string; lang?: string } }>(
     "/info/wikipedia",
     async (request, reply) => {
@@ -96,7 +160,17 @@ export function registerInfoRoutes(app: FastifyInstance) {
   );
 
   app.get<{
-    Querystring: { lng?: string; lat?: string; name?: string; category?: string; qid?: string };
+    Querystring: {
+      lng?: string;
+      lat?: string;
+      name?: string;
+      category?: string;
+      qid?: string;
+      layerId?: string;
+      layerName?: string;
+      facts?: string;
+      web?: string;
+    };
   }>(
     "/info/brief",
     {
@@ -120,26 +194,119 @@ export function registerInfoRoutes(app: FastifyInstance) {
       ) {
         return reply.code(400).send({ message: "valid lng and lat required" });
       }
-      const brief = await getPlaceBrief({
-        lng,
-        lat,
-        name: request.query.name?.trim() || undefined,
-        category: request.query.category?.trim() || undefined,
-        qid: request.query.qid?.trim() || undefined
+      // Legacy clients may send unverified names/facts. Never classify these as public data,
+      // perform a web search or generate automatically. Canonical research uses /v2/ai/overview.
+      return reply.header("cache-control", "private, no-store").send({
+        text: `Vybraný bod: ${lat.toFixed(4)}, ${lng.toFixed(4)}. Identita místa zatím není ověřená.`,
+        model: null,
+        nearby: [],
+        citations: [],
+        attribution: "Souřadnice vybraného bodu",
+        generation: { status: "unavailable", profileId: null, cached: false },
+        freshness: { collectedAt: new Date().toISOString() }
       });
-      // Nothing generated and no neighbours means there is genuinely nothing to say here.
-      if (!brief.text && !brief.nearby.length) {
-        return reply.code(404).send({ message: "K tomuto místu zatím nic nemáme" });
-      }
-      return reply.header("cache-control", "public, max-age=3600").send(brief);
     }
   );
 
-  app.get<{ Querystring: { fsqId?: string } }>("/info/foursquare", async (request, reply) => {
-    const fsqId = request.query.fsqId?.trim();
-    if (!fsqId) return reply.code(400).send({ message: "fsqId required" });
-    const detail = await getFoursquareDetail(fsqId);
-    if (!detail) return reply.code(404).send({ message: "Venue not found" });
-    return reply.header("cache-control", "public, max-age=3600").send(detail);
-  });
+  app.get<{ Querystring: { fsqId?: string; name?: string; lng?: string; lat?: string } }>(
+    "/info/foursquare",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            fsqId: { type: "string", pattern: "^[a-zA-Z0-9_-]{1,100}$" },
+            name: { type: "string", minLength: 1, maxLength: 120 },
+            lng: { type: "string", maxLength: 24 },
+            lat: { type: "string", maxLength: 24 }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      reply.header("cache-control", "private, no-store");
+      const { fsqId, name, lng, lat } = request.query;
+      if (
+        !fsqId &&
+        (!name?.trim() ||
+          !lng?.trim() ||
+          !lat?.trim() ||
+          !Number.isFinite(Number(lng)) ||
+          !Number.isFinite(Number(lat)) ||
+          Math.abs(Number(lng)) > 180 ||
+          Math.abs(Number(lat)) > 90)
+      ) {
+        return reply.code(400).send({ message: "Zadejte identitu nebo název a polohu místa." });
+      }
+      try {
+        const result = await withRequestSignal(request, reply, async (signal) =>
+          fsqId
+            ? foursquarePlaces.detail(fsqId, signal)
+            : {
+                candidates: await foursquarePlaces.search(
+                  { name: name!, lng: Number(lng), lat: Number(lat) },
+                  signal
+                )
+              }
+        );
+        if (!result) return reply.code(404).send({ message: "Místo nebylo nalezeno." });
+        return result;
+      } catch (error) {
+        if (error instanceof ProviderBudgetError)
+          return reply
+            .code(error.code === "budget-exhausted" ? 429 : 503)
+            .send({ code: error.code, message: error.message });
+        throw error;
+      }
+    }
+  );
+
+  // Population for a drawn area (§8). The numeric half of the population story: the map may draw
+  // a raster, but "how many people live here" is a provider computation, not a pixel sum.
+  app.get<{ Querystring: { bbox?: string; year?: string } }>(
+    "/info/population/area",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            bbox: { type: "string", maxLength: 120 },
+            year: { type: "string", maxLength: 4 }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const values = (request.query.bbox ?? "").split(",").map((value) => Number(value.trim()));
+      if (values.length !== 4 || !values.every(Number.isFinite)) {
+        return reply.code(400).send({ message: "bbox musí být west,south,east,north" });
+      }
+      const [west, south, east, north] = values as [number, number, number, number];
+      if (
+        west < -180 ||
+        east > 180 ||
+        south < -90 ||
+        north > 90 ||
+        west >= east ||
+        south >= north
+      ) {
+        return reply.code(400).send({ message: "bbox musí být west,south,east,north" });
+      }
+      // A continent is many WorldPop tasks; keep the drawn area to something a city answers.
+      if (east - west > 5 || north - south > 5) {
+        return reply.code(422).send({ message: "Pro součet populace vyber menší oblast." });
+      }
+      const year = request.query.year ? Number(request.query.year) : undefined;
+      try {
+        const result = await withRequestSignal(request, reply, (signal) =>
+          areaPopulation([west, south, east, north], { year, signal })
+        );
+        return reply.header("cache-control", "private, max-age=3600").send(result);
+      } catch {
+        return reply.code(502).send({ message: "Součet populace se nepodařilo načíst." });
+      }
+    }
+  );
 }

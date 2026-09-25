@@ -114,6 +114,9 @@ export class MemoryLayerImportRepository implements LayerImportRepository {
       lat: candidate.lat,
       tags: [...candidate.tags],
       kind: candidate.kind,
+      ...(candidate.path
+        ? { path: candidate.path.map((point) => [...point] as [number, number]) }
+        : {}),
       properties: {
         ...candidate.properties,
         maposSources: clone(candidate.sources),

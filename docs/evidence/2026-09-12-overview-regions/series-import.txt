@@ -1,0 +1,3 @@
+Importuji statistiky: eurostat-population-65-plus, eurostat-gdp-per-capita
+eurostat-population-65-plus: 32801 hodnot, 2000–2025
+eurostat-gdp-per-capita: 30956 hodnot, 2000–2024

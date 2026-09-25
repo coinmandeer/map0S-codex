@@ -9,6 +9,10 @@ import { fetchBytes, fetchJson } from "../utils/upstream.js";
 const RADAR_DIR = process.env.RADAR_DIR ?? "/data/radar";
 const RAINVIEWER_API = "https://api.rainviewer.com/public/weather-maps.json";
 const ZOOM_LEVELS = [0, 1, 2, 3, 4, 5];
+/** RainViewer palette 7 ("Rainbow SELEX-SI"). The live radar in the browser draws with the same
+ *  palette, so scrubbing the timeline back from "now" into archived frames no longer switches
+ *  the rain colours mid-animation. Keep in step with `RADAR_COLOR_SCHEME` in the web layer. */
+export const RADAR_ARCHIVE_COLOR_SCHEME = 7;
 const RETENTION_MS = 24 * 3600_000;
 const ARCHIVE_INTERVAL_MS = 15 * 60_000;
 const TILE_CONCURRENCY = 10;
@@ -66,7 +70,7 @@ async function downloadFrame(ts: number, radarPath: string) {
   }
 
   await runWithConcurrency(tasks, TILE_CONCURRENCY, async ({ z, x, y }) => {
-    const url = `https://tilecache.rainviewer.com${radarPath}/256/${z}/${x}/${y}/2/1_1.png`;
+    const url = `https://tilecache.rainviewer.com${radarPath}/256/${z}/${x}/${y}/${RADAR_ARCHIVE_COLOR_SCHEME}/1_1.png`;
     const tile = await fetchBytes(url, {
       providerId: "weather-rainviewer-tiles",
       ttlMs: 0,

@@ -24,6 +24,8 @@ const ADDRESS =
 const LOCALITY_PREFIX = /^(?:město|obec|vesnice|okres|kraj|region|city|town|village)\s*:?\s+/iu;
 const POI =
   /(?<!\p{L})(?:hrad|zámek|rozhledna|restaurace|bistro|kavárna|café|hotel|muzeum|galerie|nádraží|letiště|nemocnice|lékárna|parkoviště|čerpací stanice|camp|kemp|castle|restaurant|hotel|museum|station|airport|hospital|pharmacy)(?!\p{L})/iu;
+const AI_QUESTION =
+  /^(?:kde (?:je|jsou|se|ma)|jak(?:a|y|e)? (?:je|jsou)|kolik|proc|srovnej|porovnej|where (?:is|are)|which|why)\b/;
 const AI_COMMAND = /^(?:ai|asistent)\s*:\s*/iu;
 const AI_ACTION = /(?:naplánuj|doporuč|navrhni|najdi mi|porovnej|plan|recommend|suggest|compare)/iu;
 const AI_CONSTRAINT =
@@ -60,6 +62,25 @@ export function resolveLocationIntent(
     const aiQuery = normalizedText(query.replace(AI_COMMAND, ""));
     return aiQuery ? { kind: "ai", input, query: aiQuery } : { kind: "empty" };
   }
+  const plain = query
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (
+    AI_QUESTION.test(plain) &&
+    /chudob|nezamestnan|poverty|unemployment|statistik|nejvetsi|nejmensi|nejvyssi|nejnizsi/.test(
+      plain
+    )
+  )
+    return { kind: "ai", input, query };
+  // Plan requests must win over POI/address words embedded in the request.
+  if (
+    /\b(vylet|vylety|naplanuj|doporuc|navrhni|pozorovat|hike|itinerary|plan a|recommend|suggest)\b/.test(
+      plain
+    ) ||
+    /^(pridej|odeber|zmen|uprav|add|remove|change)\b/.test(plain)
+  )
+    return { kind: "ai", input, query };
   if (ADDRESS.test(query)) return { kind: "address", input, query };
   if (LOCALITY_PREFIX.test(query)) {
     return { kind: "locality", input, query: query.replace(LOCALITY_PREFIX, "") };

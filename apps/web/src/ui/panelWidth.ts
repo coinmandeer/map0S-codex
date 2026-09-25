@@ -1,7 +1,8 @@
 export const LEFT_PANEL_WIDTH_STORAGE_KEY = "mapos:left-panel-width-v1";
-export const LEFT_PANEL_DEFAULT_WIDTH = 380;
+/** §3.1: sidebar 360, draggable 320–480. Wider than 480 and the map stops being the subject. */
+export const LEFT_PANEL_DEFAULT_WIDTH = 360;
 export const LEFT_PANEL_MIN_WIDTH = 320;
-export const LEFT_PANEL_MAX_WIDTH = 560;
+export const LEFT_PANEL_MAX_WIDTH = 480;
 export const LEFT_PANEL_MAX_VIEWPORT_RATIO = 0.46;
 export const LEFT_PANEL_KEYBOARD_STEP = 16;
 

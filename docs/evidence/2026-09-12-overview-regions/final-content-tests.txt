@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: first paragraph quotes only canonical facts and cites every contributing field
+ok 1 - first paragraph quotes only canonical facts and cites every contributing field
+  ---
+  duration_ms: 3.807208
+  type: 'test'
+  ...
+# Subtest: area introduction grows from local statistics while clearly preserving wider context
+ok 2 - area introduction grows from local statistics while clearly preserving wider context
+  ---
+  duration_ms: 0.547042
+  type: 'test'
+  ...
+# Subtest: local measurement and wider context appear in separate stable sections
+ok 3 - local measurement and wider context appear in separate stable sections
+  ---
+  duration_ms: 3.10825
+  type: 'test'
+  ...
+# Subtest: model cannot change value, drop year/scope/negation, promote a web candidate, or mislabel a neighbour
+ok 4 - model cannot change value, drop year/scope/negation, promote a web candidate, or mislabel a neighbour
+  ---
+  duration_ms: 1.731708
+  type: 'test'
+  ...
+# Subtest: brief highlight diversity preserves all source identities and renders readable units
+ok 5 - brief highlight diversity preserves all source identities and renders readable units
+  ---
+  duration_ms: 0.833875
+  type: 'test'
+  ...
+# Subtest: short area intro preserves source facts without repeating them below
+ok 6 - short area intro preserves source facts without repeating them below
+  ---
+  duration_ms: 24.128791
+  type: 'test'
+  ...
+# Subtest: facts and geometry arrive before collector, collector failure preserves both
+ok 7 - facts and geometry arrive before collector, collector failure preserves both
+  ---
+  duration_ms: 14.727167
+  type: 'test'
+  ...
+# Subtest: shared acquisition survives first subscriber departure and aborts last
+ok 8 - shared acquisition survives first subscriber departure and aborts last
+  ---
+  duration_ms: 4.996041
+  type: 'test'
+  ...
+# Subtest: unknown coordinate remains a coordinate and has no neighbouring business identity
+ok 9 - unknown coordinate remains a coordinate and has no neighbouring business identity
+  ---
+  duration_ms: 3.915542
+  type: 'test'
+  ...
+# Subtest: cache avoids acquisition, ACL and owner partitions are checked again
+ok 10 - cache avoids acquisition, ACL and owner partitions are checked again
+  ---
+  duration_ms: 8.848083
+  type: 'test'
+  ...
+# Subtest: deadline returns partial and late acquisition cannot mutate terminal snapshot
+ok 11 - deadline returns partial and late acquisition cannot mutate terminal snapshot
+  ---
+  duration_ms: 18.881666
+  type: 'test'
+  ...
+# Subtest: model cannot cite nonexisting facts or introduce uncited text
+ok 12 - model cannot cite nonexisting facts or introduce uncited text
+  ---
+  duration_ms: 1.770625
+  type: 'test'
+  ...
+# Subtest: unverified web document bodies stay server-side in stream and warm cache
+ok 13 - unverified web document bodies stay server-side in stream and warm cache
+  ---
+  duration_ms: 3.3565
+  type: 'test'
+  ...
+# Subtest: area references arrive during collection and text updates keep geometry revision
+ok 14 - area references arrive during collection and text updates keep geometry revision
+  ---
+  duration_ms: 4.064333
+  type: 'test'
+  ...
+# Subtest: unallocated model never announces or dispatches synthesis
+ok 15 - unallocated model never announces or dispatches synthesis
+  ---
+  duration_ms: 1.16025
+  type: 'test'
+  ...
+# Subtest: follow-up intent reuses acquired evidence but refresh and permission change do not
+ok 16 - follow-up intent reuses acquired evidence but refresh and permission change do not
+  ---
+  duration_ms: 2.497875
+  type: 'test'
+  ...
+# Subtest: a source that hangs is missing from the guide, not fatal to it
+ok 17 - a source that hangs is missing from the guide, not fatal to it
+  ---
+  duration_ms: 23.908
+  type: 'test'
+  ...
+# Subtest: what the caller already fetched is not fetched again
+ok 18 - what the caller already fetched is not fetched again
+  ---
+  duration_ms: 0.984208
+  type: 'test'
+  ...
+# Subtest: the model writes the guide and may only cite what it was given
+ok 19 - the model writes the guide and may only cite what it was given
+  ---
+  duration_ms: 5.324208
+  type: 'test'
+  ...
+# Subtest: without a model the guide is still written, from the article it has
+ok 20 - without a model the guide is still written, from the article it has
+  ---
+  duration_ms: 1.012
+  type: 'test'
+  ...
+# Subtest: with no guide the encyclopedia answers, and with nothing at all an action does
+ok 21 - with no guide the encyclopedia answers, and with nothing at all an action does
+  ---
+  duration_ms: 1.390041
+  type: 'test'
+  ...
+# Subtest: the same region in the same month is written once, but its numbers stay current
+ok 22 - the same region in the same month is written once, but its numbers stay current
+  ---
+  duration_ms: 2.702791
+  type: 'test'
+  ...
+# Subtest: the cache key changes with the month, the language and the model path
+ok 23 - the cache key changes with the month, the language and the model path
+  ---
+  duration_ms: 0.39475
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 674.127292

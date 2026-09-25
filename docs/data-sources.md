@@ -14,20 +14,22 @@ layer appears as soon as the server restarts, and stays hidden until then — a 
 a key the deployment doesn't hold is not offered at all, which is kinder than a toggle that can
 only produce an error.
 
-| Layer / feature          | Sign up at                                        | Env var                  | Notes                                                         |
-| ------------------------ | ------------------------------------------------- | ------------------------ | ------------------------------------------------------------- |
-| EV charging stations     | https://openchargemap.org/site/develop/api        | `OPENCHARGEMAP_API_KEY`  | Instant key, generous limits                                  |
-| Street imagery           | https://www.mapillary.com/dashboard/developers    | `MAPILLARY_ACCESS_TOKEN` | Create an app, copy the client token                          |
-| Active fires             | https://firms.modaps.eosdis.nasa.gov/api/map_key/ | `NASA_FIRMS_MAP_KEY`     | Emailed MAP_KEY; 5000 transactions per 10 min                 |
-| Air quality stations     | https://explore.openaq.org/register               | `OPENAQ_API_KEY`         | v3 requires the key in an `X-API-Key` header                  |
-| Bird sightings           | https://ebird.org/api/keygen                      | `EBIRD_API_TOKEN`        | Needs a (free) eBird account first                            |
-| Events + timeline        | https://developer.ticketmaster.com/               | `TICKETMASTER_API_KEY`   | 5000 calls/day; European coverage is uneven                   |
-| Geocaching quests        | https://www.opencaching.de/okapi/signup.html      | `OKAPI_KEY_DE` and peers | One key per national instance (DE, PL, NL, UK, US)            |
-| Notability ranking       | https://opentripmap.io/product                    | `OPENTRIPMAP_API_KEY`    | Only improves ordering in Objevuj; ranking works without it   |
-| Basemap, routing, POI    | https://developer.mapy.com                        | `MAPY_API_KEY`           | Optional alternative provider; 250k credits/month free        |
-| Place photos and ratings | https://location.foursquare.com/developer/        | `FSQ_API_KEY`            | Enriches a single place on demand, not bulk search            |
-| Weather tile overlays    | https://openweathermap.org/api                    | `OWM_API_KEY`            | Only the tile layers; forecasts come from Open-Meteo, keyless |
-| Place summaries (CML)    | https://platform.openai.com / https://ollama.com  | `OPENAI_API_KEY`         | Paid, or `OLLAMA_API_KEY` for the free tier                   |
+| Layer / feature          | Sign up at                                        | Env var                  | Notes                                                                                                      |
+| ------------------------ | ------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| EV charging stations     | https://openchargemap.org/site/develop/api        | `OPENCHARGEMAP_API_KEY`  | Instant key, generous limits                                                                               |
+| Street imagery           | https://www.mapillary.com/dashboard/developers    | `MAPILLARY_ACCESS_TOKEN` | Create an app, copy the client token                                                                       |
+| Live ships (worldwide)   | https://aisstream.io/account                      | `AISSTREAM_API_KEY`      | WebSocket stream; server-side only, 3 connections per account                                              |
+| Active fires             | https://firms.modaps.eosdis.nasa.gov/api/map_key/ | `NASA_FIRMS_MAP_KEY`     | Emailed MAP_KEY; 5000 transactions per 10 min                                                              |
+| Air quality stations     | https://explore.openaq.org/register               | `OPENAQ_API_KEY`         | v3 requires the key in an `X-API-Key` header                                                               |
+| Bird sightings           | https://ebird.org/api/keygen                      | `EBIRD_API_TOKEN`        | Needs a (free) eBird account first                                                                         |
+| Events + timeline        | https://developer.ticketmaster.com/               | `TICKETMASTER_API_KEY`   | 5000 calls/day; European coverage is uneven                                                                |
+| Geocaching quests        | https://www.opencaching.de/okapi/signup.html      | `OKAPI_KEY_DE` and peers | One key per national instance (DE, PL, NL, UK, US)                                                         |
+| Notability ranking       | https://opentripmap.io/product                    | `OPENTRIPMAP_API_KEY`    | Only improves ordering in Objevuj; ranking works without it                                                |
+| Basemap, routing, POI    | https://developer.mapy.com                        | `MAPY_API_KEY`           | Optional alternative provider; 250k credits/month free                                                     |
+| Place photos and ratings | https://location.foursquare.com/developer/        | `FSQ_API_KEY`            | Enriches a single place on demand, not bulk search                                                         |
+| Weather tile overlays    | https://openweathermap.org/api                    | `OWM_API_KEY`            | Only the tile layers; forecasts come from Open-Meteo, keyless                                              |
+| Animated weather tiles   | https://cloud.maptiler.com                        | `MAPTILER_API_KEY`       | MapTiler Weather: radar, wind, temperature, precipitation, pressure (72 h); also unlocks MapTiler basemaps |
+| Place summaries (CML)    | https://platform.openai.com / https://ollama.com  | `OPENAI_API_KEY`         | Paid, or `OLLAMA_API_KEY` for the free tier                                                                |
 
 `MAPOS_CONTACT` is not a key but set it anyway on anything public: Nominatim, Overpass and the
 Wikimedia APIs require a `User-Agent` that identifies the deployment, and without one your
@@ -37,33 +39,47 @@ traffic shares a rate-limit bucket with every other MapOS clone.
 
 These need no registration and are always on.
 
-| Source               | Used for                                   | Licence            |
-| -------------------- | ------------------------------------------ | ------------------ |
-| OpenStreetMap        | POIs via Overpass, basemap data            | ODbL 1.0           |
-| Nominatim            | Geocoding and reverse geocoding            | ODbL 1.0           |
-| OSRM                 | Route planning (public demo server)        | ODbL 1.0           |
-| CARTO basemaps       | Default light/dark vector tiles            | Free tier, no key  |
-| CyclOSM              | Cycling overlay                            | ODbL / CC-BY-SA    |
-| Waymarked Trails     | Hiking, cycling, MTB, piste routes         | CC-BY-SA 3.0       |
-| OpenRailwayMap       | Railway overlay                            | CC-BY-SA 2.0       |
-| OpenSeaMap           | Nautical marks                             | ODbL 1.0           |
-| OpenTopoMap          | Contours and hillshade                     | CC-BY-SA 3.0       |
-| OpenSnowMap          | Pistes and cross-country trails            | CC-BY-SA 2.0       |
-| USGS                 | Earthquakes                                | Public domain      |
-| iNaturalist          | Species observations with photos           | CC-BY-NC (varies)  |
-| GBIF                 | Biodiversity occurrence records            | CC-BY 4.0          |
-| Sensor.Community     | Citizen air-quality sensors                | ODbL 1.0           |
-| Wikimedia Commons    | Geolocated photos                          | CC / public domain |
-| Refuge Restrooms     | Accessible and gender-neutral toilets      | Open data          |
-| GBFS operator feeds  | Bike and scooter sharing stations          | Per operator       |
-| RainViewer           | Weather radar                              | Free tier          |
-| Open-Meteo           | Wind grid, forecasts, info panel           | CC-BY 4.0          |
-| Wikipedia / Wikidata | Articles, QIDs, place metadata, ranking    | CC-BY-SA / CC0     |
-| Wikivoyage           | Objevuj guide content                      | CC-BY-SA 4.0       |
-| Wiki Loves Monuments | Quests: monuments still missing a photo    | CC-BY-SA / CC0     |
-| OSM Notes            | Quests: open map problems to verify        | ODbL 1.0           |
-| Turf Game            | Quests: existing takeover zones            | Public API         |
-| Macrostrat           | Geology overlay and the "Pod nohama" panel | CC-BY 4.0          |
+| Source               | Used for                                                                                        | Licence                       |
+| -------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------- |
+| OpenStreetMap        | POIs via Overpass, basemap data                                                                 | ODbL 1.0                      |
+| Nominatim            | Geocoding and reverse geocoding                                                                 | ODbL 1.0                      |
+| OSRM                 | Route planning (public demo server)                                                             | ODbL 1.0                      |
+| CARTO basemaps       | Default light/dark vector tiles                                                                 | Free tier, no key             |
+| CyclOSM              | Cycling basemap                                                                                 | ODbL / CC-BY-SA               |
+| OpenFreeMap Dark     | Dark keyless vector basemap                                                                     | OpenMapTiles                  |
+| OSM France           | French community OSM basemap                                                                    | CC-BY-SA 2.0                  |
+| ÖPNV-Karte           | Public-transport basemap                                                                        | CC-BY-SA 2.0                  |
+| OSM Humanitarian     | High-contrast basemap for field mapping                                                         | CC-BY-SA 2.0                  |
+| Eurostat GISCO       | NUTS + LAU boundaries for Discover regions                                                      | Eurostat reuse                |
+| Waymarked Trails     | Hiking, cycling, MTB, piste routes                                                              | CC-BY-SA 3.0                  |
+| OpenRailwayMap       | Railway overlay                                                                                 | CC-BY-SA 2.0                  |
+| OpenSeaMap           | Nautical marks                                                                                  | ODbL 1.0                      |
+| OpenTopoMap          | Contours and hillshade                                                                          | CC-BY-SA 3.0                  |
+| OpenSnowMap          | Pistes and cross-country trails                                                                 | CC-BY-SA 2.0                  |
+| USGS                 | Earthquakes                                                                                     | Public domain                 |
+| iNaturalist          | Species observations with photos                                                                | CC-BY-NC (varies)             |
+| GBIF                 | Biodiversity occurrence records                                                                 | CC-BY 4.0                     |
+| Sensor.Community     | Citizen air-quality sensors                                                                     | ODbL 1.0                      |
+| Wikimedia Commons    | Geolocated photos                                                                               | CC / public domain            |
+| Refuge Restrooms     | Accessible and gender-neutral toilets                                                           | Open data                     |
+| GBFS operator feeds  | Bike and scooter sharing stations                                                               | Per operator                  |
+| RainViewer           | Weather radar                                                                                   | Free tier                     |
+| Open-Meteo           | Wind grid, forecasts, info panel                                                                | CC-BY 4.0                     |
+| Wikipedia / Wikidata | Articles, QIDs, place metadata, ranking                                                         | CC-BY-SA / CC0                |
+| Wikivoyage           | Objevuj guide content                                                                           | CC-BY-SA 4.0                  |
+| Wiki Loves Monuments | Quests: monuments still missing a photo                                                         | CC-BY-SA / CC0                |
+| OSM Notes            | Quests: open map problems to verify                                                             | ODbL 1.0                      |
+| Turf Game            | Quests: existing takeover zones                                                                 | Public API                    |
+| Macrostrat           | Geology overlay and the "Pod nohama" panel                                                      | CC-BY 4.0                     |
+| OpenInfraMap         | Power, telecoms, gas/oil and water grids                                                        | ODbL 1.0 / CC-BY 4.0          |
+| Tilezen Terrain      | 3D terrain and hillshade (Terrarium DEM)                                                        | Per source dataset            |
+| EEA Natura 2000      | Protected areas across the EU                                                                   | EEA re-use policy             |
+| Eurostat GISCO       | NUTS 0–3 and LAU boundaries for `geo_units`                                                     | CC BY 4.0 (© EuroGeographics) |
+| Natural Earth        | World country boundaries for `geo_units`                                                        | Public domain                 |
+| geoBoundaries        | Sub-national ADM1/ADM2 outside Europe                                                           | CC BY 4.0 / ODbL              |
+| OSM bitcoin tags     | Bitcoin ATMs and merchants (`currency:XBT`, `payment:bitcoin`; the tagging BTC Map is built on) | ODbL 1.0                      |
+| MeshCore Analyzer    | Community LoRa mesh nodes (meshcore.cz)                                                         | Community data                |
+| NASA GIBS            | VIIRS Black Marble night lights (sky darkness)                                                  | NASA open data                |
 
 ## What the licences ask for
 
@@ -83,6 +99,67 @@ publishing it under ODbL too.
 
 iNaturalist observations are per-observer licensed and many are non-commercial. Treat the layer
 as "look, don't rebuild a product on top of it".
+
+OpenInfraMap is one person's project (Russss) with no published usage policy, unlike the OSMF
+services above. The layer therefore asks for tiles only from z7 up: below that a continent's
+worth of lines is unreadable anyway, so not requesting them costs nothing and is the polite
+reading of a service that has not told us what it can carry. The data is OSM's under ODbL; the
+CC-BY 4.0 applies to the project's own cartography and analysis, and since OpenInfraMap ships no
+style, MapOS draws the networks with its own — which is why its legend can state the voltage
+scale exactly.
+
+Tilezen's terrain tiles are an aggregate: SRTM, ESA and USGS data among others, each under its
+own terms, which is why the table says "per source dataset" rather than naming one licence. The
+credit line names the aggregate and the main contributors. Heights are `terrarium`-encoded
+(`(R * 256 + G + B / 256) - 32768` metres); reading them as MapLibre's default Mapbox encoding
+yields wrong elevations rather than an error, so the source declares the encoding explicitly.
+
+Natura 2000 comes from the EEA as WMS rather than tiles, which needs no adapter: MapLibre's
+raster source substitutes the tile extent into `{bbox-epsg-3857}`, so one GetMap per tile is just
+a URL template. Two details are load-bearing. The placeholder must stay unencoded, or the literal
+braces are sent and the service answers with an empty image rather than an error — a layer that
+looks on and draws nothing. And the service publishes three layers, of which the combined one
+(`0`) is a flat magenta fill; the per-directive layers (`1`, `2`) draw outlines with hatching, so
+those are the ones used and the ground stays readable underneath.
+
+Boundaries are the one class of source imported rather than fetched per viewport. A NUTS
+edition changes every three years, so `npm run geo:units -w @mapos/api` writes `geo_units` once
+and every thematic overlay joins against it — Eurostat's crime series and its population series
+then share a single copy of each polygon.
+
+### Seeding themes in a fresh checkout
+
+The Themes section is empty until both imports have run, because a theme is a join and half a
+join draws nothing. Against a Postgres/PostGIS database:
+
+```sh
+npm run geo:units -w @mapos/api     # boundaries: GISCO NUTS + geoBoundaries ADM1
+npm run stats:import -w @mapos/api  # series: Eurostat and World Bank
+```
+
+Neither needs an API key: Eurostat, GISCO and the World Bank are open endpoints, and the
+importers are the only place that talks to them. Order matters only in that a series with no
+boundary to join onto is stored and simply never drawn, so re-running `stats:import` after
+`geo:units` fixes a half-seeded database without a reset. The offline memory server needs
+neither command — it serves fixture territories, which is why the audit screenshots have data
+in them without a database.
+
+Which generalisation gets imported is a licensing-adjacent decision worth stating: GISCO
+publishes NUTS at 1M through 60M, and the catalogue asks for 10M. A continental choropleth
+cannot show 1M coastline, the file is tens of megabytes, and the guarded fetch caps a response
+at 16 MiB — so the coarse edition is both the honest choice and the only importable one. Detail
+at a country zoom is meant to come from a national source with a finer `geoLevel`, not from more
+coastline on the same polygon.
+
+geoBoundaries is fetched per country rather than as the combined ADM1 file, for the same reason,
+through its metadata endpoint: that is where the simplified download URL for a country lives.
+EuroGeographics requires its copyright line on anything drawn from GISCO boundaries, so the
+attribution travels with the row (`geo_units.source_id`) and not just with the importer.
+
+Because the EEA ships the cartography, MapOS does not restyle it — the legend instead quotes the
+service's own swatches, read off its `GetLegendGraphic` rather than sampled from a rendered tile,
+where antialiasing would have given a colour that is in no key. Coverage stops at the union
+border, so the legend says so: an empty map over Serbia is the dataset's limit, not a fault.
 
 ## Geology, and what a model is for
 

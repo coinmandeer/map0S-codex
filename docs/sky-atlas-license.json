@@ -1,0 +1,165 @@
+{
+  "doi": "10.5880/gfz.1.4.2016.001",
+  "url": "https://dataservices.gfz.de/10.5880/gfz.1.4.2016.001/supplement-to-the-new-world-atlas-of-artificial",
+  "version": "1.1",
+  "updated": "2026-08-30T10:31:28.000Z",
+  "rightsList": [
+    {
+      "lang": "en",
+      "rights": "Creative Commons Attribution Non Commercial 4.0 International",
+      "rightsUri": "https://creativecommons.org/licenses/by-nc/4.0/legalcode",
+      "schemeUri": "https://spdx.org/licenses/",
+      "rightsIdentifier": "cc-by-nc-4.0",
+      "rightsIdentifierScheme": "SPDX"
+    },
+    {
+      "rights": "Open access",
+      "rightsUri": "http://purl.org/coar/access_right/c_abf2",
+      "schemeUri": "http://purl.org/coar/access_right/",
+      "rightsIdentifier": "c_abf2",
+      "rightsIdentifierScheme": "COAR Access Rights"
+    }
+  ],
+  "titles": [
+    {
+      "lang": "en",
+      "title": "Supplement to: The New World Atlas of Artificial Night Sky Brightness"
+    }
+  ],
+  "creators": [
+    {
+      "name": "Falchi, Fabio",
+      "nameType": "Personal",
+      "givenName": "Fabio",
+      "familyName": "Falchi",
+      "affiliation": [
+        "ISTIL - Istituto di Scienza e Tecnologia dell'Inquinamento Luminoso, Light Pollution Science and Technology Institute, Thiene, Italy"
+      ],
+      "nameIdentifiers": [
+        {
+          "schemeUri": "https://orcid.org/",
+          "nameIdentifier": "0000-0002-3706-5639",
+          "nameIdentifierScheme": "ORCID"
+        }
+      ]
+    },
+    {
+      "name": "Cinzano, Pierantonio",
+      "nameType": "Personal",
+      "givenName": "Pierantonio",
+      "familyName": "Cinzano",
+      "affiliation": [
+        "ISTIL - Istituto di Scienza e Tecnologia dell'Inquinamento Luminoso, Light Pollution Science and Technology Institute, Thiene, Italy"
+      ],
+      "nameIdentifiers": []
+    },
+    {
+      "name": "Duriscoe, Dan",
+      "nameType": "Personal",
+      "givenName": "Dan",
+      "familyName": "Duriscoe",
+      "affiliation": ["National Park Service, U.S. Department of Interior"],
+      "nameIdentifiers": []
+    },
+    {
+      "name": "Kyba, Christopher C. M.",
+      "nameType": "Personal",
+      "givenName": "Christopher C. M.",
+      "familyName": "Kyba",
+      "affiliation": ["GFZ Helmholtz Centre for Geosciences"],
+      "nameIdentifiers": [
+        {
+          "schemeUri": "https://orcid.org/",
+          "nameIdentifier": "0000-0001-7014-1843",
+          "nameIdentifierScheme": "ORCID"
+        }
+      ]
+    },
+    {
+      "name": "Elvidge, Christopher D.",
+      "nameType": "Personal",
+      "givenName": "Christopher D.",
+      "familyName": "Elvidge",
+      "affiliation": [
+        "Earth Observation Group, NOAA National Centers for Environmental Information"
+      ],
+      "nameIdentifiers": [
+        {
+          "schemeUri": "https://orcid.org/",
+          "nameIdentifier": "0000-0003-0584-1098",
+          "nameIdentifierScheme": "ORCID"
+        }
+      ]
+    },
+    {
+      "name": "Baugh, Kimberly",
+      "nameType": "Personal",
+      "givenName": "Kimberly",
+      "familyName": "Baugh",
+      "affiliation": ["Cooperative Institute for Research in Environmental Sciences"],
+      "nameIdentifiers": [
+        {
+          "schemeUri": "https://orcid.org/",
+          "nameIdentifier": "0000-0002-3548-7045",
+          "nameIdentifierScheme": "ORCID"
+        }
+      ]
+    },
+    {
+      "name": "Portnov, Boris",
+      "nameType": "Personal",
+      "givenName": "Boris",
+      "familyName": "Portnov",
+      "affiliation": [
+        "Department of Natural Resources & Environmental Management, Faculty of Management, University of Haifa"
+      ],
+      "nameIdentifiers": [
+        {
+          "schemeUri": "https://orcid.org/",
+          "nameIdentifier": "0000-0003-1537-0832",
+          "nameIdentifierScheme": "ORCID"
+        }
+      ]
+    },
+    {
+      "name": "Rybnikova, Nataliya A.",
+      "nameType": "Personal",
+      "givenName": "Nataliya A.",
+      "familyName": "Rybnikova",
+      "affiliation": [
+        "Department of Natural Resources & Environmental Management, Faculty of Management, University of Haifa"
+      ],
+      "nameIdentifiers": [
+        {
+          "schemeUri": "https://orcid.org/",
+          "nameIdentifier": "0000-0002-3135-6865",
+          "nameIdentifierScheme": "ORCID"
+        }
+      ]
+    },
+    {
+      "name": "Furgoni, Riccardo",
+      "nameType": "Personal",
+      "givenName": "Riccardo",
+      "familyName": "Furgoni",
+      "affiliation": [
+        "ISTIL - Istituto di Scienza e Tecnologia dell'Inquinamento Luminoso, Light Pollution Science and Technology Institute, Thiene, Italy"
+      ],
+      "nameIdentifiers": []
+    }
+  ],
+  "dates": [
+    {
+      "date": "2026-05-29",
+      "dateType": "Created"
+    },
+    {
+      "date": "2016-01-01",
+      "dateType": "Issued"
+    },
+    {
+      "date": "2026-08-24",
+      "dateType": "Updated"
+    }
+  ]
+}

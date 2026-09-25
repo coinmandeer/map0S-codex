@@ -1,0 +1,21 @@
+mapos.promptstudio3000.com {
+	@compressible not path /api/v2/ai/overview /api/v2/ai/chat
+	encode @compressible zstd gzip
+
+	handle {
+		reverse_proxy 127.0.0.1:4032
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(self), geolocation=(self), microphone=()"
+	}
+}
+
+questlayer.promptstudio3000.com {
+	redir https://mapos.promptstudio3000.com{uri} permanent
+}

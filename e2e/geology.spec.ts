@@ -23,7 +23,7 @@ test.describe("geologie", () => {
     });
 
     await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await page.getByTestId("overflow-geology").click();
 
     await expect.poll(() => requested.length, { timeout: 15_000 }).toBeGreaterThan(0);
@@ -46,7 +46,7 @@ test.describe("geologie", () => {
       route.fulfill({ contentType: "application/x-protobuf", body: EMPTY_MVT })
     );
     await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await page.getByTestId("overflow-geology").click();
 
     await expect

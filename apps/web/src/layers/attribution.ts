@@ -1,6 +1,7 @@
 import type { LayerAttribution } from "@mapos/layer-sdk";
 import { BASEMAPS, LABEL_OVERLAYS, RELEASED_PLACE_SOURCES } from "@mapos/layer-sdk";
 import { allLayerPlugins, getLayerPlugin } from "./registry";
+import { intlLocale } from "../i18n";
 
 /**
  * Who to credit, derived rather than written down.
@@ -75,5 +76,5 @@ export function allAttribution(): AttributionEntry[] {
     }
   }
 
-  return entries.sort((a, b) => a.usedBy.localeCompare(b.usedBy, "cs"));
+  return entries.sort((a, b) => a.usedBy.localeCompare(b.usedBy, intlLocale()));
 }

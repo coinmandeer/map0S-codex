@@ -4,7 +4,8 @@ import { planV1ToV2, type PlanDocumentV2, type RouteSegmentV2 } from "@mapos/lay
 import {
   longestRoutablePreview,
   routableSegmentPreviews,
-  summarizePlanSegments
+  summarizePlanSegments,
+  unselectedAlternativePreviews
 } from "./planPresentation";
 
 function plan(): PlanDocumentV2 {
@@ -94,5 +95,29 @@ describe("planning partial-result presentation", () => {
         [document.segments[3]!.id, 3]
       ]
     );
+  });
+
+  it("previews only the variants a segment was not routed with", () => {
+    const document = plan();
+    const first = routed(document.segments[0]!, 1_000);
+    const chosen = first.alternatives[0]!;
+    document.segments = [
+      {
+        ...first,
+        alternatives: [
+          chosen,
+          { ...chosen, id: "variant-2", geometry: { type: "LineString", coordinates: [[14, 51]] } }
+        ]
+      },
+      ...document.segments.slice(1).map((segment) => ({ ...segment, status: "failed" as const }))
+    ];
+
+    assert.deepEqual(unselectedAlternativePreviews(document), [
+      {
+        segmentId: first.id,
+        alternativeId: "variant-2",
+        coordinates: [[14, 51]]
+      }
+    ]);
   });
 });

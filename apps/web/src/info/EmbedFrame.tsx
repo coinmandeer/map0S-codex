@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { EmptyState, Skeleton } from "../ui/primitives";
 import { useInfoData } from "./useInfoData";
 
@@ -43,7 +44,7 @@ export function EmbedFrame({
   if (state.status !== "ready" || state.data.verdict !== "allowed") {
     return (
       <div className="info-panel" data-testid={testId}>
-        <EmptyState icon="info" title="Tato služba nedovoluje vložení do stránky." action={link} />
+        <EmptyState icon="info" title={t("polish.embedUnavailable")} action={link} />
         {attribution && <p className="meta">{attribution}</p>}
       </div>
     );

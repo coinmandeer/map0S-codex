@@ -10,7 +10,7 @@ test("geocoder presentation preserves type, hierarchy, source and transparent ra
   const mapy = presentMapyGeocodeResult(
     {
       name: "Plzeň",
-      label: "Plzeň, Česko",
+      label: "Město",
       location: "Česko",
       position: { lon: 13.3775, lat: 49.7475 },
       type: "regional",
@@ -22,7 +22,8 @@ test("geocoder presentation preserves type, hierarchy, source and transparent ra
     0
   );
   assert.equal(mapy.type, "regional");
-  assert.deepEqual(mapy.hierarchy, ["Plzeň-město", "Plzeňský kraj", "Česko"]);
+  assert.equal(mapy.display_name, "Plzeň");
+  assert.deepEqual(mapy.hierarchy, ["Česko"]);
   assert.deepEqual(mapy.source, { id: "mapy", label: "Mapy.com" });
   assert.deepEqual(mapy.confidence, {
     level: "high",

@@ -4,6 +4,10 @@ apps/web/public/
 e2e/screenshots/
 test-results/
 playwright-report/
+.cache/
+.playwright-cli/
+output/
+/progress.md
 package-lock.json
 LICENSE
 infra/*.inc

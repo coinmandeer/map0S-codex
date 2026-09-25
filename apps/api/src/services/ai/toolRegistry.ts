@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { AiDataClass } from "./contracts.js";
 
-export type AiToolDomain = "map" | "layers" | "poi" | "route" | "weather" | "events" | "plans";
+export type AiToolDomain =
+  "map" | "layers" | "poi" | "route" | "weather" | "events" | "web" | "plans";
 
 export interface AiToolActor {
   userId?: string;

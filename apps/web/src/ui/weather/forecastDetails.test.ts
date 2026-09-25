@@ -30,8 +30,9 @@ describe("daily forecast details", () => {
     );
   });
 
-  it("formats bounded Czech day/hour labels and preserves malformed source text", () => {
-    assert.match(forecastDayLabel("2026-09-02"), /st/u);
+  it("formats bounded day/hour labels and preserves malformed source text", () => {
+    // 2 September 2026 is a Wednesday; the weekday is abbreviated in the interface language.
+    assert.match(forecastDayLabel("2026-09-02"), /Wed/u);
     assert.equal(forecastHourLabel("2026-09-02T09:00"), "09:00");
     assert.equal(forecastHourLabel("unknown"), "unknown");
     assert.equal(forecastDayLabel("unknown"), "unknown");

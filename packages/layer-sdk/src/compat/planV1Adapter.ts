@@ -27,8 +27,9 @@ function routePolicy(plan: TripPlan): PlanRoutePolicyV2 {
     preference: plan.variant,
     ...(plan.variant === "nohwy" ? { avoid: ["motorways" as const] } : {}),
     autoBasemap: true,
-    weatherAlongRoute: true,
-    trafficAlongRoute: true
+    // Opt-in: both need a departure time to mean anything, and a plan is usually just a route.
+    weatherAlongRoute: false,
+    trafficAlongRoute: false
   };
 }
 

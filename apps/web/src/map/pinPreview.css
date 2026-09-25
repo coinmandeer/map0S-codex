@@ -1,0 +1,36 @@
+.mapos-pin-preview .maplibregl-popup-content {
+  background: var(--surface-solid);
+  color: var(--text);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 12px;
+  font: var(--type-body-sm);
+}
+.pin-preview-card {
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+}
+.pin-preview-logo {
+  font-size: 28px;
+}
+.pin-preview-title {
+  font: var(--type-title-sm);
+  text-align: left;
+}
+.pin-preview-card button {
+  color: inherit;
+  background: var(--surface-sunken);
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  cursor: pointer;
+}
+.pin-preview-card nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.pin-preview-card a {
+  color: var(--accent);
+}

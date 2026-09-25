@@ -91,6 +91,40 @@ function composeRouteInventory(compositionPath: string) {
       ts.ScriptKind.TS
     );
     const registrarImports = new Map<string, string>();
+    const constants = new Map<string, ts.Expression>();
+    const wrappers = new Map<string, ts.FunctionDeclaration>();
+    const collect = (node: ts.Node) => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        ts.isVariableDeclarationList(node.parent) &&
+        node.parent.flags & ts.NodeFlags.Const
+      ) {
+        constants.set(node.name.text, node.initializer);
+      }
+      if (ts.isFunctionDeclaration(node) && node.name) wrappers.set(node.name.text, node);
+      ts.forEachChild(node, collect);
+    };
+    collect(sourceFile);
+    const textValue = (
+      node: ts.Node | undefined,
+      bindings = new Map<string, string>(),
+      depth = 0
+    ): string | null => {
+      if (!node || depth > 10) return null;
+      const literal = staticString(node);
+      if (literal !== null) return literal;
+      if (ts.isIdentifier(node)) {
+        return bindings.get(node.text) ?? textValue(constants.get(node.text), bindings, depth + 1);
+      }
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+        const left = textValue(node.left, bindings, depth + 1);
+        const right = textValue(node.right, bindings, depth + 1);
+        return left !== null && right !== null ? left + right : null;
+      }
+      return null;
+    };
 
     for (const statement of sourceFile.statements) {
       if (
@@ -117,6 +151,29 @@ function composeRouteInventory(compositionPath: string) {
         if (ts.isIdentifier(node.expression)) {
           const importedRegistrar = registrarImports.get(node.expression.text);
           if (importedRegistrar) pending.push(importedRegistrar);
+          const wrapper = wrappers.get(node.expression.text);
+          if (wrapper?.body) {
+            const bindings = new Map<string, string>();
+            wrapper.parameters.forEach((parameter, index) => {
+              const value = textValue(node.arguments[index]);
+              if (ts.isIdentifier(parameter.name) && value !== null)
+                bindings.set(parameter.name.text, value);
+            });
+            const inspectWrapper = (inner: ts.Node) => {
+              if (
+                ts.isCallExpression(inner) &&
+                ts.isPropertyAccessExpression(inner.expression) &&
+                ts.isIdentifier(inner.expression.expression) &&
+                inner.expression.expression.text === "app" &&
+                HTTP_METHODS.has(inner.expression.name.text.toLowerCase())
+              ) {
+                const path = textValue(inner.arguments[0], bindings);
+                if (path) routes.add(routeKey(inner.expression.name.text, path));
+              }
+              ts.forEachChild(inner, inspectWrapper);
+            };
+            inspectWrapper(wrapper.body);
+          }
         }
 
         if (
@@ -126,7 +183,7 @@ function composeRouteInventory(compositionPath: string) {
         ) {
           const callName = node.expression.name.text.toLowerCase();
           if (HTTP_METHODS.has(callName)) {
-            const path = staticString(node.arguments[0]);
+            const path = textValue(node.arguments[0]);
             if (path) routes.add(routeKey(callName, path));
           } else if (callName === "route") {
             const definition = node.arguments[0];
@@ -169,6 +226,16 @@ test("production and memory route sets differ only where machine-readable eviden
   const memory = composeRouteInventory(evidence.inventory.memoryComposition);
   const productionOnly = difference(production, memory);
   const memoryOnly = difference(memory, production);
+  // Shared helper-registered routes must be included, not just literal app.get('/...') calls.
+  for (const key of [
+    "GET /v2/world/capabilities",
+    "GET /v2/world/live",
+    "POST /v2/world/session",
+    "POST /v2/world/threads/reply",
+    "POST /v2/world/threads/save"
+  ]) {
+    assert.ok(production.has(key) && memory.has(key), `missing helper-registered route: ${key}`);
+  }
 
   assert.deepEqual(
     productionOnly,

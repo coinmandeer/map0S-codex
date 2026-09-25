@@ -19,6 +19,7 @@ const permissions = new Set([
   "route:read",
   "weather:read",
   "events:read",
+  "web:read",
   "plans:draft"
 ]);
 
@@ -47,12 +48,22 @@ const source = (sourceId: string, label = "Fixture source") => ({
 });
 
 const inputs: Record<MapAiToolName, Record<string, unknown>> = {
+  derive_radius_area: { radiusKm: 10 },
+  get_night_sky: { point: { longitude: 14, latitude: 50 }, at: "2026-09-23T21:00:00Z" },
+  resolve_location: { query: "Málaga" },
   get_current_map_context: {},
   list_available_layers: {},
   query_layer: {
     layerId: "public-poi",
     bbox: [14.3, 50, 14.6, 50.2],
     filters: { openNow: true, minRating: 4, tags: ["outdoor"] },
+    limit: 10
+  },
+  search_places: {
+    query: "kemp",
+    categories: ["stay.camp_site"],
+    near: { longitude: 14.42, latitude: 50.08 },
+    radiusMeters: 10_000,
     limit: 10
   },
   set_layer_selection_draft: { layerIds: ["public-poi"] },
@@ -90,6 +101,10 @@ const inputs: Record<MapAiToolName, Record<string, unknown>> = {
     to: "2026-09-02T00:00:00.000Z",
     limit: 10
   },
+  get_region_context: { point: { longitude: 14.42, latitude: 50.08 }, zoom: 11, lang: "cs" },
+  get_stats: { point: { longitude: 14.42, latitude: 50.08 }, metrics: ["population"] },
+  web_search: { query: "festivaly Plzeň září 2026", maxResults: 3 },
+  web_fetch: { url: "https://fixture.test/festivaly" },
   create_plan_draft: {
     planId: "plan-1",
     goal: "Přidej dvě zdrojované zastávky.",
@@ -105,6 +120,25 @@ function fixtureHandlers(onCall: (name: string) => void = () => undefined): MapA
       return structuredClone(output);
     };
   return {
+    derive_radius_area: handler("derive_radius_area", {
+      mapResult: { title: "Okruh" },
+      sources: [source("mapos-geometry")]
+    }),
+    get_night_sky: handler("get_night_sky", {
+      at: "2026-09-23T21:00:00Z",
+      timezone: "Europe/Prague",
+      localTime: "23:00",
+      nightStart: null,
+      nightEnd: null,
+      moonAltitudeDeg: 20,
+      moonIlluminatedFraction: 0.5,
+      cloudCoverPercent: 10,
+      skyBrightness: null,
+      limitations: []
+    }),
+    resolve_location: handler("resolve_location", {
+      locations: [{ name: "Málaga", longitude: -4.42, latitude: 36.72 }]
+    }),
     get_current_map_context: handler("get_current_map_context", {
       center: { longitude: 14.42, latitude: 50.08 },
       zoom: 13,
@@ -140,6 +174,30 @@ function fixtureHandlers(onCall: (name: string) => void = () => undefined): MapA
           id: "hidden-1",
           layerId: "private-other",
           title: "Cizí místo",
+          longitude: 14.43,
+          latitude: 50.082,
+          sourceId: "private:hidden"
+        }
+      ],
+      sources: [source("osm:near"), source("private:hidden")]
+    }),
+    search_places: handler("search_places", {
+      places: [
+        {
+          id: "camp-1",
+          layerId: "public-poi",
+          title: "Kemp U Řeky",
+          category: "stay.camp_site",
+          longitude: 14.42,
+          latitude: 50.081,
+          distanceMeters: 120,
+          sourceId: "osm:near"
+        },
+        {
+          id: "camp-hidden",
+          layerId: "private-other",
+          title: "Cizí kemp",
+          category: "stay.camp_site",
           longitude: 14.43,
           latitude: 50.082,
           sourceId: "private:hidden"
@@ -195,6 +253,55 @@ function fixtureHandlers(onCall: (name: string) => void = () => undefined): MapA
         }
       ],
       sources: [source("events:fixture"), source("events:hidden")]
+    }),
+    get_region_context: handler("get_region_context", {
+      region: {
+        name: "Plzeň",
+        level: "locality",
+        hierarchy: ["Plzeňský kraj", "Česko"],
+        countryCode: "CZ"
+      },
+      guide: {
+        lead: "Město ležáku na soutoku čtyř řek.",
+        highlights: [
+          {
+            title: "Velká synagoga",
+            text: "Druhá největší v Evropě.",
+            sourceIds: ["guide:wikivoyage"]
+          }
+        ],
+        practical: { arrival: "Vlakem z Prahy 1:30", warnings: [] }
+      },
+      sources: [source("guide:wikivoyage", "Wikivoyage")]
+    }),
+    get_stats: handler("get_stats", {
+      statistics: [
+        {
+          id: "population",
+          label: "Obyvatelstvo",
+          value: 614_640,
+          unit: "osob",
+          year: 2025,
+          uncertaintyLabel: "Ověřený zdroj",
+          regionName: "Plzeňský kraj",
+          sourceIds: ["wikidata:Q38511"]
+        }
+      ],
+      sources: [source("wikidata:Q38511", "Wikidata")]
+    }),
+    web_search: handler("web_search", {
+      results: [
+        {
+          title: "Festivaly v Plzni",
+          url: "https://fixture.test/festivaly",
+          excerpt: "Přehled festivalů na září."
+        }
+      ]
+    }),
+    web_fetch: handler("web_fetch", {
+      url: "https://fixture.test/festivaly",
+      title: "Festivaly v Plzni",
+      text: "Program festivalu začíná 12. září."
     }),
     create_plan_draft: handler("create_plan_draft", {
       draftId: "plan-draft-1",
@@ -287,14 +394,23 @@ function fixtureRegistry(
   return { registry, nearestCalls: () => nearestCalls };
 }
 
-test("all seven source-grounded domains have complete audited contracts", () => {
+test("all eight source-grounded domains have complete audited contracts", () => {
   const { registry } = fixtureRegistry();
   const descriptors = registry.describe();
   assert.deepEqual(descriptors.map(({ name }) => name).sort(), [...MAP_AI_TOOL_NAMES].sort());
   assert.deepEqual(
     [...new Set(descriptors.map(({ domain }) => domain))].sort(),
     (
-      ["map", "layers", "poi", "route", "weather", "events", "plans"] satisfies AiToolDomain[]
+      [
+        "map",
+        "layers",
+        "poi",
+        "route",
+        "weather",
+        "events",
+        "web",
+        "plans"
+      ] satisfies AiToolDomain[]
     ).sort()
   );
   for (const descriptor of descriptors) {

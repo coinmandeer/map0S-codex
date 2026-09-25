@@ -33,7 +33,7 @@ test("primary controls have names and utility focus returns after Escape", async
   await page.keyboard.press("Enter");
   const drawer = page.getByTestId("right-utility-drawer");
   await expect(drawer).toHaveAttribute("role", "dialog");
-  await expect(drawer.getByRole("button", { name: /Zavřít/ })).toBeFocused();
+  await expect(drawer.getByTestId("right-utility-close")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(drawer).toHaveCount(0);
   await expect(settings).toBeFocused();
@@ -127,3 +127,31 @@ test("Settings stays operable on mobile with 200% text", async ({ page }) => {
   );
   expect(unnamed, "visible Settings controls need an accessible name").toEqual([]);
 });
+
+for (const width of [390, 1440]) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`release layout ${width}px ${theme} remains operable`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/?mode=planning");
+      await page.getByTestId("settings-btn").click();
+      await page.getByTestId(`theme-segmented-${theme}`).click();
+      await expect(page.locator("html")).toHaveClass(new RegExp(`theme-${theme}`));
+      await page.keyboard.press("Escape");
+      await page.getByTestId("layers-btn").click();
+      const drawer = page.getByTestId("right-utility-drawer");
+      await expect(drawer).toBeVisible();
+      await expect
+        .poll(async () => {
+          const rect = await drawer.boundingBox();
+          return !!rect && rect.x >= 0 && rect.x + rect.width <= width + 1;
+        })
+        .toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(
+        false
+      );
+      await page.screenshot({ path: `output/release/visual-${width}-${theme}.png` });
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("layers-btn")).toBeFocused();
+    });
+  }
+}

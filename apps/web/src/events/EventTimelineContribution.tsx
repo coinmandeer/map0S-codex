@@ -16,13 +16,14 @@ import {
   eventTimelinePositionToDay,
   startOfLocalDay
 } from "./timeline";
+import { intlLocale } from "../i18n";
 
 const EMPTY_EVENT_FEATURES: GeoFeature[] = [];
 
 function formatDay(day: number, base: Date): string {
   if (day === 0) return "dnes";
   if (day === 1) return "zítra";
-  return eventDateAtDay(day, base).toLocaleDateString("cs-CZ", {
+  return eventDateAtDay(day, base).toLocaleDateString(intlLocale(), {
     day: "numeric",
     month: "short",
     year: day > 300 ? "numeric" : undefined

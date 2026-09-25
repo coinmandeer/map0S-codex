@@ -4,7 +4,9 @@ export const BASEMAP_GROUP_ORDER: readonly BasemapGroup[] = [
   "street",
   "outdoor",
   "satellite",
-  "terrain"
+  "terrain",
+  "historic",
+  "national"
 ];
 
 export interface BasemapGroupView {

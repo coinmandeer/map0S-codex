@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { SectionAvailability } from "./SectionAvailability";
+import { useEffect, useState, useContext } from "react";
 import { apiGet, ApiError } from "../lib/api";
 
 export type InfoDataState<T> =
@@ -18,6 +19,10 @@ export function useInfoData<T>(
   query: Record<string, string | number | undefined | null>
 ): InfoDataState<T> {
   const [state, setState] = useState<InfoDataState<T>>({ status: "loading" });
+  const report = useContext(SectionAvailability);
+  useEffect(() => {
+    report?.({ empty: state.status === "empty", error: state.status === "error" });
+  }, [state.status, report]);
   const key = `${path}|${JSON.stringify(query)}`;
 
   useEffect(() => {
@@ -29,7 +34,9 @@ export function useInfoData<T>(
     setState({ status: "loading" });
 
     apiGet<T>(path, { query, signal: controller.signal })
-      .then((data) => setState({ status: "ready", data }))
+      .then((data) => {
+        if (!controller.signal.aborted) setState({ status: "ready", data });
+      })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         if (error instanceof ApiError && error.status === 404) {

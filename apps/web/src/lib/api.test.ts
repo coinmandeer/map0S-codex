@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { ApiError, apiPost, apiPostWithMetadata, safeApiRequestId } from "./api.js";
+import { ApiError, apiGet, apiPost, apiPostWithMetadata, safeApiRequestId } from "./api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -60,5 +60,57 @@ describe("shared API correlation metadata", () => {
         headers: { "Content-Type": "application/json", "X-Request-ID": "private?q=coords" }
       });
     assert.equal((await apiPostWithMetadata("/fixture", {})).requestId, null);
+  });
+});
+
+describe("in-flight GET sharing", () => {
+  it("joins identical concurrent GETs into one request and isolates the payloads", async () => {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return new Response(JSON.stringify({ items: [1] }), { status: 200 });
+    };
+    const [a, b] = await Promise.all([
+      apiGet<{ items: number[] }>("/themes", { query: { lang: "cs" } }),
+      apiGet<{ items: number[] }>("/themes", { query: { lang: "cs" } })
+    ]);
+    assert.equal(calls, 1);
+    a.items.push(2);
+    assert.deepEqual(b.items, [1]);
+    await apiGet("/themes", { query: { lang: "cs" } });
+    assert.equal(calls, 2, "a settled request is not reused as a cache");
+  });
+
+  it("keeps the shared request alive while another caller still waits", async () => {
+    let aborted = false;
+    globalThis.fetch = async (_url: RequestInfo | URL, init?: RequestInit) => {
+      init?.signal?.addEventListener("abort", () => (aborted = true));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    };
+    const first = new AbortController();
+    const cancelled = apiGet("/place", { signal: first.signal });
+    const waiting = apiGet<{ ok: boolean }>("/place");
+    first.abort();
+    await assert.rejects(cancelled, (error: unknown) => (error as Error).name === "AbortError");
+    assert.deepEqual(await waiting, { ok: true });
+    assert.equal(aborted, false);
+  });
+
+  it("aborts the network request once every caller has cancelled", async () => {
+    let aborted = false;
+    globalThis.fetch = (_url: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          aborted = true;
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      });
+    const controller = new AbortController();
+    const request = apiGet("/slow", { signal: controller.signal });
+    controller.abort();
+    await assert.rejects(request);
+    assert.equal(aborted, true);
   });
 });

@@ -1,3 +1,4 @@
+import { useSectionEmpty } from "../SectionAvailability";
 import { EmptyState, Skeleton } from "../../ui/primitives";
 import { useInfoData } from "../useInfoData";
 import type { InfoPanelProps } from "../registry";
@@ -36,6 +37,10 @@ export function GeologyPanel({ place }: InfoPanelProps) {
     lat: place.lat.toFixed(4)
   });
 
+  useSectionEmpty(
+    state.status === "empty" ||
+      (state.status === "ready" && !state.data.units.length && !state.data.explanation)
+  );
   if (state.status === "loading") return <Skeleton height={120} />;
   if (state.status !== "ready") {
     return (

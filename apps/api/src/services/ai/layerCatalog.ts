@@ -111,7 +111,12 @@ export function projectAiLayerCatalog(
       description: manifest.description,
       categories: [manifest.category],
       queryCapabilities: queryCapabilities(manifest),
-      availableFields: [...new Set(manifest.ai.searchableFields ?? [])].sort(),
+      availableFields: [
+        ...new Set([
+          ...(manifest.ai.searchableFields ?? []),
+          ...(manifest.ai.semanticProfile?.fields.map((field) => field.field) ?? [])
+        ])
+      ].sort(),
       access,
       allowedTools: [...new Set(manifest.ai.tools ?? [])]
         .filter((tool) => READ_ONLY_AI_TOOLS.has(tool))

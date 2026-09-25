@@ -226,6 +226,9 @@ export function classifyRequestBudget(
     return { bucket: "commerce", limit: 120, windowMs: 60_000 };
   }
   if (/ai|cml|brief|summary/.test(route)) return { bucket: "ai", limit: 30, windowMs: 60_000 };
+  // World REST carries position updates and read queries as POST. Keep its shared-IP
+  // transport budget separate; worldRoutes also enforces per-account/action budgets.
+  if (route.startsWith("/v2/world/")) return { bucket: "world", limit: 6000, windowMs: 60_000 };
   if (route.startsWith("/game/")) return { bucket: "game", limit: 120, windowMs: 60_000 };
   return mutation
     ? { bucket: "mutation", limit: 120, windowMs: 60_000 }

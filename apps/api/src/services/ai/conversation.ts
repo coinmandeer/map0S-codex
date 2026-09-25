@@ -101,7 +101,8 @@ const MAX_SUMMARY_CHARS = 2_000;
 const MAX_STATE_REFERENCES = 12;
 const MAX_STATE_TEXT_CHARS = 320;
 const MAX_MESSAGE_REFERENCES = 20;
-const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+// nanoid identifiers used by the memory host can start with '-' or '_'.
+const IDENTIFIER = /^[A-Za-z0-9_-][A-Za-z0-9._:-]{0,127}$/;
 const DATA_CLASSES = new Set<AiDataClass>([
   "public",
   "account-private",
@@ -351,6 +352,23 @@ export class AiConversationStore {
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID
   ) {}
+
+  /** Rehydrate only server-owned persisted state, never a client-provided conversation. */
+  restore(ownerUserId: string, document: AiConversation): void {
+    if (
+      !document ||
+      document.ownerUserId !== cleanIdentifier(ownerUserId, "owner id") ||
+      !Number.isSafeInteger(document.revision) ||
+      document.revision < 0 ||
+      !Array.isArray(document.messages) ||
+      document.messages.length > AI_CONVERSATION_RAW_MESSAGE_LIMIT ||
+      Buffer.byteLength(JSON.stringify(document)) > 256 * 1024
+    )
+      throw new ConversationNotFoundError("Conversation not found");
+    cleanIdentifier(document.id, "conversation id");
+    cleanScope(document.scope);
+    this.records.set(document.id, clone(document));
+  }
 
   create(ownerUserId: string, scope: AiConversationScope): AiConversation {
     const owner = cleanIdentifier(ownerUserId, "owner id");

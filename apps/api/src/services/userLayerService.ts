@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import type { Bbox } from "@mapos/layer-sdk";
+import type { Bbox, LayerManifestV2 } from "@mapos/layer-sdk";
 import { db } from "../db/index.js";
 import { osmPois, userLayers, userPins } from "../db/schema.js";
 import { ClientError } from "../utils/clientError.js";
@@ -59,6 +59,18 @@ async function ownedLayer(layerId: string, userId: string) {
   return layer;
 }
 
+export async function ownedSourceManifest(
+  layerId: string,
+  userId: string
+): Promise<LayerManifestV2 | null> {
+  const [layer] = await db
+    .select({ manifest: userLayers.sourceManifest })
+    .from(userLayers)
+    .where(and(eq(userLayers.id, layerId), eq(userLayers.userId, userId)))
+    .limit(1);
+  return layer?.manifest ?? null;
+}
+
 export async function listUserLayers(userId: string) {
   const layers = await db.select().from(userLayers).where(eq(userLayers.userId, userId));
   const result = [];
@@ -81,6 +93,44 @@ export async function createUserLayer(userId: string, name: string, color: strin
   const [layer] = await db
     .insert(userLayers)
     .values({ userId, name: clean, color: cleanLayerColor, slug })
+    .returning();
+  return { ...layer!, pinCount: 0 };
+}
+
+/**
+ * A layer that is a remote source rather than a set of pins.
+ *
+ * Kept beside `createUserLayer` rather than folded into it because the two have nothing in
+ * common past the name and the colour: this one has a manifest and no rows, and there is no
+ * point at which a caller would want either shape interchangeably.
+ */
+export async function createSourceLayer(
+  userId: string,
+  input: {
+    name: string;
+    color?: string;
+    sourceUrl: string;
+    sourceManifest: LayerManifestV2;
+    sourceAdapterId: string;
+    isPublic?: boolean;
+  }
+) {
+  const clean = cleanName(input.name, "Název vrstvy");
+  let slug = slugify(clean);
+  const existing = await db.select().from(userLayers).where(eq(userLayers.slug, slug)).limit(1);
+  if (existing.length) slug = `${slug}-${nanoid(4)}`;
+  const [layer] = await db
+    .insert(userLayers)
+    .values({
+      userId,
+      name: clean,
+      color: cleanColor(input.color ?? "#0ea5e9"),
+      slug,
+      isPublic: input.isPublic ? 1 : 0,
+      sourceUrl: input.sourceUrl,
+      sourceManifest: input.sourceManifest,
+      sourceAdapterId: input.sourceAdapterId
+    })
     .returning();
   return { ...layer!, pinCount: 0 };
 }
@@ -235,7 +285,14 @@ export async function getDiscoverPins(countryCode: string, bbox?: Bbox, tag?: st
     .slice(0, limit)
     .map((p) => {
       const layer = layers.find((l) => l.id === p.layerId);
-      return { ...p, layerName: layer?.name ?? "", layerColor: layer?.color ?? "#10b981" };
+      return {
+        ...p,
+        layerName: layer?.name ?? "",
+        layerColor: layer?.color ?? "#10b981",
+        // A pin has no author column of its own; who published it is a property of the layer it
+        // sits in. The feed needs it to answer "from people I follow".
+        layerUserId: layer?.userId ?? null
+      };
     });
 }
 

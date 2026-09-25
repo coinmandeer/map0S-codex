@@ -18,6 +18,25 @@ function fixtureStore() {
   );
 }
 
+test("nanoid owners beginning with dash or underscore retain isolated conversations", () => {
+  const store = fixtureStore();
+  for (const owner of ["-memory-user", "_memory-user"]) {
+    const conversation = store.create(owner, { type: "global" });
+    const updated = store.append(owner, conversation.id, {
+      baseRevision: 0,
+      role: "user",
+      content: "Najdi bar",
+      dataClass: "account-private"
+    });
+    assert.equal(updated.revision, 1);
+    assert.equal(store.get(owner, conversation.id).ownerUserId, owner);
+    assert.throws(() => store.get("other-owner", conversation.id), ConversationNotFoundError);
+  }
+  for (const invalid of ["../owner", "name with spaces", "", "/owner"]) {
+    assert.throws(() => store.create(invalid, { type: "global" }), TypeError);
+  }
+});
+
 test("scoped conversations carry citations/tools/artifacts and require current revision", () => {
   const store = fixtureStore();
   const created = store.create("user-1", { type: "stop", planId: "plan-1", stopId: "stop-2" });

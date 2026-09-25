@@ -5,7 +5,7 @@ const DAY_MS = 86_400_000;
 
 async function openEvents(page: Parameters<typeof stubEvents>[0]) {
   await page.goto("/");
-  await page.getByTestId("overflow-btn").click();
+  await page.getByTestId("layers-btn").click();
   await page.getByTestId("overflow-events").click();
   const drawer = page.getByTestId("right-utility-drawer");
   if (await drawer.isVisible()) await page.getByTestId("right-utility-close").click();
@@ -67,7 +67,9 @@ test.describe("annual events UI", () => {
     await explorer.getByRole("button", { name: /Hudba pod širým nebem/ }).click();
     await expect(page.getByTestId("event-pin-detail")).toContainText("Hudba pod širým nebem");
     await expect(page.getByTestId("event-pin-detail")).toContainText("Event E2E fixture");
-    await page.getByTestId("event-pin-detail").getByRole("button", { name: "✕" }).click();
+    // The detail covers the explorer in the left slot; `arrow_back` is what brings it back.
+    await page.getByTestId("event-pin-detail-back").click();
+    await expect(explorer).toBeVisible();
 
     await explorer.getByLabel("Kategorie událostí").selectOption("");
     await explorer.getByLabel("Cena událostí").selectOption("false");
@@ -81,7 +83,7 @@ test.describe("annual events UI", () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openEvents(page);
-    await page.getByRole("slider", { name: "Výška panelu" }).press("ArrowUp");
+    await page.getByRole("slider", { name: "Panel height" }).press("ArrowUp");
     const explorer = page.getByTestId("event-explorer");
     await explorer.scrollIntoViewIfNeeded();
     await expect(explorer).toBeVisible();

@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import type { Bbox, FeatureCollection } from "@mapos/layer-sdk";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
@@ -156,7 +156,66 @@ async function ensureCellFetched(cell: Cell) {
   await db.insert(park4nightCells).values({ id: cId, cellId: cId });
 }
 
-export async function getPark4nightFeatures(bbox: Bbox): Promise<FeatureCollection> {
+/** The categories the codes above collapse into. Exported so the layer manifest and the filter
+ *  parser cannot drift apart from what `codeToCategory` can actually produce. */
+export const PARK4NIGHT_CATEGORIES = [
+  "p4n-camping",
+  "p4n-aire",
+  "p4n-parking",
+  "p4n-night",
+  "p4n-accommodation",
+  "p4n-other"
+] as const;
+
+/** The five amenity flags the upstream record carries, with the words a reader sees.
+ *
+ *  The ids are the filter's vocabulary and travel in the query string; the labels are for the
+ *  detail sheet. Both are emitted because a sheet listing "water, electricity" is the kind of
+ *  developer-facing text §21 exists to remove, and translating an enum inside the generic detail
+ *  model would put presentation in the wrong layer. */
+const SERVICE_LABELS: Record<string, string> = {
+  water: "Voda",
+  electricity: "Elektřina",
+  wifi: "Wi‑Fi",
+  shower: "Sprcha",
+  toilets: "WC"
+};
+
+export const PARK4NIGHT_SERVICES = Object.keys(SERVICE_LABELS);
+
+export interface Park4nightFilters {
+  categories?: string[];
+  /** All of these must be present, not any — someone filtering for electricity and a shower
+   *  wants both, and a list of places with one of the two is not an answer. */
+  services?: string[];
+  minRating?: number;
+}
+
+function knownValues(raw: string | undefined, allowed: readonly string[]): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => allowed.includes(value));
+}
+
+/** Parses the query string the layer's filters produce. Unknown values are dropped rather than
+ *  passed to SQL, so a hand-edited URL cannot widen the query. */
+export function parsePark4nightFilters(
+  query: Record<string, string | undefined>
+): Park4nightFilters {
+  const rating = Number(query.minRating);
+  return {
+    categories: knownValues(query.categories, PARK4NIGHT_CATEGORIES),
+    services: knownValues(query.services, PARK4NIGHT_SERVICES),
+    ...(Number.isFinite(rating) && rating > 0 ? { minRating: Math.min(rating, 5) } : {})
+  };
+}
+
+export async function getPark4nightFeatures(
+  bbox: Bbox,
+  filters: Park4nightFilters = {}
+): Promise<FeatureCollection> {
   if (!config.park4nightEnabled) {
     return {
       type: "FeatureCollection",
@@ -182,7 +241,16 @@ export async function getPark4nightFeatures(bbox: Bbox): Promise<FeatureCollecti
         gte(park4nightPlaces.lng, w),
         lte(park4nightPlaces.lng, e),
         gte(park4nightPlaces.lat, s),
-        lte(park4nightPlaces.lat, n)
+        lte(park4nightPlaces.lat, n),
+        // Filtering in SQL rather than after the fact matters because of the row limit below:
+        // narrowing in JS would cap at 1000 unfiltered rows first and then hand back a handful,
+        // so a filter would look like an empty map.
+        ...(filters.categories?.length ? [inArray(park4nightPlaces.code, filters.categories)] : []),
+        ...(filters.minRating != null ? [gte(park4nightPlaces.rating, filters.minRating)] : []),
+        // `@>` on a jsonb array is containment, which is the "all of these" the field means.
+        ...(filters.services?.length
+          ? [sql`${park4nightPlaces.services} @> ${JSON.stringify(filters.services)}::jsonb`]
+          : [])
       )
     )
     .limit(1000);
@@ -200,6 +268,9 @@ export async function getPark4nightFeatures(bbox: Bbox): Promise<FeatureCollecti
         rating: r.rating ?? undefined,
         reviews: r.reviews ?? 0,
         services: r.services ?? [],
+        serviceLabels: (r.services ?? [])
+          .map((service) => SERVICE_LABELS[service])
+          .filter((label): label is string => Boolean(label)),
         photo: r.photoThumb ?? undefined,
         externalUrl: `https://park4night.com/en/place/${r.id.replace("p4n-", "")}`
       }

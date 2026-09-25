@@ -1,34 +1,58 @@
-/* MapOS design tokens v2 — Followable identity (warm paper light / near-black amber dark)
-   at a tighter, more modern density. Every value the rest of the CSS consumes lives here;
-   nothing below @layer tokens should hardcode a color, radius, duration or shadow. */
+/* MapOS design tokens v3 — neutral map chrome with a dark-blue accent.
+ *
+ * The identity moved away from warm paper + amber because those hues sat in the same band as
+ * the data on the map: an amber accent is indistinguishable from an amber POI pin. Chrome is
+ * now neutral (white / #1A1D21) and the only saturated colour in the UI is the accent, so
+ * anything coloured on screen is either data or the one thing the user is acting on.
+ *
+ * Every value the rest of the CSS consumes lives here; nothing below `@layer tokens` should
+ * hardcode a colour, radius, duration or shadow. The legacy `--text-*` px scale is kept as a
+ * bridge onto the role scale below so call sites did not all have to change at once — new
+ * code should use the `--type-*` roles.
+ */
 @layer tokens {
   :root {
     /* ---- Type ---------------------------------------------------------- */
-    --font: "Archivo Variable", "Segoe UI", system-ui, sans-serif;
-    --font-display: "Archivo Variable", "Segoe UI", system-ui, sans-serif;
+    --font: "Inter Variable", "Segoe UI", system-ui, sans-serif;
+    /* Kept as a separate name so a display face can come back later; today it is one family. */
+    --font-display: var(--font);
     --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font-icon: "Material Symbols Rounded Subset";
 
-    /* Archivo's width axis is the Followable signature — display type is set slightly
-       expanded and tight-tracked, body stays at normal width for legibility. */
-    --display-stretch: 112%;
-    --display-tracking: -0.03em;
+    /* Archivo's width/tracking axes were the old signature. Inter has no width axis and the
+       tricks made headings drift out of the 4 px grid, so both are neutralised rather than
+       removed — call sites still reference them. */
+    --display-stretch: 100%;
+    --display-tracking: 0em;
 
-    --text-3xl: 26px;
-    --text-2xl: 21px;
-    --text-xl: 17px;
-    --text-lg: 15px;
+    /* Role scale (§2.3). size / line-height / weight. */
+    --type-title-lg: 600 20px / 26px var(--font);
+    --type-title-md: 600 16px / 22px var(--font);
+    --type-title-sm: 600 14px / 20px var(--font);
+    --type-body-md: 400 14px / 20px var(--font);
+    --type-body-sm: 400 13px / 18px var(--font);
+    --type-label-md: 500 12px / 16px var(--font);
+    --type-label-sm: 500 11px / 16px var(--font);
+    --type-data-lg: 600 22px / 28px var(--font);
+    --type-data-sm: 600 14px / 20px var(--font);
+
+    /* Legacy px scale, collapsed onto the role sizes above. */
+    --text-3xl: 22px;
+    --text-2xl: 20px;
+    --text-xl: 16px;
+    --text-lg: 14px;
     --text-md: 14px;
     --text-sm: 13px;
     --text-xs: 12px;
     --text-2xs: 11px;
-    --text-3xs: 10px;
+    --text-3xs: 11px;
 
-    --weight-body: 450;
-    --weight-medium: 550;
-    --weight-strong: 650;
-    --weight-display: 750;
+    --weight-body: 400;
+    --weight-medium: 500;
+    --weight-strong: 600;
+    --weight-display: 600;
 
-    /* ---- Space --------------------------------------------------------- */
+    /* ---- Space (4 px grid) --------------------------------------------- */
     --space-1: 2px;
     --space-2: 4px;
     --space-3: 6px;
@@ -39,24 +63,52 @@
     --space-8: 20px;
     --space-9: 24px;
 
-    /* ---- Radii (v2: 16 -> 12 base, chrome reads tighter) ---------------- */
-    --radius-xs: 8px;
-    --radius-sm: 10px;
-    --radius: 12px;
-    --radius-lg: 16px;
-    --radius-xl: 20px;
+    /* ---- Radii (§2.4) -------------------------------------------------- */
+    --radius-xs: 6px; /* chip, badge */
+    --radius-sm: 8px; /* input, button, list hover */
+    --radius-md: 10px; /* between an input and a card; the only in-between step */
+    --radius: 12px; /* card, popover, menu */
+    --radius-lg: 16px; /* drawer, sheet, dialog */
+    --radius-xl: 16px; /* alias — the shape scale stops at lg */
     --radius-pill: 999px;
 
     /* ---- Control sizing ------------------------------------------------ */
-    --control-h: 38px;
+    --control-h: 36px;
+    --control-h-lg: 40px; /* top bar, primary CTA */
     --control-h-sm: 32px;
+    /* What a small icon button *looks* like. Separate from `--control-h-sm` because on a phone
+       the box grows to the tap target while the drawn circle stays this size. */
+    --control-visual-sm: 32px;
     /* Minimum comfortable touch target — never shrink interactive chrome below this. */
     --tap-min: 44px;
+    --list-row-h: 44px;
+    --list-row-h-lg: 56px; /* two lines of text */
 
     /* ---- Layout -------------------------------------------------------- */
-    --sidebar-w: 368px;
-    --modebar-h: 108px;
+    --sidebar-w: 360px;
+    --drawer-w: 380px;
+    --topbar-h: 48px;
+    --chrome-inset: 12px;
+    /* Bottom edge of the floating top bar plus a gap — the y anything else floating over the
+       map starts at. This used to be measured from the DOM by a ResizeObserver, which meant
+       the first paint used a 108 px guess and then jumped; it is a constant now because the
+       bar is one fixed-height pill. */
+    --chrome-top: calc(var(--safe-top) + var(--chrome-inset) + var(--topbar-h) + var(--space-2));
+    /* Legacy name, kept so older rules keep resolving to the same y. */
+    --modebar-h: var(--chrome-top);
+    /* Written by the panel and drawer while they are open, so the top bar can centre itself
+       over the remaining map area instead of over the whole window. */
+    --sidebar-w-open: 0px;
+    --drawer-w-open: 0px;
     --bottom-nav-h: 0px;
+    /* Vertical space the floating desktop mode switcher occupies, gap included, published by
+       `DesktopModeBar` while it is on screen. Zero on a phone, where `--bottom-nav-h` is the
+       same measurement for the navigation bar. */
+    --modebar-bottom-h: 0px;
+    /* Height of the open mobile sheet, published by PanelShell while it is on screen (§21.2).
+       The map's bottom chrome rides on top of it. */
+    --sheet-h: 0px;
+    --map-strip-h: 112px; /* map left visible above a full-height mobile sheet (§21.2) */
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-left: env(safe-area-inset-left, 0px);
@@ -64,46 +116,90 @@
     --visual-viewport-h: 100dvh;
     --visual-viewport-offset-top: 0px;
 
-    /* ---- Motion -------------------------------------------------------- */
-    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    /* ---- Stacking -------------------------------------------------------
+       The order that matters: the scrim dims the map but never the bottom nav, and the bottom
+       nav stays above the sheet so mode switching keeps working while a panel is open (§21.2).
+       Popovers outrank dialogs because the search popover opens from a bar that can itself
+       float above a dialog. */
+    --z-map-control: 5;
+    --z-footer: 10;
+    /* Above the scrim: search, Vrstvy and Podklady are chrome, not content behind the sheet, and
+       an open sheet must not make them unreachable. Still below the panel itself (§3.1). */
+    --z-topbar: 28;
+    --z-scrim: 25;
+    --z-panel: 30;
+    --z-drawer: 32;
+    --z-bottom-nav: 35;
+    --z-dialog: 50;
+    --z-popover: 60;
+    --z-toast: 70;
+
+    /* ---- Motion (§2.5) -------------------------------------------------- */
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emph-decel: cubic-bezier(0.05, 0.7, 0.1, 1);
+    --ease-emph-accel: cubic-bezier(0.3, 0, 0.8, 0.15);
+    /* Legacy names, remapped onto the M3 curves. */
+    --ease: var(--ease-standard);
+    --ease-out: var(--ease-emph-decel);
+    --ease-in-out: var(--ease-standard);
     --dur-fast: 120ms;
-    --dur: 180ms;
-    --dur-slow: 260ms;
+    --dur: 200ms;
+    --dur-slow: 250ms;
+    --dur-enter: 350ms;
+    --dur-exit: 200ms;
 
-    /* ---- Color: light (Followable warm paper) -------------------------- */
-    --bg: #f8f5ef;
-    --bg-gradient:
-      radial-gradient(circle at top left, rgba(219, 201, 166, 0.26), transparent 36%),
-      linear-gradient(180deg, #f6f1e8 0%, #f3efe8 45%, #f8f5ef 100%);
-    --surface: rgba(255, 255, 255, 0.78);
+    /* ---- State layers (M3) ---------------------------------------------
+       Applied as an ::after overlay at these opacities, never by swapping background,
+       so a hovered element keeps whatever surface it sits on. */
+    --state-hover: 0.08;
+    --state-focus: 0.12;
+    --state-pressed: 0.12;
+    --state-drag: 0.16;
+
+    /* ---- Colour: light -------------------------------------------------- */
+    --bg: #f8f9fa;
+    /* The map is the background; chrome sits on it, so no decorative gradient. */
+    --bg-gradient: none;
+    --surface: rgba(255, 255, 255, 0.92);
     --surface-solid: #ffffff;
-    --surface-elevated: #f5f1ea;
-    --surface-sunken: rgba(120, 113, 108, 0.09);
-    --text: #171717;
-    --text-muted: #6b6b67;
-    --text-faint: #9a9793;
-    --accent: #b7791f;
-    --accent-soft: rgba(183, 121, 31, 0.16);
-    --accent-hover: #a5670f;
+    --surface-elevated: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-sunken: #f1f3f4;
+    --surface-inverse: #101114;
+    --surface-hover: rgba(31, 31, 31, 0.06);
+    --text: #1f1f1f;
+    --text-primary: #1f1f1f;
+    --text-inverse: #ffffff;
+    --text-muted: #5f6368;
+    /* The lightest text in the system, and still 4.5:1 on `--surface-solid`. The previous
+       #9aa0a6 was 2.4:1, which the audit caught on every supporting line in a panel — a
+       "quieter" grey is not worth a line the user has to squint at. */
+    --text-faint: #70757a;
+    --accent: #1e4fd8;
+    --accent-soft: rgba(30, 79, 216, 0.1);
+    --accent-hover: #173fb0;
     --accent-contrast: #ffffff;
-    --border: rgba(23, 23, 23, 0.12);
-    --border-strong: rgba(23, 23, 23, 0.2);
-    --scrim: rgba(28, 25, 23, 0.35);
+    --border: rgba(31, 31, 31, 0.1);
+    --border-strong: rgba(31, 31, 31, 0.18);
+    --scrim: rgba(31, 31, 31, 0.32);
 
-    --danger: #c2410c;
-    --success: #15803d;
-    --warning: #b45309;
+    --danger: #b3261e;
+    --success: #1e7f43;
+    --warning: #b26a00;
+    --info: #1e4fd8;
 
-    --shadow-sm: 0 2px 10px rgba(23, 23, 23, 0.08);
-    --shadow: 0 10px 30px rgba(23, 23, 23, 0.12);
-    --shadow-md: 0 10px 30px rgba(23, 23, 23, 0.12);
-    --shadow-lg: 0 24px 60px rgba(23, 23, 23, 0.18);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.16);
 
-    --blur: blur(14px);
+    --blur: blur(16px);
 
-    /* ---- Layer accents: one vivid hue per data domain ------------------ */
-    --layer-poi: #b7791f;
+    /* ---- Layer accents: one hue per data domain ------------------------
+       The default POI hue is deliberately neutral grey: the accent blue means "the UI is
+       talking to you", and a blue pin would read as a control rather than as data. */
+    --layer-poi: #5f6368;
     --layer-nature: #2f855a;
     --layer-gastro: #c05621;
     --layer-stay: #2b6cb0;
@@ -114,42 +210,49 @@
     --layer-user: #0f766e;
 
     font-family: var(--font);
-    font-size: 15px;
+    font-size: 14px;
     font-weight: var(--weight-body);
-    line-height: 1.4;
+    line-height: 1.43;
     font-synthesis-weight: none;
+    /* cv11 = single-storey a, ss01 = alternate digits; both read better at 11–13 px. */
+    font-feature-settings: "cv11", "ss01";
   }
 
   .theme-dark {
-    --bg: #0d0d0d;
-    --bg-gradient:
-      radial-gradient(circle at top left, rgba(79, 63, 35, 0.35), transparent 42%),
-      linear-gradient(180deg, #0b0b0b 0%, #0f0f0f 55%, #141414 100%);
-    --surface: rgba(21, 21, 21, 0.72);
-    --surface-solid: #151515;
-    --surface-elevated: #1c1c1c;
-    --surface-sunken: rgba(255, 255, 255, 0.06);
-    --text: #f5f5f4;
-    --text-muted: #a8a29e;
-    --text-faint: #78716c;
-    --accent: #c9903a;
-    --accent-soft: rgba(201, 144, 58, 0.2);
-    --accent-hover: #dba34c;
-    --accent-contrast: #16130d;
-    --border: rgba(255, 255, 255, 0.12);
-    --border-strong: rgba(255, 255, 255, 0.22);
-    --scrim: rgba(0, 0, 0, 0.55);
+    --bg: #111316;
+    --bg-gradient: none;
+    --surface: rgba(26, 29, 33, 0.92);
+    --surface-solid: #1a1d21;
+    --surface-elevated: #22262b;
+    --surface-raised: #22262b;
+    --surface-sunken: #15181b;
+    --surface-inverse: #050608;
+    --surface-hover: rgba(255, 255, 255, 0.08);
+    --text: #e8eaed;
+    --text-primary: #e8eaed;
+    --text-inverse: #ffffff;
+    --text-muted: #9aa0a6;
+    --text-faint: #878c92;
+    --accent: #8ab4f8;
+    --accent-soft: rgba(138, 180, 248, 0.16);
+    --accent-hover: #a8c7fa;
+    --accent-contrast: #0b2a6b;
+    --border: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --scrim: rgba(0, 0, 0, 0.56);
 
-    --danger: #f97316;
-    --success: #4ade80;
-    --warning: #fbbf24;
+    --danger: #f2b8b5;
+    --success: #6dd58c;
+    --warning: #f5c66b;
+    --info: #8ab4f8;
 
-    --shadow-sm: 0 2px 16px rgba(0, 0, 0, 0.45);
-    --shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
-    --shadow-md: 0 14px 34px rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 28px 70px rgba(0, 0, 0, 0.62);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.62);
 
-    --layer-poi: #d9a441;
+    --layer-poi: #bdc1c6;
     --layer-nature: #4ade80;
     --layer-gastro: #fb923c;
     --layer-stay: #60a5fa;
@@ -160,24 +263,37 @@
     --layer-user: #2dd4bf;
   }
 
+  /* Game mode is the one place the chrome is allowed a different accent — it is a world you
+     switch into, and the violet is the Aavegotchi identity rather than a MapOS colour. */
   [data-experience="aavegotchi"] {
-    --accent: #9c4dcc;
-    --accent-hover: #7e35ad;
-    --accent-soft: rgba(156, 77, 204, 0.18);
-    --layer-game: #b86fe3;
+    --accent: #7c3aed;
+    --accent-hover: #6428d4;
+    --accent-soft: rgba(124, 58, 237, 0.12);
+    --layer-game: #7c3aed;
   }
 
   [data-experience="aavegotchi"].theme-dark {
-    --accent: #d28cff;
-    --accent-hover: #e0adff;
-    --accent-soft: rgba(210, 140, 255, 0.2);
+    --accent: #c4a5ff;
+    --accent-hover: #d6c1ff;
+    --accent-soft: rgba(196, 165, 255, 0.18);
+    --accent-contrast: #2a0f5c;
+    --layer-game: #c4a5ff;
   }
 
-  @media (max-width: 767px) {
+  @media (max-width: 899px) {
     :root {
-      --modebar-h: 104px;
-      --bottom-nav-h: 60px;
+      /* The pill's border and padding come out of this, so 44 px here left the search field —
+         the primary entry point on a phone — at 40 px. 48 px gives the field the tap target. */
+      --topbar-h: 48px;
+      --bottom-nav-h: 64px;
       --sidebar-w: 100%;
+      --drawer-w: 100%;
+      /* Everything the finger can reach grows to the tap target, the small scale included —
+         a 32 px control is a comfortable mouse target and an uncomfortable thumb one. */
+      --control-h: var(--tap-min);
+      --control-h-lg: var(--tap-min);
+      --control-h-sm: var(--tap-min);
+      --list-row-h: var(--tap-min);
     }
   }
 
@@ -186,6 +302,8 @@
       --dur-fast: 1ms;
       --dur: 1ms;
       --dur-slow: 1ms;
+      --dur-enter: 1ms;
+      --dur-exit: 1ms;
     }
 
     *,

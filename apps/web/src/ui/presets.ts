@@ -8,6 +8,9 @@ export interface PinStyle {
 }
 
 export const PIN_STYLES: Record<string, PinStyle> = {
+  aircraft: { color: "#0EA5E9", label: "Letadlo", icon: "✈", group: "transport" },
+  "aircraft-ground": { color: "#64748B", label: "Letadlo na zemi", icon: "✈", group: "transport" },
+  vessel: { color: "#0F766E", label: "Loď", icon: "⚓", group: "transport" },
   viewpoint: { color: "#0D9488", label: "Vyhlídka", icon: "△", group: "nature" },
   waterfall: { color: "#0891B2", label: "Vodopád", icon: "≈", group: "nature" },
   lake: { color: "#0284C7", label: "Voda", icon: "○", group: "nature" },
@@ -25,6 +28,11 @@ export const PIN_STYLES: Record<string, PinStyle> = {
   restaurant: { color: "#DC2626", label: "Restaurace", icon: "🍴", group: "food" },
   brewery: { color: "#CA8A04", label: "Pivovar", icon: "🍺", group: "food" },
   shop: { color: "#7C3AED", label: "Obchod", icon: "▤", group: "services" },
+  cannabis: { color: "#16A34A", label: "Cannabis prodejna", icon: "▤", group: "services" },
+  "weed-dispensary": { color: "#0F766E", label: "Léčebná výdejna", icon: "✚", group: "services" },
+  "weed-shop": { color: "#16A34A", label: "Rekreační prodejna", icon: "▤", group: "services" },
+  "weed-both": { color: "#7C3AED", label: "Léčebná i rekreační", icon: "✚", group: "services" },
+  "weed-unknown": { color: "#64748B", label: "Typ neuveden", icon: "?", group: "services" },
   parking: { color: "#475569", label: "Parkování", icon: "P", group: "services" },
   fuel: { color: "#334155", label: "Palivo", icon: "⛽", group: "services" },
   charging: { color: "#16A34A", label: "EV", icon: "⚡", group: "services" },
@@ -39,14 +47,39 @@ export const PIN_STYLES: Record<string, PinStyle> = {
   fitness_trail: { color: "#65A30D", label: "Fitness", icon: "💪", group: "sport" },
   fitness_centre: { color: "#4D7C0F", label: "Posilovna", icon: "◆", group: "sport" },
   disc_golf: { color: "#0D9488", label: "Disc golf", icon: "🥏", group: "sport" },
+  golf: { color: "#15803D", label: "Golf", icon: "⛳", group: "sport" },
   skatepark: { color: "#7C3AED", label: "Skatepark", icon: "🛹", group: "sport" },
   swimming: { color: "#0284C7", label: "Koupaliště", icon: "🏊", group: "sport" },
   sports_centre: { color: "#4338CA", label: "Sportoviště", icon: "🏟", group: "sport" },
   "user-pin": { color: "#059669", label: "Můj pin", icon: "★", group: "user" },
+  airport: { color: "#1D4ED8", label: "Letiště", icon: "✈", group: "services" },
+  helipad: { color: "#2563EB", label: "Heliport", icon: "✈", group: "services" },
+  bitcoin_atm: { color: "#F7931A", label: "Bitcoinmat", icon: "₿", group: "services" },
+  bitcoin: { color: "#F7931A", label: "Platba Bitcoinem", icon: "₿", group: "services" },
+  atm: { color: "#2563EB", label: "Bankomat", icon: "🏧", group: "services" },
+  bank: { color: "#1E40AF", label: "Banka", icon: "🏦", group: "services" },
+  lighthouse: { color: "#B45309", label: "Maják", icon: "🗼", group: "nature" },
+  caravan_site: { color: "#0E7490", label: "Stání pro karavany", icon: "🚐", group: "stay" },
+  dump_station: { color: "#7C3AED", label: "Výlevka", icon: "🛢", group: "services" },
   "p4n-camping": { color: "#0EA5A4", label: "Kemp (P4N)", icon: "🚐", group: "p4n" },
   "p4n-parking": { color: "#0891B2", label: "Parkování (P4N)", icon: "🚐", group: "p4n" },
   "p4n-aire": { color: "#0D9488", label: "Servisní místo (P4N)", icon: "🚐", group: "p4n" },
-  "p4n-other": { color: "#14B8A6", label: "Místo (P4N)", icon: "🚐", group: "p4n" }
+  // These two arrive from `codeToCategory` like the rest; without an entry their pins fell
+  // through to the generic colour, so "nocování povoleno" looked like an unclassified place —
+  // and that is the distinction someone looking for somewhere to sleep is looking for.
+  "p4n-night": { color: "#0F766E", label: "Nocování povoleno (P4N)", icon: "🚐", group: "p4n" },
+  "p4n-accommodation": {
+    color: "#0369A1",
+    label: "Placené ubytování (P4N)",
+    icon: "🚐",
+    group: "p4n"
+  },
+  "p4n-other": { color: "#14B8A6", label: "Místo (P4N)", icon: "🚐", group: "p4n" },
+  // Quest anchors. The four external sources produce categories of their own, and telling a
+  // geocache apart from a note that needs answering is the whole choice a player makes.
+  geocache: { color: "#7C3AED", label: "Keš", icon: "◈", group: "quest" },
+  survey: { color: "#2563EB", label: "Ověřit v mapě", icon: "?", group: "quest" },
+  territory: { color: "#DB2777", label: "Zóna k zabrání", icon: "⬡", group: "quest" }
 };
 
 export function pinColor(category: string | undefined, fallback = "#B7791F"): string {
@@ -66,88 +99,7 @@ export const PRIMARY_POI_CHIPS: OsmPoiCategoryId[] = [
   "camp_site"
 ];
 
-export interface MapPreset {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  layers: string[];
-  categories?: OsmPoiCategoryId[];
-}
-
-export const MAP_PRESETS: MapPreset[] = [
-  {
-    id: "day-trip",
-    name: "Výlet",
-    description: "Hrady, vyhlídky, voda, vrcholy a přírodní parky",
-    icon: "🧭",
-    layers: ["osm-poi"],
-    categories: [
-      "castle",
-      "palace",
-      "ruins",
-      "viewpoint",
-      "lake",
-      "peak",
-      "observation_tower",
-      "nature_park",
-      "parking",
-      "museum"
-    ]
-  },
-  {
-    id: "city",
-    name: "Město",
-    description: "Kavárny, obchody, jídlo, kultura, bary a pivovary",
-    icon: "🏙",
-    layers: ["osm-poi"],
-    categories: ["cafe", "shop", "restaurant", "bar", "brewery", "museum", "monument", "parking"]
-  },
-  {
-    id: "travel",
-    name: "Cestování",
-    description: "Kempy, služby a otevřená vanlife místa",
-    icon: "🚐",
-    layers: ["osm-poi", "vanlife"],
-    categories: [
-      "camp_site",
-      "caravan_site",
-      "shelter",
-      "fuel",
-      "charging",
-      "drinking_water",
-      "toilets",
-      "shower",
-      "dump_station",
-      "parking"
-    ]
-  },
-  {
-    id: "sport",
-    name: "Sport",
-    description: "Ferraty, lezení, skateparky, koupaliště",
-    icon: "🧗",
-    // Trail overlays turn a set of points into something you can actually plan around: the
-    // ferrata is only useful next to the path that reaches it.
-    layers: ["osm-poi", "waymarked-trails"],
-    categories: [
-      "via_ferrata",
-      "climbing",
-      "disc_golf",
-      "skatepark",
-      "swimming",
-      "fitness_trail",
-      "fitness_centre",
-      "sports_centre"
-    ]
-  }
-];
-
-export const CATEGORY_GROUPS = [
-  { id: "nature", label: "Příroda" },
-  { id: "culture", label: "Kultura" },
-  { id: "food", label: "Jídlo" },
-  { id: "services", label: "Služby" },
-  { id: "stay", label: "Ubytování" },
-  { id: "sport", label: "Sport" }
-] as const;
+// The preset catalogue is data owned by the product, not by this UI module; the store applies
+// presets and the architecture check keeps `store/` out of `ui/`. Re-exported here so the drawer,
+// the strip and existing importers keep one import path.
+export { MAP_PRESETS, CATEGORY_GROUPS, type MapPreset } from "../product/presets";

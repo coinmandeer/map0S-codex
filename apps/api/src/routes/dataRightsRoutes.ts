@@ -26,6 +26,8 @@ export interface DataRightsRouteDependencies {
   service: DataRightsService;
   resolveUserId(request: FastifyRequest): Promise<string | null> | string | null;
   clearSession(reply: FastifyReply): void;
+  eraseWorld?(userId: string): Promise<void>;
+  exportWorld?(userId: string): Promise<unknown>;
 }
 
 function privateNoStore(reply: FastifyReply): void {
@@ -66,7 +68,9 @@ export function registerDataRightsRoutes(
       try {
         const exported = await dependencies.service.exportAccount(userId);
         reply.header("Content-Disposition", 'attachment; filename="mapos-account-export.json"');
-        return exported;
+        return dependencies.exportWorld
+          ? { ...exported, world: await dependencies.exportWorld(userId) }
+          : exported;
       } catch (error) {
         return notFound(reply, error);
       }
@@ -81,6 +85,7 @@ export function registerDataRightsRoutes(
       const userId = await owner(request, reply, dependencies);
       if (!userId) return;
       try {
+        await dependencies.eraseWorld?.(userId);
         const result = await dependencies.service.deleteAccount(userId);
         dependencies.clearSession(reply);
         return result;

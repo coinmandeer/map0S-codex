@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { resolveAreaSelection } from "../geo/areaSelection.js";
 import type { Bbox } from "@mapos/layer-sdk";
 import {
   discoverContextService,
@@ -47,6 +48,8 @@ export function registerDiscoverContextRoutes(
   const service = options.service ?? discoverContextService;
   app.get<{
     Querystring: {
+      areaId?: string;
+      boundaryRevision?: string;
       lng?: string;
       lat?: string;
       zoom?: string;
@@ -77,6 +80,12 @@ export function registerDiscoverContextRoutes(
       return reply.code(400).send({
         message: error instanceof Error ? error.message : "Invalid discover context request"
       });
+    }
+    input.area = (await resolveAreaSelection(request.query)) ?? undefined;
+    if (input.area) {
+      input.bbox = input.area.bbox;
+      input.lng = (input.area.bbox[0] + input.area.bbox[2]) / 2;
+      input.lat = (input.area.bbox[1] + input.area.bbox[3]) / 2;
     }
     const context = await service.get(input);
     const maxAge = context.cache.hit ? 300 : 60;

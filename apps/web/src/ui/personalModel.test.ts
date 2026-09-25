@@ -4,7 +4,8 @@ import type { SavedPlaceV2 } from "@mapos/layer-sdk";
 import {
   filterPersonalPlaces,
   personalCategoryCounts,
-  personalCategoryLabel
+  personalCategoryLabel,
+  walletSubtitle
 } from "./personalModel";
 
 function place(id: string, title: string, category: string, tags: string[] = []): SavedPlaceV2 {
@@ -61,4 +62,24 @@ test("text and category filters compose and search title, note or tags", () => {
 
 test("unknown categories keep a stable readable fallback", () => {
   assert.equal(personalCategoryLabel("quiet_spot"), "quiet spot");
+});
+
+test("a wallet row shows the network and balance only when the chain actually said so", () => {
+  const wallet = { subject: "0x1234567890abcdef1234567890abcdef12345678", simulated: false };
+  assert.equal(
+    walletSubtitle(wallet, { networkName: "Base", balance: 1.2345, symbol: "ETH" }),
+    "0x1234…5678 · Base · 1.235 ETH"
+  );
+  // Locked wallet, or one not authorised for this site: the ordinary state of a freshly opened
+  // page. Showing less is right; showing a zero balance would be a fabrication.
+  assert.equal(walletSubtitle(wallet, null), "0x1234…5678");
+});
+
+test("a simulated identity is labelled as one and never given a network", () => {
+  const simulated = { subject: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd", simulated: true };
+  assert.equal(
+    walletSubtitle(simulated, { networkName: "Ethereum", balance: 5, symbol: "ETH" }),
+    "0xabcd…abcd · simulace",
+    "there is no chain behind a simulation, so it cannot report one"
+  );
 });

@@ -37,9 +37,11 @@ export function stableViewportKey(viewport: DiscoverViewport): string {
   const cell = Math.max(0.0005, (360 / (256 * 2 ** Math.max(0, viewport.zoom))) * 32);
   const bucket = (value: number) => Math.round(value / cell);
   return [
-    zoomBand(viewport.zoom),
-    bucket(viewport.lng),
-    bucket(viewport.lat),
+    viewport.areaId ?? "",
+    viewport.boundaryRevision ?? "",
+    viewport.areaId ? "selected-area" : zoomBand(viewport.zoom),
+    viewport.areaId ? "" : bucket(viewport.lng),
+    viewport.areaId ? "" : bucket(viewport.lat),
     viewport.useCase?.trim().toLowerCase() || "general",
     layerKey(viewport),
     viewport.allowModelFallback ? "model" : "structured"
@@ -51,10 +53,13 @@ export function isMeaningfulViewportChange(
   previous: DiscoverViewport,
   next: DiscoverViewport
 ): boolean {
-  if (zoomBand(previous.zoom) !== zoomBand(next.zoom)) return true;
+  if (previous.areaId !== next.areaId || previous.boundaryRevision !== next.boundaryRevision)
+    return true;
+  if (!next.areaId && zoomBand(previous.zoom) !== zoomBand(next.zoom)) return true;
   if ((previous.useCase ?? "") !== (next.useCase ?? "")) return true;
   if (layerKey(previous) !== layerKey(next)) return true;
   if (Boolean(previous.allowModelFallback) !== Boolean(next.allowModelFallback)) return true;
+  if (next.areaId) return false;
   const previousBox = previous.bbox;
   const nextBox = next.bbox;
   if (previousBox && nextBox) {
@@ -155,7 +160,7 @@ export class StableViewportController<T> {
       });
       return;
     }
-    this.setState({ ...this.state, status: "waiting", key, error: null });
+    this.setState({ ...this.state, data: null, status: "waiting", key, error: null });
     this.timer = this.setTimer(() => {
       this.timer = null;
       void this.startRequest(viewport, key);

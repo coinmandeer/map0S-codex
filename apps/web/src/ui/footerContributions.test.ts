@@ -70,24 +70,44 @@ describe("footer timeline contributions", () => {
     );
   });
 
+  it("does not create an empty footer for dated sources without a timeline controller", () => {
+    const manifests = new Map([
+      ["earthquakes", manifest("earthquakes")],
+      ["theme-population", manifest("theme-population")]
+    ]);
+    assert.deepEqual(
+      timelineContributions({ earthquakes: { visible: true } }, null, (id) => manifests.get(id)),
+      []
+    );
+    assert.deepEqual(
+      timelineContributions(
+        { earthquakes: { visible: true }, "theme-population": { visible: true } },
+        null,
+        (id) => manifests.get(id)
+      ).map((c) => c.id),
+      ["layer:theme-population"]
+    );
+  });
+
   it("registers weather exactly once in the shared TimelineHost", () => {
     const result = timelineContributions({ weather: { visible: true } }, plan, () =>
       manifest("weather", 20)
     );
     assert.equal(result.filter(({ id }) => id === "layer:weather").length, 1);
     assert.equal(result.filter(({ kind }) => kind === "layer").length, 1);
-    assert.equal(result.filter(({ kind }) => kind === "dated-plan").length, 1);
+    assert.equal(result.filter(({ kind }) => kind === "dated-plan").length, 0);
   });
 
-  it("adds a dated plan but ignores an invalid or absent date", () => {
+  it("keeps the trip timeline hidden without deleting departure or hiding temporal layers", () => {
     assert.deepEqual(
       timelineContributions({}, plan, () => undefined).map(({ id }) => id),
-      ["plan:plan-1"]
+      []
     );
     assert.deepEqual(
       timelineContributions({}, { ...plan, departureAt: "" }, () => undefined),
       []
     );
+    assert.equal(plan.departureAt, "2026-09-02T08:00:00.000Z");
   });
 });
 

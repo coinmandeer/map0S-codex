@@ -1,0 +1,1754 @@
+# Kontrolní kolo — phase-1
+
+Vygenerováno `node e2e/visual-audit.mjs phase-1` · 2026-09-02 20:52
+
+Audit kontroluje překryvy textu, velikost cílů dotyku, přístupné názvy, vodorovné přetečení,
+kontrast 4.5:1 a zanoření ohraničených ploch. Prázdná sekce = bez nálezů.
+
+## 01-map-1440-light
+
+Bez nálezů.
+
+## 02-search-empty-1440-light
+
+Bez nálezů.
+
+## 03-search-ai-1440-light
+
+Bez nálezů.
+
+## 04-personal-1440-light
+
+- overlap: span "Zatím žádný plán." × strong "Moje místa" (86×10 px)
+- overlap: span "Zatím žádné uložené místo." × strong "Moje vrstvy" (101×10 px)
+- overlap: span "Zatím žádná vlastní vrstva." × strong "Hra" (28×10 px)
+- contrast 4.25:1 < 4.5: span "Cesty a rozpracované itinerá"
+- contrast 4.25:1 < 4.5: span "Soukromé body, kolekce a poz"
+- contrast 4.25:1 < 4.5: span "Vlastní data, importy a publ"
+- contrast 4.25:1 < 4.5: span "XP a aktivní světy"
+- nested surfaces: 20 boxed elements inside another boxed element (div.mine-avatar "P", button.btn "Nový plán", button.btn "Zaměřit moje místa", div "1aktivní hry")
+- density: 2 primary buttons above the fold (max 1): button.btn "Nový plán", [data-testid="new-plan"] "＋ Nový plán"
+- alignment: 3 text nodes start at 87 px, off the 4 px grid
+- alignment: 8 text nodes start at 67 px, off the 4 px grid
+- alignment: 4 text nodes start at 25 px, off the 4 px grid
+
+## 05-discover-1440-light
+
+- nested surfaces: 13 boxed elements inside another boxed element (span.discover-hero-icon, button.btn "Zjistit co je tady", span.discover-contribute-icon, button.btn "Přidat místní znalost")
+- density: 2 primary buttons above the fold (max 1): button.btn "Zjistit co je tady", button.btn "Přidat místní znalost"
+- alignment: 2 text nodes start at 75 px, off the 4 px grid
+- alignment: 7 text nodes start at 29 px, off the 4 px grid
+- alignment: 4 text nodes start at 81 px, off the 4 px grid
+- alignment: 2 text nodes start at 67 px, off the 4 px grid
+
+## 06-planning-empty-1440-light
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (261×17 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×5 px)
+- overlap: span "Rychlá" × strong "Počasí" (103×4 px)
+- overlap: span "Rychlá" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Podporováno" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: span "Krátká" × strong "Doprava" (103×4 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Fallback" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: small "Fallback" × h3 "Zastávky" (44×9 px)
+- overlap: small "Fallback" × span "2 celkem · bez limitu provid" (137×9 px)
+- overlap: span "Request: osm · profile=car ·" × span "51.00000, 10.20000" (46×7 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="pick-stop-1"] "Vybrat na mapě" (114×16 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="locate-stop-1"] "Moje poloha" (93×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (267×14 px)
+- tap target 15×15 < 32: input
+- tap target 15×15 < 32: input
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- contrast 3.86:1 < 4.5: small "Podporováno"
+- contrast 4.18:1 < 4.5: span "Rychle přidat z viditelných "
+- contrast 4.18:1 < 4.5: span "0 min"
+- contrast 4.18:1 < 4.5: span "hotových úseků"
+- contrast 4.11:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- contrast 4.18:1 < 4.5: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 35 interactive elements above the fold (max 12)
+- density: 2 primary buttons above the fold (max 1): [data-testid="pick-new-stop"] "Vybrat z mapy", [data-testid="calculate-plan"] "Vypočítat plán"
+- alignment: 6 text nodes start at 27 px, off the 4 px grid
+- alignment: 4 text nodes start at 34 px, off the 4 px grid
+- alignment: 4 text nodes start at 189 px, off the 4 px grid
+- alignment: 3 text nodes start at 71 px, off the 4 px grid
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 08-game-1440-light
+
+- overlap: [data-testid="avatar-cube"] "Původní postava" × summary "Výkon a animace" (118×17 px)
+- overlap: [data-testid="avatar-gotchi"] "Neutrální 3D" × summary "Výkon a animace" (94×17 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × button.btn "Úsporný" (71×28 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × button.btn "Vyvážený" (80×28 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × p.meta "Úsporný profil omezuje anima" (327×5 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × div.meta "Časované zóny" (327×19 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (313×6 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × p.meta "Úsporný profil omezuje anima" (327×28 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (313×7 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × span.meta "Průzkum · zbývá 4 h" (313×19 px)
+- overlap: button.btn "Úsporný" × div.meta "Časované zóny" (71×19 px)
+- overlap: button.btn "Vyvážený" × div.meta "Časované zóny" (80×19 px)
+- overlap: p.meta "Úsporný profil omezuje anima" × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (313×16 px)
+- overlap: p.meta "Úsporný profil omezuje anima" × span.meta "Průzkum · zbývá 4 h" (313×15 px)
+- overlap: div.meta "Vloženo $0.00 · úroveň none " × span.meta "WASD/šipky pro pohyb · klikn" (327×11 px)
+- overlap: button.btn "+10 USD" × span.meta "WASD/šipky pro pohyb · klikn" (71×8 px)
+- overlap: button.btn "+100 USD" × span.meta "WASD/šipky pro pohyb · klikn" (79×8 px)
+- tap target 132×30 < 32: button "Aavegotchi"
+- tap target 28×30 < 32: button "✓"
+- tap target 132×30 < 32: button "Trail Signals"
+- tap target 28×30 < 32: button "+"
+- nested surfaces: 11 boxed elements inside another boxed element (button.game-dpad-up "↑", button.game-dpad-left "←", button.game-dpad-stop "■", button.game-dpad-right "→")
+- density: 21 interactive elements above the fold (max 12)
+- density: 4 primary buttons above the fold (max 1): button.btn "Klávesy", button.btn "Za hráčem", [data-testid="avatar-gotchi"] "Neutrální 3D", button.btn "Úsporný"
+- alignment: 2 text nodes start at 93 px, off the 4 px grid
+- alignment: 6 text nodes start at 30 px, off the 4 px grid
+- alignment: 2 text nodes start at 25 px, off the 4 px grid
+- alignment: 2 text nodes start at 289 px, off the 4 px grid
+
+## 09-layers-drawer-1440-light
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (261×17 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×5 px)
+- overlap: span "Rychlá" × strong "Počasí" (103×4 px)
+- overlap: span "Rychlá" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Podporováno" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: span "Krátká" × strong "Doprava" (103×4 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Fallback" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: small "Fallback" × h3 "Zastávky" (44×9 px)
+- overlap: small "Fallback" × span "2 celkem · bez limitu provid" (137×9 px)
+- overlap: span "Request: osm · profile=car ·" × span "51.00000, 10.20000" (46×7 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="pick-stop-1"] "Vybrat na mapě" (114×16 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="locate-stop-1"] "Moje poloha" (93×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (267×14 px)
+- overlap: span.kit-icon "public" × h3.mega-section-title "Presety" (20×7 px)
+- overlap: strong "Default" × h3.mega-section-title "Presety" (107×7 px)
+- overlap: small "Čistý MapOS pro cestování, o" × span.mega-preset-name "Výlet" (107×19 px)
+- overlap: small "Čistý MapOS pro cestování, o" × small "Hrady, vyhlídky, voda, vrcho" (107×15 px)
+- overlap: span.kit-icon "stadia_controller" × h3.mega-section-title "Presety" (20×7 px)
+- overlap: strong "Aavegotchi" × h3.mega-section-title "Presety" (107×7 px)
+- overlap: small "Gotchi avatar, questy, zóny " × span.mega-preset-name "Město" (107×19 px)
+- overlap: small "Gotchi avatar, questy, zóny " × small "Kavárny, obchody, jídlo, kul" (107×15 px)
+- overlap: button.btn "Přidat doporučené vrstvy" × h3.mega-section-title "Počasí" (198×12 px)
+- overlap: div.group-title "Zdroje míst" × legend "Zobrazení počasí" (116×6 px)
+- overlap: small "Hlavní zdroj. Umí i bezejmen" × p.meta "Jedna veličina v mapě · rada" (179×18 px)
+- overlap: small "Významná místa napříč Evropo" × small "mm" (79×11 px)
+- overlap: small "Významná místa napříč Evropo" × small "°C" (79×11 px)
+- overlap: small "Články s geolokací — kontext" × small "m/s" (78×11 px)
+- overlap: small "Články s geolokací — kontext" × small "m/s" (79×11 px)
+- overlap: small "Evropská POI základna import" × small "hPa" (79×16 px)
+- overlap: small "Nedostupné" × div.group-title "Doprava" (64×14 px)
+- overlap: small "Veřejné piny z uživatelských" × span.beta-badge "beta" (30×12 px)
+- tap target 15×15 < 32: input
+- tap target 15×15 < 32: input
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 72×31 < 32: [data-testid="filter-viewpoint"] "Vyhlídky"
+- tap target 81×31 < 32: [data-testid="filter-waterfall"] "Vodopády"
+- tap target 124×31 < 32: [data-testid="filter-lake"] "Jezera / přehrady"
+- tap target 66×31 < 32: [data-testid="filter-peak"] "Vrcholy"
+- tap target 82×31 < 32: [data-testid="filter-observation_tower"] "Rozhledny"
+- tap target 103×31 < 32: [data-testid="filter-nature_park"] "Přírodní parky"
+- tap target 70×31 < 32: [data-testid="filter-cave"] "Jeskyně"
+- tap target 57×31 < 32: [data-testid="filter-castle"] "Hrady"
+- tap target 61×31 < 32: [data-testid="filter-palace"] "Zámky"
+- tap target 76×31 < 32: [data-testid="filter-ruins"] "Zříceniny"
+- tap target 61×31 < 32: [data-testid="filter-museum"] "Muzea"
+- tap target 71×31 < 32: [data-testid="filter-monument"] "Pomníky"
+- tap target 48×31 < 32: [data-testid="filter-bar"] "Bary"
+- tap target 69×31 < 32: [data-testid="filter-cafe"] "Kavárny"
+- tap target 87×31 < 32: [data-testid="filter-restaurant"] "Restaurace"
+- tap target 72×31 < 32: [data-testid="filter-brewery"] "Pivovary"
+- tap target 74×31 < 32: [data-testid="filter-shop"] "Obchody"
+- tap target 82×31 < 32: [data-testid="filter-parking"] "Parkoviště"
+- tap target 56×31 < 32: [data-testid="filter-fuel"] "Palivo"
+- tap target 96×31 < 32: [data-testid="filter-charging"] "EV nabíječky"
+- tap target 82×31 < 32: [data-testid="filter-drinking_water"] "Pitná voda"
+- tap target 43×31 < 32: [data-testid="filter-toilets"] "WC"
+- tap target 62×31 < 32: [data-testid="filter-shower"] "Sprchy"
+- tap target 68×31 < 32: [data-testid="filter-dump_station"] "Výlevky"
+- tap target 62×31 < 32: [data-testid="filter-camp_site"] "Kempy"
+- tap target 129×31 < 32: [data-testid="filter-caravan_site"] "Stání pro karavany"
+- tap target 98×31 < 32: [data-testid="filter-alpine_hut"] "Horské chaty"
+- tap target 80×31 < 32: [data-testid="filter-shelter"] "Přístřešky"
+- tap target 63×31 < 32: [data-testid="filter-via_ferrata"] "Ferraty"
+- tap target 103×31 < 32: [data-testid="filter-climbing"] "Lezecké skály"
+- tap target 104×31 < 32: [data-testid="filter-fitness_trail"] "Fitness stezky"
+- tap target 77×31 < 32: [data-testid="filter-fitness_centre"] "Posilovny"
+- tap target 73×31 < 32: [data-testid="filter-disc_golf"] "Disc golf"
+- tap target 87×31 < 32: [data-testid="filter-skatepark"] "Skateparky"
+- tap target 82×31 < 32: [data-testid="filter-swimming"] "Koupaliště"
+- tap target 88×31 < 32: [data-testid="filter-sports_centre"] "Sportoviště"
+- contrast 3.86:1 < 4.5: small "Podporováno"
+- contrast 4.18:1 < 4.5: span "Rychle přidat z viditelných "
+- contrast 4.18:1 < 4.5: span "0 min"
+- contrast 4.18:1 < 4.5: span "hotových úseků"
+- contrast 4.11:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- contrast 4.18:1 < 4.5: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+- contrast 3.74:1 < 4.5: [data-testid="filter-viewpoint"] "Vyhlídky"
+- contrast 3.56:1 < 4.5: [data-testid="filter-cafe"] "Kavárny"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 35 interactive elements above the fold (max 12)
+- density: 2 primary buttons above the fold (max 1): [data-testid="pick-new-stop"] "Vybrat z mapy", [data-testid="calculate-plan"] "Vypočítat plán"
+- alignment: 6 text nodes start at 27 px, off the 4 px grid
+- alignment: 4 text nodes start at 34 px, off the 4 px grid
+- alignment: 4 text nodes start at 189 px, off the 4 px grid
+- alignment: 3 text nodes start at 71 px, off the 4 px grid
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 10-basemaps-drawer-1440-light
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (261×17 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×5 px)
+- overlap: span "Rychlá" × strong "Počasí" (103×4 px)
+- overlap: span "Rychlá" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Podporováno" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: span "Krátká" × strong "Doprava" (103×4 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Fallback" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: small "Fallback" × h3 "Zastávky" (44×9 px)
+- overlap: small "Fallback" × span "2 celkem · bez limitu provid" (137×9 px)
+- overlap: span "Request: osm · profile=car ·" × span "51.00000, 10.20000" (46×7 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="pick-stop-1"] "Vybrat na mapě" (114×16 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="locate-stop-1"] "Moje poloha" (93×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (267×14 px)
+- overlap: strong "Sentinel-2 bez mraků" × p.meta "Volitelné mapové struktury s" (317×19 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × strong "OpenTopoMap" (317×8 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × p.meta "Volitelné mapové struktury s" (317×5 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × div.group-title "Outdoor" (317×19 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × strong "OpenTopoMap" (317×5 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × span.basemap-hint "Vrstevnice a stínovaný relié" (317×16 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × span.overflow-icon "🚲" (13×8 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × strong "CyclOSM" (257×19 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × small "Cyklistická mapa: stezky, pr" (257×2 px)
+- overlap: span.basemap-preview-place "Evropa" × span.basemap-preview-place "Evropa" (49×10 px)
+- overlap: strong "Esri World Imagery" × strong "EOX Terrain" (317×9 px)
+- overlap: strong "Esri World Imagery" × span.basemap-hint "Reliéf a povrch bez silnic, " (317×8 px)
+- overlap: strong "Esri World Imagery" × span.overflow-icon "⛰️" (13×15 px)
+- overlap: strong "Esri World Imagery" × strong "Topografická" (257×14 px)
+- overlap: strong "Esri World Imagery" × small "Vrstevnice, stínovaný reliéf" (257×2 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × span.basemap-hint "Reliéf a povrch bez silnic, " (317×16 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × span.overflow-icon "⛰️" (13×3 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × small "Vrstevnice, stínovaný reliéf" (257×11 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × span.overflow-icon "⛷️" (13×20 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × strong "Sjezdovky a běžky" (257×19 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × small "Sjezdové tratě, běžecké stop" (257×7 px)
+- overlap: strong "NASA dnešní snímek" × strong "Námořní mapa" (257×4 px)
+- overlap: span.basemap-hint "Včerejší až dnešní pohled ze" × strong "Námořní mapa" (257×12 px)
+- overlap: span.basemap-note "Denní mozaika v nízkém rozli" × small "Bóje, majáky, přístavy a pla" (257×7 px)
+- overlap: strong "OpenTopoMap" × div.group-title "Outdoor" (317×7 px)
+- overlap: span.basemap-hint "Vrstevnice a stínovaný relié" × strong "CyclOSM" (257×13 px)
+- overlap: strong "EOX Terrain" × span.overflow-icon "⛰️" (13×6 px)
+- overlap: strong "EOX Terrain" × strong "Topografická" (257×13 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × span.overflow-icon "⛰️" (13×12 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × strong "Topografická" (257×3 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × small "Vrstevnice, stínovaný reliéf" (257×15 px)
+- tap target 15×15 < 32: input
+- tap target 15×15 < 32: input
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 40×24 < 32: [data-testid="toggle-basemap-labels"]
+- tap target 40×24 < 32: [data-testid="toggle-buildings-3d"]
+- contrast 3.86:1 < 4.5: small "Podporováno"
+- contrast 4.18:1 < 4.5: span "Rychle přidat z viditelných "
+- contrast 4.18:1 < 4.5: span "0 min"
+- contrast 4.18:1 < 4.5: span "hotových úseků"
+- contrast 4.11:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- contrast 4.18:1 < 4.5: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 35 interactive elements above the fold (max 12)
+- density: 2 primary buttons above the fold (max 1): [data-testid="pick-new-stop"] "Vybrat z mapy", [data-testid="calculate-plan"] "Vypočítat plán"
+- alignment: 6 text nodes start at 27 px, off the 4 px grid
+- alignment: 4 text nodes start at 34 px, off the 4 px grid
+- alignment: 4 text nodes start at 189 px, off the 4 px grid
+- alignment: 3 text nodes start at 71 px, off the 4 px grid
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 11-settings-drawer-1440-light
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (261×17 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×5 px)
+- overlap: span "Rychlá" × strong "Počasí" (103×4 px)
+- overlap: span "Rychlá" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Podporováno" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: span "Krátká" × strong "Doprava" (103×4 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Fallback" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: small "Fallback" × h3 "Zastávky" (44×9 px)
+- overlap: small "Fallback" × span "2 celkem · bez limitu provid" (137×9 px)
+- overlap: span "Request: osm · profile=car ·" × span "51.00000, 10.20000" (46×7 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="pick-stop-1"] "Vybrat na mapě" (114×16 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="locate-stop-1"] "Moje poloha" (93×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (267×14 px)
+- overlap: span.attribution-used-by "Aktivní požáry" × span.setting-row-label "Dokumentace pro tvůrce vrste" (124×16 px)
+- overlap: a "NASA FIRMS" × span.setting-row-label "Dokumentace pro tvůrce vrste" (79×16 px)
+- overlap: span.attribution-license "public domain" × span.setting-row-label "Dokumentace pro tvůrce vrste" (50×15 px)
+- overlap: span.attribution-used-by "Bezpečné toalety" × span.setting-row-hint "Layer SDK v2, manifesty, pří" (124×16 px)
+- overlap: a "Refuge Restrooms" × span.setting-row-hint "Layer SDK v2, manifesty, pří" (113×16 px)
+- overlap: span.attribution-license "Refuge Restrooms open-data t" × span.setting-row-hint "Layer SDK v2, manifesty, pří" (202×12 px)
+- tap target 15×15 < 32: input
+- tap target 15×15 < 32: input
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 63×29 < 32: [data-testid="theme-segmented-system"] "Systém"
+- tap target 57×29 < 32: [data-testid="theme-segmented-light"] "Světlý"
+- tap target 59×29 < 32: [data-testid="theme-segmented-dark"] "Tmavý"
+- tap target 77×29 < 32: [data-testid="density-segmented-comfortable"] "Komfortní"
+- tap target 82×29 < 32: [data-testid="density-segmented-compact"] "Kompaktní"
+- tap target 64×29 < 32: [data-testid="locale-segmented-cs"] "Čeština"
+- tap target 62×29 < 32: [data-testid="locale-segmented-en"] "English"
+- tap target 38×29 < 32: [data-testid="units-segmented-metric"] "km"
+- tap target 34×29 < 32: [data-testid="units-segmented-imperial"] "mi"
+- tap target 40×24 < 32: [data-testid="fly-animations-toggle"]
+- tap target 40×24 < 32: [data-testid="search-here-toggle"]
+- tap target 40×24 < 32: [data-testid="ai-enabled-toggle"]
+- tap target 40×24 < 32: [data-testid="ai-auto-summary-toggle"]
+- tap target 79×19 < 32: a "NASA FIRMS"
+- tap target 113×19 < 32: a "Refuge Restrooms"
+- tap target 29×19 < 32: a "GBIF"
+- tap target 57×19 < 32: a "CyclOSM"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 130×19 < 32: a "Wikimedia Commons"
+- tap target 70×19 < 32: a "Foursquare"
+- tap target 67×19 < 32: a "Macrostrat"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 116×19 < 32: a "Sensor.Community"
+- tap target 108×19 < 32: a "© Seznam.cz a.s."
+- tap target 52×19 < 32: a "OpenAQ"
+- tap target 112×19 < 32: a "Open Charge Map"
+- tap target 84×19 < 32: a "OpenSeaMap"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 308×19 < 32: a "Overture Maps Foundation (CD"
+- tap target 69×19 < 32: a "Park4Night"
+- tap target 69×19 < 32: a "Park4Night"
+- tap target 68×19 < 32: a "RainViewer"
+- tap target 78×19 < 32: a "Open-Meteo"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 60×19 < 32: a "© CARTO"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 60×19 < 32: a "© CARTO"
+- tap target 116×19 < 32: a "Terrain Light (EOX)"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 213×19 < 32: a "Esri, Maxar, Earthstar Geogr"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 71×19 < 32: a "© Geoapify"
+- tap target 60×19 < 32: a "© Google"
+- tap target 60×19 < 32: a "© Google"
+- tap target 60×19 < 32: a "© Google"
+- tap target 49×19 < 32: a "© HERE"
+- tap target 49×19 < 32: a "© HERE"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 69×19 < 32: a "© MapTiler"
+- tap target 69×19 < 32: a "© MapTiler"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 69×19 < 32: a "© MapTiler"
+- tap target 108×19 < 32: a "© Seznam.cz a.s."
+- tap target 108×19 < 32: a "© Seznam.cz a.s."
+- tap target 108×19 < 32: a "© Seznam.cz a.s."
+- tap target 108×19 < 32: a "© Seznam.cz a.s."
+- tap target 129×19 < 32: a "NASA GIBS / EOSDIS"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 87×19 < 32: a "OpenFreeMap"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 87×19 < 32: a "OpenFreeMap"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 90×19 < 32: a "OpenTopoMap"
+- tap target 164×19 < 32: a "Sentinel-2 cloudless (EOX)"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 91×19 < 32: a "© Stadia Maps"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 103×19 < 32: a "© Thunderforest"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 103×19 < 32: a "© Thunderforest"
+- tap target 68×19 < 32: a "© TomTom"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 60×19 < 32: a "© CARTO"
+- tap target 108×19 < 32: a "© Seznam.cz a.s."
+- tap target 62×19 < 32: a "iNaturalist"
+- tap target 114×19 < 32: a "eBird / Cornell Lab"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 60×19 < 32: a "© CARTO"
+- tap target 93×19 < 32: a "GBFS operátoři"
+- tap target 94×19 < 32: a "OpenSnowMap"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 56×19 < 32: a "Mapillary"
+- tap target 90×19 < 32: a "OpenTopoMap"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 145×19 < 32: a "Ticketmaster Discovery"
+- tap target 93×19 < 32: a "Wikidata (CC0)"
+- tap target 136×19 < 32: a "Wikipedia (CC BY-SA)"
+- tap target 220×19 < 32: a "USGS Earthquake Hazards Prog"
+- tap target 109×19 < 32: a "Waymarked Trails"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- tap target 107×19 < 32: a "OpenRailwayMap"
+- tap target 191×19 < 32: a "© OpenStreetMap přispěvatelé"
+- contrast 3.86:1 < 4.5: small "Podporováno"
+- contrast 4.18:1 < 4.5: span "Rychle přidat z viditelných "
+- contrast 4.18:1 < 4.5: span "0 min"
+- contrast 4.18:1 < 4.5: span "hotových úseků"
+- contrast 4.11:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- contrast 4.18:1 < 4.5: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 35 interactive elements above the fold (max 12)
+- density: 2 primary buttons above the fold (max 1): [data-testid="pick-new-stop"] "Vybrat z mapy", [data-testid="calculate-plan"] "Vypočítat plán"
+- alignment: 6 text nodes start at 27 px, off the 4 px grid
+- alignment: 4 text nodes start at 34 px, off the 4 px grid
+- alignment: 4 text nodes start at 189 px, off the 4 px grid
+- alignment: 3 text nodes start at 71 px, off the 4 px grid
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+- developer text in UI: span.settings-status-chip "deterministický režim"
+- developer text in UI: span.setting-row-value "OSM + OSRM"
+
+## 01-map-1440-dark
+
+Bez nálezů.
+
+## 02-search-empty-1440-dark
+
+Bez nálezů.
+
+## 03-search-ai-1440-dark
+
+Bez nálezů.
+
+## 04-personal-1440-dark
+
+- overlap: span "Zatím žádný plán." × strong "Moje místa" (86×10 px)
+- overlap: span "Zatím žádné uložené místo." × strong "Moje vrstvy" (101×10 px)
+- overlap: span "Zatím žádná vlastní vrstva." × strong "Hra" (28×10 px)
+- contrast 4.01:1 < 4.5: span "Cesty a rozpracované itinerá"
+- contrast 4.01:1 < 4.5: span "Soukromé body, kolekce a poz"
+- contrast 4.01:1 < 4.5: span "Vlastní data, importy a publ"
+- contrast 4.01:1 < 4.5: span "XP a aktivní světy"
+- nested surfaces: 20 boxed elements inside another boxed element (div.mine-avatar "P", button.btn "Nový plán", button.btn "Zaměřit moje místa", div "1aktivní hry")
+- density: 2 primary buttons above the fold (max 1): button.btn "Nový plán", [data-testid="new-plan"] "＋ Nový plán"
+- alignment: 3 text nodes start at 87 px, off the 4 px grid
+- alignment: 8 text nodes start at 67 px, off the 4 px grid
+- alignment: 4 text nodes start at 25 px, off the 4 px grid
+
+## 05-discover-1440-dark
+
+- nested surfaces: 13 boxed elements inside another boxed element (span.discover-hero-icon, button.btn "Zjistit co je tady", span.discover-contribute-icon, button.btn "Přidat místní znalost")
+- density: 2 primary buttons above the fold (max 1): button.btn "Zjistit co je tady", button.btn "Přidat místní znalost"
+- alignment: 2 text nodes start at 75 px, off the 4 px grid
+- alignment: 7 text nodes start at 29 px, off the 4 px grid
+- alignment: 4 text nodes start at 81 px, off the 4 px grid
+- alignment: 2 text nodes start at 67 px, off the 4 px grid
+
+## 06-planning-empty-1440-dark
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (261×17 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×5 px)
+- overlap: span "Rychlá" × strong "Počasí" (103×4 px)
+- overlap: span "Rychlá" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Podporováno" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: span "Krátká" × strong "Doprava" (103×4 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Fallback" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: small "Fallback" × h3 "Zastávky" (44×9 px)
+- overlap: small "Fallback" × span "2 celkem · bez limitu provid" (137×9 px)
+- overlap: span "Request: osm · profile=car ·" × span "51.00000, 10.20000" (46×7 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="pick-stop-1"] "Vybrat na mapě" (114×16 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="locate-stop-1"] "Moje poloha" (93×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (267×14 px)
+- tap target 15×15 < 32: input
+- tap target 15×15 < 32: input
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- contrast 3.97:1 < 4.5: small "Podporováno"
+- contrast 2.85:1 < 4.5: span "Kontext odjezdu"
+- contrast 3.93:1 < 4.5: span "0 min"
+- contrast 3.93:1 < 4.5: span "hotových úseků"
+- contrast 4.17:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 35 interactive elements above the fold (max 12)
+- density: 2 primary buttons above the fold (max 1): [data-testid="pick-new-stop"] "Vybrat z mapy", [data-testid="calculate-plan"] "Vypočítat plán"
+- alignment: 6 text nodes start at 27 px, off the 4 px grid
+- alignment: 4 text nodes start at 34 px, off the 4 px grid
+- alignment: 4 text nodes start at 189 px, off the 4 px grid
+- alignment: 3 text nodes start at 71 px, off the 4 px grid
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 08-game-1440-dark
+
+- overlap: [data-testid="avatar-cube"] "Původní postava" × summary "Výkon a animace" (118×17 px)
+- overlap: [data-testid="avatar-gotchi"] "Neutrální 3D" × summary "Výkon a animace" (94×17 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × button.btn "Úsporný" (71×28 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × button.btn "Vyvážený" (80×28 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × p.meta "Úsporný profil omezuje anima" (327×5 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × div.meta "Časované zóny" (327×19 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (313×6 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × p.meta "Úsporný profil omezuje anima" (327×28 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (313×7 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × span.meta "Průzkum · zbývá 4 h" (313×19 px)
+- overlap: button.btn "Úsporný" × div.meta "Časované zóny" (71×19 px)
+- overlap: button.btn "Vyvážený" × div.meta "Časované zóny" (80×19 px)
+- overlap: p.meta "Úsporný profil omezuje anima" × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (313×16 px)
+- overlap: p.meta "Úsporný profil omezuje anima" × span.meta "Průzkum · zbývá 4 h" (313×15 px)
+- overlap: div.meta "Vloženo $0.00 · úroveň none " × span.meta "WASD/šipky pro pohyb · klikn" (327×11 px)
+- overlap: button.btn "+10 USD" × span.meta "WASD/šipky pro pohyb · klikn" (71×8 px)
+- overlap: button.btn "+100 USD" × span.meta "WASD/šipky pro pohyb · klikn" (79×8 px)
+- tap target 132×30 < 32: button "Aavegotchi"
+- tap target 28×30 < 32: button "✓"
+- tap target 132×30 < 32: button "Trail Signals"
+- tap target 28×30 < 32: button "+"
+- nested surfaces: 11 boxed elements inside another boxed element (button.game-dpad-up "↑", button.game-dpad-left "←", button.game-dpad-stop "■", button.game-dpad-right "→")
+- density: 21 interactive elements above the fold (max 12)
+- density: 4 primary buttons above the fold (max 1): button.btn "Klávesy", button.btn "Za hráčem", [data-testid="avatar-gotchi"] "Neutrální 3D", button.btn "Úsporný"
+- alignment: 2 text nodes start at 93 px, off the 4 px grid
+- alignment: 6 text nodes start at 30 px, off the 4 px grid
+- alignment: 2 text nodes start at 25 px, off the 4 px grid
+- alignment: 2 text nodes start at 289 px, off the 4 px grid
+
+## 09-layers-drawer-1440-dark
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (261×17 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×5 px)
+- overlap: span "Rychlá" × strong "Počasí" (103×4 px)
+- overlap: span "Rychlá" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Podporováno" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: span "Krátká" × strong "Doprava" (103×4 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Fallback" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: small "Fallback" × h3 "Zastávky" (44×9 px)
+- overlap: small "Fallback" × span "2 celkem · bez limitu provid" (137×9 px)
+- overlap: span "Request: osm · profile=car ·" × span "51.00000, 10.20000" (46×7 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="pick-stop-1"] "Vybrat na mapě" (114×16 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="locate-stop-1"] "Moje poloha" (93×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (267×14 px)
+- overlap: span.kit-icon "public" × h3.mega-section-title "Presety" (20×7 px)
+- overlap: strong "Default" × h3.mega-section-title "Presety" (107×7 px)
+- overlap: small "Čistý MapOS pro cestování, o" × span.mega-preset-name "Výlet" (107×19 px)
+- overlap: small "Čistý MapOS pro cestování, o" × small "Hrady, vyhlídky, voda, vrcho" (107×15 px)
+- overlap: span.kit-icon "stadia_controller" × h3.mega-section-title "Presety" (20×7 px)
+- overlap: strong "Aavegotchi" × h3.mega-section-title "Presety" (107×7 px)
+- overlap: small "Gotchi avatar, questy, zóny " × span.mega-preset-name "Město" (107×19 px)
+- overlap: small "Gotchi avatar, questy, zóny " × small "Kavárny, obchody, jídlo, kul" (107×15 px)
+- overlap: button.btn "Přidat doporučené vrstvy" × h3.mega-section-title "Počasí" (198×12 px)
+- overlap: div.group-title "Zdroje míst" × legend "Zobrazení počasí" (116×6 px)
+- overlap: small "Hlavní zdroj. Umí i bezejmen" × p.meta "Jedna veličina v mapě · rada" (179×18 px)
+- overlap: small "Významná místa napříč Evropo" × small "mm" (79×11 px)
+- overlap: small "Významná místa napříč Evropo" × small "°C" (79×11 px)
+- overlap: small "Články s geolokací — kontext" × small "m/s" (78×11 px)
+- overlap: small "Články s geolokací — kontext" × small "m/s" (79×11 px)
+- overlap: small "Evropská POI základna import" × small "hPa" (79×16 px)
+- overlap: small "Nedostupné" × div.group-title "Doprava" (64×14 px)
+- overlap: small "Veřejné piny z uživatelských" × span.beta-badge "beta" (30×12 px)
+- tap target 15×15 < 32: input
+- tap target 15×15 < 32: input
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 72×31 < 32: [data-testid="filter-viewpoint"] "Vyhlídky"
+- tap target 81×31 < 32: [data-testid="filter-waterfall"] "Vodopády"
+- tap target 124×31 < 32: [data-testid="filter-lake"] "Jezera / přehrady"
+- tap target 66×31 < 32: [data-testid="filter-peak"] "Vrcholy"
+- tap target 82×31 < 32: [data-testid="filter-observation_tower"] "Rozhledny"
+- tap target 103×31 < 32: [data-testid="filter-nature_park"] "Přírodní parky"
+- tap target 70×31 < 32: [data-testid="filter-cave"] "Jeskyně"
+- tap target 57×31 < 32: [data-testid="filter-castle"] "Hrady"
+- tap target 61×31 < 32: [data-testid="filter-palace"] "Zámky"
+- tap target 76×31 < 32: [data-testid="filter-ruins"] "Zříceniny"
+- tap target 61×31 < 32: [data-testid="filter-museum"] "Muzea"
+- tap target 71×31 < 32: [data-testid="filter-monument"] "Pomníky"
+- tap target 48×31 < 32: [data-testid="filter-bar"] "Bary"
+- tap target 69×31 < 32: [data-testid="filter-cafe"] "Kavárny"
+- tap target 87×31 < 32: [data-testid="filter-restaurant"] "Restaurace"
+- tap target 72×31 < 32: [data-testid="filter-brewery"] "Pivovary"
+- tap target 74×31 < 32: [data-testid="filter-shop"] "Obchody"
+- tap target 82×31 < 32: [data-testid="filter-parking"] "Parkoviště"
+- tap target 56×31 < 32: [data-testid="filter-fuel"] "Palivo"
+- tap target 96×31 < 32: [data-testid="filter-charging"] "EV nabíječky"
+- tap target 82×31 < 32: [data-testid="filter-drinking_water"] "Pitná voda"
+- tap target 43×31 < 32: [data-testid="filter-toilets"] "WC"
+- tap target 62×31 < 32: [data-testid="filter-shower"] "Sprchy"
+- tap target 68×31 < 32: [data-testid="filter-dump_station"] "Výlevky"
+- tap target 62×31 < 32: [data-testid="filter-camp_site"] "Kempy"
+- tap target 129×31 < 32: [data-testid="filter-caravan_site"] "Stání pro karavany"
+- tap target 98×31 < 32: [data-testid="filter-alpine_hut"] "Horské chaty"
+- tap target 80×31 < 32: [data-testid="filter-shelter"] "Přístřešky"
+- tap target 63×31 < 32: [data-testid="filter-via_ferrata"] "Ferraty"
+- tap target 103×31 < 32: [data-testid="filter-climbing"] "Lezecké skály"
+- tap target 104×31 < 32: [data-testid="filter-fitness_trail"] "Fitness stezky"
+- tap target 77×31 < 32: [data-testid="filter-fitness_centre"] "Posilovny"
+- tap target 73×31 < 32: [data-testid="filter-disc_golf"] "Disc golf"
+- tap target 87×31 < 32: [data-testid="filter-skatepark"] "Skateparky"
+- tap target 82×31 < 32: [data-testid="filter-swimming"] "Koupaliště"
+- tap target 88×31 < 32: [data-testid="filter-sports_centre"] "Sportoviště"
+- contrast 3.97:1 < 4.5: small "Podporováno"
+- contrast 2.85:1 < 4.5: span "Kontext odjezdu"
+- contrast 3.93:1 < 4.5: span "0 min"
+- contrast 3.93:1 < 4.5: span "hotových úseků"
+- contrast 4.17:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- contrast 4.18:1 < 4.5: small "Čistý MapOS pro cestování, o"
+- contrast 3.60:1 < 4.5: [data-testid="filter-viewpoint"] "Vyhlídky"
+- contrast 3.79:1 < 4.5: [data-testid="filter-cafe"] "Kavárny"
+- contrast 2.79:1 < 4.5: [data-testid="filter-restaurant"] "Restaurace"
+- contrast 1.78:1 < 4.5: [data-testid="filter-parking"] "Parkoviště"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 35 interactive elements above the fold (max 12)
+- density: 2 primary buttons above the fold (max 1): [data-testid="pick-new-stop"] "Vybrat z mapy", [data-testid="calculate-plan"] "Vypočítat plán"
+- alignment: 6 text nodes start at 27 px, off the 4 px grid
+- alignment: 4 text nodes start at 34 px, off the 4 px grid
+- alignment: 4 text nodes start at 189 px, off the 4 px grid
+- alignment: 3 text nodes start at 71 px, off the 4 px grid
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 10-basemaps-drawer-1440-dark
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (261×17 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×5 px)
+- overlap: span "Rychlá" × strong "Počasí" (103×4 px)
+- overlap: span "Rychlá" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Podporováno" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: span "Krátká" × strong "Doprava" (103×4 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Fallback" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: small "Fallback" × h3 "Zastávky" (44×9 px)
+- overlap: small "Fallback" × span "2 celkem · bez limitu provid" (137×9 px)
+- overlap: span "Request: osm · profile=car ·" × span "51.00000, 10.20000" (46×7 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="pick-stop-1"] "Vybrat na mapě" (114×16 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="locate-stop-1"] "Moje poloha" (93×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (267×14 px)
+- overlap: strong "Sentinel-2 bez mraků" × p.meta "Volitelné mapové struktury s" (317×19 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × strong "OpenTopoMap" (317×8 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × p.meta "Volitelné mapové struktury s" (317×5 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × div.group-title "Outdoor" (317×19 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × strong "OpenTopoMap" (317×5 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × span.basemap-hint "Vrstevnice a stínovaný relié" (317×16 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × span.overflow-icon "🚲" (13×8 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × strong "CyclOSM" (257×19 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × small "Cyklistická mapa: stezky, pr" (257×2 px)
+- overlap: span.basemap-preview-place "Evropa" × span.basemap-preview-place "Evropa" (49×10 px)
+- overlap: strong "Esri World Imagery" × strong "EOX Terrain" (317×9 px)
+- overlap: strong "Esri World Imagery" × span.basemap-hint "Reliéf a povrch bez silnic, " (317×8 px)
+- overlap: strong "Esri World Imagery" × span.overflow-icon "⛰️" (13×15 px)
+- overlap: strong "Esri World Imagery" × strong "Topografická" (257×14 px)
+- overlap: strong "Esri World Imagery" × small "Vrstevnice, stínovaný reliéf" (257×2 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × span.basemap-hint "Reliéf a povrch bez silnic, " (317×16 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × span.overflow-icon "⛰️" (13×3 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × small "Vrstevnice, stínovaný reliéf" (257×11 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × span.overflow-icon "⛷️" (13×20 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × strong "Sjezdovky a běžky" (257×19 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × small "Sjezdové tratě, běžecké stop" (257×7 px)
+- overlap: strong "NASA dnešní snímek" × strong "Námořní mapa" (257×4 px)
+- overlap: span.basemap-hint "Včerejší až dnešní pohled ze" × strong "Námořní mapa" (257×12 px)
+- overlap: span.basemap-note "Denní mozaika v nízkém rozli" × small "Bóje, majáky, přístavy a pla" (257×7 px)
+- overlap: strong "OpenTopoMap" × div.group-title "Outdoor" (317×7 px)
+- overlap: span.basemap-hint "Vrstevnice a stínovaný relié" × strong "CyclOSM" (257×13 px)
+- overlap: strong "EOX Terrain" × span.overflow-icon "⛰️" (13×6 px)
+- overlap: strong "EOX Terrain" × strong "Topografická" (257×13 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × span.overflow-icon "⛰️" (13×12 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × strong "Topografická" (257×3 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × small "Vrstevnice, stínovaný reliéf" (257×15 px)
+- tap target 15×15 < 32: input
+- tap target 15×15 < 32: input
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 40×24 < 32: [data-testid="toggle-basemap-labels"]
+- tap target 40×24 < 32: [data-testid="toggle-buildings-3d"]
+- contrast 3.97:1 < 4.5: small "Podporováno"
+- contrast 2.85:1 < 4.5: span "Kontext odjezdu"
+- contrast 3.93:1 < 4.5: span "0 min"
+- contrast 3.93:1 < 4.5: span "hotových úseků"
+- contrast 4.17:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 35 interactive elements above the fold (max 12)
+- density: 2 primary buttons above the fold (max 1): [data-testid="pick-new-stop"] "Vybrat z mapy", [data-testid="calculate-plan"] "Vypočítat plán"
+- alignment: 6 text nodes start at 27 px, off the 4 px grid
+- alignment: 4 text nodes start at 34 px, off the 4 px grid
+- alignment: 4 text nodes start at 189 px, off the 4 px grid
+- alignment: 3 text nodes start at 71 px, off the 4 px grid
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 11-settings-drawer-1440-dark
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (261×17 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×5 px)
+- overlap: span "Rychlá" × strong "Počasí" (103×4 px)
+- overlap: span "Rychlá" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Podporováno" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: span "Krátká" × strong "Doprava" (103×4 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (103×14 px)
+- overlap: small "Fallback" × small "Připraví se s výpočtem trasy" (103×11 px)
+- overlap: small "Fallback" × h3 "Zastávky" (44×9 px)
+- overlap: small "Fallback" × span "2 celkem · bez limitu provid" (137×9 px)
+- overlap: span "Request: osm · profile=car ·" × span "51.00000, 10.20000" (46×7 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="pick-stop-1"] "Vybrat na mapě" (114×16 px)
+- overlap: span "Request: osm · profile=car ·" × [data-testid="locate-stop-1"] "Moje poloha" (93×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (267×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (267×14 px)
+- tap target 15×15 < 32: input
+- tap target 15×15 < 32: input
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- tap target 28×28 < 32: button.planner-stop-clear "×"
+- tap target 24×30 < 32: button.planner-remove "×"
+- contrast 3.97:1 < 4.5: small "Podporováno"
+- contrast 2.85:1 < 4.5: span "Kontext odjezdu"
+- contrast 3.93:1 < 4.5: span "0 min"
+- contrast 3.93:1 < 4.5: span "hotových úseků"
+- contrast 4.17:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 35 interactive elements above the fold (max 12)
+- density: 2 primary buttons above the fold (max 1): [data-testid="pick-new-stop"] "Vybrat z mapy", [data-testid="calculate-plan"] "Vypočítat plán"
+- alignment: 6 text nodes start at 27 px, off the 4 px grid
+- alignment: 4 text nodes start at 34 px, off the 4 px grid
+- alignment: 4 text nodes start at 189 px, off the 4 px grid
+- alignment: 3 text nodes start at 71 px, off the 4 px grid
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 01-map-390-light
+
+Bez nálezů.
+
+## 02-search-empty-390-light
+
+Bez nálezů.
+
+## 03-search-ai-390-light
+
+- tap target 81×36 < 44: [data-testid="search-offer-ai"] "Zeptat se AI"
+
+## 04-personal-390-light
+
+- overlap: span "Zatím žádný plán." × strong "Moje místa" (70×10 px)
+- overlap: span "Zatím žádné uložené místo." × strong "Moje vrstvy" (86×10 px)
+- overlap: span "Zatím žádná vlastní vrstva." × strong "Hra" (12×10 px)
+- contrast 4.25:1 < 4.5: span "Cesty a rozpracované itinerá"
+- contrast 4.25:1 < 4.5: span "Soukromé body, kolekce a poz"
+- contrast 4.25:1 < 4.5: span "Vlastní data, importy a publ"
+- contrast 4.25:1 < 4.5: span "XP a aktivní světy"
+- nested surfaces: 20 boxed elements inside another boxed element (div.mine-avatar "P", button.btn "Nový plán", button.btn "Zaměřit moje místa", div "1aktivní hry")
+- density: 2 primary buttons above the fold (max 1): button.btn "Nový plán", [data-testid="new-plan"] "＋ Nový plán"
+
+## 05-discover-390-light
+
+- tap target 78×32 < 44: button.btn "＋ Přispět"
+- nested surfaces: 13 boxed elements inside another boxed element (span.discover-hero-icon, button.btn "Zjistit co je tady", span.discover-contribute-icon, button.btn "Přidat místní znalost")
+- density: 2 primary buttons above the fold (max 1): button.btn "Zjistit co je tady", button.btn "Přidat místní znalost"
+
+## 06-planning-empty-390-light
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (292×9 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×15 px)
+- overlap: small "Podporováno" × strong "Doprava" (290×8 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (290×10 px)
+- overlap: span "Bez dálnic" × h3 "Zastávky" (44×17 px)
+- overlap: span "Bez dálnic" × span "2 celkem · bez limitu provid" (156×16 px)
+- overlap: small "Fallback" × span "51.00000, 10.20000" (292×14 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="pick-stop-1"] "Vybrat na mapě" (144×13 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="locate-stop-1"] "Moje poloha" (144×13 px)
+- overlap: span "Request: osm · profile=car ·" × summary "Čas a přesné GPS" (115×13 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (298×16 px)
+- tap target 67×32 < 44: button.btn "↶ Vrátit"
+- tap target 358×39 < 44: [data-testid="plan-name"]
+- tap target 336×41 < 44: input
+- tap target 336×39 < 44: select "PěškyKoloOsobní autoMotorkaK"
+- tap target 15×15 < 44: input
+- tap target 15×15 < 44: input
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-1"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-1"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-2"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-2"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 150×33 < 44: button "＋Parkoviště Centrum"
+- tap target 119×33 < 44: button "＋Riegrovy sady"
+- contrast 3.86:1 < 4.5: small "Podporováno"
+- contrast 4.18:1 < 4.5: span "Rychle přidat z viditelných "
+- contrast 4.18:1 < 4.5: span "0 min"
+- contrast 4.18:1 < 4.5: span "hotových úseků"
+- contrast 4.11:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- contrast 4.18:1 < 4.5: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 30 interactive elements above the fold (max 12)
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 08-game-390-light
+
+- overlap: [data-testid="avatar-cube"] "Původní postava" × summary "Výkon a animace" (118×17 px)
+- overlap: [data-testid="avatar-gotchi"] "Neutrální 3D" × summary "Výkon a animace" (94×17 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × button.btn "Úsporný" (71×28 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × button.btn "Vyvážený" (80×28 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × p.meta "Úsporný profil omezuje anima" (358×5 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × div.meta "Časované zóny" (358×19 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (344×6 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × p.meta "Úsporný profil omezuje anima" (358×28 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (344×7 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × span.meta "Průzkum · zbývá 4 h" (344×19 px)
+- overlap: button.btn "Úsporný" × div.meta "Časované zóny" (71×19 px)
+- overlap: button.btn "Vyvážený" × div.meta "Časované zóny" (80×19 px)
+- overlap: p.meta "Úsporný profil omezuje anima" × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (344×16 px)
+- overlap: p.meta "Úsporný profil omezuje anima" × span.meta "Průzkum · zbývá 4 h" (344×15 px)
+- overlap: div.meta "Vloženo $0.00 · úroveň none " × span.meta "WASD/šipky pro pohyb · klikn" (358×11 px)
+- overlap: button.btn "+10 USD" × span.meta "WASD/šipky pro pohyb · klikn" (71×8 px)
+- overlap: button.btn "+100 USD" × span.meta "WASD/šipky pro pohyb · klikn" (79×8 px)
+- tap target 147×30 < 44: button "Aavegotchi"
+- tap target 28×30 < 44: button "✓"
+- tap target 147×30 < 44: button "Trail Signals"
+- tap target 28×30 < 44: button "+"
+- tap target 68×32 < 44: button.btn "Klávesy"
+- tap target 47×32 < 44: button.btn "GPS"
+- tap target 84×32 < 44: button.btn "Za hráčem"
+- tap target 56×32 < 44: button.btn "Shora"
+- tap target 44×40 < 44: button.game-dpad-up "↑"
+- tap target 44×40 < 44: button.game-dpad-left "←"
+- tap target 44×40 < 44: button.game-dpad-stop "■"
+- tap target 44×40 < 44: button.game-dpad-right "→"
+- tap target 44×40 < 44: button.game-dpad-down "↓"
+- tap target 118×32 < 44: [data-testid="avatar-cube"] "Původní postava"
+- tap target 94×32 < 44: [data-testid="avatar-gotchi"] "Neutrální 3D"
+- tap target 71×32 < 44: button.btn "Úsporný"
+- tap target 80×32 < 44: button.btn "Vyvážený"
+- tap target 358×37 < 44: [data-testid="quest-q1"] "Objev Pivovarské muzeum+20 X"
+- tap target 358×37 < 44: [data-testid="quest-q2"] "Vylez ke Karlštejnu+35 XP"
+- tap target 71×32 < 44: button.btn "+10 USD"
+- tap target 79×32 < 44: button.btn "+100 USD"
+- nested surfaces: 11 boxed elements inside another boxed element (button.game-dpad-up "↑", button.game-dpad-left "←", button.game-dpad-stop "■", button.game-dpad-right "→")
+- density: 21 interactive elements above the fold (max 12)
+- density: 4 primary buttons above the fold (max 1): button.btn "Klávesy", button.btn "Za hráčem", [data-testid="avatar-gotchi"] "Neutrální 3D", button.btn "Úsporný"
+
+## 09-layers-drawer-390-light
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (292×9 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×15 px)
+- overlap: small "Podporováno" × strong "Doprava" (290×8 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (290×10 px)
+- overlap: span "Bez dálnic" × h3 "Zastávky" (44×17 px)
+- overlap: span "Bez dálnic" × span "2 celkem · bez limitu provid" (156×16 px)
+- overlap: small "Fallback" × span "51.00000, 10.20000" (292×14 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="pick-stop-1"] "Vybrat na mapě" (144×13 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="locate-stop-1"] "Moje poloha" (144×13 px)
+- overlap: span "Request: osm · profile=car ·" × summary "Čas a přesné GPS" (115×13 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (298×16 px)
+- overlap: span.kit-icon "public" × h3.mega-section-title "Presety" (20×7 px)
+- overlap: strong "Default" × h3.mega-section-title "Presety" (112×7 px)
+- overlap: small "Čistý MapOS pro cestování, o" × span.mega-preset-name "Výlet" (111×19 px)
+- overlap: small "Čistý MapOS pro cestování, o" × small "Hrady, vyhlídky, voda, vrcho" (111×15 px)
+- overlap: span.kit-icon "stadia_controller" × h3.mega-section-title "Presety" (20×7 px)
+- overlap: strong "Aavegotchi" × h3.mega-section-title "Presety" (112×7 px)
+- overlap: small "Gotchi avatar, questy, zóny " × span.mega-preset-name "Město" (112×19 px)
+- overlap: small "Gotchi avatar, questy, zóny " × small "Kavárny, obchody, jídlo, kul" (112×15 px)
+- overlap: button.btn "Přidat doporučené vrstvy" × h3.mega-section-title "Počasí" (198×15 px)
+- overlap: div.group-title "Zdroje míst" × p.meta "Jedna veličina v mapě · rada" (336×6 px)
+- overlap: small "Hlavní zdroj. Umí i bezejmen" × p.meta "Jedna veličina v mapě · rada" (187×10 px)
+- overlap: small "Významná místa napříč Evropo" × small "mm" (83×16 px)
+- overlap: small "Významná místa napříč Evropo" × small "°C" (84×16 px)
+- overlap: small "Články s geolokací — kontext" × small "m/s" (81×16 px)
+- overlap: small "Články s geolokací — kontext" × small "m/s" (84×16 px)
+- overlap: small "Evropská POI základna import" × small "hPa" (84×16 px)
+- overlap: small "Prototypově dostupné po zapn" × h3.mega-section-title "POI vrstvy" (212×9 px)
+- overlap: small "Nedostupné" × div.group-title "Doprava" (64×6 px)
+- overlap: small "Veřejné piny z uživatelských" × span.beta-badge "beta" (30×4 px)
+- overlap: small "Veřejné piny z uživatelských" × div.group-title "Cestování" (185×6 px)
+- tap target 67×32 < 44: button.btn "↶ Vrátit"
+- tap target 358×39 < 44: [data-testid="plan-name"]
+- tap target 336×41 < 44: input
+- tap target 336×39 < 44: select "PěškyKoloOsobní autoMotorkaK"
+- tap target 15×15 < 44: input
+- tap target 15×15 < 44: input
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-1"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-1"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-2"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-2"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 150×33 < 44: button "＋Parkoviště Centrum"
+- tap target 119×33 < 44: button "＋Riegrovy sady"
+- tap target 32×32 < 44: [data-testid="right-utility-close"] "close"
+- tap target 336×36 < 44: [data-testid="layer-source-mapy"] "MMapy.comNedostupné"
+- tap target 336×36 < 44: [data-testid="layer-source-fsq"] "FFoursquareNedostupné"
+- tap target 358×36 < 44: [data-testid="overflow-shared-mobility"] "🛴Sdílená kola a koloběžkybe"
+- tap target 358×36 < 44: [data-testid="overflow-osm-poi"] "📍OSM POI"
+- tap target 358×36 < 44: [data-testid="overflow-vanlife"] "🚐Karavany a kempy"
+- tap target 358×36 < 44: [data-testid="overflow-earthquakes"] "🌋Zemětřesení"
+- tap target 358×36 < 44: [data-testid="overflow-inaturalist"] "🦋Pozorování přírody"
+- tap target 358×36 < 44: [data-testid="overflow-gbif"] "🔬Biodiverzita (GBIF)"
+- tap target 358×36 < 44: [data-testid="overflow-air-quality"] "💨Kvalita ovzduší"
+- tap target 358×36 < 44: [data-testid="overflow-geology"] "🪨Geologie"
+- tap target 358×36 < 44: [data-testid="overflow-commons-photos"] "📷Fotky z Commons"
+- tap target 358×36 < 44: [data-testid="overflow-refuge-restrooms"] "🚻Bezpečné toalety"
+- tap target 358×36 < 44: [data-testid="overflow-events"] "🎫Události"
+- tap target 358×36 < 44: [data-testid="overflow-game"] "🎮QuestLayer"
+- tap target 358×36 < 44: [data-testid="overflow-my-saved-places"] "★Moje uložená místa"
+- tap target 358×36 < 44: [data-testid="overflow-user-layers"] "✏️Moje vrstvy"
+- tap target 72×31 < 44: [data-testid="filter-viewpoint"] "Vyhlídky"
+- tap target 81×31 < 44: [data-testid="filter-waterfall"] "Vodopády"
+- tap target 124×31 < 44: [data-testid="filter-lake"] "Jezera / přehrady"
+- tap target 66×31 < 44: [data-testid="filter-peak"] "Vrcholy"
+- tap target 82×31 < 44: [data-testid="filter-observation_tower"] "Rozhledny"
+- tap target 103×31 < 44: [data-testid="filter-nature_park"] "Přírodní parky"
+- tap target 70×31 < 44: [data-testid="filter-cave"] "Jeskyně"
+- tap target 57×31 < 44: [data-testid="filter-castle"] "Hrady"
+- tap target 61×31 < 44: [data-testid="filter-palace"] "Zámky"
+- tap target 76×31 < 44: [data-testid="filter-ruins"] "Zříceniny"
+- tap target 61×31 < 44: [data-testid="filter-museum"] "Muzea"
+- tap target 71×31 < 44: [data-testid="filter-monument"] "Pomníky"
+- tap target 48×31 < 44: [data-testid="filter-bar"] "Bary"
+- tap target 69×31 < 44: [data-testid="filter-cafe"] "Kavárny"
+- tap target 87×31 < 44: [data-testid="filter-restaurant"] "Restaurace"
+- tap target 72×31 < 44: [data-testid="filter-brewery"] "Pivovary"
+- tap target 74×31 < 44: [data-testid="filter-shop"] "Obchody"
+- tap target 82×31 < 44: [data-testid="filter-parking"] "Parkoviště"
+- tap target 56×31 < 44: [data-testid="filter-fuel"] "Palivo"
+- tap target 96×31 < 44: [data-testid="filter-charging"] "EV nabíječky"
+- tap target 82×31 < 44: [data-testid="filter-drinking_water"] "Pitná voda"
+- tap target 43×31 < 44: [data-testid="filter-toilets"] "WC"
+- tap target 62×31 < 44: [data-testid="filter-shower"] "Sprchy"
+- tap target 68×31 < 44: [data-testid="filter-dump_station"] "Výlevky"
+- tap target 62×31 < 44: [data-testid="filter-camp_site"] "Kempy"
+- tap target 129×31 < 44: [data-testid="filter-caravan_site"] "Stání pro karavany"
+- tap target 98×31 < 44: [data-testid="filter-alpine_hut"] "Horské chaty"
+- tap target 80×31 < 44: [data-testid="filter-shelter"] "Přístřešky"
+- tap target 63×31 < 44: [data-testid="filter-via_ferrata"] "Ferraty"
+- tap target 103×31 < 44: [data-testid="filter-climbing"] "Lezecké skály"
+- tap target 104×31 < 44: [data-testid="filter-fitness_trail"] "Fitness stezky"
+- tap target 77×31 < 44: [data-testid="filter-fitness_centre"] "Posilovny"
+- tap target 73×31 < 44: [data-testid="filter-disc_golf"] "Disc golf"
+- tap target 87×31 < 44: [data-testid="filter-skatepark"] "Skateparky"
+- tap target 82×31 < 44: [data-testid="filter-swimming"] "Koupaliště"
+- tap target 88×31 < 44: [data-testid="filter-sports_centre"] "Sportoviště"
+- contrast 3.86:1 < 4.5: small "Podporováno"
+- contrast 4.18:1 < 4.5: span "Rychle přidat z viditelných "
+- contrast 4.18:1 < 4.5: span "0 min"
+- contrast 4.18:1 < 4.5: span "hotových úseků"
+- contrast 4.11:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- contrast 4.18:1 < 4.5: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+- contrast 3.74:1 < 4.5: [data-testid="filter-viewpoint"] "Vyhlídky"
+- contrast 3.56:1 < 4.5: [data-testid="filter-cafe"] "Kavárny"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 30 interactive elements above the fold (max 12)
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 10-basemaps-drawer-390-light
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (292×9 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×15 px)
+- overlap: small "Podporováno" × strong "Doprava" (290×8 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (290×10 px)
+- overlap: span "Bez dálnic" × h3 "Zastávky" (44×17 px)
+- overlap: span "Bez dálnic" × span "2 celkem · bez limitu provid" (156×16 px)
+- overlap: small "Fallback" × span "51.00000, 10.20000" (292×14 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="pick-stop-1"] "Vybrat na mapě" (144×13 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="locate-stop-1"] "Moje poloha" (144×13 px)
+- overlap: span "Request: osm · profile=car ·" × summary "Čas a přesné GPS" (115×13 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (298×16 px)
+- overlap: strong "Sentinel-2 bez mraků" × p.meta "Volitelné mapové struktury s" (328×19 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × strong "OpenTopoMap" (328×8 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × p.meta "Volitelné mapové struktury s" (328×5 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × div.group-title "Outdoor" (328×19 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × strong "OpenTopoMap" (328×5 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × span.basemap-hint "Vrstevnice a stínovaný relié" (328×16 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × span.overflow-icon "🚲" (13×8 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × strong "CyclOSM" (268×19 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × small "Cyklistická mapa: stezky, pr" (268×2 px)
+- overlap: span.basemap-preview-place "Evropa" × span.basemap-preview-place "Evropa" (49×10 px)
+- overlap: strong "Esri World Imagery" × strong "EOX Terrain" (328×9 px)
+- overlap: strong "Esri World Imagery" × span.basemap-hint "Reliéf a povrch bez silnic, " (328×8 px)
+- overlap: strong "Esri World Imagery" × span.overflow-icon "⛰️" (13×15 px)
+- overlap: strong "Esri World Imagery" × strong "Topografická" (268×14 px)
+- overlap: strong "Esri World Imagery" × small "Vrstevnice, stínovaný reliéf" (268×2 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × span.basemap-hint "Reliéf a povrch bez silnic, " (328×16 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × span.overflow-icon "⛰️" (13×3 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × small "Vrstevnice, stínovaný reliéf" (268×11 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × span.overflow-icon "⛷️" (13×20 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × strong "Sjezdovky a běžky" (268×19 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × small "Sjezdové tratě, běžecké stop" (268×7 px)
+- overlap: strong "NASA dnešní snímek" × strong "Námořní mapa" (268×4 px)
+- overlap: span.basemap-hint "Včerejší až dnešní pohled ze" × strong "Námořní mapa" (268×12 px)
+- overlap: span.basemap-note "Denní mozaika v nízkém rozli" × small "Bóje, majáky, přístavy a pla" (268×7 px)
+- overlap: strong "OpenTopoMap" × div.group-title "Outdoor" (328×7 px)
+- overlap: span.basemap-hint "Vrstevnice a stínovaný relié" × strong "CyclOSM" (268×13 px)
+- overlap: strong "EOX Terrain" × span.overflow-icon "⛰️" (13×6 px)
+- overlap: strong "EOX Terrain" × strong "Topografická" (268×13 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × span.overflow-icon "⛰️" (13×12 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × strong "Topografická" (268×3 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × small "Vrstevnice, stínovaný reliéf" (268×15 px)
+- tap target 67×32 < 44: button.btn "↶ Vrátit"
+- tap target 358×39 < 44: [data-testid="plan-name"]
+- tap target 336×41 < 44: input
+- tap target 336×39 < 44: select "PěškyKoloOsobní autoMotorkaK"
+- tap target 15×15 < 44: input
+- tap target 15×15 < 44: input
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-1"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-1"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-2"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-2"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 150×33 < 44: button "＋Parkoviště Centrum"
+- tap target 119×33 < 44: button "＋Riegrovy sady"
+- tap target 32×32 < 44: [data-testid="right-utility-close"] "close"
+- tap target 40×24 < 44: [data-testid="toggle-basemap-labels"]
+- tap target 40×24 < 44: [data-testid="toggle-buildings-3d"]
+- contrast 3.86:1 < 4.5: small "Podporováno"
+- contrast 4.18:1 < 4.5: span "Rychle přidat z viditelných "
+- contrast 4.18:1 < 4.5: span "0 min"
+- contrast 4.18:1 < 4.5: span "hotových úseků"
+- contrast 4.11:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- contrast 4.18:1 < 4.5: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 30 interactive elements above the fold (max 12)
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 11-settings-drawer-390-light
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (292×9 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×15 px)
+- overlap: small "Podporováno" × strong "Doprava" (290×8 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (290×10 px)
+- overlap: span "Bez dálnic" × h3 "Zastávky" (44×17 px)
+- overlap: span "Bez dálnic" × span "2 celkem · bez limitu provid" (156×16 px)
+- overlap: small "Fallback" × span "51.00000, 10.20000" (292×14 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="pick-stop-1"] "Vybrat na mapě" (144×13 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="locate-stop-1"] "Moje poloha" (144×13 px)
+- overlap: span "Request: osm · profile=car ·" × summary "Čas a přesné GPS" (115×13 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (298×16 px)
+- tap target 67×32 < 44: button.btn "↶ Vrátit"
+- tap target 358×39 < 44: [data-testid="plan-name"]
+- tap target 336×41 < 44: input
+- tap target 336×39 < 44: select "PěškyKoloOsobní autoMotorkaK"
+- tap target 15×15 < 44: input
+- tap target 15×15 < 44: input
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-1"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-1"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-2"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-2"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 150×33 < 44: button "＋Parkoviště Centrum"
+- tap target 119×33 < 44: button "＋Riegrovy sady"
+- tap target 32×32 < 44: [data-testid="right-utility-close"] "close"
+- contrast 3.86:1 < 4.5: small "Podporováno"
+- contrast 4.18:1 < 4.5: span "Rychle přidat z viditelných "
+- contrast 4.18:1 < 4.5: span "0 min"
+- contrast 4.18:1 < 4.5: span "hotových úseků"
+- contrast 4.11:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- contrast 4.18:1 < 4.5: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 30 interactive elements above the fold (max 12)
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 01-map-390-dark
+
+Bez nálezů.
+
+## 02-search-empty-390-dark
+
+Bez nálezů.
+
+## 03-search-ai-390-dark
+
+- tap target 81×36 < 44: [data-testid="search-offer-ai"] "Zeptat se AI"
+
+## 04-personal-390-dark
+
+- overlap: span "Zatím žádný plán." × strong "Moje místa" (70×10 px)
+- overlap: span "Zatím žádné uložené místo." × strong "Moje vrstvy" (86×10 px)
+- overlap: span "Zatím žádná vlastní vrstva." × strong "Hra" (12×10 px)
+- contrast 4.01:1 < 4.5: span "Cesty a rozpracované itinerá"
+- contrast 4.01:1 < 4.5: span "Soukromé body, kolekce a poz"
+- contrast 4.01:1 < 4.5: span "Vlastní data, importy a publ"
+- contrast 4.01:1 < 4.5: span "XP a aktivní světy"
+- nested surfaces: 20 boxed elements inside another boxed element (div.mine-avatar "P", button.btn "Nový plán", button.btn "Zaměřit moje místa", div "1aktivní hry")
+- density: 2 primary buttons above the fold (max 1): button.btn "Nový plán", [data-testid="new-plan"] "＋ Nový plán"
+
+## 05-discover-390-dark
+
+- tap target 78×32 < 44: button.btn "＋ Přispět"
+- nested surfaces: 13 boxed elements inside another boxed element (span.discover-hero-icon, button.btn "Zjistit co je tady", span.discover-contribute-icon, button.btn "Přidat místní znalost")
+- density: 2 primary buttons above the fold (max 1): button.btn "Zjistit co je tady", button.btn "Přidat místní znalost"
+
+## 06-planning-empty-390-dark
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (292×9 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×15 px)
+- overlap: small "Podporováno" × strong "Doprava" (290×8 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (290×10 px)
+- overlap: span "Bez dálnic" × h3 "Zastávky" (44×17 px)
+- overlap: span "Bez dálnic" × span "2 celkem · bez limitu provid" (156×16 px)
+- overlap: small "Fallback" × span "51.00000, 10.20000" (292×14 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="pick-stop-1"] "Vybrat na mapě" (144×13 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="locate-stop-1"] "Moje poloha" (144×13 px)
+- overlap: span "Request: osm · profile=car ·" × summary "Čas a přesné GPS" (115×13 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (298×16 px)
+- tap target 67×32 < 44: button.btn "↶ Vrátit"
+- tap target 358×39 < 44: [data-testid="plan-name"]
+- tap target 336×41 < 44: input
+- tap target 336×39 < 44: select "PěškyKoloOsobní autoMotorkaK"
+- tap target 15×15 < 44: input
+- tap target 15×15 < 44: input
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-1"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-1"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-2"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-2"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 150×33 < 44: button "＋Parkoviště Centrum"
+- tap target 119×33 < 44: button "＋Riegrovy sady"
+- contrast 3.97:1 < 4.5: small "Podporováno"
+- contrast 2.85:1 < 4.5: span "Kontext odjezdu"
+- contrast 3.93:1 < 4.5: span "0 min"
+- contrast 3.93:1 < 4.5: span "hotových úseků"
+- contrast 4.17:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 30 interactive elements above the fold (max 12)
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 08-game-390-dark
+
+- overlap: [data-testid="avatar-cube"] "Původní postava" × summary "Výkon a animace" (118×17 px)
+- overlap: [data-testid="avatar-gotchi"] "Neutrální 3D" × summary "Výkon a animace" (94×17 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × button.btn "Úsporný" (71×28 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × button.btn "Vyvážený" (80×28 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × p.meta "Úsporný profil omezuje anima" (358×5 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × div.meta "Časované zóny" (358×19 px)
+- overlap: [data-testid="avatar-asset-gate"] "Aavegotchi GLB zatím není v " × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (344×6 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × p.meta "Úsporný profil omezuje anima" (358×28 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (344×7 px)
+- overlap: p.meta "Neutrální 3D průzkumník: Vla" × span.meta "Průzkum · zbývá 4 h" (344×19 px)
+- overlap: button.btn "Úsporný" × div.meta "Časované zóny" (71×19 px)
+- overlap: button.btn "Vyvážený" × div.meta "Časované zóny" (80×19 px)
+- overlap: p.meta "Úsporný profil omezuje anima" × span.game-hud-zone-name "Průzkumná zóna · okolí hráče" (344×16 px)
+- overlap: p.meta "Úsporný profil omezuje anima" × span.meta "Průzkum · zbývá 4 h" (344×15 px)
+- overlap: div.meta "Vloženo $0.00 · úroveň none " × span.meta "WASD/šipky pro pohyb · klikn" (358×11 px)
+- overlap: button.btn "+10 USD" × span.meta "WASD/šipky pro pohyb · klikn" (71×8 px)
+- overlap: button.btn "+100 USD" × span.meta "WASD/šipky pro pohyb · klikn" (79×8 px)
+- tap target 147×30 < 44: button "Aavegotchi"
+- tap target 28×30 < 44: button "✓"
+- tap target 147×30 < 44: button "Trail Signals"
+- tap target 28×30 < 44: button "+"
+- tap target 68×32 < 44: button.btn "Klávesy"
+- tap target 47×32 < 44: button.btn "GPS"
+- tap target 84×32 < 44: button.btn "Za hráčem"
+- tap target 56×32 < 44: button.btn "Shora"
+- tap target 44×40 < 44: button.game-dpad-up "↑"
+- tap target 44×40 < 44: button.game-dpad-left "←"
+- tap target 44×40 < 44: button.game-dpad-stop "■"
+- tap target 44×40 < 44: button.game-dpad-right "→"
+- tap target 44×40 < 44: button.game-dpad-down "↓"
+- tap target 118×32 < 44: [data-testid="avatar-cube"] "Původní postava"
+- tap target 94×32 < 44: [data-testid="avatar-gotchi"] "Neutrální 3D"
+- tap target 71×32 < 44: button.btn "Úsporný"
+- tap target 80×32 < 44: button.btn "Vyvážený"
+- tap target 358×37 < 44: [data-testid="quest-q1"] "Objev Pivovarské muzeum+20 X"
+- tap target 358×37 < 44: [data-testid="quest-q2"] "Vylez ke Karlštejnu+35 XP"
+- tap target 71×32 < 44: button.btn "+10 USD"
+- tap target 79×32 < 44: button.btn "+100 USD"
+- nested surfaces: 11 boxed elements inside another boxed element (button.game-dpad-up "↑", button.game-dpad-left "←", button.game-dpad-stop "■", button.game-dpad-right "→")
+- density: 21 interactive elements above the fold (max 12)
+- density: 4 primary buttons above the fold (max 1): button.btn "Klávesy", button.btn "Za hráčem", [data-testid="avatar-gotchi"] "Neutrální 3D", button.btn "Úsporný"
+
+## 09-layers-drawer-390-dark
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (292×9 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×15 px)
+- overlap: small "Podporováno" × strong "Doprava" (290×8 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (290×10 px)
+- overlap: span "Bez dálnic" × h3 "Zastávky" (44×17 px)
+- overlap: span "Bez dálnic" × span "2 celkem · bez limitu provid" (156×16 px)
+- overlap: small "Fallback" × span "51.00000, 10.20000" (292×14 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="pick-stop-1"] "Vybrat na mapě" (144×13 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="locate-stop-1"] "Moje poloha" (144×13 px)
+- overlap: span "Request: osm · profile=car ·" × summary "Čas a přesné GPS" (115×13 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (298×16 px)
+- overlap: span.kit-icon "public" × h3.mega-section-title "Presety" (20×7 px)
+- overlap: strong "Default" × h3.mega-section-title "Presety" (112×7 px)
+- overlap: small "Čistý MapOS pro cestování, o" × span.mega-preset-name "Výlet" (111×19 px)
+- overlap: small "Čistý MapOS pro cestování, o" × small "Hrady, vyhlídky, voda, vrcho" (111×15 px)
+- overlap: span.kit-icon "stadia_controller" × h3.mega-section-title "Presety" (20×7 px)
+- overlap: strong "Aavegotchi" × h3.mega-section-title "Presety" (112×7 px)
+- overlap: small "Gotchi avatar, questy, zóny " × span.mega-preset-name "Město" (112×19 px)
+- overlap: small "Gotchi avatar, questy, zóny " × small "Kavárny, obchody, jídlo, kul" (112×15 px)
+- overlap: button.btn "Přidat doporučené vrstvy" × h3.mega-section-title "Počasí" (198×15 px)
+- overlap: div.group-title "Zdroje míst" × p.meta "Jedna veličina v mapě · rada" (336×6 px)
+- overlap: small "Hlavní zdroj. Umí i bezejmen" × p.meta "Jedna veličina v mapě · rada" (187×10 px)
+- overlap: small "Významná místa napříč Evropo" × small "mm" (83×16 px)
+- overlap: small "Významná místa napříč Evropo" × small "°C" (84×16 px)
+- overlap: small "Články s geolokací — kontext" × small "m/s" (81×16 px)
+- overlap: small "Články s geolokací — kontext" × small "m/s" (84×16 px)
+- overlap: small "Evropská POI základna import" × small "hPa" (84×16 px)
+- overlap: small "Prototypově dostupné po zapn" × h3.mega-section-title "POI vrstvy" (212×9 px)
+- overlap: small "Nedostupné" × div.group-title "Doprava" (64×6 px)
+- overlap: small "Veřejné piny z uživatelských" × span.beta-badge "beta" (30×4 px)
+- overlap: small "Veřejné piny z uživatelských" × div.group-title "Cestování" (185×6 px)
+- tap target 67×32 < 44: button.btn "↶ Vrátit"
+- tap target 358×39 < 44: [data-testid="plan-name"]
+- tap target 336×41 < 44: input
+- tap target 336×39 < 44: select "PěškyKoloOsobní autoMotorkaK"
+- tap target 15×15 < 44: input
+- tap target 15×15 < 44: input
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-1"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-1"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-2"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-2"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 150×33 < 44: button "＋Parkoviště Centrum"
+- tap target 119×33 < 44: button "＋Riegrovy sady"
+- tap target 32×32 < 44: [data-testid="right-utility-close"] "close"
+- tap target 336×36 < 44: [data-testid="layer-source-mapy"] "MMapy.comNedostupné"
+- tap target 336×36 < 44: [data-testid="layer-source-fsq"] "FFoursquareNedostupné"
+- tap target 358×36 < 44: [data-testid="overflow-shared-mobility"] "🛴Sdílená kola a koloběžkybe"
+- tap target 358×36 < 44: [data-testid="overflow-osm-poi"] "📍OSM POI"
+- tap target 358×36 < 44: [data-testid="overflow-vanlife"] "🚐Karavany a kempy"
+- tap target 358×36 < 44: [data-testid="overflow-earthquakes"] "🌋Zemětřesení"
+- tap target 358×36 < 44: [data-testid="overflow-inaturalist"] "🦋Pozorování přírody"
+- tap target 358×36 < 44: [data-testid="overflow-gbif"] "🔬Biodiverzita (GBIF)"
+- tap target 358×36 < 44: [data-testid="overflow-air-quality"] "💨Kvalita ovzduší"
+- tap target 358×36 < 44: [data-testid="overflow-geology"] "🪨Geologie"
+- tap target 358×36 < 44: [data-testid="overflow-commons-photos"] "📷Fotky z Commons"
+- tap target 358×36 < 44: [data-testid="overflow-refuge-restrooms"] "🚻Bezpečné toalety"
+- tap target 358×36 < 44: [data-testid="overflow-events"] "🎫Události"
+- tap target 358×36 < 44: [data-testid="overflow-game"] "🎮QuestLayer"
+- tap target 358×36 < 44: [data-testid="overflow-my-saved-places"] "★Moje uložená místa"
+- tap target 358×36 < 44: [data-testid="overflow-user-layers"] "✏️Moje vrstvy"
+- tap target 72×31 < 44: [data-testid="filter-viewpoint"] "Vyhlídky"
+- tap target 81×31 < 44: [data-testid="filter-waterfall"] "Vodopády"
+- tap target 124×31 < 44: [data-testid="filter-lake"] "Jezera / přehrady"
+- tap target 66×31 < 44: [data-testid="filter-peak"] "Vrcholy"
+- tap target 82×31 < 44: [data-testid="filter-observation_tower"] "Rozhledny"
+- tap target 103×31 < 44: [data-testid="filter-nature_park"] "Přírodní parky"
+- tap target 70×31 < 44: [data-testid="filter-cave"] "Jeskyně"
+- tap target 57×31 < 44: [data-testid="filter-castle"] "Hrady"
+- tap target 61×31 < 44: [data-testid="filter-palace"] "Zámky"
+- tap target 76×31 < 44: [data-testid="filter-ruins"] "Zříceniny"
+- tap target 61×31 < 44: [data-testid="filter-museum"] "Muzea"
+- tap target 71×31 < 44: [data-testid="filter-monument"] "Pomníky"
+- tap target 48×31 < 44: [data-testid="filter-bar"] "Bary"
+- tap target 69×31 < 44: [data-testid="filter-cafe"] "Kavárny"
+- tap target 87×31 < 44: [data-testid="filter-restaurant"] "Restaurace"
+- tap target 72×31 < 44: [data-testid="filter-brewery"] "Pivovary"
+- tap target 74×31 < 44: [data-testid="filter-shop"] "Obchody"
+- tap target 82×31 < 44: [data-testid="filter-parking"] "Parkoviště"
+- tap target 56×31 < 44: [data-testid="filter-fuel"] "Palivo"
+- tap target 96×31 < 44: [data-testid="filter-charging"] "EV nabíječky"
+- tap target 82×31 < 44: [data-testid="filter-drinking_water"] "Pitná voda"
+- tap target 43×31 < 44: [data-testid="filter-toilets"] "WC"
+- tap target 62×31 < 44: [data-testid="filter-shower"] "Sprchy"
+- tap target 68×31 < 44: [data-testid="filter-dump_station"] "Výlevky"
+- tap target 62×31 < 44: [data-testid="filter-camp_site"] "Kempy"
+- tap target 129×31 < 44: [data-testid="filter-caravan_site"] "Stání pro karavany"
+- tap target 98×31 < 44: [data-testid="filter-alpine_hut"] "Horské chaty"
+- tap target 80×31 < 44: [data-testid="filter-shelter"] "Přístřešky"
+- tap target 63×31 < 44: [data-testid="filter-via_ferrata"] "Ferraty"
+- tap target 103×31 < 44: [data-testid="filter-climbing"] "Lezecké skály"
+- tap target 104×31 < 44: [data-testid="filter-fitness_trail"] "Fitness stezky"
+- tap target 77×31 < 44: [data-testid="filter-fitness_centre"] "Posilovny"
+- tap target 73×31 < 44: [data-testid="filter-disc_golf"] "Disc golf"
+- tap target 87×31 < 44: [data-testid="filter-skatepark"] "Skateparky"
+- tap target 82×31 < 44: [data-testid="filter-swimming"] "Koupaliště"
+- tap target 88×31 < 44: [data-testid="filter-sports_centre"] "Sportoviště"
+- contrast 3.97:1 < 4.5: small "Podporováno"
+- contrast 2.85:1 < 4.5: span "Kontext odjezdu"
+- contrast 3.93:1 < 4.5: span "0 min"
+- contrast 3.93:1 < 4.5: span "hotových úseků"
+- contrast 4.17:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- contrast 4.18:1 < 4.5: small "Čistý MapOS pro cestování, o"
+- contrast 3.60:1 < 4.5: [data-testid="filter-viewpoint"] "Vyhlídky"
+- contrast 3.79:1 < 4.5: [data-testid="filter-cafe"] "Kavárny"
+- contrast 2.79:1 < 4.5: [data-testid="filter-restaurant"] "Restaurace"
+- contrast 1.78:1 < 4.5: [data-testid="filter-parking"] "Parkoviště"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 30 interactive elements above the fold (max 12)
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 10-basemaps-drawer-390-dark
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (292×9 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×15 px)
+- overlap: small "Podporováno" × strong "Doprava" (290×8 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (290×10 px)
+- overlap: span "Bez dálnic" × h3 "Zastávky" (44×17 px)
+- overlap: span "Bez dálnic" × span "2 celkem · bez limitu provid" (156×16 px)
+- overlap: small "Fallback" × span "51.00000, 10.20000" (292×14 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="pick-stop-1"] "Vybrat na mapě" (144×13 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="locate-stop-1"] "Moje poloha" (144×13 px)
+- overlap: span "Request: osm · profile=car ·" × summary "Čas a přesné GPS" (115×13 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (298×16 px)
+- overlap: strong "Sentinel-2 bez mraků" × p.meta "Volitelné mapové struktury s" (328×19 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × strong "OpenTopoMap" (328×8 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × p.meta "Volitelné mapové struktury s" (328×5 px)
+- overlap: span.basemap-hint "Celoevropská satelitní mozai" × div.group-title "Outdoor" (328×19 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × strong "OpenTopoMap" (328×5 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × span.basemap-hint "Vrstevnice a stínovaný relié" (328×16 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × span.overflow-icon "🚲" (13×8 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × strong "CyclOSM" (268×19 px)
+- overlap: span.basemap-note "Rozlišení 10 m — skvělé na k" × small "Cyklistická mapa: stezky, pr" (268×2 px)
+- overlap: span.basemap-preview-place "Evropa" × span.basemap-preview-place "Evropa" (49×10 px)
+- overlap: strong "Esri World Imagery" × strong "EOX Terrain" (328×9 px)
+- overlap: strong "Esri World Imagery" × span.basemap-hint "Reliéf a povrch bez silnic, " (328×8 px)
+- overlap: strong "Esri World Imagery" × span.overflow-icon "⛰️" (13×15 px)
+- overlap: strong "Esri World Imagery" × strong "Topografická" (268×14 px)
+- overlap: strong "Esri World Imagery" × small "Vrstevnice, stínovaný reliéf" (268×2 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × span.basemap-hint "Reliéf a povrch bez silnic, " (328×16 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × span.overflow-icon "⛰️" (13×3 px)
+- overlap: span.basemap-hint "Ostré letecké snímky s pokry" × small "Vrstevnice, stínovaný reliéf" (268×11 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × span.overflow-icon "⛷️" (13×20 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × strong "Sjezdovky a běžky" (268×19 px)
+- overlap: span.basemap-note "Veřejná služba Esri. Pro pro" × small "Sjezdové tratě, běžecké stop" (268×7 px)
+- overlap: strong "NASA dnešní snímek" × strong "Námořní mapa" (268×4 px)
+- overlap: span.basemap-hint "Včerejší až dnešní pohled ze" × strong "Námořní mapa" (268×12 px)
+- overlap: span.basemap-note "Denní mozaika v nízkém rozli" × small "Bóje, majáky, přístavy a pla" (268×7 px)
+- overlap: strong "OpenTopoMap" × div.group-title "Outdoor" (328×7 px)
+- overlap: span.basemap-hint "Vrstevnice a stínovaný relié" × strong "CyclOSM" (268×13 px)
+- overlap: strong "EOX Terrain" × span.overflow-icon "⛰️" (13×6 px)
+- overlap: strong "EOX Terrain" × strong "Topografická" (268×13 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × span.overflow-icon "⛰️" (13×12 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × strong "Topografická" (268×3 px)
+- overlap: span.basemap-hint "Reliéf a povrch bez silnic, " × small "Vrstevnice, stínovaný reliéf" (268×15 px)
+- tap target 67×32 < 44: button.btn "↶ Vrátit"
+- tap target 358×39 < 44: [data-testid="plan-name"]
+- tap target 336×41 < 44: input
+- tap target 336×39 < 44: select "PěškyKoloOsobní autoMotorkaK"
+- tap target 15×15 < 44: input
+- tap target 15×15 < 44: input
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-1"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-1"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-2"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-2"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 150×33 < 44: button "＋Parkoviště Centrum"
+- tap target 119×33 < 44: button "＋Riegrovy sady"
+- tap target 32×32 < 44: [data-testid="right-utility-close"] "close"
+- tap target 40×24 < 44: [data-testid="toggle-basemap-labels"]
+- tap target 40×24 < 44: [data-testid="toggle-buildings-3d"]
+- contrast 3.97:1 < 4.5: small "Podporováno"
+- contrast 2.85:1 < 4.5: span "Kontext odjezdu"
+- contrast 3.93:1 < 4.5: span "0 min"
+- contrast 3.93:1 < 4.5: span "hotových úseků"
+- contrast 4.17:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 30 interactive elements above the fold (max 12)
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+
+## 11-settings-drawer-390-dark
+
+- overlap: span "Typ vozidla" × p "Časová osa mapy se po výpočt" (292×9 px)
+- overlap: legend "Profil trasy" × strong "Počasí" (26×15 px)
+- overlap: small "Podporováno" × strong "Doprava" (290×8 px)
+- overlap: span "Krátká" × small "Připraví se s výpočtem trasy" (290×10 px)
+- overlap: span "Bez dálnic" × h3 "Zastávky" (44×17 px)
+- overlap: span "Bez dálnic" × span "2 celkem · bez limitu provid" (156×16 px)
+- overlap: small "Fallback" × span "51.00000, 10.20000" (292×14 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="pick-stop-1"] "Vybrat na mapě" (144×13 px)
+- overlap: strong "Provider tuto kombinaci podp" × [data-testid="locate-stop-1"] "Moje poloha" (144×13 px)
+- overlap: span "Request: osm · profile=car ·" × summary "Čas a přesné GPS" (115×13 px)
+- overlap: p "Každý s odkazem uvidí trasu " × span "AI" (36×16 px)
+- overlap: p "Každý s odkazem uvidí trasu " × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × span "AI" (36×16 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × strong "Diskutovat tento plán" (298×8 px)
+- overlap: [data-testid="create-plan-share"] "Vytvořit a zkopírovat odkaz" × small "Jednorázový dotaz; uložený p" (298×16 px)
+- overlap: span.attribution-used-by "Aktivní požáry" × span.setting-row-label "Dokumentace pro tvůrce vrste" (130×16 px)
+- overlap: a "NASA FIRMS" × span.setting-row-label "Dokumentace pro tvůrce vrste" (79×16 px)
+- overlap: span.attribution-license "public domain" × span.setting-row-label "Dokumentace pro tvůrce vrste" (80×15 px)
+- overlap: span.attribution-used-by "Bezpečné toalety" × span.setting-row-hint "Layer SDK v2, manifesty, pří" (130×16 px)
+- overlap: a "Refuge Restrooms" × span.setting-row-hint "Layer SDK v2, manifesty, pří" (113×16 px)
+- overlap: span.attribution-license "Refuge Restrooms open-data t" × span.setting-row-hint "Layer SDK v2, manifesty, pří" (202×12 px)
+- tap target 67×32 < 44: button.btn "↶ Vrátit"
+- tap target 358×39 < 44: [data-testid="plan-name"]
+- tap target 336×41 < 44: input
+- tap target 336×39 < 44: select "PěškyKoloOsobní autoMotorkaK"
+- tap target 15×15 < 44: input
+- tap target 15×15 < 44: input
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-1"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-1"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 292×42 < 44: input
+- tap target 28×28 < 44: button.planner-stop-clear "×"
+- tap target 144×32 < 44: [data-testid="pick-stop-2"] "Vybrat na mapě"
+- tap target 144×32 < 44: [data-testid="locate-stop-2"] "Moje poloha"
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 95×32 < 44: input
+- tap target 33×32 < 44: button.btn "↑"
+- tap target 33×32 < 44: button.btn "↓"
+- tap target 24×30 < 44: button.planner-remove "×"
+- tap target 150×33 < 44: button "＋Parkoviště Centrum"
+- tap target 119×33 < 44: button "＋Riegrovy sady"
+- tap target 32×32 < 44: [data-testid="right-utility-close"] "close"
+- tap target 115×29 < 44: [data-testid="theme-segmented-system"] "Systém"
+- tap target 108×29 < 44: [data-testid="theme-segmented-light"] "Světlý"
+- tap target 110×29 < 44: [data-testid="theme-segmented-dark"] "Tmavý"
+- tap target 165×29 < 44: [data-testid="density-segmented-comfortable"] "Komfortní"
+- tap target 169×29 < 44: [data-testid="density-segmented-compact"] "Kompaktní"
+- tap target 168×29 < 44: [data-testid="locale-segmented-cs"] "Čeština"
+- tap target 166×29 < 44: [data-testid="locale-segmented-en"] "English"
+- tap target 169×29 < 44: [data-testid="units-segmented-metric"] "km"
+- tap target 165×29 < 44: [data-testid="units-segmented-imperial"] "mi"
+- tap target 40×24 < 44: [data-testid="fly-animations-toggle"]
+- tap target 40×24 < 44: [data-testid="search-here-toggle"]
+- tap target 40×24 < 44: [data-testid="ai-enabled-toggle"]
+- tap target 40×24 < 44: [data-testid="ai-auto-summary-toggle"]
+- tap target 79×19 < 44: a "NASA FIRMS"
+- tap target 113×19 < 44: a "Refuge Restrooms"
+- tap target 29×19 < 44: a "GBIF"
+- tap target 57×19 < 44: a "CyclOSM"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 130×19 < 44: a "Wikimedia Commons"
+- tap target 70×19 < 44: a "Foursquare"
+- tap target 67×19 < 44: a "Macrostrat"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 116×19 < 44: a "Sensor.Community"
+- tap target 108×19 < 44: a "© Seznam.cz a.s."
+- tap target 52×19 < 44: a "OpenAQ"
+- tap target 112×19 < 44: a "Open Charge Map"
+- tap target 84×19 < 44: a "OpenSeaMap"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 308×19 < 44: a "Overture Maps Foundation (CD"
+- tap target 69×19 < 44: a "Park4Night"
+- tap target 69×19 < 44: a "Park4Night"
+- tap target 68×19 < 44: a "RainViewer"
+- tap target 78×19 < 44: a "Open-Meteo"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 60×19 < 44: a "© CARTO"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 60×19 < 44: a "© CARTO"
+- tap target 116×19 < 44: a "Terrain Light (EOX)"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 213×19 < 44: a "Esri, Maxar, Earthstar Geogr"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 71×19 < 44: a "© Geoapify"
+- tap target 60×19 < 44: a "© Google"
+- tap target 60×19 < 44: a "© Google"
+- tap target 60×19 < 44: a "© Google"
+- tap target 49×19 < 44: a "© HERE"
+- tap target 49×19 < 44: a "© HERE"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 69×19 < 44: a "© MapTiler"
+- tap target 69×19 < 44: a "© MapTiler"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 69×19 < 44: a "© MapTiler"
+- tap target 108×19 < 44: a "© Seznam.cz a.s."
+- tap target 108×19 < 44: a "© Seznam.cz a.s."
+- tap target 108×19 < 44: a "© Seznam.cz a.s."
+- tap target 108×19 < 44: a "© Seznam.cz a.s."
+- tap target 129×19 < 44: a "NASA GIBS / EOSDIS"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 87×19 < 44: a "OpenFreeMap"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 87×19 < 44: a "OpenFreeMap"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 90×19 < 44: a "OpenTopoMap"
+- tap target 164×19 < 44: a "Sentinel-2 cloudless (EOX)"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 91×19 < 44: a "© Stadia Maps"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 103×19 < 44: a "© Thunderforest"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 103×19 < 44: a "© Thunderforest"
+- tap target 68×19 < 44: a "© TomTom"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 60×19 < 44: a "© CARTO"
+- tap target 108×19 < 44: a "© Seznam.cz a.s."
+- tap target 62×19 < 44: a "iNaturalist"
+- tap target 114×19 < 44: a "eBird / Cornell Lab"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 60×19 < 44: a "© CARTO"
+- tap target 93×19 < 44: a "GBFS operátoři"
+- tap target 94×19 < 44: a "OpenSnowMap"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 56×19 < 44: a "Mapillary"
+- tap target 90×19 < 44: a "OpenTopoMap"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 145×19 < 44: a "Ticketmaster Discovery"
+- tap target 93×19 < 44: a "Wikidata (CC0)"
+- tap target 136×19 < 44: a "Wikipedia (CC BY-SA)"
+- tap target 220×19 < 44: a "USGS Earthquake Hazards Prog"
+- tap target 109×19 < 44: a "Waymarked Trails"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- tap target 107×19 < 44: a "OpenRailwayMap"
+- tap target 191×19 < 44: a "© OpenStreetMap přispěvatelé"
+- contrast 3.97:1 < 4.5: small "Podporováno"
+- contrast 2.85:1 < 4.5: span "Kontext odjezdu"
+- contrast 3.93:1 < 4.5: span "0 min"
+- contrast 3.93:1 < 4.5: span "hotových úseků"
+- contrast 4.17:1 < 4.5: small "Jednorázový dotaz; uložený p"
+- nested surfaces: 54 boxed elements inside another boxed element (input, select "PěškyKoloOsobní autoMotorkaK", button.active "RychláPodporováno", button "KrátkáFallback")
+- density: 30 interactive elements above the fold (max 12)
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: small "Fallback"
+- developer text in UI: strong "Provider tuto kombinaci podp"
+- developer text in UI: span "Request: osm · profile=car ·"
+- developer text in UI: span "2 celkem · bez limitu provid"
+- developer text in UI: p.planner-route-disclaimer "Trasu skládá MapOS po soused"
+- developer text in UI: span.settings-status-chip "deterministický režim"
+- developer text in UI: span.setting-row-value "OSM + OSRM"

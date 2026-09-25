@@ -129,13 +129,24 @@
   .maplibregl-ctrl-group {
     border: 1px solid var(--border) !important;
     box-shadow: var(--shadow-sm) !important;
-    border-radius: var(--radius) !important;
+    border-radius: var(--radius-pill) !important;
     overflow: hidden;
     background: var(--surface-solid) !important;
   }
 
+  /* MapLibre ships 29 px buttons, which are below the 32 px desktop and 44 px touch targets the
+     rest of the chrome holds itself to. */
   .maplibregl-ctrl-group button {
     background-color: transparent !important;
+    width: var(--control-h-sm) !important;
+    height: var(--control-h-sm) !important;
+  }
+
+  @media (max-width: 899px) {
+    .maplibregl-ctrl-group button {
+      width: var(--tap-min) !important;
+      height: var(--tap-min) !important;
+    }
   }
 
   .maplibregl-ctrl-group button + button {
@@ -162,7 +173,8 @@
 
   @keyframes slideInLeft {
     from {
-      transform: translateX(-24px);
+      /* §31.2: 8 px, not 24 — a panel this size sliding a long way reads as a page transition. */
+      transform: translateX(-8px);
       opacity: 0;
     }
     to {

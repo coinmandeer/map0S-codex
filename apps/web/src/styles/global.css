@@ -1,12 +1,22 @@
 /* Cascade layer order is declared once here, up front, so a rule's file decides its
    precedence rather than its position in a 1500-line blob. Later layers win regardless of
-   specificity: tokens < base < primitives < chrome < panels < game < utilities. */
-@layer tokens, base, primitives, chrome, panels, game, utilities;
+   specificity: tokens < base < primitives < components < chrome < panels < planner < place
+   < game < utilities.
+
+   `components` is the design kit (`ui/kit/*`). It sits above the legacy `primitives` layer
+   so kit styling wins where the two overlap, and below `chrome`/`panels` so a screen can
+   still adjust a kit component in context. */
+@layer tokens, base, primitives, components, chrome, panels, planner, place, game, utilities;
 
 @import "./tokens.css";
 @import "./base.css";
 @import "./primitives.css";
+@import "./motion.css";
+@import "./kit.css";
 @import "./chrome.css";
 @import "./panels.css";
+@import "./planner.css";
+@import "./place.css";
+@import "./drawers.css";
 @import "./error-boundary.css";
 @import "./game.css";

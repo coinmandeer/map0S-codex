@@ -1,0 +1,673 @@
+/* Planning panel (§4.5). Its own layer above `panels` so the legacy planner rules in
+   panels.css cannot reach the redesigned markup; those rules go away with Fáze 6. */
+@layer planner {
+  .planner-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .planner-hint {
+    margin: 0;
+    color: var(--text-muted);
+    font: var(--type-body-sm);
+  }
+
+  /* ---- Options ---------------------------------------------------------- */
+
+  .planner-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .planner-options-summary {
+    overflow: hidden;
+    max-width: 14ch;
+    color: var(--text-faint);
+    font: var(--type-label-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .planner-options-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+
+  .planner-options-grid.three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .planner-options-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  /* A stop taken from a pin shows the place, not an editable copy of its name. */
+  .planner-stop-place {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    min-height: var(--control-h);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+  }
+
+  .planner-stop-place img,
+  .planner-stop-place-icon {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-xs);
+    object-fit: cover;
+  }
+
+  .planner-stop-place-icon {
+    display: grid;
+    place-items: center;
+    background: var(--surface-solid);
+    color: var(--text-muted);
+  }
+
+  .planner-stop-place-name {
+    flex: 1;
+    overflow: hidden;
+    font: var(--type-body-md);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .planner-options-switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    font: var(--type-body-md);
+  }
+
+  /* Source attribution for the departure context, read inside the InfoTip rather than as a
+     card of its own (§29.3). */
+  .planner-context-note {
+    display: block;
+    margin-top: var(--space-2);
+    color: var(--text-muted);
+    font: var(--type-label-sm);
+  }
+
+  /* ---- Adventure suggestions -------------------------------------------- */
+
+  .planner-adventure {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .planner-adventure-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  /* ---- Stops ------------------------------------------------------------ */
+
+  .planner-stops {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  /* The old full-list pseudo-element still exists in the compatibility stylesheet.  The
+     redesigned rail below owns the connector; hiding the legacy line prevents it from leaking
+     through translucent bullets and into the footer. */
+  .planner-stops::before {
+    display: none;
+  }
+
+  .planner-stops-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .planner-stops-count {
+    color: var(--text-faint);
+    font: var(--type-label-sm);
+  }
+
+  .planner-stop-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* A stop is one row: the rail, then everything else (§4.5). The rail draws the connector
+     itself, so the list has no absolutely positioned line to keep in sync with paging. */
+  .planner-stop {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: start;
+  }
+
+  .planner-stop-rail {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    justify-items: center;
+    height: 100%;
+  }
+
+  .planner-stop-rail::after {
+    content: "";
+    width: 2px;
+    margin-top: 2px;
+    border-radius: 1px;
+    background: var(--border-strong);
+  }
+
+  .planner-stop[data-last] .planner-stop-rail::after {
+    display: none;
+  }
+
+  .planner-stop-bullet {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-solid);
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font: var(--type-label-md);
+    position: relative;
+    z-index: 1;
+  }
+
+  /* The numbered bullet is the drag handle: the one part of the row that is not an input. */
+  .planner-stop-drag {
+    display: grid;
+    place-items: center;
+    border: 0;
+    padding: 0;
+    background: none;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .planner-stop-drag:active {
+    cursor: grabbing;
+  }
+
+  .planner-stop-drag:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-pill);
+  }
+
+  .planner-stop-group[data-dragging] {
+    opacity: 0.6;
+  }
+
+  .planner-stop-main {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-bottom: var(--space-4);
+  }
+
+  .planner-stop-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .planner-stop-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--text-faint);
+    font: var(--type-label-sm);
+  }
+
+  .planner-stop-chip {
+    margin-inline-start: auto;
+    color: var(--text-muted);
+  }
+
+  .planner-stop-manual {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+  }
+
+  .planner-stop-manual-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .planner-stop-window {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--space-2);
+    align-items: center;
+    color: var(--text-muted);
+    font: var(--type-label-sm);
+    text-align: center;
+  }
+
+  .planner-stop-add {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .planner-suggestions,
+  .planner-ai-results {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .planner-ai-results-text {
+    flex: 1 0 100%;
+    margin: 0;
+    color: var(--text-muted);
+    font: var(--type-body-sm);
+  }
+
+  /* ---- Multifunctional stop input --------------------------------------- */
+
+  .planner-stop-search {
+    position: relative;
+    min-width: 0;
+  }
+
+  .planner-stop-search-control {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    /* The kit's control height rather than a hardcoded 40 px, so the stop field grows to the
+       tap target on a phone like every other field does. The outline is an inset shadow for
+       the same reason the kit's fields use one: a real border eats 2 px of the height the
+       input needs to be tappable. */
+    height: var(--control-h);
+    padding-inline: var(--space-4);
+    border-radius: var(--radius-sm);
+    background: var(--surface-solid);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+  }
+
+  .planner-stop-search-control:focus-within {
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  .planner-stop-search-control input {
+    min-width: 0;
+    flex: 1;
+    /* Fill the shell rather than sit inside it on the global input padding: the shell carries
+       the border, so the input has to be the part that is actually tapped. */
+    align-self: stretch;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: var(--type-body-md);
+  }
+
+  .planner-stop-search-control input:focus {
+    outline: none;
+  }
+
+  .planner-stop-suggestions {
+    position: absolute;
+    z-index: var(--z-popover);
+    top: calc(100% + var(--space-2));
+    right: 0;
+    left: 0;
+    display: flex;
+    max-height: 320px;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-solid);
+    box-shadow: var(--shadow);
+  }
+
+  .planner-stop-suggestions > button,
+  .planner-stop-intent,
+  .planner-stop-empty {
+    display: grid;
+    gap: 2px;
+    padding: var(--space-4);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text);
+    text-align: left;
+  }
+
+  .planner-stop-suggestions > button {
+    cursor: pointer;
+  }
+
+  .planner-stop-suggestions > button:hover:not(:disabled),
+  .planner-stop-suggestions > button:focus-visible {
+    background: var(--surface-hover);
+  }
+
+  .planner-stop-suggestions strong {
+    font: var(--type-title-sm);
+  }
+
+  .planner-stop-suggestions span,
+  .planner-stop-suggestions small {
+    color: var(--text-muted);
+    font: var(--type-label-sm);
+  }
+
+  .planner-stop-intent,
+  .planner-stop-empty {
+    color: var(--text-muted);
+  }
+
+  .planner-stop-ai-action strong {
+    color: var(--accent);
+  }
+
+  /* ---- Segments --------------------------------------------------------- */
+
+  .planner-segment {
+    --planner-segment-accent: var(--border-strong);
+
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: stretch;
+    padding-bottom: var(--space-4);
+  }
+
+  .planner-segment[data-selected] {
+    --planner-segment-accent: var(--warning);
+  }
+
+  .planner-segment[data-status="failed"] {
+    --planner-segment-accent: var(--danger);
+  }
+
+  .planner-segment-rail {
+    justify-self: center;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--planner-segment-accent);
+  }
+
+  .planner-segment-body {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .planner-segment-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .planner-segment-metrics {
+    color: var(--text-muted);
+    font: var(--type-label-md);
+  }
+
+  .planner-segment-focus {
+    border: 0;
+    background: none;
+    color: var(--accent);
+    cursor: pointer;
+    font: var(--type-label-sm);
+  }
+
+  .planner-segment-focus[aria-pressed="true"] {
+    color: var(--warning);
+  }
+
+  /* Navigation for the single leg: each leg is its own route, so the handoff starts where the
+     traveller is standing, not from the first stop of the whole plan. */
+  .planner-segment-handoffs {
+    display: inline-flex;
+    gap: var(--space-3);
+    margin-left: auto;
+  }
+
+  .planner-segment-handoff {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--accent);
+    font: var(--type-label-sm);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .planner-segment-handoff:hover,
+  .planner-segment-handoff:focus-visible {
+    text-decoration: underline;
+  }
+
+  /* §16.2: variants ride along the segment line as chips, so a two-variant segment costs one
+     wrapped row rather than a disclosure plus a grid of cards. */
+  .planner-segment-alternatives {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .planner-segment-alternative {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface-solid);
+    color: var(--text);
+    cursor: pointer;
+    transition:
+      border-color var(--dur-fast) var(--ease-out),
+      background-color var(--dur-fast) var(--ease-out);
+  }
+
+  .planner-segment-alternative:hover {
+    background: var(--surface-hover);
+  }
+
+  .planner-segment-alternative[aria-checked="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .planner-segment-alternative span {
+    font: var(--type-label-md);
+  }
+
+  .planner-segment-alternative small {
+    color: var(--text-muted);
+    font: var(--type-label-sm);
+    white-space: nowrap;
+  }
+
+  .planner-segment-temporal {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-5);
+    color: var(--text-muted);
+    font: var(--type-label-sm);
+  }
+
+  .planner-segment-temporal > span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .planner-segment-warning {
+    color: var(--warning);
+  }
+
+  /* ---- Footer ----------------------------------------------------------- */
+
+  .planner-footer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .planner-footer-summary {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .planner-footer-total {
+    font: var(--type-title-md);
+  }
+
+  .planner-footer-segments {
+    color: var(--text-faint);
+    font: var(--type-label-sm);
+    text-align: right;
+  }
+
+  .planner-footer-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .planner-footer-actions {
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  /* ---- Share, handoff, assistant ---------------------------------------- */
+
+  .planner-share,
+  .planner-share-links,
+  .planner-handoffs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .planner-share-links {
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border);
+  }
+
+  .planner-share-url {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .planner-handoff {
+    display: grid;
+    gap: 2px;
+    padding: var(--space-4);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .planner-handoff:hover {
+    background: var(--surface-hover);
+  }
+
+  .planner-handoff small {
+    color: var(--text-muted);
+    font: var(--type-label-sm);
+  }
+
+  .planner-assistant {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-elevated);
+  }
+
+  .planner-assistant-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .planner-assistant-thread {
+    display: flex;
+    max-height: 320px;
+    flex-direction: column;
+    gap: var(--space-3);
+    overflow-y: auto;
+  }
+
+  .planner-assistant-thread article {
+    max-width: 88%;
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+  }
+
+  .planner-assistant-thread article.role-user {
+    align-self: flex-end;
+    background: var(--accent-soft);
+  }
+
+  .planner-assistant-thread p,
+  .planner-assistant-answer p {
+    margin: 0;
+    font: var(--type-body-md);
+  }
+
+  .planner-assistant-thread small,
+  .planner-assistant-answer small {
+    color: var(--text-faint);
+    font: var(--type-label-sm);
+  }
+
+  .planner-assistant-answer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+  }
+
+  @media (max-width: 520px) {
+    .planner-options-grid,
+    .planner-options-grid.three {
+      grid-template-columns: 1fr;
+    }
+  }
+}

@@ -1,5 +1,12 @@
 import { defineConfig } from "@playwright/test";
 
+const apiPort = Number(process.env.MAPOS_E2E_API_PORT ?? 4033);
+if (!Number.isInteger(apiPort) || apiPort < 1024 || apiPort > 65535)
+  throw new Error("Invalid E2E API port");
+const webPort = Number(process.env.MAPOS_E2E_WEB_PORT ?? 5173);
+if (!Number.isInteger(webPort) || webPort < 1024 || webPort > 65535)
+  throw new Error("Invalid E2E web port");
+
 export default defineConfig({
   testDir: "./e2e",
   // Auxiliary profiles keep their own server lifecycle and are deliberately excluded here.
@@ -20,7 +27,7 @@ export default defineConfig({
   // that badly enough that failures start reporting how busy the machine was.
   workers: 3,
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: `http://localhost:${webPort}`,
     headless: true,
     // A service worker can otherwise satisfy a request before Playwright's zero-upstream route
     // sees it. The release profile deliberately tests the ordinary page/network path only.
@@ -28,15 +35,19 @@ export default defineConfig({
   },
   webServer: [
     {
-      command:
-        "MAPOS_FIXTURE_MODE=offline MAPOS_E2E_RATE_LIMIT_MULTIPLIER=100 npm run dev:memory -w @mapos/api",
-      port: 4033,
+      command: `PORT=${apiPort} MAPOS_FIXTURE_MODE=offline MAPOS_E2E_RATE_LIMIT_MULTIPLIER=100 node --import tsx apps/api/src/memory-server.ts`,
+      // A bound port only proves the process reached `listen`; the first specs were reaching Vite's
+      // proxy while routes were still registering, so the whole first second of the run answered
+      // /config and /auth/guest with ECONNREFUSED. Polling /health waits for a served response.
+      url: `http://127.0.0.1:${apiPort}/health`,
       // Reusing an arbitrary developer process would silently drop the server-side offline guard.
+      timeout: 120_000,
       reuseExistingServer: false
     },
     {
-      command: "npm run dev -w @mapos/web",
-      port: 5173,
+      command: `MAPOS_DEV_API_PORT=${apiPort} npm run dev -w @mapos/web -- --port ${webPort} --strictPort`,
+      port: webPort,
+      timeout: 120_000,
       reuseExistingServer: false
     }
   ]

@@ -14,9 +14,10 @@ export type LayerCategoryV2 =
   | "environment"
   | "community"
   | "infrastructure"
-  | "moving";
+  | "moving"
+  | "statistics";
 
-export type LayerModeV2 = "personal" | "discover" | "planning" | "game";
+export type LayerModeV2 = "personal" | "feed" | "discover" | "planning" | "game";
 export type GeometryKindV2 =
   | "Point"
   | "MultiPoint"
@@ -37,6 +38,8 @@ export interface RendererDescriptorV2 {
     | "heatmap"
     | "raster"
     | "vector-style"
+    /** Territory polygons coloured by a value; the classes come from `legend.stops`. */
+    | "choropleth"
     | "custom-gl"
     | "three";
   cluster?: boolean;
@@ -44,6 +47,50 @@ export interface RendererDescriptorV2 {
   clusterRadiusPx?: number;
   style?: Record<string, JsonValue>;
   zIndex?: number;
+}
+
+/**
+ * A place carried inside the manifest instead of fetched.
+ *
+ * This is what an assistant can hand over: a handful of points it has already read from tools,
+ * each still naming the source it came from. There is no endpoint to call and nothing to trust —
+ * the layer is exactly the rows below, and `sourceId` is what makes each row checkable.
+ */
+export interface InlineFeatureV2 {
+  /** Optional original identity for opening the source detail; old snapshots remain valid. */
+  sourceLayerId?: string;
+  sourceFeatureId?: string;
+  id: string;
+  title: string;
+  longitude: number;
+  latitude: number;
+  category?: string;
+  summary?: string;
+  url?: string;
+  /** The source record id this point came from; joins to `attribution` and to tool citations. */
+  sourceId: string;
+}
+
+/**
+ * Where an inline layer came from.
+ *
+ * An inline layer has no endpoint to re-check, so its origin has to travel with it: which kind of
+ * act produced it, and — for an assistant answer — which model and which question. Without this a
+ * saved AI layer is indistinguishable from data somebody surveyed.
+ */
+export interface InlineProvenanceV2 {
+  kind: "ai" | "import" | "manual";
+  model?: string;
+  prompt?: string;
+  createdAt: string;
+  /** Source record ids the features join to; a superset of the `sourceId`s below. */
+  sourceIds: string[];
+}
+
+export interface InlineSourceDataV2 {
+  generatedAt?: string;
+  provenance?: InlineProvenanceV2;
+  features: InlineFeatureV2[];
 }
 
 export interface LayerSourceV2 {
@@ -56,6 +103,7 @@ export interface LayerSourceV2 {
     | "realtime"
     | "user-data"
     | "computed"
+    | "inline"
     | "custom-runtime";
   adapterId?: string;
   endpoint?: string;
@@ -69,6 +117,8 @@ export interface LayerSourceV2 {
   query?: Record<string, DeclarativeHttpQueryValueV2>;
   /** Declarative response projection. Dot paths are data lookups, never executable code. */
   mapping?: DeclarativeHttpMappingV2;
+  /** Present only for `type: "inline"`: the layer's whole content. */
+  inline?: InlineSourceDataV2;
   timeoutMs?: number;
   maxResponseBytes?: number;
 }
@@ -90,6 +140,7 @@ export interface DeclarativeHttpMappingV2 {
 }
 
 export interface LayerQueryPolicyV2 {
+  areaFilter?: "geometry" | "context";
   strategy: "viewport" | "tile" | "realtime" | "global" | "manual";
   maxResultsPerViewport?: number;
   debounceMs?: number;
@@ -178,7 +229,11 @@ export interface TemporalManifestV2 {
 }
 
 export interface LegendManifestV2 {
-  type?: "categorical" | "continuous" | "numeric" | "icon" | "custom";
+  /** `image` is a key the source rendered itself — a WMS `GetLegendGraphic`. Kept distinct from
+   *  `categorical` because there is nothing to read off it programmatically, and inventing
+   *  swatches for someone else's styling would put a key beside the map that does not match the
+   *  pixels. */
+  type?: "categorical" | "continuous" | "numeric" | "icon" | "image" | "custom";
   title?: string;
   unit?: string;
   items?: Array<{
@@ -187,6 +242,8 @@ export interface LegendManifestV2 {
     color?: string;
     icon?: string;
     description?: string;
+    /** Set on an `image` legend: the swatch the source serves for this entry. */
+    imageUrl?: string;
   }>;
   min?: number;
   max?: number;
@@ -203,6 +260,16 @@ export interface PermissionManifestV2 {
 }
 
 export interface AiExposureManifestV2 {
+  semanticProfile?: {
+    version: "1";
+    fields: Array<{
+      field: string;
+      meaning: "identity" | "category" | "description" | "value" | "time" | "url";
+      unit?: string;
+      timeRole?: "observed" | "published" | "valid" | "retrieved";
+    }>;
+    spatial: Array<"point" | "bbox" | "polygon" | "aggregate">;
+  };
   discoverable?: boolean;
   searchableFields?: string[];
   tools?: string[];
@@ -251,6 +318,11 @@ export interface LayerManifestV2 extends VersionEnvelope {
   category: LayerCategoryV2;
   presetIds?: Array<"trip" | "city" | "travel" | "sport">;
   modes?: LayerModeV2[];
+  activation?: {
+    preferredMode?: LayerModeV2;
+    compatibleModes?: LayerModeV2[];
+    exclusiveGroup?: string;
+  };
   worldIds?: string[];
   geometryKinds: GeometryKindV2[];
   renderer: RendererDescriptorV2;

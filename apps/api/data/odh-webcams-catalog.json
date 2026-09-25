@@ -1,0 +1,50 @@
+{
+  "revision": "odh-72863db1076b1ffd",
+  "builtAt": "2026-09-08T08:37:03.565Z",
+  "source": "https://tourism.api.opendatahub.com/v1/WebcamInfo",
+  "sourceSha256": "ca5c5498435793317281496a0ee63245675cb8b69996262708787cd68f50a9ce",
+  "sourceRecords": 1546,
+  "unverifiedLicense": 1530,
+  "invalid": 14,
+  "license": "Per feature metadataLicense; linked imagery excluded",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [11.9593431, 46.7394026] },
+      "properties": {
+        "id": "odh-webcam:3847E129-8234-A734-B2D7-1B30D84CFAF5",
+        "name": "Gsieser Tal Welsberg Taisten",
+        "layerId": "webcams",
+        "category": "webcam",
+        "website": "https://webcams.kronplatz.com/webcam/kronplatz/30/webcam3.jpg",
+        "operator": "idm",
+        "sourceUrl": "https://tourism.api.opendatahub.com/v1/WebcamInfo/3847E129-8234-A734-B2D7-1B30D84CFAF5",
+        "dataUpdatedAt": "2025-10-07T20:00:45.022437+00:00",
+        "catalogueSource": "Open Data Hub",
+        "cameraAccess": "Odkaz na provozovatele; čas změny katalogu není časem snímku",
+        "mediaRights": "Licence metadat se nevztahuje automaticky na Webcamurl ani obrazový přenos",
+        "attribution": "Open Data Hub · idm · CC0",
+        "metadataLicense": "CC0"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [11.9580342, 46.7393585] },
+      "properties": {
+        "id": "odh-webcam:AF6918E1-DF8E-6F60-784C-004A15333CEF",
+        "name": "Gsieser Tal Welsberg Taisten",
+        "layerId": "webcams",
+        "category": "webcam",
+        "website": "https://webcams.kronplatz.com/webcam/kronplatz/20/webcam2.jpg",
+        "operator": "idm",
+        "sourceUrl": "https://tourism.api.opendatahub.com/v1/WebcamInfo/AF6918E1-DF8E-6F60-784C-004A15333CEF",
+        "dataUpdatedAt": "2025-10-07T20:00:44.8123543+00:00",
+        "catalogueSource": "Open Data Hub",
+        "cameraAccess": "Odkaz na provozovatele; čas změny katalogu není časem snímku",
+        "mediaRights": "Licence metadat se nevztahuje automaticky na Webcamurl ani obrazový přenos",
+        "attribution": "Open Data Hub · idm · CC0",
+        "metadataLicense": "CC0"
+      }
+    }
+  ]
+}

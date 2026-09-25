@@ -1,4 +1,4 @@
-import type { Bbox } from "./types.js";
+import type { Bbox, FeatureCollection } from "./types.js";
 
 /** Which upstream serves basemap tiles, geocoding and routing. Distinct from POI sourcing:
  *  a user can browse CARTO tiles while still pulling Mapy.com places, or vice versa. */
@@ -406,7 +406,7 @@ export interface PlacesQuery {
 
 export interface PlacesSourceMeta {
   source: PlaceSourceId;
-  state: "ready" | "error" | "skipped";
+  state: "ready" | "loading" | "error" | "skipped";
   count: number;
   message?: string;
   /** Wall-clock time the source took, for tuning budgets. */
@@ -414,6 +414,7 @@ export interface PlacesSourceMeta {
 }
 
 export interface PlacesResponse {
+  query?: FeatureCollection["query"];
   places: Place[];
   meta: {
     sources: PlacesSourceMeta[];

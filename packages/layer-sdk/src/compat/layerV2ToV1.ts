@@ -23,7 +23,8 @@ const categoryFallback: Record<LayerCategoryV2, LayerCategory> = {
   environment: "environment",
   community: "community",
   infrastructure: "transport",
-  moving: "transport"
+  moving: "transport",
+  statistics: "statistics"
 };
 
 function filterV2ToV1(filter: FilterFacetV2): FilterFacet {

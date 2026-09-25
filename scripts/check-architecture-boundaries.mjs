@@ -10,6 +10,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const SOURCE_ROOTS = {
   api: path.join(REPO_ROOT, "apps/api/src"),
   sdk: path.join(REPO_ROOT, "packages/layer-sdk/src"),
+  adapters: path.join(REPO_ROOT, "packages/adapter-sdk/src"),
   runtime: path.join(REPO_ROOT, "packages/map-runtime/src"),
   web: path.join(REPO_ROOT, "apps/web/src"),
   starter: path.join(REPO_ROOT, "apps/runtime-starter/src")
@@ -57,6 +58,9 @@ function resolveTarget(sourceFile, specifier) {
   }
   if (specifier === "@mapos/map-runtime" || specifier.startsWith("@mapos/map-runtime/")) {
     return SOURCE_ROOTS.runtime;
+  }
+  if (specifier === "@mapos/adapter-sdk" || specifier.startsWith("@mapos/adapter-sdk/")) {
+    return SOURCE_ROOTS.adapters;
   }
   if (!specifier.startsWith(".")) return null;
   return path.resolve(path.dirname(sourceFile), specifier);
@@ -118,7 +122,30 @@ export async function architectureReport() {
       const targetArea = resolvedTarget ? areaFor(resolvedTarget) : "external";
       edges.push({ source: relative(file), sourceArea, targetArea, import: specifier });
 
-      if (sourceArea === "sdk" && ["api", "runtime", "web", "starter"].includes(targetArea)) {
+      if (sourceArea === "adapters" && ["api", "runtime", "web", "starter"].includes(targetArea)) {
+        violations.push(
+          violation(
+            "adapters-are-app-independent",
+            file,
+            specifier,
+            "Source adapters describe layers from SDK contracts; the network and the map are handed to them."
+          )
+        );
+      }
+      if (sourceArea === "adapters" && specifier === "maplibre-gl") {
+        violations.push(
+          violation(
+            "adapters-are-renderer-independent",
+            file,
+            specifier,
+            "An adapter returns a manifest and a tile template; only the runtime touches MapLibre."
+          )
+        );
+      }
+      if (
+        sourceArea === "sdk" &&
+        ["api", "runtime", "web", "starter", "adapters"].includes(targetArea)
+      ) {
         violations.push(
           violation(
             "sdk-is-app-independent",

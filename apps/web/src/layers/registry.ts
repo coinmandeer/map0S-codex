@@ -8,8 +8,9 @@ import type {
   LayerPlugin,
   ServerCapabilities
 } from "@mapos/layer-sdk";
-import { assertLayerManifestV2, layerV1ToV2, layerV2ToV1 } from "@mapos/layer-sdk";
+import { assertLayerManifestV2, layerV1ToV2, layerV2ToV1, CATALOG_DATA } from "@mapos/layer-sdk";
 import { LayerRuntimeRegistry } from "@mapos/map-runtime";
+import { legacyLayerModeFor, type AppMode } from "../product/registry";
 
 /**
  * The web-side plugin shape.
@@ -21,6 +22,21 @@ export interface MapLayerPlugin extends LayerPlugin<maplibregl.Map> {
   /** Ids of info panels this layer contributes to the place detail sheet. Resolved against the
    *  info-panel registry so a layer can add a tab without the sheet importing it. */
   infoPanelIds?: string[];
+  /** What the colours on the map mean. Legends reach the footer through the v2 manifest, and a
+   *  v1 raster overlay has no way to declare one otherwise — a map of coloured lines with no
+   *  key is decoration. */
+  legend?: LayerManifestV2["legend"];
+  /** Which provider fields the detail sheet shows, and in what order. Same reason as `legend`:
+   *  the sheet reads this off the v2 manifest, so without it a v1 layer's own fields never
+   *  appear however carefully the server sent them. */
+  detail?: LayerManifestV2["detail"];
+  /** Capabilities the v1 shape cannot prove on its own — `media` for a layer whose features
+   *  carry photos, so the detail sheet offers a Photos tab instead of hiding one. */
+  capabilities?: LayerManifestV2["capabilities"];
+  minQueryZoom?: number;
+  geometryKinds?: LayerManifestV2["geometryKinds"];
+  renderer?: LayerManifestV2["renderer"];
+  areaFilter?: "geometry" | "context";
 }
 
 /** V2 owns discovery/query metadata while the existing lifecycle keeps rendering unchanged. */
@@ -37,6 +53,21 @@ export interface MapLayerPluginV2 extends Omit<
 const runtimeRegistry = new LayerRuntimeRegistry<MapLayerPlugin>();
 
 function storePlugin(plugin: MapLayerPlugin, manifestV2: LayerManifestV2): void {
+  const dataInfo = CATALOG_DATA[manifestV2.id];
+  if (dataInfo) {
+    manifestV2 = { ...manifestV2, description: dataInfo.description };
+    plugin = { ...plugin, manifest: { ...plugin.manifest, description: dataInfo.description } };
+  }
+  if (plugin.areaFilter)
+    manifestV2 = {
+      ...manifestV2,
+      queryPolicy: { ...manifestV2.queryPolicy, areaFilter: plugin.areaFilter }
+    };
+  manifestV2 = {
+    ...manifestV2,
+    ...(plugin.geometryKinds ? { geometryKinds: plugin.geometryKinds } : {}),
+    ...(plugin.renderer ? { renderer: plugin.renderer } : {})
+  };
   runtimeRegistry.register({ manifest: manifestV2, value: plugin });
 }
 
@@ -48,17 +79,25 @@ export function registerLayer(plugin: MapLayerPlugin): void {
     layerV1ToV2(plugin.manifest, {
       kind: plugin.kind,
       filters: plugin.filters,
+      ...(plugin.capabilities ? { capabilities: plugin.capabilities } : {}),
       attribution: plugin.attribution,
-      viewportCost: plugin.viewportCost
+      viewportCost: plugin.viewportCost,
+      legend: plugin.legend,
+      detail: plugin.detail
     })
   );
 }
 
 /** Registers a canonical v2 manifest and adapts it into the current visual host. */
-export function registerLayerV2(plugin: MapLayerPluginV2): void {
+export function registerLayerV2(
+  plugin: MapLayerPluginV2,
+  options: { replace?: boolean } = {}
+): void {
   assertLayerManifestV2(plugin.manifest);
   const legacy = layerV2ToV1(plugin.manifest);
   const { primaryForModes, ...runtime } = plugin;
+  // Validate and adapt before replacing, so a malformed update preserves the working layer.
+  if (options.replace) runtimeRegistry.unregister(plugin.manifest.id);
   storePlugin(
     {
       ...runtime,
@@ -74,6 +113,13 @@ export function registerLayerV2(plugin: MapLayerPluginV2): void {
   );
 }
 
+/** Drops a layer registered after startup — one built from a pasted URL, when the user deletes
+ *  it. Built-in layers are never unregistered, and passing one of their ids is a caller bug
+ *  rather than something to tolerate silently. */
+export function unregisterLayer(id: string): boolean {
+  return runtimeRegistry.unregister(id);
+}
+
 export function getLayerPlugin(id: string): MapLayerPlugin | undefined {
   return runtimeRegistry.get(id)?.value;
 }
@@ -84,6 +130,70 @@ export function allLayerPlugins(): MapLayerPlugin[] {
 
 export function getLayerManifestV2(id: string): LayerManifestV2 | undefined {
   return runtimeRegistry.get(id)?.manifest;
+}
+
+/** One availability decision shared by the catalog and engine. */
+export function layerUnavailableReason(
+  id: string,
+  caps: ServerCapabilities | null,
+  filters?: FilterValues
+): string | undefined {
+  const plugin = getLayerPlugin(id);
+  if (!plugin) return "Zdroj zatím není dostupný";
+  const sources = Array.isArray(filters?.sources)
+    ? filters.sources
+    : filters?.sources
+      ? [filters.sources]
+      : [];
+  if (
+    id === "game-quests" &&
+    sources.length &&
+    sources.every((source) => source === "opencaching") &&
+    !caps?.opencaching
+  )
+    return "Geocaching není nakonfigurovaný (OKAPI klíč)";
+  const required = (
+    getLayerManifestV2(id)?.requiresServerCapabilities ??
+    (plugin.manifest.requiresCapability ? [plugin.manifest.requiresCapability] : [])
+  ).find((key) => !caps?.[key]);
+  if (required)
+    return caps === null
+      ? "Ověřuji konfiguraci zdroje…"
+      : `Zdroj není nakonfigurovaný (${required})`;
+  return undefined;
+}
+
+/**
+ * The server capability a layer is still missing, once capabilities are known.
+ *
+ * Distinct from `layerUnavailableReason`: this is only "the operator has not configured it"
+ * (a key or a data extract), never "still checking" or "no data here". The catalogue uses it to
+ * move such rows out of the everyday lists into one "needs setup" section.
+ */
+export function layerSetupRequirement(
+  id: string,
+  caps: ServerCapabilities | null,
+  filters?: FilterValues
+): string | undefined {
+  if (caps === null) return undefined;
+  const plugin = getLayerPlugin(id);
+  if (!plugin) return undefined;
+  const sources = Array.isArray(filters?.sources)
+    ? filters.sources
+    : filters?.sources
+      ? [filters.sources]
+      : [];
+  if (
+    id === "game-quests" &&
+    sources.length &&
+    sources.every((source) => source === "opencaching") &&
+    !caps.opencaching
+  )
+    return "opencaching";
+  return (
+    getLayerManifestV2(id)?.requiresServerCapabilities ??
+    (plugin.manifest.requiresCapability ? [plugin.manifest.requiresCapability] : [])
+  ).find((key) => !caps[key]);
 }
 
 /** Layers the server can actually serve. A layer gated behind a key the deployment doesn't hold
@@ -108,6 +218,17 @@ export function primaryLayerForMode(mode: LayerMode): string {
     throw new Error(`No layer claims to be primary for mode "${mode}".`);
   }
   return match.manifest.id;
+}
+
+/**
+ * The layer a shell mode switches on, in canonical v2 terms.
+ *
+ * Feed is the one mode whose primary layer cannot be read off a v1 manifest, because `LayerMode`
+ * has no `feed` member to declare `primaryForModes` against. It opens the community layer: the
+ * posts in the feed list are user pins, so this is what makes tapping one show it on the map.
+ */
+export function primaryLayerForAppMode(mode: AppMode): string {
+  return mode === "feed" ? "user-layers" : primaryLayerForMode(legacyLayerModeFor(mode));
 }
 
 export function layerIdsForMode(mode: LayerMode): string[] {

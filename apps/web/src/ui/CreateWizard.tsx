@@ -30,7 +30,7 @@ function initialDraft(
   lat: number,
   provenance = readContributionProvenance()
 ): Omit<ContentDraft, "id"> {
-  const contribution = provenance?.source === "discover";
+  const contribution = provenance?.source === "discover" || provenance?.source === "feed";
   return {
     type: contribution ? "post" : "place",
     name: "",
@@ -50,7 +50,8 @@ export function CreateWizard() {
   const route = useMapStoreSnapshot((state) => state.routePreview);
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState(() => initialDraft(view.lng, view.lat));
-  const isDiscoverContribution = draft.provenance?.source === "discover";
+  const isContribution =
+    draft.provenance?.source === "discover" || draft.provenance?.source === "feed";
   const [busy, setBusy] = useState(false);
   const [publicConfirmed, setPublicConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +77,7 @@ export function CreateWizard() {
     (step === 2
       ? draft.name.trim().length > 0
       : step === 4
-        ? isDiscoverContribution || draft.visibility !== "public" || publicConfirmed
+        ? isContribution || draft.visibility !== "public" || publicConfirmed
         : true);
 
   const saveConcept = async () => {
@@ -189,11 +190,17 @@ export function CreateWizard() {
 
   return (
     <Sheet
-      title={isDiscoverContribution ? "Přidat do Objevuj" : "Vytvořit"}
+      title={
+        isContribution
+          ? draft.provenance?.source === "feed"
+            ? "Nový příspěvek"
+            : "Přidat do Objevuj"
+          : "Vytvořit"
+      }
       onClose={() => store.closeSheet()}
       testId="create-wizard"
     >
-      {isDiscoverContribution && (
+      {isContribution && (
         <section className="wizard-contribution" data-testid="wizard-contribution">
           <span aria-hidden="true">◎</span>
           <div>
@@ -353,7 +360,7 @@ export function CreateWizard() {
 
       {step === 3 && (
         <>
-          {isDiscoverContribution ? (
+          {isContribution ? (
             <div className="wizard-review-flow" data-testid="wizard-review-flow">
               <div className="active">
                 <span>1</span>
@@ -411,7 +418,7 @@ export function CreateWizard() {
             {TYPES.find((type) => type.id === draft.type)?.label} · {draft.visibility}
           </p>
           <p className="meta">{draft.description || "Bez popisu"}</p>
-          {isDiscoverContribution && (
+          {isContribution && (
             <dl className="wizard-provenance">
               <div>
                 <dt>Původ</dt>
@@ -427,7 +434,7 @@ export function CreateWizard() {
               </div>
             </dl>
           )}
-          {draft.visibility === "public" && !isDiscoverContribution && (
+          {draft.visibility === "public" && !isContribution && (
             <label className="wizard-confirm">
               <input
                 type="checkbox"
@@ -474,11 +481,11 @@ export function CreateWizard() {
             data-testid="wizard-publish"
             type="button"
             disabled={!valid || busy}
-            onClick={() => void (isDiscoverContribution ? submitForReview() : publish())}
+            onClick={() => void (isContribution ? submitForReview() : publish())}
           >
             {busy
               ? "Ukládám…"
-              : isDiscoverContribution
+              : isContribution
                 ? "Odeslat ke kontrole"
                 : draft.visibility === "public"
                   ? "Publikovat"

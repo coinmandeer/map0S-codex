@@ -44,6 +44,8 @@ export interface Guide {
 }
 
 export interface GuideArea {
+  /** Selected boundary names need geographic confirmation to reject namesakes. */
+  requireCoordinatesInBbox?: boolean;
   name?: string;
   bbox: Bbox;
   wikidataId?: string;

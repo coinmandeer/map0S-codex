@@ -2,7 +2,8 @@ import type { Bbox, FilterValues } from "@mapos/layer-sdk";
 import { resolveWeatherVisualization, type WeatherVisualizationId } from "./controls";
 import type { WeatherVariableId } from "./grid";
 
-export type WeatherRepresentation = "continuous-grid" | "cells" | "numeric-sectors";
+export type WeatherRepresentation =
+  "continuous-grid" | "cells" | "numeric-sectors" | "smooth-field";
 
 export interface WeatherRenderBudget {
   id: "regional" | "cells-coarse" | "cells-fine" | "local";
@@ -12,50 +13,50 @@ export interface WeatherRenderBudget {
   maxGridSamples: number;
   maxRenderedCells: number;
   maxNumericLabels: number;
-  targetCellAreaKm2: 50 | 20 | 10;
+  targetCellAreaKm2: 50 | 25 | 10;
 }
 
 /** Provider/renderer capability contract, deliberately outside React components.
- * The API caps a grid at 144 samples; every viewport budget stays below that bound. */
+ * The API caps a grid at 400 samples; every viewport budget stays below that bound. */
 export const WEATHER_RENDER_BUDGETS: readonly WeatherRenderBudget[] = [
   {
     id: "regional",
     minZoom: 0,
     maxZoomExclusive: 6.5,
     representation: "continuous-grid",
-    maxGridSamples: 48,
+    maxGridSamples: 240,
     maxRenderedCells: 0,
-    maxNumericLabels: 0,
+    maxNumericLabels: 24,
     targetCellAreaKm2: 50
   },
   {
     id: "cells-coarse",
     minZoom: 6.5,
     maxZoomExclusive: 8.5,
-    representation: "cells",
-    maxGridSamples: 80,
-    maxRenderedCells: 80,
-    maxNumericLabels: 0,
-    targetCellAreaKm2: 50
+    representation: "smooth-field",
+    maxGridSamples: 320,
+    maxRenderedCells: 320,
+    maxNumericLabels: 64,
+    targetCellAreaKm2: 25
   },
   {
     id: "cells-fine",
     minZoom: 8.5,
     maxZoomExclusive: 10.5,
-    representation: "cells",
-    maxGridSamples: 120,
-    maxRenderedCells: 120,
-    maxNumericLabels: 0,
-    targetCellAreaKm2: 20
+    representation: "smooth-field",
+    maxGridSamples: 400,
+    maxRenderedCells: 480,
+    maxNumericLabels: 120,
+    targetCellAreaKm2: 10
   },
   {
     id: "local",
     minZoom: 10.5,
     maxZoomExclusive: Number.POSITIVE_INFINITY,
-    representation: "numeric-sectors",
-    maxGridSamples: 120,
-    maxRenderedCells: 96,
-    maxNumericLabels: 48,
+    representation: "smooth-field",
+    maxGridSamples: 400,
+    maxRenderedCells: 240,
+    maxNumericLabels: 120,
     targetCellAreaKm2: 10
   }
 ] as const;
@@ -63,7 +64,7 @@ export const WEATHER_RENDER_BUDGETS: readonly WeatherRenderBudget[] = [
 /** Network and interaction ceilings for a single active weather contribution. */
 export const WEATHER_RUNTIME_BUDGET = {
   maxConcurrentGridRequests: 1,
-  maxGridSamplesPerRequest: 144,
+  maxGridSamplesPerRequest: 400,
   maxAdjacentTimelineFrames: 1,
   timelineCommitDelayMs: 240,
   liveRadarMetadataTtlMs: 10 * 60_000,
@@ -88,10 +89,10 @@ function dimensions(
   const height = Math.max(1, viewportHeight);
   const aspect = Math.max(0.5, Math.min(2, width / height));
   const target = Math.max(16, Math.min(maxSamples, Math.ceil(desiredSamples)));
-  let cols = Math.max(2, Math.min(12, Math.floor(Math.sqrt(target * aspect))));
-  let rows = Math.max(2, Math.min(12, Math.floor(target / cols)));
+  let cols = Math.max(2, Math.min(20, Math.floor(Math.sqrt(target * aspect))));
+  let rows = Math.max(2, Math.min(20, Math.floor(target / cols)));
   while (cols * rows > maxSamples && rows > 2) rows -= 1;
-  while ((cols + 1) * rows <= target && cols < 12) cols += 1;
+  while ((cols + 1) * rows <= target && cols < 20) cols += 1;
   return { cols, rows };
 }
 
@@ -122,7 +123,8 @@ export function resolveWeatherZoomStrategy(
   const desiredSamples =
     estimatedViewportAreaKm2 === null
       ? budget.maxGridSamples
-      : estimatedViewportAreaKm2 / budget.targetCellAreaKm2;
+      : estimatedViewportAreaKm2 /
+        (budget.targetCellAreaKm2 * (budget.representation === "cells" ? 2 : 1));
   const resolved = dimensions(budget.maxGridSamples, viewportWidth, viewportHeight, desiredSamples);
   return {
     ...budget,
@@ -179,6 +181,8 @@ export function weatherUpdatePlan(input: {
     visualization,
     variable: visualization,
     strategy,
-    animateWind: visualization === "wind" && strategy.representation === "continuous-grid"
+    // Wind is the one variable whose motion carries meaning, so the flow field is animated at
+    // every zoom where a grid is drawn — not just the continuous regional view.
+    animateWind: visualization === "wind"
   };
 }

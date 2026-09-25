@@ -32,20 +32,30 @@ describe("privacy-bounded layer session state", () => {
     assert.deepEqual(readLayerSessionState(storage), {
       "osm-poi": {
         visible: true,
+        selected: true,
         opacity: 0.72,
         filters: { categories: ["castle", "viewpoint"] }
-      }
+      },
+      weather: { visible: false, selected: true, opacity: 1, filters: {} }
     });
   });
 
-  it("fails closed on corrupt, oversized or inactive entries", () => {
+  it("fails closed on corrupt, oversized or unselected entries", () => {
     const storage = { getItem: () => "{" };
     assert.deepEqual(readLayerSessionState(storage), {});
     assert.deepEqual(
       readLayerSessionState({
         getItem: () => JSON.stringify({ hidden: { visible: false, opacity: 1, filters: {} } })
       }),
-      {}
+      {
+        hidden: { visible: false, selected: true, opacity: 1, filters: {} }
+      }
+    );
+    assert.deepEqual(
+      readLayerSessionState({
+        getItem: () => JSON.stringify({ hidden: { visible: true, opacity: 1, filters: {} } })
+      }),
+      { hidden: { visible: true, selected: true, opacity: 1, filters: {} } }
     );
   });
 });

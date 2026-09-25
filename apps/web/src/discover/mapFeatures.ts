@@ -1,5 +1,5 @@
 import type { GeoFeature, MapViewState } from "@mapos/layer-sdk";
-import { distanceMeters } from "@mapos/layer-sdk";
+import { distanceMeters, featureAnchor } from "@mapos/layer-sdk";
 
 export interface DiscoverMapFeature {
   feature: GeoFeature;
@@ -27,7 +27,7 @@ export function discoverMapFeatures(
   for (const [layerId, layerState] of Object.entries(activeLayers)) {
     if (!layerState.visible) continue;
     for (const feature of visibleFeatures[layerId] ?? []) {
-      const [lng, lat] = feature.geometry.coordinates;
+      const [lng, lat] = featureAnchor(feature);
       if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
       const name =
         typeof feature.properties.name === "string" && feature.properties.name.trim()

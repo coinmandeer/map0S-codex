@@ -21,7 +21,6 @@ export const STRUCTURAL_TILE_OVERLAY_IDS = [
   "waymarked-trails",
   "openrailwaymap",
   "openseamap",
-  "opentopomap",
   "opensnowmap"
 ] as const;
 
@@ -46,6 +45,7 @@ function tilePlugin(args: {
   attributionLabel: string;
   attributionUrl: string;
   license?: string;
+  legend: Parameters<typeof registerLayer>[0]["legend"];
 }) {
   registerLayer({
     kind: "raster",
@@ -59,6 +59,7 @@ function tilePlugin(args: {
     },
     filters: args.filters,
     defaultFilters: args.defaultFilters,
+    legend: args.legend,
     create: (ctx) => createTileLayer(ctx.map, ctx.layerId, args.spec),
     attribution: [
       { label: args.attributionLabel, url: args.attributionUrl, license: args.license },
@@ -73,16 +74,29 @@ function tilePlugin(args: {
 
 tilePlugin({
   id: "cyclosm",
-  name: "CyclOSM",
+  name: "Cyklistická infrastruktura",
   icon: "🚲",
   color: "#7c3aed",
-  description: "Cyklistická mapa: stezky, pruhy, povrchy a servis kol",
+  description: "Průhledný CyclOSM Lite: cyklistické stezky a infrastruktura nad vaším podkladem",
   category: "outdoor",
   attributionLabel: "CyclOSM",
   attributionUrl: "https://www.cyclosm.org/",
   license: "CC-BY-SA-2.0",
+  // Upstream renders far more than this. A legend that repeated the whole style sheet would be
+  // a document, so each of these lists the handful of things people actually look for.
+  legend: {
+    type: "categorical",
+    title: "CyclOSM",
+    items: [
+      { label: "Stezka jen pro kola", color: "#1a73c8" },
+      { label: "Pruh v silnici", color: "#4f9ad9" },
+      { label: "Sdílená cesta s chodci", color: "#8ab8e0" },
+      { label: "Nezpevněný povrch", color: "#b06a3b", description: "Šrafování napříč cestou" },
+      { label: "Servis a pumpa", color: "#7c3aed", icon: "pedal_bike" }
+    ]
+  },
   spec: {
-    tiles: subdomains("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"),
+    tiles: subdomains("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm-lite/{z}/{x}/{y}.png"),
     maxzoom: 20,
     attribution: `${OSM_CREDIT}, dlaždice <a href="https://www.cyclosm.org/">CyclOSM</a>`
   }
@@ -114,19 +128,33 @@ tilePlugin({
     }
   ],
   defaultFilters: { activity: "hiking" },
+  // Waymarked Trails draws by network scale, not by activity, so one key covers all five.
+  legend: {
+    type: "categorical",
+    title: "Značené trasy",
+    items: [
+      { label: "Mezinárodní trasa", color: "#ff0000" },
+      { label: "Národní trasa", color: "#a000c8" },
+      { label: "Regionální trasa", color: "#0000ff" },
+      { label: "Místní trasa", color: "#00a000" },
+      { label: "Více tras v jednom úseku", color: "#7a7a7a", description: "Pruhy vedle sebe" }
+    ]
+  },
   spec: {
     tiles: ["https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png"],
     maxzoom: 18,
     attribution: `${OSM_CREDIT}, dlaždice <a href="https://waymarkedtrails.org/">Waymarked Trails</a> (CC-BY-SA)`,
     // One layer, five route networks: picking the activity swaps the tile URL rather than
     // registering five near-identical layers.
-    tilesForFilters: (filters) => {
-      const raw = filters.activity;
-      const activity = Array.isArray(raw) ? raw[0] : raw;
-      const allowed = ["hiking", "cycling", "mtb", "riding", "slopes"];
-      const chosen =
-        typeof activity === "string" && allowed.includes(activity) ? activity : "hiking";
-      return [`https://tile.waymarkedtrails.org/${chosen}/{z}/{x}/{y}.png`];
+    sourcesForFilters: (filters) => {
+      const raw = filters.activity ?? "hiking";
+      const selected = new Set(Array.isArray(raw) ? raw : [raw]);
+      return ["hiking", "cycling", "mtb", "riding", "slopes"]
+        .filter((activity) => selected.has(activity))
+        .map((activity) => ({
+          id: activity,
+          tiles: [`https://tile.waymarkedtrails.org/${activity}/{z}/{x}/{y}.png`]
+        }));
     }
   }
 });
@@ -141,6 +169,18 @@ tilePlugin({
   attributionLabel: "OpenRailwayMap",
   attributionUrl: "https://www.openrailwaymap.org/",
   license: "CC-BY-SA-2.0",
+  legend: {
+    type: "categorical",
+    title: "Železnice",
+    items: [
+      { label: "Hlavní trať", color: "#ff0000" },
+      { label: "Vedlejší trať", color: "#008000" },
+      { label: "Vlečka a nákladní kolej", color: "#808080" },
+      { label: "Tramvaj a metro", color: "#0000ff" },
+      { label: "Nepoužívaná nebo zrušená", color: "#aaaaaa", description: "Čárkovaně" },
+      { label: "Stanice a zastávka", color: "#0891b2", icon: "train" }
+    ]
+  },
   spec: {
     tiles: subdomains("https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png"),
     maxzoom: 19,
@@ -158,28 +198,21 @@ tilePlugin({
   attributionLabel: "OpenSeaMap",
   attributionUrl: "https://www.openseamap.org/",
   license: "ODbL-1.0",
+  legend: {
+    type: "icon",
+    title: "Námořní značení",
+    items: [
+      { label: "Maják", icon: "light_mode", color: "#facc15" },
+      { label: "Bóje vlevo od plavby", icon: "circle", color: "#dc2626" },
+      { label: "Bóje vpravo od plavby", icon: "circle", color: "#16a34a" },
+      { label: "Nebezpečí", icon: "warning", color: "#111827" },
+      { label: "Přístav a kotviště", icon: "anchor", color: "#1d4ed8" }
+    ]
+  },
   spec: {
     tiles: ["https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"],
     maxzoom: 18,
     attribution: `${OSM_CREDIT}, <a href="https://www.openseamap.org/">OpenSeaMap</a>`
-  }
-});
-
-tilePlugin({
-  id: "opentopomap",
-  name: "Topografická",
-  icon: "⛰️",
-  color: "#65a30d",
-  description: "Vrstevnice, stínovaný reliéf a turistické cesty",
-  category: "outdoor",
-  attributionLabel: "OpenTopoMap",
-  attributionUrl: "https://opentopomap.org/",
-  license: "CC-BY-SA-3.0",
-  spec: {
-    tiles: subdomains("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"),
-    // OpenTopoMap renders to z17 and asks that clients not request beyond it.
-    maxzoom: 17,
-    attribution: `${OSM_CREDIT}, <a href="https://opentopomap.org/">OpenTopoMap</a> (CC-BY-SA)`
   }
 });
 
@@ -193,6 +226,17 @@ tilePlugin({
   attributionLabel: "OpenSnowMap",
   attributionUrl: "https://www.opensnowmap.org/",
   license: "CC-BY-SA-2.0",
+  legend: {
+    type: "categorical",
+    title: "Sjezdovky a běžky",
+    items: [
+      { label: "Lehká sjezdovka", color: "#2b83ba" },
+      { label: "Střední sjezdovka", color: "#d7191c" },
+      { label: "Těžká sjezdovka", color: "#1a1a1a" },
+      { label: "Běžecká stopa", color: "#7b3294", description: "Tečkovaně" },
+      { label: "Vlek a lanovka", color: "#4d4d4d", icon: "airline_seat_recline_extra" }
+    ]
+  },
   spec: {
     tiles: ["https://tiles.opensnowmap.org/pistes/{z}/{x}/{y}.png"],
     maxzoom: 18,

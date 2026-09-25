@@ -15,6 +15,7 @@ import {
   shellReducer,
   type FooterContributionState,
   type LeftContext,
+  type MinimizableFooterKind,
   type LegacyModalSheet,
   type RightUtility,
   type ShellAction,
@@ -23,7 +24,9 @@ import {
 
 export type {
   FooterContributionState,
+  FooterUiState,
   LeftContext,
+  MinimizableFooterKind,
   LegacyModalSheet,
   MapPickerState,
   ModalState,
@@ -137,7 +140,9 @@ export class ShellStore {
 
   setMode(input: AppModeInput): void {
     const { mode } = resolveAppMode(input);
-    this.dispatch({ type: "set-mode", mode, openLeft: true });
+    // Entering the game opens the board, not a panel: the player gets the map and the arcade
+    // HUD, and opens the game panel from its own button when they want the full list.
+    this.dispatch({ type: "set-mode", mode, openLeft: mode !== "game" });
     // Always pass the original input once: aliases can carry additive migration behavior
     // (`weather` activates its layer) even when their canonical mode is already selected.
     this.reconcileSource(input);
@@ -149,6 +154,33 @@ export class ShellStore {
 
   closeLeftContext(): void {
     this.dispatch({ type: "close-left" }, true);
+  }
+
+  /** Opens a place detail in the left slot, remembering the panel it covered so `arrow_back`
+   *  returns to it (§4.10). */
+  openFeatureContext(featureRef: { layerId: string; featureId: string }): void {
+    const current = this.current.leftContext;
+    const returnTo = current.type === "feature" ? current.returnTo : current;
+    this.openLeftContext({ type: "feature", featureRef, returnTo });
+  }
+
+  /** Leaves a place detail: back to the panel it covered, or closed if it opened over the map. */
+  closeFeatureContext(): void {
+    const current = this.current.leftContext;
+    if (current.type !== "feature") return;
+    const returnTo = current.returnTo;
+    if (returnTo && returnTo.type !== "closed") this.openLeftContext(returnTo);
+    else this.closeLeftContext();
+  }
+
+  /** Opens the map-wide AI conversation, optionally seeded with a question (§4.13). */
+  openAiContext(prompt?: string): void {
+    const context = this.current.leftContext;
+    this.openLeftContext({
+      type: "ai",
+      ...(prompt ? { prompt, requestKey: crypto.randomUUID() } : {}),
+      ...(context.type === "feature" ? { featureRef: context.featureRef } : {})
+    });
   }
 
   toggleLeftContext(): void {
@@ -164,6 +196,9 @@ export class ShellStore {
       this.closeRightUtility();
       return;
     }
+    // The game board is the whole screen: layer and basemap drawers would both cover the arcade
+    // and switch the board under the player mid-run.
+    if (this.current.mode === "game" && (value === "layers" || value === "basemaps")) return;
     this.dispatch({ type: "open-right", utility: { type: value } }, true);
   }
 
@@ -230,6 +265,11 @@ export class ShellStore {
       this.footerRegistrations.delete(contribution.id);
       this.dispatch({ type: "unregister-footer", id: contribution.id });
     };
+  }
+
+  /** Rolls a footer tray up into its chip, or back down. */
+  setFooterMinimized(kind: MinimizableFooterKind, minimized: boolean): void {
+    this.dispatch({ type: "minimize-footer", kind, minimized });
   }
 
   /** Restores the last surface snapshot, then falls back to closing the topmost open surface. */

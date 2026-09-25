@@ -1,3 +1,4 @@
+import { intlLocale } from "../i18n";
 /** Rough map center + span (degrees) for demo POI scatter and map flyTo */
 export type CountryMapConfig = {
   centerLat: number;
@@ -70,7 +71,7 @@ export function getCountryNameCs(code: string): string {
   const c = code.toUpperCase();
   if (c === "ALL") return "Všechny země";
   try {
-    return new Intl.DisplayNames(["cs"], { type: "region" }).of(c) ?? c;
+    return new Intl.DisplayNames([intlLocale()], { type: "region" }).of(c) ?? c;
   } catch {
     return c;
   }
@@ -88,7 +89,7 @@ let _sorted: { code: string; name: string }[] | null = null;
 
 export function getCountriesSortedCs(): { code: string; name: string }[] {
   if (_sorted) return _sorted;
-  const dn = new Intl.DisplayNames(["cs"], { type: "region" });
+  const dn = new Intl.DisplayNames([intlLocale()], { type: "region" });
   const pairs: { code: string; name: string }[] = [];
   for (let a = 65; a <= 90; a++) {
     for (let b = 65; b <= 90; b++) {
@@ -98,7 +99,7 @@ export function getCountriesSortedCs(): { code: string; name: string }[] {
       pairs.push({ code, name });
     }
   }
-  pairs.sort((x, y) => x.name.localeCompare(y.name, "cs"));
+  pairs.sort((x, y) => x.name.localeCompare(y.name, intlLocale()));
   _sorted = pairs;
   return pairs;
 }

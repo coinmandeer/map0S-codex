@@ -186,3 +186,21 @@ describe("bounded adjacent-segment routing", () => {
     assert.equal(result.stats.cacheHits, 1);
   });
 });
+
+describe("saved routing adapter revisions", () => {
+  it("reroutes old ready geometry once and reuses current ready geometry", async () => {
+    const old = provider();
+    const ready = await routePlanSegments(planWithStops(2), old.value, {
+      cache: new SegmentRouteCache()
+    });
+    const current = provider();
+    current.value.id = "fixture-router-v2";
+    const updated = await routePlanSegments(ready.plan, current.value, {
+      cache: new SegmentRouteCache()
+    });
+    assert.equal(current.requests.length, 1);
+    assert.equal(updated.plan.segments[0]!.alternatives[0]!.providerId, "fixture-router-v2");
+    await routePlanSegments(updated.plan, current.value, { cache: new SegmentRouteCache() });
+    assert.equal(current.requests.length, 1);
+  });
+});

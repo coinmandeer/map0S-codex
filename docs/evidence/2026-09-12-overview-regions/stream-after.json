@@ -1,0 +1,92 @@
+{
+  "headers": {
+    "content-type": "text/event-stream; charset=utf-8"
+  },
+  "chunks": [
+    {
+      "ms": 292,
+      "bytes": 703,
+      "events": ["context_ready"]
+    },
+    {
+      "ms": 299,
+      "bytes": 3936,
+      "events": ["section_upsert", "phase"]
+    },
+    {
+      "ms": 344,
+      "bytes": 4090,
+      "events": ["section_upsert"]
+    },
+    {
+      "ms": 416,
+      "bytes": 12871,
+      "events": ["section_upsert"]
+    },
+    {
+      "ms": 418,
+      "bytes": 18465,
+      "events": []
+    },
+    {
+      "ms": 2353,
+      "bytes": 4090,
+      "events": ["section_upsert"]
+    },
+    {
+      "ms": 2383,
+      "bytes": 16384,
+      "events": []
+    },
+    {
+      "ms": 2388,
+      "bytes": 16384,
+      "events": []
+    },
+    {
+      "ms": 2411,
+      "bytes": 7009,
+      "events": ["section_upsert"]
+    },
+    {
+      "ms": 2419,
+      "bytes": 16384,
+      "events": []
+    },
+    {
+      "ms": 2445,
+      "bytes": 16384,
+      "events": []
+    },
+    {
+      "ms": 2466,
+      "bytes": 16384,
+      "events": ["section_upsert"]
+    },
+    {
+      "ms": 2474,
+      "bytes": 16384,
+      "events": []
+    },
+    {
+      "ms": 2497,
+      "bytes": 16384,
+      "events": ["partial"]
+    },
+    {
+      "ms": 2520,
+      "bytes": 16384,
+      "events": []
+    },
+    {
+      "ms": 2527,
+      "bytes": 16384,
+      "events": []
+    },
+    {
+      "ms": 2545,
+      "bytes": 7295,
+      "events": []
+    }
+  ]
+}

@@ -47,6 +47,32 @@ describe("MapPicker session serialization", () => {
     );
     assert.throws(() => serializeMapPickerSession({} as never), /Invalid MapPicker session/);
   });
+
+  it("carries the pin suggestions, and refuses a list with one unusable entry", () => {
+    const picker = registry();
+    const session = picker.open(
+      {
+        ...baseInput,
+        suggestions: [
+          { lat: 49.75, lng: 13.38, label: "Kemp Slapy" },
+          { lat: 49.76, lng: 13.4, label: "Kemp Na Kopci" }
+        ]
+      },
+      () => {}
+    );
+    assert.deepEqual(parseMapPickerSession(serializeMapPickerSession(session)), session);
+    // Dropping an unusable suggestion silently would offer a shorter list than was written.
+    assert.equal(
+      parseMapPickerSession({
+        ...session,
+        suggestions: [
+          { lat: 49.75, lng: 13.38 },
+          { lat: 91, lng: 13.4 }
+        ]
+      }),
+      null
+    );
+  });
 });
 
 describe("MapPickerControllerRegistry", () => {

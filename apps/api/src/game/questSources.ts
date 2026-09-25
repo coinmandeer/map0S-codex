@@ -55,12 +55,17 @@ function okapiAnchor(instanceCode: string, cache: OkapiCache): QuestAnchor | nul
 }
 
 const OKAPI_FIELDS = "code|name|location|type|difficulty|terrain|url|status";
+function okapiUrl(host: string, method: string, key: string, params: Record<string, string>) {
+  return `https://${host}/okapi/services/${method}?${new URLSearchParams({ ...params, consumer_key: key })}`;
+}
 
 /** Opencaching — the open-licensed geocaching network, one API per country. */
 export const opencaching: QuestSourceAdapter = {
   id: "opencaching",
   label: "Opencaching",
   attribution: "Opencaching (CC-BY-SA / CC-BY-NC-ND dle instance)",
+  // Caches are hidden and archived steadily rather than suddenly; a day-old sweep is fine.
+  refreshAfterMs: 24 * 60 * 60_000,
   unavailableReason: () =>
     config.okapiInstances.length
       ? null
@@ -74,18 +79,21 @@ export const opencaching: QuestSourceAdapter = {
       instances.map(async ({ code, host, key }) => {
         try {
           const search = await fetchJson<{ results?: string[] }>(
-            `https://${host}/okapi/services/caches/search/bbox` +
-              `?bbox=${south}|${west}|${north}|${east}&status=Available&limit=${limit}` +
-              `&consumer_key=${encodeURIComponent(key)}`,
+            okapiUrl(host, "caches/search/bbox", key, {
+              bbox: `${south}|${west}|${north}|${east}`,
+              status: "Available",
+              limit: String(limit)
+            }),
             { providerId: "opencaching", ttlMs: 30 * 60_000 }
           );
           const codes = (search.results ?? []).slice(0, limit);
           if (!codes.length) return [];
 
           const details = await fetchJson<Record<string, OkapiCache>>(
-            `https://${host}/okapi/services/caches/geocaches` +
-              `?cache_codes=${codes.join("|")}&fields=${encodeURIComponent(OKAPI_FIELDS)}` +
-              `&consumer_key=${encodeURIComponent(key)}`,
+            okapiUrl(host, "caches/geocaches", key, {
+              cache_codes: codes.join("|"),
+              fields: OKAPI_FIELDS
+            }),
             { providerId: "opencaching", ttlMs: 30 * 60_000 }
           );
 
@@ -109,9 +117,10 @@ export const opencaching: QuestSourceAdapter = {
     if (!instance) return null;
 
     const details = await fetchJson<Record<string, OkapiCache>>(
-      `https://${instance.host}/okapi/services/caches/geocaches` +
-        `?cache_codes=${encodeURIComponent(cacheCode)}&fields=${encodeURIComponent(OKAPI_FIELDS)}` +
-        `&consumer_key=${encodeURIComponent(instance.key)}`,
+      okapiUrl(instance.host, "caches/geocaches", instance.key, {
+        cache_codes: cacheCode,
+        fields: OKAPI_FIELDS
+      }),
       { providerId: "opencaching", ttlMs: 30 * 60_000 }
     );
     const cache = details[cacheCode];
@@ -154,6 +163,8 @@ export const monumentsWithoutPhoto: QuestSourceAdapter = {
   id: "wlm-photo",
   label: "Památky bez fotky",
   attribution: "Wiki Loves Monuments · heritage.toolforge.org (CC0)",
+  // Listed buildings do not move, and the photo backlog shifts over weeks.
+  refreshAfterMs: 7 * 24 * 60 * 60_000,
 
   async anchors(bbox, limit) {
     const [west, south, east, north] = bbox;
@@ -221,6 +232,9 @@ export const osmNotes: QuestSourceAdapter = {
   id: "osm-notes",
   label: "Poznámky v OSM",
   attribution: "© OpenStreetMap přispěvatelé (ODbL)",
+  // The most volatile source here: a note can be opened and answered within the hour, and a
+  // quest pointing at an already-answered note wastes the walk.
+  refreshAfterMs: 60 * 60_000,
 
   async anchors(bbox, limit) {
     const data = await fetchJson<{ features?: OsmNote[] }>(
@@ -285,6 +299,8 @@ export const turfZones: QuestSourceAdapter = {
   id: "turf-zones",
   label: "Turf zóny",
   attribution: "Turf Game (api.turfgame.com)",
+  // Zone positions are effectively permanent; only the scoring we do not cache changes.
+  refreshAfterMs: 7 * 24 * 60 * 60_000,
 
   async anchors(bbox, limit) {
     const zones = await turfZonesForBbox(bbox);
@@ -351,4 +367,4 @@ export function registerExternalQuestSources(): void {
   externalQuestSources.forEach(registerQuestSource);
 }
 
-export const __testing = { okapiAnchor, wlmAnchor, osmNoteAnchor, turfAnchor, turfCache };
+export const __testing = { okapiAnchor, okapiUrl, wlmAnchor, osmNoteAnchor, turfAnchor, turfCache };

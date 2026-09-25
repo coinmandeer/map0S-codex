@@ -1,0 +1,97 @@
+{
+  "at": "2026-09-12T19:45:45.143Z",
+  "ms": 3057,
+  "events": [
+    {
+      "type": "conversation",
+      "conversation": {
+        "id": "a00681c2-de25-4e59-96ee-9da6f5e9a327",
+        "revision": 1
+      }
+    },
+    {
+      "type": "intent",
+      "intent": "question",
+      "execution": "model-tool-loop"
+    },
+    {
+      "type": "tool_start",
+      "tool": "web_search",
+      "title": "Hledám na webu"
+    },
+    {
+      "type": "tool_result",
+      "tool": "web_search",
+      "status": "succeeded"
+    },
+    {
+      "type": "sources",
+      "sources": []
+    },
+    {
+      "type": "card",
+      "card": {
+        "type": "link",
+        "title": "domů | Prague City Tourism",
+        "url": "https://prague.eu/cs/",
+        "excerpt": "domů | Prague City Tourism # čtěte v praze jako v knize - ## prahou s průvodcem prahu známe nejlépe - ## dárky s duší dovezte milovaným kousek prahy - ## svezte se do minulosti historická tramvaj č. 42 - ## potěšte své blízké obchod s originálními suvenýry - ## prague visitor pass to nejlepší z Prahy - ## pražské věže a jejich výhledy ## to nejlepší z prahy věže a rozhledny ## staroměstská radnice s orlojem Staré Město věže a rozhledny ## Petřínská rozhledna Malá Strana ## Astronomická věž a barokní knihovna Klementinum Staré Město ## Novomlýnská vodárenská věž Nové Město věže a rozhledny ## S"
+      }
+    },
+    {
+      "type": "card",
+      "card": {
+        "type": "link",
+        "title": "informace | Prague City Tourism",
+        "url": "https://prague.eu/cs/informace/",
+        "excerpt": "informace | Prague City Tourism # informace Chystáte se do Prahy, nebo jste právě dorazili? Připravili jsme pro vás všechny potřebné informace, které vám usnadní plánování i pobyt v naší krásné metropoli. Rádi vám s čímkoli poradíme, stačí nám zavolat na +420 221 714 714 nebo nám napsat na tourinfo@prague.eu. Těšíme se na vaši návštěvu! ## praktické informace ## důležité kontakty Úroveň lékařské péče v České republice je velmi vysoká. Systém zdravotní péče v naší zemi je považován za jeden z nejlepších v EU. Zdravotní péči v České republice poskytují státní i soukromá zdravotnická zařízení, vč"
+      }
+    },
+    {
+      "type": "card",
+      "card": {
+        "type": "link",
+        "title": "praktické informace | Prague City Tourism",
+        "url": "https://prague.eu/cs/prakticke-informace/",
+        "excerpt": "praktické informace | Prague City Tourism # praktické informace Připravili jsme pro vás přehled praktických informací o Praze. Najdete zde důležité kontakty, fakta a zajímavosti, ale i tipy, jak se po Praze pohybovat udržitelně či bez bariér. V případě potřeby jsme vám k dispozici na telefonu +420 221 714 714, na emailu tourinfo@prague.eu nebo na našich turistických informačních centrech v centru města i na obou terminálech letiště. stránka ## důležité kontakty Úroveň lékařské péče v České republice je velmi vysoká. Systém zdravotní péče v naší zemi je považován za jeden z nejlepších v EU. Zdr"
+      }
+    },
+    {
+      "type": "done",
+      "answer": {
+        "execution": "model-tool-loop",
+        "intent": "question",
+        "text": "Oficiální turistický web Prahy provozuje Prague City Tourism: https://prague.eu/cs/ Najdete tam tipy na památky, praktické informace a kontakty (tel. +420 221 714 714, tourinfo@prague.eu). Korporátní web organizace je pak na https://praguecitytourism.cz/.",
+        "cards": [
+          {
+            "type": "link",
+            "title": "domů | Prague City Tourism",
+            "url": "https://prague.eu/cs/",
+            "excerpt": "domů | Prague City Tourism # čtěte v praze jako v knize - ## prahou s průvodcem prahu známe nejlépe - ## dárky s duší dovezte milovaným kousek prahy - ## svezte se do minulosti historická tramvaj č. 42 - ## potěšte své blízké obchod s originálními suvenýry - ## prague visitor pass to nejlepší z Prahy - ## pražské věže a jejich výhledy ## to nejlepší z prahy věže a rozhledny ## staroměstská radnice s orlojem Staré Město věže a rozhledny ## Petřínská rozhledna Malá Strana ## Astronomická věž a barokní knihovna Klementinum Staré Město ## Novomlýnská vodárenská věž Nové Město věže a rozhledny ## S"
+          },
+          {
+            "type": "link",
+            "title": "informace | Prague City Tourism",
+            "url": "https://prague.eu/cs/informace/",
+            "excerpt": "informace | Prague City Tourism # informace Chystáte se do Prahy, nebo jste právě dorazili? Připravili jsme pro vás všechny potřebné informace, které vám usnadní plánování i pobyt v naší krásné metropoli. Rádi vám s čímkoli poradíme, stačí nám zavolat na +420 221 714 714 nebo nám napsat na tourinfo@prague.eu. Těšíme se na vaši návštěvu! ## praktické informace ## důležité kontakty Úroveň lékařské péče v České republice je velmi vysoká. Systém zdravotní péče v naší zemi je považován za jeden z nejlepších v EU. Zdravotní péči v České republice poskytují státní i soukromá zdravotnická zařízení, vč"
+          },
+          {
+            "type": "link",
+            "title": "praktické informace | Prague City Tourism",
+            "url": "https://prague.eu/cs/prakticke-informace/",
+            "excerpt": "praktické informace | Prague City Tourism # praktické informace Připravili jsme pro vás přehled praktických informací o Praze. Najdete zde důležité kontakty, fakta a zajímavosti, ale i tipy, jak se po Praze pohybovat udržitelně či bez bariér. V případě potřeby jsme vám k dispozici na telefonu +420 221 714 714, na emailu tourinfo@prague.eu nebo na našich turistických informačních centrech v centru města i na obou terminálech letiště. stránka ## důležité kontakty Úroveň lékařské péče v České republice je velmi vysoká. Systém zdravotní péče v naší zemi je považován za jeden z nejlepších v EU. Zdr"
+          }
+        ],
+        "sources": [],
+        "followUps": ["Co je zajímavého v okolí?", "Jaké bude počasí?", "Naplánuj mi tu den"],
+        "model": "glm-5.3-flash"
+      },
+      "conversation": {
+        "id": "a00681c2-de25-4e59-96ee-9da6f5e9a327",
+        "revision": 2,
+        "scope": {
+          "type": "global"
+        }
+      }
+    }
+  ]
+}

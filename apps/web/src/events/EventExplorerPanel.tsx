@@ -1,5 +1,6 @@
+import { presentationLabel } from "../i18n/presentation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { GeoFeature, MapViewState } from "@mapos/layer-sdk";
+import { featureAnchor, type GeoFeature, type MapViewState } from "@mapos/layer-sdk";
 import { emit } from "../lib/events";
 import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
@@ -11,6 +12,7 @@ import {
   eventRangePresets,
   startOfLocalDay
 } from "./timeline";
+import { intlLocale, t } from "../i18n";
 
 const EVENT_CATEGORIES = [
   ["Music", "Hudba"],
@@ -22,11 +24,11 @@ const EVENT_CATEGORIES = [
 const EMPTY_EVENT_FEATURES: GeoFeature[] = [];
 
 function eventTime(value: string | null): { day: string; rest: string } {
-  if (!value) return { day: "—", rest: "Čas neuveden" };
+  if (!value) return { day: "—", rest: t("polish.eventTimeUnknown") };
   const date = new Date(value);
   return {
-    day: date.toLocaleDateString("cs-CZ", { day: "2-digit" }),
-    rest: date.toLocaleString("cs-CZ", {
+    day: date.toLocaleDateString(intlLocale(), { day: "2-digit" }),
+    rest: date.toLocaleString(intlLocale(), {
       month: "short",
       weekday: "short",
       hour: "2-digit",
@@ -89,7 +91,7 @@ export function EventExplorerPanel({ view }: { view: MapViewState }) {
   );
 
   const openEvent = (feature: (typeof features)[number]) => {
-    const [lng, lat] = feature.geometry.coordinates;
+    const [lng, lat] = featureAnchor(feature);
     emit("fly-to", { lng, lat, zoom: 15 });
     store.setView({ lng, lat, zoom: 15 });
     store.selectPin({ feature, layerId: "events" });
@@ -107,8 +109,8 @@ export function EventExplorerPanel({ view }: { view: MapViewState }) {
           <Icon name="compass" size={19} />
         </span>
         <div>
-          <p className="discover-eyebrow">Ve výřezu mapy</p>
-          <h4 id="event-explorer-title">Události</h4>
+          <p className="discover-eyebrow">{t("polish.eventViewport")}</p>
+          <h4 id="event-explorer-title">{t("polish.events")}</h4>
         </div>
         <span
           className="event-explorer-count"
@@ -119,26 +121,26 @@ export function EventExplorerPanel({ view }: { view: MapViewState }) {
         </span>
       </header>
 
-      <div className="event-explorer-filters" aria-label="Filtry událostí">
+      <div className="event-explorer-filters" aria-label={t("polish.eventFilters")}>
         <label>
-          <span>Typ</span>
+          <span>{t("polish.eventType")}</span>
           <select
-            aria-label="Kategorie událostí"
+            aria-label={t("polish.eventCategory")}
             value={typeof filters.category === "string" ? filters.category : ""}
             onChange={(event) => patchFacet("category", event.target.value)}
           >
-            <option value="">Všechny</option>
+            <option value="">{t("polish.eventAll")}</option>
             {EVENT_CATEGORIES.map(([value, label]) => (
               <option key={value} value={value}>
-                {label}
+                {presentationLabel("event", value, label)}
               </option>
             ))}
           </select>
         </label>
         <label>
-          <span>Cena</span>
+          <span>{t("polish.eventPrice")}</span>
           <select
-            aria-label="Cena událostí"
+            aria-label={t("polish.eventPriceLabel")}
             value={
               filters.free === true || filters.free === "true"
                 ? "true"
@@ -153,32 +155,35 @@ export function EventExplorerPanel({ view }: { view: MapViewState }) {
               )
             }
           >
-            <option value="">Jakákoli</option>
-            <option value="true">Zdarma</option>
-            <option value="false">Placené</option>
+            <option value="">{t("polish.eventAny")}</option>
+            <option value="true">{t("polish.eventFree")}</option>
+            <option value="false">{t("polish.eventPaid")}</option>
           </select>
         </label>
         <label>
-          <span>Vzdálenost</span>
+          <span>{t("polish.eventDistance")}</span>
           <select
-            aria-label="Vzdálenost událostí"
+            aria-label={t("polish.eventDistanceLabel")}
             value={distance}
             onChange={(event) => setDistance(event.target.value)}
           >
-            <option value="all">Celý výřez</option>
-            <option value="5">Do 5 km</option>
-            <option value="25">Do 25 km</option>
-            <option value="100">Do 100 km</option>
+            <option value="all">{t("polish.eventWholeView")}</option>
+            <option value="5">{t("polish.eventWithin", { count: 5 })}</option>
+            <option value="25">{t("polish.eventWithin", { count: 25 })}</option>
+            <option value="100">{t("polish.eventWithin", { count: 100 })}</option>
           </select>
         </label>
         <label className="event-explorer-venue">
-          <span>Místo</span>
+          <span>{t("polish.eventVenue")}</span>
           <input
             type="search"
-            aria-label="Filtrovat události podle místa"
-            placeholder="Název místa"
+            aria-label={t("polish.eventVenueFilter")}
+            placeholder={t("polish.eventVenueName")}
             value={venueDraft}
-            onChange={(event) => setVenueDraft(event.target.value)}
+            onChange={(event) => {
+              setVenueDraft(event.target.value);
+              patchFacet("venue", event.target.value.trim());
+            }}
             onBlur={() => patchFacet("venue", venueDraft.trim())}
             onKeyDown={(event) => {
               if (event.key === "Enter") patchFacet("venue", venueDraft.trim());
@@ -187,7 +192,7 @@ export function EventExplorerPanel({ view }: { view: MapViewState }) {
         </label>
       </div>
 
-      <div className="event-explorer-time" aria-label="Rychlý výběr období událostí">
+      <div className="event-explorer-time" aria-label={t("polish.eventQuickTime")}>
         {timePresets.map((preset) => {
           const selected = preset.range[0] === activeRange[0] && preset.range[1] === activeRange[1];
           return (
@@ -204,23 +209,23 @@ export function EventExplorerPanel({ view }: { view: MapViewState }) {
                 })
               }
             >
-              {preset.label}
+              {presentationLabel("event", preset.id, preset.label)}
             </button>
           );
         })}
       </div>
 
       <div className="event-explorer-summary">
-        <span>{loading ? "Aktualizuji výřez…" : "Čas nastavíš na roční ose v mapě."}</span>
+        <span>{loading ? t("polish.eventUpdating") : t("polish.eventTimeline")}</span>
         {(hasFacets || distance !== "all") && (
           <button className="btn btn-ghost small" type="button" onClick={resetFacets}>
-            Zrušit filtry
+            {t("polish.reset")}
           </button>
         )}
       </div>
 
       {items.length ? (
-        <ul className="event-explorer-list" aria-label="Události ve výřezu">
+        <ul className="event-explorer-list" aria-label={t("polish.eventResults")}>
           {items.map((item) => {
             const time = eventTime(item.startsAt);
             return (
@@ -230,7 +235,9 @@ export function EventExplorerPanel({ view }: { view: MapViewState }) {
                     <strong>{time.day}</strong>
                     <small>
                       {item.startsAt
-                        ? new Date(item.startsAt).toLocaleDateString("cs-CZ", { month: "short" })
+                        ? new Date(item.startsAt).toLocaleDateString(intlLocale(), {
+                            month: "short"
+                          })
                         : "—"}
                     </small>
                   </span>
@@ -251,9 +258,9 @@ export function EventExplorerPanel({ view }: { view: MapViewState }) {
                     href={item.officialUrl}
                     target="_blank"
                     rel="noreferrer noopener"
-                    aria-label={`Otevřít oficiální stránku události ${item.title}`}
+                    aria-label={t("polish.eventOpen", { name: item.title })}
                   >
-                    Oficiální web
+                    {t("polish.eventOfficial")}
                   </a>
                 ) : null}
               </li>
@@ -262,8 +269,8 @@ export function EventExplorerPanel({ view }: { view: MapViewState }) {
         </ul>
       ) : (
         <div className="event-explorer-empty" role="status">
-          <strong>{loading ? "Hledám události…" : "V tomto výběru nejsou události."}</strong>
-          <span>Rozšiř čas, zruš filtr nebo posuň mapu.</span>
+          <strong>{loading ? t("polish.eventSearching") : t("polish.eventEmpty")}</strong>
+          <span>{t("polish.eventExpand")}</span>
         </div>
       )}
     </section>

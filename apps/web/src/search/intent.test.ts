@@ -69,3 +69,9 @@ describe("resolveLocationIntent", () => {
     });
   });
 });
+
+it("statistical questions are an explicit AI intent, not an address or geocoder lookup", () => {
+  assert.equal(resolveLocationIntent("kde je nejvetsi chudoba v CR").kind, "ai");
+  assert.equal(resolveLocationIntent("Kde je nejvyšší nezaměstnanost v roce 2024?").kind, "ai");
+  assert.equal(resolveLocationIntent("Praha").kind, "locality");
+});

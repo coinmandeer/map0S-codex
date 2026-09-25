@@ -5,6 +5,14 @@ import {
   WEATHER_VISUALIZATIONS,
   weatherVisualizationFilters
 } from "./controls.js";
+import { resolveWeatherModel } from "./controls.js";
+
+it("preserves selected weather models and defaults old links to automatic selection", () => {
+  assert.equal(resolveWeatherModel(undefined), "best_match");
+  assert.equal(resolveWeatherModel("unknown"), "best_match");
+  assert.equal(resolveWeatherModel("icon_seamless"), "icon_seamless");
+  assert.equal(resolveWeatherModel("chmi_aladin_seamless"), "chmi_aladin_seamless");
+});
 
 describe("weather visualization controls", () => {
   it("exposes one unique option for radar and each numeric variable", () => {

@@ -24,6 +24,7 @@ describe("typed user preferences", () => {
       }),
       {
         theme: "dark",
+        lowData: false,
         density: DEFAULT_USER_PREFERENCES.density,
         locale: "en",
         units: "imperial",
@@ -57,4 +58,18 @@ describe("typed user preferences", () => {
     assert.equal(resolveThemePreference("system", false), "light");
     assert.equal(resolveThemePreference("light", true), "light");
   });
+});
+
+it("low data is opt-in, validated and persisted", () => {
+  assert.equal(parseUserPreferences({}).lowData, false);
+  assert.equal(parseUserPreferences({ lowData: "true" }).lowData, false);
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    }
+  };
+  persistUserPreferences(storage, { ...DEFAULT_USER_PREFERENCES, lowData: true });
+  assert.equal(loadUserPreferences(storage).lowData, true);
 });

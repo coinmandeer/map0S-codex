@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.mapos.dev/v2/layer-manifest.schema.json",
   "title": "MapOS LayerManifest v2",
-  "description": "Deklarativní kontrakt vrstvy. Je navržen jako evoluce dnešního LayerManifestu v @mapos/layer-sdk.",
+  "description": "Deklarativn\u00ed kontrakt vrstvy. Je navr\u017een jako evoluce dne\u0161n\u00edho LayerManifestu v @mapos/layer-sdk.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -72,7 +72,8 @@
         "environment",
         "community",
         "infrastructure",
-        "moving"
+        "moving",
+        "statistics"
       ]
     },
     "presetIds": {
@@ -85,7 +86,7 @@
     "modes": {
       "type": "array",
       "items": {
-        "enum": ["personal", "discover", "planning", "game"]
+        "enum": ["personal", "feed", "discover", "planning", "game"]
       },
       "uniqueItems": true
     },
@@ -128,6 +129,7 @@
             "heatmap",
             "raster",
             "vector-style",
+            "choropleth",
             "custom-gl",
             "three"
           ]
@@ -171,6 +173,7 @@
             "realtime",
             "user-data",
             "computed",
+            "inline",
             "custom-runtime"
           ]
         },
@@ -212,16 +215,140 @@
           "additionalProperties": false,
           "required": ["idPath", "titlePath", "longitudePath", "latitudePath"],
           "properties": {
-            "itemsPath": { "$ref": "#/$defs/dataPath" },
-            "idPath": { "$ref": "#/$defs/dataPath" },
-            "titlePath": { "$ref": "#/$defs/dataPath" },
-            "categoryPath": { "$ref": "#/$defs/dataPath" },
-            "longitudePath": { "$ref": "#/$defs/dataPath" },
-            "latitudePath": { "$ref": "#/$defs/dataPath" },
-            "summaryPath": { "$ref": "#/$defs/dataPath" },
-            "descriptionPath": { "$ref": "#/$defs/dataPath" },
-            "sourceIdPath": { "$ref": "#/$defs/dataPath" },
-            "nextCursorPath": { "$ref": "#/$defs/dataPath" }
+            "itemsPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "idPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "titlePath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "categoryPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "longitudePath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "latitudePath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "summaryPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "descriptionPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "sourceIdPath": {
+              "$ref": "#/$defs/dataPath"
+            },
+            "nextCursorPath": {
+              "$ref": "#/$defs/dataPath"
+            }
+          }
+        },
+        "inline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["features"],
+          "properties": {
+            "generatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "createdAt", "sourceIds"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["ai", "import", "manual"]
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "prompt": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "sourceIds": {
+                  "type": "array",
+                  "maxItems": 50,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            },
+            "features": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 200,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "title", "longitude", "latitude", "sourceId"],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  },
+                  "longitude": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180
+                  },
+                  "latitude": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "category": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 600
+                  },
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  "sourceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "sourceLayerId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "sourceFeatureId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
           }
         },
         "timeoutMs": {
@@ -237,7 +364,14 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "type": { "const": "declarative-http" } }, "required": ["type"] },
+          "if": {
+            "properties": {
+              "type": {
+                "const": "declarative-http"
+              }
+            },
+            "required": ["type"]
+          },
           "then": {
             "required": ["endpoint", "requiresServerProxy", "mapping"],
             "properties": {
@@ -246,10 +380,16 @@
                 "format": "uri",
                 "pattern": "^https://[^@#]+$"
               },
-              "method": { "const": "GET" },
-              "requiresServerProxy": { "const": true }
+              "method": {
+                "const": "GET"
+              },
+              "requiresServerProxy": {
+                "const": true
+              }
             },
-            "not": { "required": ["responseAdapter"] }
+            "not": {
+              "required": ["responseAdapter"]
+            }
           }
         }
       ]
@@ -300,6 +440,9 @@
         },
         "cursorPagination": {
           "type": "boolean"
+        },
+        "areaFilter": {
+          "enum": ["geometry", "context"]
         }
       }
     },
@@ -527,7 +670,7 @@
       "additionalProperties": false,
       "properties": {
         "type": {
-          "enum": ["categorical", "continuous", "numeric", "icon", "custom"]
+          "enum": ["categorical", "continuous", "numeric", "icon", "image", "custom"]
         },
         "title": {
           "type": "string"
@@ -554,6 +697,10 @@
               },
               "description": {
                 "type": "string"
+              },
+              "imageUrl": {
+                "type": "string",
+                "format": "uri"
               }
             }
           }
@@ -636,6 +783,48 @@
             "owner-private",
             "disabled"
           ]
+        },
+        "semanticProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "fields", "spatial"],
+          "properties": {
+            "version": {
+              "const": "1"
+            },
+            "fields": {
+              "type": "array",
+              "maxItems": 40,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["field", "meaning"],
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "meaning": {
+                    "enum": ["identity", "category", "description", "value", "time", "url"]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "timeRole": {
+                    "enum": ["observed", "published", "valid", "retrieved"]
+                  }
+                }
+              }
+            },
+            "spatial": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": ["point", "bbox", "polygon", "aggregate"]
+              }
+            }
+          }
         }
       }
     },
@@ -715,6 +904,25 @@
         },
         "migrationNotes": {
           "type": "string"
+        }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preferredMode": {
+          "enum": ["personal", "feed", "discover", "planning", "game"]
+        },
+        "compatibleModes": {
+          "type": "array",
+          "items": {
+            "enum": ["personal", "feed", "discover", "planning", "game"]
+          }
+        },
+        "exclusiveGroup": {
+          "type": "string",
+          "maxLength": 80
         }
       }
     }

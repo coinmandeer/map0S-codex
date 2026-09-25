@@ -8,11 +8,227 @@ import {
 } from "@mapos/layer-sdk";
 import type { MapStore } from "../store/mapStore";
 import { emit } from "../lib/events";
-import { registerLayer, registerLayerV2, resetLayerRegistry } from "../layers/registry";
+import {
+  registerLayer,
+  registerLayerV2,
+  unregisterLayer,
+  resetLayerRegistry
+} from "../layers/registry";
 import { TaskRegistry } from "../tasks/TaskRegistry";
-import { fetchLayerFeatures, LayerEngine, runBounded } from "./LayerEngine";
+import {
+  fetchLayerFeatures,
+  LayerEngine,
+  progressiveRetryDelay,
+  runBounded,
+  snapBboxToTileGrid
+} from "./LayerEngine";
+import { createDataLayer } from "../layers/dataLayer";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("restored partial filters retain defaults and explicit user overrides", async (t) => {
+  resetLayerRegistry();
+  const events = new EventTarget();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events)
+    }
+  });
+  let received: unknown;
+  registerLayer({
+    kind: "pins",
+    viewportCost: "cheap",
+    manifest: {
+      id: "default-test",
+      name: "Defaults",
+      icon: "x",
+      color: "#000000",
+      description: "Defaults",
+      category: "user"
+    },
+    defaultFilters: { visualization: "wind", model: "best_match", valueLabels: true },
+    create: () => ({
+      async update(_bbox, filters) {
+        received = filters;
+        return collection("a");
+      },
+      setData() {},
+      setVisible() {},
+      setOpacity() {},
+      detach() {}
+    })
+  });
+  const store = {
+    view: { zoom: 8 },
+    activeLayers: {
+      "default-test": { visible: true, opacity: 1, filters: { valueLabels: false } }
+    },
+    session: null,
+    activeTag: null,
+    countryCode: null,
+    enabledPoiSources: [],
+    setVisibleFeatures() {},
+    setLayerLoading() {},
+    setLayerNotice() {},
+    setSearchHerePending() {},
+    markSourcesLoading() {},
+    applySourceMeta() {}
+  } as unknown as MapStore;
+  const engine = new LayerEngine({} as never, "/api", store, new TaskRegistry());
+  t.after(() => engine.destroy());
+  engine.refresh([13, 49, 15, 51], true);
+  await waitFor(() => received !== undefined);
+  assert.deepEqual(received, { visualization: "wind", model: "best_match", valueLabels: false });
+});
+
+test("legacy feature pages are joined before one accepted map commit", async (t) => {
+  const urls: string[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string) => {
+    urls.push(url);
+    const second = url.includes("cursor=page2");
+    return new Response(
+      JSON.stringify({
+        ...collection(second ? "b" : "a"),
+        query: {
+          status: second ? "complete" : "partial",
+          truncated: !second,
+          nextCursor: second ? null : "page2"
+        }
+      })
+    );
+  });
+  const result = await fetchLayerFeatures("/api", "fixture", [0, 0, 1, 1], {});
+  assert.deepEqual(
+    result.features.map((f) => f.properties.id),
+    ["a", "b"]
+  );
+  assert.equal(result.query?.status, "complete");
+  assert.equal(urls.length, 2);
+});
+
+test("v2 pages are joined without dropping remaining features", async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    const item = featureV1ToV2(collection(calls === 1 ? "a" : "b").features[0]!, {
+      providerId: "fixture",
+      attribution: "Fixture",
+      retrievedAt: "2026-09-05T00:00:00.000Z"
+    });
+    return new Response(
+      JSON.stringify({
+        data: { type: "FeatureCollection", features: [item] },
+        meta: {
+          limit: 100,
+          returned: 1,
+          truncated: calls === 1,
+          nextCursor: calls === 1 ? "page2" : null,
+          cache: "miss",
+          sources: []
+        },
+        notices: []
+      })
+    );
+  });
+  const result = await fetchLayerFeatures("/api", "fixture", [0, 0, 1, 1], {}, undefined, 2);
+  assert.deepEqual(
+    result.features.map((f) => f.properties.id),
+    ["a", "b"]
+  );
+  assert.equal(result.query?.status, "complete");
+  assert.equal(calls, 2);
+});
+
+test("real data handles commit only accepted responses and opacity does not fetch", async (t) => {
+  const events = new EventTarget();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events)
+    }
+  });
+  resetLayerRegistry();
+  const writes: string[][] = [];
+  const sources = new Map<string, unknown>();
+  const layers = new Map<string, unknown>();
+  const map = {
+    getSource: (id: string) => sources.get(id),
+    getLayer: (id: string) => layers.get(id),
+    hasImage: () => true,
+    addImage() {},
+    removeImage() {},
+    addSource: (id: string) =>
+      sources.set(id, {
+        setData: (data: FeatureCollection) => writes.push(data.features.map((f) => f.properties.id))
+      }),
+    addLayer: (layer: { id: string }) => layers.set(layer.id, layer),
+    removeSource: (id: string) => sources.delete(id),
+    removeLayer: (id: string) => layers.delete(id),
+    setPaintProperty() {},
+    setLayoutProperty() {}
+  };
+  const requests: Array<(response: Response) => void> = [];
+  t.mock.method(
+    globalThis,
+    "fetch",
+    () => new Promise<Response>((resolve) => requests.push(resolve))
+  );
+  registerLayer({
+    kind: "pins",
+    viewportCost: "cheap",
+    manifest: {
+      id: "real-data",
+      name: "Real",
+      icon: "t",
+      color: "#000000",
+      description: "Real factory",
+      category: "user"
+    },
+    create: () => createDataLayer(map as never, "/api", "real-data", { color: "#000000" })
+  });
+  const activeLayers = { "real-data": { visible: true, opacity: 1, filters: {} } };
+  const store = {
+    activeLayers,
+    session: null,
+    activeTag: null,
+    countryCode: null,
+    enabledPoiSources: [],
+    setVisibleFeatures() {},
+    setLayerLoading() {},
+    setLayerNotice() {},
+    setSearchHerePending() {},
+    markSourcesLoading() {},
+    applySourceMeta() {}
+  } as unknown as MapStore;
+  const engine = new LayerEngine(map as never, "/api", store, new TaskRegistry());
+  t.after(() => engine.destroy());
+  engine.refresh([0, 0, 1, 1], true);
+  await waitFor(() => requests.length === 1);
+  engine.refresh([2, 2, 3, 3], true);
+  await waitFor(() => requests.length === 2);
+  requests[1]!(new Response(JSON.stringify(collection("current"))));
+  await waitFor(() => writes.length === 1);
+  requests[0]!(new Response(JSON.stringify(collection("obsolete"))));
+  await wait(10);
+  assert.deepEqual(writes, [["current"]]);
+  activeLayers["real-data"].opacity = 0.4;
+  engine.syncLayers(activeLayers);
+  engine.refresh([2, 2, 3, 3]);
+  await wait(300);
+  assert.equal(requests.length, 2);
+  assert.equal(writes.length, 1);
+  engine.refresh([4, 4, 5, 5], true);
+  await waitFor(() => requests.length === 3);
+  activeLayers["real-data"].visible = false;
+  engine.syncLayers(activeLayers);
+  requests[2]!(new Response(JSON.stringify(collection("disabled"))));
+  await wait(10);
+  assert.equal(writes.length, 1);
+  assert.equal(sources.size, 0);
+});
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1_000) {
   const deadline = Date.now() + timeoutMs;
@@ -175,6 +391,56 @@ test("the layer scheduler never exceeds its bounded concurrency", async () => {
   await running;
   assert.equal(completed.length, 10);
   assert.ok(peak <= 4);
+});
+
+test("a pin response rebuilds only its own source", async () => {
+  resetLayerRegistry();
+  const setDataCalls = new Map<string, number>();
+  const activeLayers = {
+    "pins-a": { visible: true, opacity: 1, filters: {} },
+    "pins-b": { visible: true, opacity: 1, filters: {} }
+  };
+  for (const id of Object.keys(activeLayers)) {
+    registerLayer({
+      kind: "pins",
+      viewportCost: "cheap",
+      manifest: {
+        id,
+        name: id,
+        icon: "place",
+        color: "#000000",
+        description: "Pin fixture",
+        category: "community"
+      },
+      create: () => ({
+        update: async () => collection(id),
+        setData: () => setDataCalls.set(id, (setDataCalls.get(id) ?? 0) + 1),
+        setVisible: () => {},
+        setOpacity: () => {},
+        detach: () => {}
+      })
+    });
+  }
+  const store = {
+    session: null,
+    activeLayers,
+    activeTag: null,
+    countryCode: null,
+    enabledPoiSources: [],
+    setVisibleFeatures: () => {},
+    setLayerLoading: () => {},
+    setLayerNotice: () => {},
+    setSearchHerePending: () => {},
+    markSourcesLoading: () => {},
+    applySourceMeta: () => {}
+  } as unknown as MapStore;
+  const engine = new LayerEngine({} as never, "/api", store, new TaskRegistry());
+  engine.syncLayers(activeLayers);
+  engine.refresh([13, 49, 14, 50], true);
+  await waitFor(() => setDataCalls.size === 2);
+  assert.equal(setDataCalls.get("pins-a"), 1);
+  assert.equal(setDataCalls.get("pins-b"), 1);
+  engine.destroy();
 });
 
 test("a newer request replaces the previous visible failure for the same layer", async () => {
@@ -357,4 +623,327 @@ test("the v2 web client requests the capped endpoint and adapts its envelope for
   } finally {
     globalThis.fetch = previousFetch;
   }
+});
+
+for (const hiddenDuringReplacement of [false, true]) {
+  test(`a replacement pin source cannot reuse old features (hidden: ${hiddenDuringReplacement})`, async (t) => {
+    resetLayerRegistry();
+    const writes: string[][] = [];
+    let requests = 0;
+    const register = (revision: string) =>
+      registerLayer({
+        kind: "pins",
+        viewportCost: "cheap",
+        manifest: {
+          id: "source-change",
+          name: "Source",
+          icon: "t",
+          color: "#000000",
+          description: "Source replacement",
+          category: "user"
+        },
+        create: () => ({
+          update: async () => {
+            requests++;
+            return collection(revision);
+          },
+          setData: (data) => writes.push(data.features.map((feature) => feature.properties.id)),
+          setVisible() {},
+          setOpacity() {},
+          detach() {}
+        })
+      });
+    register("old-source");
+    const activeLayers = { "source-change": { visible: true, opacity: 1, filters: {} } };
+    const store = {
+      activeLayers,
+      session: null,
+      activeTag: null,
+      countryCode: null,
+      enabledPoiSources: [],
+      setVisibleFeatures() {},
+      setLayerLoading() {},
+      setLayerNotice() {},
+      setSearchHerePending() {},
+      markSourcesLoading() {},
+      applySourceMeta() {}
+    } as unknown as MapStore;
+    const engine = new LayerEngine({} as never, "/api", store, new TaskRegistry());
+    t.after(() => engine.destroy());
+    engine.refresh([0, 0, 1, 1], true);
+    await waitFor(() => writes.length === 1);
+    if (hiddenDuringReplacement) {
+      activeLayers["source-change"].visible = false;
+      engine.syncLayers(activeLayers);
+    }
+    unregisterLayer("source-change");
+    register("new-source");
+    activeLayers["source-change"].visible = true;
+    engine.syncLayers(activeLayers);
+    engine.refresh([0, 0, 1, 1]);
+    await waitFor(() => writes.length === 2);
+    assert.equal(requests, 2);
+    assert.deepEqual(writes, [["old-source"], ["new-source"]]);
+  });
+}
+
+test("a replacement publication recreates an active renderer with the same layer ID", () => {
+  resetLayerRegistry();
+  let attached = 0,
+    detached = 0;
+  const register = () =>
+    registerLayerV2({
+      manifest: {
+        schema: "mapos.layer-manifest",
+        schemaVersion: "2.0.0",
+        sdkRange: "^2.0.0",
+        id: "theme-publication",
+        name: "Publication",
+        description: "Publication replacement fixture",
+        capabilities: [],
+        category: "statistics",
+        geometryKinds: ["Polygon"],
+        renderer: { type: "choropleth" },
+        source: { type: "vector-tiles", tileTemplate: "https://example.test/{z}/{x}/{y}.pbf" },
+        queryPolicy: { strategy: "tile" },
+        attribution: [{ label: "Fixture" }]
+      },
+      create: () => {
+        attached++;
+        return {
+          update: async () => null,
+          setVisible() {},
+          setOpacity() {},
+          detach() {
+            detached++;
+          }
+        };
+      }
+    });
+  register();
+  const activeLayers = { "theme-publication": { visible: true, opacity: 1, filters: {} } };
+  const store = {
+    activeLayers,
+    session: null,
+    setVisibleFeatures() {},
+    setLayerNotice() {},
+    setSearchHerePending() {},
+    setLayerLoading() {}
+  } as unknown as MapStore;
+  const engine = new LayerEngine({} as never, "/api", store, new TaskRegistry());
+  engine.syncLayers(activeLayers);
+  assert.equal(attached, 1);
+  unregisterLayer("theme-publication");
+  register();
+  engine.syncLayers(activeLayers);
+  assert.equal(attached, 2);
+  assert.equal(detached, 1);
+  engine.destroy();
+});
+
+test("regional POIs neither load nor retry at continent zoom, then load after zooming in", async (t) => {
+  resetLayerRegistry();
+  const events = new EventTarget();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events)
+    }
+  });
+  let requests = 0;
+  registerLayer({
+    kind: "pins",
+    viewportCost: "cheap",
+    minQueryZoom: 8,
+    manifest: {
+      id: "regional",
+      name: "Regional",
+      icon: "x",
+      color: "#000000",
+      description: "Regional POIs",
+      category: "user"
+    },
+    create: () => ({
+      async update() {
+        requests++;
+        return collection("nearby");
+      },
+      setData() {},
+      setVisible() {},
+      setOpacity() {},
+      detach() {}
+    })
+  });
+  const store = {
+    view: { zoom: 4 },
+    activeLayers: { regional: { visible: true, opacity: 1, filters: {} } },
+    session: null,
+    activeTag: null,
+    countryCode: null,
+    enabledPoiSources: [],
+    setVisibleFeatures() {},
+    setLayerLoading() {},
+    setLayerNotice() {},
+    setSearchHerePending() {},
+    markSourcesLoading() {},
+    applySourceMeta() {}
+  } as unknown as MapStore;
+  const engine = new LayerEngine({} as never, "/api", store, new TaskRegistry());
+  t.after(() => engine.destroy());
+  engine.refresh([0, 0, 30, 60], true);
+  engine.refreshLayer("regional", [0, 0, 30, 60]);
+  await wait(20);
+  assert.equal(requests, 0);
+  store.view.zoom = 9;
+  engine.refresh([0, 0, 1, 1], true);
+  await waitFor(() => requests === 1);
+});
+
+test("server-model raster follows viewport and reports samples rather than empty POIs", async () => {
+  resetLayerRegistry();
+  const { layerV1ToV2 } = await import("@mapos/layer-sdk");
+  const { layerActivity } = await import("../tasks/layerActivity");
+  const base = layerV1ToV2(
+    {
+      id: "model-test",
+      name: "Model",
+      icon: "m",
+      color: "#123456",
+      description: "Model",
+      category: "environment"
+    },
+    { kind: "raster" }
+  );
+  let updates = 0;
+  registerLayerV2({
+    manifest: {
+      ...base,
+      source: { type: "server-adapter", adapterId: "model-grid" },
+      queryPolicy: { strategy: "viewport", searchHere: "never", cacheTtlSeconds: 0 }
+    },
+    viewportCost: "cheap",
+    create: () => ({
+      async update() {
+        updates++;
+        return {
+          type: "FeatureCollection",
+          features: [],
+          query: { status: "complete", cacheTtlMs: 0, rendered: { count: 12, unit: "samples" } }
+        };
+      },
+      setVisible() {},
+      setOpacity() {},
+      detach() {}
+    })
+  });
+  const activeLayers = { "model-test": { visible: true, opacity: 1, filters: {} } };
+  const store = {
+    view: { zoom: 8 },
+    activeLayers,
+    session: null,
+    activeTag: null,
+    countryCode: null,
+    enabledPoiSources: [],
+    setVisibleFeatures() {},
+    setLayerLoading() {},
+    setLayerNotice() {},
+    setSearchHerePending() {},
+    markSourcesLoading() {},
+    applySourceMeta() {}
+  } as unknown as MapStore;
+  const engine = new LayerEngine({} as never, "/api", store, new TaskRegistry());
+  engine.syncLayers(activeLayers);
+  engine.refresh([1, 40, 2, 41], true);
+  await waitFor(() => updates === 1);
+  engine.refresh([3, 40, 4, 41], true);
+  await waitFor(() => updates === 2);
+  await waitFor(() => layerActivity.get("model-test")?.phase === "ready");
+  assert.equal(layerActivity.get("model-test")?.count, 12);
+  assert.equal(layerActivity.get("model-test")?.unit, "samples");
+  engine.destroy();
+});
+
+test("viewport bboxes snap outward to whole tiles so small pans share one request", () => {
+  const view: Bbox = [14.412176931154988, 50.08324952961726, 14.429343068850045, 50.09151011444678];
+  const snapped = snapBboxToTileGrid(view, 14.2);
+  assert.ok(snapped[0] <= view[0] && snapped[1] <= view[1]);
+  assert.ok(snapped[2] >= view[2] && snapped[3] >= view[3]);
+  // A pan of a few pixels inside the same tiles produces the identical request.
+  const nudged: Bbox = [view[0] + 0.0004, view[1] + 0.0002, view[2] + 0.0004, view[3] + 0.0002];
+  assert.deepEqual(snapBboxToTileGrid(nudged, 14.2), snapped);
+  // At most one tile of margin per side: z14 tiles are ~0.022° wide.
+  assert.ok(snapped[2] - snapped[0] < view[2] - view[0] + 2 * 0.022 + 1e-9);
+  // Degenerate and out-of-range input never produces an invalid box.
+  const world = snapBboxToTileGrid([-200, -95, 200, 95], 0);
+  assert.deepEqual(
+    world.map((v) => Math.round(v)),
+    [-180, -85, 180, 85]
+  );
+});
+
+test("pin layers request the tile-snapped bbox and reuse it after a short pan", async (t) => {
+  resetLayerRegistry();
+  const events = new EventTarget();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events)
+    }
+  });
+  const requested: Bbox[] = [];
+  registerLayer({
+    kind: "pins",
+    viewportCost: "cheap",
+    manifest: {
+      id: "snapped",
+      name: "Snapped",
+      icon: "x",
+      color: "#000000",
+      description: "Snapped",
+      category: "user"
+    },
+    create: () => ({
+      async update(bbox) {
+        requested.push(bbox);
+        return collection("a");
+      },
+      setData() {},
+      setVisible() {},
+      setOpacity() {},
+      detach() {}
+    })
+  });
+  const store = {
+    view: { zoom: 14 },
+    activeLayers: { snapped: { visible: true, opacity: 1, filters: {} } },
+    session: null,
+    activeTag: null,
+    countryCode: null,
+    enabledPoiSources: [],
+    setVisibleFeatures() {},
+    setLayerLoading() {},
+    setLayerNotice() {},
+    setSearchHerePending() {},
+    markSourcesLoading() {},
+    applySourceMeta() {}
+  } as unknown as MapStore;
+  const engine = new LayerEngine({} as never, "/api", store, new TaskRegistry());
+  t.after(() => engine.destroy());
+  const view: Bbox = [14.4122, 50.0833, 14.4293, 50.0915];
+  engine.refresh(view, true);
+  await waitFor(() => requested.length === 1);
+  assert.deepEqual(requested[0], snapBboxToTileGrid(view, 14));
+  engine.refresh([14.4125, 50.0834, 14.4296, 50.0916]);
+  await wait(400);
+  assert.equal(requested.length, 1, "a pan inside the fetched tiles costs no request");
+});
+
+test("progressive retries back off from the server hint and stay bounded", () => {
+  assert.equal(progressiveRetryDelay(2000, 1), 2000);
+  assert.equal(progressiveRetryDelay(2000, 2), 3000);
+  assert.ok(progressiveRetryDelay(2000, 3) > progressiveRetryDelay(2000, 2));
+  assert.equal(progressiveRetryDelay(2000, 20), 15000);
+  assert.equal(progressiveRetryDelay(10, 1), 1000);
 });

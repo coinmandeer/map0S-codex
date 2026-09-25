@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "asOf": "2026-09-02",
+  "asOf": "2026-09-24",
   "inventory": {
     "productionComposition": "apps/api/src/index.ts",
     "memoryComposition": "apps/api/src/memory-server.ts",
     "machineVerifier": "apps/api/src/routeParity.test.ts",
-    "expectedProductionRouteCount": 138,
-    "expectedMemoryRouteCount": 133,
-    "expectedSharedRouteCount": 132,
+    "expectedProductionRouteCount": 222,
+    "expectedMemoryRouteCount": 215,
+    "expectedSharedRouteCount": 213,
     "productionOnly": [
       {
         "method": "GET",
@@ -62,6 +62,33 @@
         "reason": "A synthetic server must not present an in-memory monetary mutation as equivalent to production staking semantics.",
         "status": "intentional-fixture-gap",
         "target": "Add only with an explicitly fake ledger adapter and contract tests."
+      },
+      {
+        "method": "GET",
+        "path": "/live/aircraft",
+        "auth": "public",
+        "schemaIntent": "Live aircraft positions for a viewport, proxied and cached from ADSB.lol (ODbL 1.0) with each feature carrying its source and position age.",
+        "reason": "Live upstream sources are registered in the production composition only; the memory server serves deterministic fixtures and has no upstream network access.",
+        "status": "permanent",
+        "target": "Keep the adapter behind the same FeatureProvider boundary if the memory server ever needs fixtures."
+      },
+      {
+        "method": "GET",
+        "path": "/live/vessels",
+        "auth": "public",
+        "schemaIntent": "Live vessel positions for a viewport: AISstream when a key is configured, keyless Digitraffic for Finnish waters otherwise, with per-feature source attribution.",
+        "reason": "Same as live aircraft: no upstream in the memory composition, and the collector is a server-side WebSocket that only exists in production.",
+        "status": "permanent",
+        "target": "Add deterministic fixtures before the memory server advertises the layer."
+      },
+      {
+        "method": "GET",
+        "path": "/live/status",
+        "auth": "public",
+        "schemaIntent": "Operational status of the live traffic sources (collector configured/connected, tracked vessel count) without exposing provider keys.",
+        "reason": "The diagnostic exists for the production collector; the memory composition has no collector to report.",
+        "status": "permanent",
+        "target": "Move under the operations surface if more live sources appear."
       }
     ],
     "memoryOnly": [
@@ -73,6 +100,15 @@
         "reason": "Older browser tests used a dedicated Park4Night path while production resolves the same layer through /layers/:layerId/features.",
         "status": "temporary",
         "target": "Remove after every consumer uses the generic layer endpoint."
+      },
+      {
+        "method": "GET",
+        "path": "/layers/meshcore/features",
+        "auth": "public",
+        "schemaIntent": "Offline fixture returning deterministic MeshCore nodes inside the requested bbox.",
+        "reason": "The MeshCore data layer is a server adapter; offline runs must not contact the analyzer, while production resolves it through /layers/:layerId/features.",
+        "status": "temporary",
+        "target": "Serve the same fixture through the generic layer endpoint once the offline registry carries it."
       }
     ]
   },

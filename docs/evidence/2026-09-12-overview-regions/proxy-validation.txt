@@ -1,0 +1,21 @@
+{"level":"info","ts":1789237702.7252975,"msg":"using provided configuration","config_file":"/tmp/mapos-caddy-candidate.conf","config_adapter":"caddyfile"}
+{"level":"info","ts":1789237702.7300375,"logger":"http","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1789237702.730073,"logger":"http","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+Valid configuration
+{"level":"info","ts":1789237702.7306416,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc000362150"}
+{"level":"info","ts":1789237702.730878,"logger":"tls.cache.maintenance","msg":"stopped background certificate maintenance","cache":"0xc000362150"}
+{"level":"info","ts":1789237702.8623142,"msg":"using provided configuration","config_file":"/etc/caddy/Caddyfile","config_adapter":"caddyfile"}
+{"level":"warn","ts":1789237702.8803978,"logger":"caddyfile","msg":"Unnecessary header_up X-Forwarded-Host: the reverse proxy's default behavior is to pass headers to the upstream"}
+{"level":"warn","ts":1789237702.8826385,"logger":"caddyfile","msg":"Unnecessary header_up X-Forwarded-Proto: the reverse proxy's default behavior is to pass headers to the upstream"}
+{"level":"warn","ts":1789237702.882833,"logger":"caddyfile","msg":"Unnecessary header_up X-Forwarded-Host: the reverse proxy's default behavior is to pass headers to the upstream"}
+{"level":"warn","ts":1789237702.8828442,"logger":"caddyfile","msg":"Unnecessary header_up X-Forwarded-Proto: the reverse proxy's default behavior is to pass headers to the upstream"}
+{"level":"warn","ts":1789237702.8829274,"logger":"caddyfile","msg":"Unnecessary header_up X-Forwarded-Host: the reverse proxy's default behavior is to pass headers to the upstream"}
+{"level":"warn","ts":1789237702.8829343,"logger":"caddyfile","msg":"Unnecessary header_up X-Forwarded-Proto: the reverse proxy's default behavior is to pass headers to the upstream"}
+{"level":"warn","ts":1789237702.8832417,"logger":"caddyfile","msg":"Unnecessary header_up X-Forwarded-Host: the reverse proxy's default behavior is to pass headers to the upstream"}
+{"level":"warn","ts":1789237702.8832495,"logger":"caddyfile","msg":"Unnecessary header_up X-Forwarded-Proto: the reverse proxy's default behavior is to pass headers to the upstream"}
+{"level":"warn","ts":1789237702.8895028,"msg":"Caddyfile input is not formatted; run the 'caddy fmt' command to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":2}
+{"level":"info","ts":1789237702.8947554,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc0000bfb90"}
+{"level":"info","ts":1789237702.8958242,"logger":"http","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1789237702.8958955,"logger":"http","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+Valid configuration
+{"level":"info","ts":1789237702.906378,"logger":"tls.cache.maintenance","msg":"stopped background certificate maintenance","cache":"0xc0000bfb90"}

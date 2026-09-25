@@ -1,0 +1,30 @@
+{"id": "place-camp-by-water", "query": "kde najdu kemp u vody?", "intent": "place", "tools": ["search_places"], "submit": "submit_answer"}
+{"id": "place-bars-nearby", "query": "bary poblíž", "intent": "place", "tools": ["search_places", "find_nearest_poi"], "submit": "submit_answer"}
+{"id": "place-viewpoints-radius", "query": "vyhlídky do 10 km", "intent": "place", "tools": ["search_places"], "submit": "submit_answer"}
+{"id": "place-fuel", "query": "nejbližší benzínka", "intent": "place", "tools": ["find_nearest_poi"], "submit": "submit_answer"}
+{"id": "place-drinking-water", "query": "pitná voda v okolí", "intent": "place", "tools": ["search_places"], "submit": "submit_answer"}
+{"id": "place-castles", "query": "hrady v okolí", "intent": "place", "tools": ["search_places"], "submit": "submit_answer"}
+{"id": "place-museums", "query": "muzea otevřená dnes", "intent": "place", "tools": ["search_places"], "submit": "submit_answer"}
+{"id": "place-breweries", "query": "pivovary v okolí", "intent": "place", "tools": ["search_places"], "submit": "submit_answer"}
+{"id": "place-observation-tower", "query": "rozhledna s výhledem", "intent": "place", "tools": ["search_places"], "submit": "submit_answer"}
+{"id": "question-nearest-camp-distance", "query": "jak daleko je nejbližší kemp?", "intent": "question", "tools": ["find_nearest_poi", "search_places"], "submit": "submit_answer"}
+{"id": "question-castle-entry-price", "query": "kolik stojí vstup na hrad?", "intent": "question", "tools": ["web_search"], "submit": "submit_answer"}
+{"id": "question-region-highlights", "query": "co je tu zajímavého?", "intent": "question", "tools": ["get_region_context"], "submit": "submit_answer"}
+{"id": "question-population", "query": "kolik tady žije obyvatel?", "intent": "question", "tools": ["get_stats"], "submit": "submit_answer"}
+{"id": "question-rain-tomorrow", "query": "bude zítra pršet?", "intent": "question", "tools": ["get_weather"], "submit": "submit_answer"}
+{"id": "question-drive-time", "query": "jak dlouho se jede do Plzně autem?", "intent": "question", "tools": ["route_segment"], "submit": "submit_answer"}
+{"id": "question-events-this-week", "query": "co se tu děje tento týden?", "intent": "question", "tools": ["search_events"], "submit": "submit_answer"}
+{"id": "question-official-page", "query": "najdi oficiální stránky správy jeskyní", "intent": "question", "tools": ["web_search", "web_fetch"], "submit": "submit_answer"}
+{"id": "question-saved-places", "query": "mám něco uloženého v tomhle okolí?", "intent": "question", "tools": ["query_saved_places"], "submit": "submit_answer"}
+{"id": "layer-cadastre-meaning", "query": "co ukazuje vrstva katastru?", "intent": "layer_query", "tools": ["list_available_layers", "query_layer"], "submit": "submit_answer"}
+{"id": "layer-floods", "query": "záplavové zóny u řeky", "intent": "layer_query", "tools": ["list_available_layers"], "submit": "submit_answer"}
+{"id": "layer-geology", "query": "geologické podloží tady", "intent": "layer_query", "tools": ["query_layer"], "submit": "submit_answer"}
+{"id": "command-enable-cadastre", "query": "zapni katastr", "intent": "command", "tools": ["list_available_layers"], "submit": "submit_answer"}
+{"id": "command-hide-poi", "query": "skryj vrstvu POI", "intent": "command", "tools": ["get_current_map_context"], "submit": "submit_answer"}
+{"id": "command-show-camps", "query": "zobraz kempy v okolí", "intent": "command", "tools": ["list_available_layers"], "submit": "select_layers", "forbidden": ["apply_plan_commands"]}
+{"id": "plan-three-days", "query": "naplánuj mi tři dny karavanem po Šumavě", "intent": "plan", "tools": ["search_places", "route_segment"], "submit": "submit_plan"}
+{"id": "plan-weekend", "query": "výlet na víkend do Krkonoš", "intent": "plan", "tools": ["search_places", "get_weather"], "submit": "submit_plan"}
+{"id": "edit-add-stop", "query": "přidej Kutnou Horu na den 2", "intent": "edit_plan", "tools": ["search_places"], "submit": "apply_plan_commands", "openPlan": true}
+{"id": "edit-shorten-plan", "query": "zkrať plán na dva dny", "intent": "edit_plan", "tools": ["get_current_map_context"], "submit": "apply_plan_commands", "openPlan": true}
+{"id": "edit-without-open-plan", "query": "přidej zastávku u přehrady na den 3", "intent": "edit_plan", "tools": ["search_places"], "submit": "submit_answer", "forbidden": ["apply_plan_commands"]}
+{"id": "layer-create-breweries", "query": "vytvoř vrstvu s pivovary", "intent": "layer_create", "tools": ["search_places"], "submit": "emit_layer"}

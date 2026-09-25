@@ -3,6 +3,7 @@ import { getMapStore } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { MapTimeline } from "./MapTimeline";
 import { RangeSlider } from "./RangeSlider";
+import { intlLocale } from "../i18n";
 
 const DAY_MS = 86_400_000;
 
@@ -17,7 +18,7 @@ function dayStart(offset: number): Date {
 function formatDay(offset: number): string {
   if (offset === 0) return "dnes";
   if (offset === 1) return "zítra";
-  return dayStart(offset).toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" });
+  return dayStart(offset).toLocaleDateString(intlLocale(), { day: "numeric", month: "numeric" });
 }
 
 const RANGE_MIN = 0;

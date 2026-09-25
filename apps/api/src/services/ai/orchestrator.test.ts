@@ -14,15 +14,23 @@ const unavailable: MapAiToolHandler = async () => {
 };
 
 const handlers: MapAiToolHandlers = {
+  derive_radius_area: unavailable,
+  get_night_sky: unavailable,
+  resolve_location: unavailable,
   get_current_map_context: unavailable,
   list_available_layers: unavailable,
   query_layer: unavailable,
+  search_places: unavailable,
   set_layer_selection_draft: unavailable,
   query_saved_places: unavailable,
   get_feature_detail: unavailable,
   route_segment: unavailable,
   get_weather: unavailable,
   search_events: unavailable,
+  get_region_context: unavailable,
+  get_stats: unavailable,
+  web_search: unavailable,
+  web_fetch: unavailable,
   create_plan_draft: unavailable
 };
 

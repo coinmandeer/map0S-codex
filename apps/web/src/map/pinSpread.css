@@ -1,0 +1,31 @@
+.pin-spread-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+}
+.pin-spread-lines line {
+  stroke: var(--text-secondary, #64748b);
+  stroke-width: 1.5;
+}
+.pin-spread-button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: var(--pin-color);
+  color: white;
+  font-size: 18px;
+  line-height: 30px;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 2px 5px #0004;
+}
+.pin-spread-button:focus-visible {
+  outline: 3px solid var(--pin-color);
+  outline-offset: 3px;
+}

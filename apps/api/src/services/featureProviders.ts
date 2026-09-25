@@ -1,3 +1,5 @@
+import { resolveAreaSelection, filterAreaFeatures } from "../geo/areaSelection.js";
+import type { AreaSelection } from "@mapos/layer-sdk";
 /**
  * Server-side counterpart to the browser's layer registry: what `GET /layers/:layerId/features`
  * can serve.
@@ -16,7 +18,8 @@ import {
   type LayerKind
 } from "@mapos/layer-sdk";
 import { getOsmPoiFeatures, getUserLayerFeatures } from "./layerService.js";
-import { getPark4nightFeatures } from "./park4nightService.js";
+import { getWeedFeatures } from "./weedService.js";
+import { getPark4nightFeatures, parsePark4nightFilters } from "./park4nightService.js";
 import { getFusedPlaces } from "./poiFusionService.js";
 import {
   parsePlaceSources,
@@ -24,9 +27,13 @@ import {
   placesToFeatureCollection
 } from "./placesPresentation.js";
 import { dataSourceProviders } from "./dataSources/index.js";
+import { questAnchorFeatures } from "../game/questAnchorCache.js";
+import { featurePage, featurePageV2 } from "./featurePages.js";
 
 export interface FeatureRequest {
+  signal?: AbortSignal;
   bbox: Bbox;
+  area?: AreaSelection | null;
   query: Record<string, string | undefined>;
   /** Resolved from the session cookie; undefined for anonymous callers. */
   userId?: string;
@@ -49,6 +56,18 @@ export interface FeatureProvider {
  * handlers are too easy to forget when a new source is registered. Wrapping the registry makes
  * 100 a hard response ceiling for both legacy and v2 providers, including providers added later.
  */
+/** The legacy (v1) envelope is only read by the first-party map. Its pages are cut from one
+ *  bounded server snapshot, so a larger page costs nothing upstream and saves the browser a chain
+ *  of sequential round trips. Callers that do not ask keep the historic 100-row page; the v2
+ *  public contract keeps its hard 100-row ceiling. */
+export const LEGACY_FEATURE_PAGE_MAX_LIMIT = 500;
+export function normalizeLegacyPageLimit(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (value === undefined || value === null || value === "" || !Number.isFinite(parsed))
+    return normalizeFeatureLimit(undefined);
+  return Math.min(LEGACY_FEATURE_PAGE_MAX_LIMIT, Math.max(1, Math.trunc(parsed)));
+}
+
 export function withFeatureQueryBudget(provider: FeatureProvider): FeatureProvider {
   const legacy = provider.features;
   const v2 = provider.featuresV2;
@@ -57,31 +76,33 @@ export function withFeatureQueryBudget(provider: FeatureProvider): FeatureProvid
     ...(legacy
       ? {
           async features(request: FeatureRequest): Promise<FeatureCollection> {
-            const result = await legacy(request);
-            const limit = normalizeFeatureLimit(request.query.limit);
-            return { ...result, features: result.features.slice(0, limit) };
+            const limit = normalizeLegacyPageLimit(request.query.limit);
+            const area = await resolveAreaSelection(request.query);
+            if (area && !["osm-poi", "user-layers", "weed"].includes(provider.id))
+              throw new Error("Layer does not support area filtering");
+            const bbox: Bbox = area
+              ? [
+                  Math.max(request.bbox[0], area.bbox[0]),
+                  Math.max(request.bbox[1], area.bbox[1]),
+                  Math.min(request.bbox[2], area.bbox[2]),
+                  Math.min(request.bbox[3], area.bbox[3])
+                ]
+              : request.bbox;
+            if (bbox[0] > bbox[2] || bbox[1] > bbox[3])
+              return { type: "FeatureCollection", features: [] };
+            const scoped = { ...request, bbox, area };
+            return featurePage(provider.id, request, limit, async () => {
+              const data = await legacy(scoped);
+              return area ? filterAreaFeatures(data, area) : data;
+            });
           }
         }
       : {}),
     ...(v2
       ? {
           async featuresV2(request: FeatureRequest): Promise<FeatureQueryResultV2> {
-            const result = await v2(request);
             const limit = normalizeFeatureLimit(request.query.limit);
-            const features = result.data.features.slice(0, limit);
-            const truncated =
-              result.meta.truncated || result.data.features.length > features.length;
-            return {
-              ...result,
-              data: { ...result.data, features },
-              meta: {
-                ...result.meta,
-                limit,
-                returned: features.length,
-                truncated,
-                nextCursor: truncated ? result.meta.nextCursor : null
-              }
-            };
+            return featurePageV2(provider.id, request, limit, () => v2(request));
           }
         }
       : {})
@@ -90,36 +111,49 @@ export function withFeatureQueryBudget(provider: FeatureProvider): FeatureProvid
 
 const RAW_FEATURE_PROVIDERS: FeatureProvider[] = [
   {
+    id: "weed",
+    name: "weed",
+    kind: "pins",
+    features: ({ bbox, query, area }) => getWeedFeatures(bbox, query.types, area)
+  },
+  {
     id: "osm-poi",
     name: "OSM POI",
     kind: "pins",
-    async features({ bbox, query }) {
+    async features({ bbox, query, area }) {
       const sources = parsePlaceSources(query.sources);
       // A plain OSM request skips fusion entirely — no reason to pay for merging when there is
       // only one source to merge.
       if (sources.length === 1 && sources[0] === "osm") {
-        return getOsmPoiFeatures(bbox, query.categories);
+        return getOsmPoiFeatures(bbox, query.categories, area);
       }
-      const fused = await getFusedPlaces({
-        bbox,
-        categories: parsePoiCategories(query.categories),
-        sources
-      });
-      return placesToFeatureCollection(fused);
+      const fused = await getFusedPlaces(
+        {
+          bbox,
+          area,
+          categories: parsePoiCategories(query.categories),
+          sources
+        },
+        { progressive: true }
+      );
+      const collection = placesToFeatureCollection(fused);
+      if (area)
+        collection.query = { ...collection.query, status: "partial", bbox, truncated: true };
+      return collection;
     }
   },
   {
     id: "user-layers",
     name: "Moje vrstvy",
     kind: "pins",
-    features: ({ bbox, query, userId }) =>
-      getUserLayerFeatures(bbox, userId, query.tag, query.country)
+    features: ({ bbox, query, userId, area }) =>
+      getUserLayerFeatures(bbox, userId, query.tag, query.country, area)
   },
   {
     id: "park4night",
     name: "Park4Night",
     kind: "pins",
-    features: ({ bbox }) => getPark4nightFeatures(bbox)
+    features: ({ bbox, query }) => getPark4nightFeatures(bbox, parsePark4nightFilters(query))
   },
   {
     // The open stand-in for Park4Night: same categories, ODbL, no one asking us to stop.
@@ -129,16 +163,28 @@ const RAW_FEATURE_PROVIDERS: FeatureProvider[] = [
     async features({ bbox, query }) {
       const categories = parsePoiCategories(query.categories);
       const wanted = categories.length ? categories : [...VANLIFE_CATEGORIES];
-      const fused = await getFusedPlaces({
-        bbox,
-        categories: wanted,
-        sources: parsePlaceSources(query.sources)
-      });
+      const fused = await getFusedPlaces(
+        {
+          bbox,
+          categories: wanted,
+          sources: parsePlaceSources(query.sources)
+        },
+        { progressive: true }
+      );
       return placesToFeatureCollection(fused);
     }
   },
   { id: "weather", name: "Počasí", kind: "raster" },
   { id: "game", name: "QuestLayer", kind: "custom-gl" },
+  {
+    // Quest anchors as ordinary pins, so objectives can be turned on beside a hiking map
+    // without entering the 3D game mode — the caches, notes and monuments behind them are
+    // worth seeing whether or not you are playing.
+    id: "game-quests",
+    name: "Herní questy",
+    kind: "pins",
+    features: ({ bbox, query }) => questAnchorFeatures(bbox, query.sources)
+  },
   ...dataSourceProviders
 ];
 

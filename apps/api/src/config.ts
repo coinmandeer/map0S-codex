@@ -197,6 +197,9 @@ export function resolveTrustedProxies(
 }
 
 export const config = {
+  get skyAtlasPath() {
+    return env("MAPOS_SKY_ATLAS_PATH");
+  },
   get corsOrigins() {
     return resolveCorsOrigins(env("MAPOS_CORS_ORIGINS"));
   },
@@ -260,6 +263,12 @@ export const config = {
   get fsqKey() {
     return env("FSQ_API_KEY");
   },
+  /** BRouter answers the "Dobrodružná" preference (§16.6). Keyless and self-hostable, so the
+   *  base URL is configurable: a busy public instance is a reason to run your own, not to lose
+   *  the feature. */
+  get brouterBaseUrl() {
+    return env("BROUTER_BASE_URL") ?? "https://brouter.de/brouter";
+  },
   get openaiKey() {
     return env("OPENAI_API_KEY");
   },
@@ -277,6 +286,26 @@ export const config = {
     // call started answering 410. `GET /v1/models` lists what the account can currently reach.
     return env("OLLAMA_MODEL") ?? "deepseek-v4-flash:0731";
   },
+  /** Two slots rather than one model (§30.2): the intent router and the tool loop run dozens of
+   *  short calls where latency is the whole experience, while a multi-day plan is one slow call
+   *  that has to be right. `OLLAMA_MODEL` stays the alias for the fast slot. */
+  get ollamaModelFastFallback() {
+    return process.env.OLLAMA_MODEL_FAST_FALLBACK ?? "deepseek-v4-flash:0731";
+  },
+  get ollamaModelStrongFallback() {
+    return process.env.OLLAMA_MODEL_STRONG_FALLBACK ?? "glm-5.3-flash";
+  },
+  get ollamaModelFast() {
+    return env("OLLAMA_MODEL_FAST") ?? env("OLLAMA_MODEL") ?? "glm-5.3-flash";
+  },
+  get ollamaModelStrong() {
+    return env("OLLAMA_MODEL_STRONG") ?? "deepseek-v4-pro:0813";
+  },
+  /** Web search and fetch are our tools, not a model feature: the same Ollama key reaches
+   *  `ollama.com/api/web_search`, and without a key the tools are simply not offered. */
+  get ollamaWebToolsEnabled() {
+    return this.aiGatewayEnabled && Boolean(this.ollamaKey);
+  },
   /** The provider CML should use, downgraded to "none" when its key is missing so callers
    *  never have to re-check the key alongside the provider name. */
   get cmlProvider(): CmlProvider {
@@ -291,13 +320,18 @@ export const config = {
    */
   get layerKeys(): Record<string, string | undefined> {
     return {
+      golemio: env("GOLEMIO_API_KEY"),
+      europeana: env("EUROPEANA_API_KEY"),
       ocm: env("OPENCHARGEMAP_API_KEY"),
       mapillary: env("MAPILLARY_ACCESS_TOKEN"),
       firms: env("NASA_FIRMS_MAP_KEY"),
       openaq: env("OPENAQ_API_KEY"),
       ebird: env("EBIRD_API_TOKEN"),
       ticketmaster: env("TICKETMASTER_API_KEY"),
-      opentripmap: env("OPENTRIPMAP_API_KEY")
+      opentripmap: env("OPENTRIPMAP_API_KEY"),
+      // Live ships worldwide. Digitraffic covers Finnish waters without a key; this key
+      // upgrades the same layer to the global AISstream feed.
+      aisstream: env("AISSTREAM_API_KEY")
     };
   },
   /**
@@ -305,6 +339,15 @@ export const config = {
    * background simply isn't offered in the picker. See `docs/basemaps.md` for where to sign up
    * and which of them ask for a credit card.
    */
+  // A hard cap or an explicitly verified, expiring Free Trial permits browser calls.
+  // Trial attestation is invalid if the owner manually upgrades billing to Paid.
+  // Never reuse GOOGLE_MAPS_API_KEY: the browser key must have origin/API restrictions.
+  get googlePlacesPublicKey(): string | undefined {
+    const browserKey = env("GOOGLE_PLACES_BROWSER_KEY");
+    const trialUntil = Date.parse(env("GOOGLE_PLACES_TRIAL_VERIFIED_UNTIL") ?? "");
+    const freeAccess = env("GOOGLE_PLACES_FREE_CAP_VERIFIED") === "1" || trialUntil > Date.now();
+    return freeAccess && browserKey !== env("GOOGLE_MAPS_API_KEY") ? browserKey : undefined;
+  },
   get tileKeys(): Record<string, string | undefined> {
     return {
       google: env("GOOGLE_MAPS_API_KEY"),
@@ -338,6 +381,12 @@ export const config = {
   get park4nightEnabled() {
     return env("PARK4NIGHT_ENABLED") === "1";
   },
+  /** Overture ships as a bounded self-hosted PMTiles extract rather than the global archives,
+   *  which are far too large to draw live. The operator enables this once the import exists and
+   *  is served at `/overture/`. */
+  get overtureEnabled() {
+    return env("OVERTURE_ENABLED") === "1";
+  },
   get contact() {
     return env("MAPOS_CONTACT");
   },
@@ -361,7 +410,21 @@ export function advertisedCmlCapability(
 export function capabilities(): ServerCapabilities {
   const commerceProvider = config.commerceProvider;
   return {
+    skyAtlas: Boolean(config.skyAtlasPath && existsSync(config.skyAtlasPath)),
     mapy: Boolean(config.mapyKey),
+    maptilerGeocoding: Boolean(
+      config.tileKeys.maptiler &&
+      (env("MAPOS_PROVIDER_BUDGET_MODE") === "provider" ||
+        env("MAPTILER_FREE_CAP_VERIFIED") === "1")
+    ),
+    googlePlacesUi: Boolean(config.googlePlacesPublicKey),
+    googlePlacesPublicKey: config.googlePlacesPublicKey ?? "",
+    googleSatellite: Boolean(
+      config.tileKeys.google &&
+      process.env.GOOGLE_TILES_ENABLED === "1" &&
+      process.env.GOOGLE_BUDGET_ACCOUNT &&
+      process.env.GOOGLE_SATELLITE_ENABLED === "1"
+    ),
     siwe: config.siweEnabled,
     identitySimulation: config.identitySimulationEnabled,
     ens: Boolean(config.ensRpcUrl),
@@ -375,9 +438,12 @@ export function capabilities(): ServerCapabilities {
     ...advertisedCmlCapability(config.aiGatewayEnabled, config.cmlProvider),
     owm: Boolean(config.owmKey),
     windy: Boolean(config.windyKey),
-    fsq: Boolean(config.fsqKey),
+    fsq:
+      process.env.FSQ_PLACES_ENABLED === "1" &&
+      Boolean(config.fsqKey && process.env.FSQ_BUDGET_ACCOUNT),
     opencaching: config.okapiInstances.length > 0,
     park4night: config.park4nightEnabled,
+    overture: config.overtureEnabled,
     // Derived, so adding a keyed layer means adding its key to `layerKeys` and nothing else —
     // the flag the browser needs follows automatically.
     ...Object.fromEntries(
@@ -388,7 +454,11 @@ export function capabilities(): ServerCapabilities {
     ...Object.fromEntries(
       Object.entries(config.tileKeys).map(([name, value]) => [
         name === "google" ? "googleTiles" : name,
-        Boolean(value)
+        name === "google"
+          ? Boolean(
+              value && process.env.GOOGLE_TILES_ENABLED === "1" && process.env.GOOGLE_BUDGET_ACCOUNT
+            )
+          : Boolean(value)
       ])
     )
   };

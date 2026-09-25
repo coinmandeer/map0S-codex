@@ -13,7 +13,7 @@ import type { Place, PlaceProvenance, PlaceSourceId } from "@mapos/layer-sdk";
 import { parseSourceRefs } from "@mapos/layer-sdk";
 import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { userLayers, userPins } from "../db/schema.js";
+import { userLayers, userPins, mapyPois, park4nightPlaces, osmPois } from "../db/schema.js";
 import { fetchOsmElement } from "./layerService.js";
 import { enrichPlace } from "./placeEnrichmentService.js";
 import { adapterFor } from "./poiFusionService.js";
@@ -26,6 +26,7 @@ export type ResolvedPlace = Omit<Place, "id" | "sources">;
 
 export interface PlaceResolveContext {
   viewerUserId: string | null;
+  signal?: AbortSignal;
 }
 
 export interface PlaceResolver {
@@ -33,8 +34,37 @@ export interface PlaceResolver {
   resolve(ref: string, context: PlaceResolveContext): Promise<ResolvedPlace | null>;
 }
 
-async function resolveOsm(ref: string): Promise<ResolvedPlace | null> {
-  const el = await fetchOsmElement(ref);
+/** Legacy local IDs are references to our stored row, never permission to guess node/way type. */
+export async function resolveOsmIndex(
+  id: string,
+  signal?: AbortSignal
+): Promise<ResolvedPlace | null> {
+  if (!/^osm-\d+$/.test(id)) return null;
+  signal?.throwIfAborted();
+  const [row] = await db.select().from(osmPois).where(eq(osmPois.id, id)).limit(1);
+  signal?.throwIfAborted();
+  if (!row) return null;
+  const t = row.tags ?? {};
+  return {
+    name: row.name ?? "Bez názvu",
+    lng: row.lng,
+    lat: row.lat,
+    category: row.category,
+    wikidata: t.wikidata,
+    description: t.description ?? t["description:cs"],
+    website: t.website ?? t["contact:website"],
+    openingHours: t.opening_hours,
+    address:
+      [t["addr:street"], t["addr:housenumber"], t["addr:city"]].filter(Boolean).join(" ") ||
+      undefined
+  };
+}
+
+async function resolveOsm(
+  ref: string,
+  context: PlaceResolveContext
+): Promise<ResolvedPlace | null> {
+  const el = await fetchOsmElement(ref, context.signal);
   if (!el) return null;
   const t = el.tags;
   return {
@@ -49,11 +79,15 @@ async function resolveOsm(ref: string): Promise<ResolvedPlace | null> {
     website: t.website ?? t["contact:website"],
     phone: t.phone ?? t["contact:phone"],
     openingHours: t.opening_hours,
+    description: t.description ?? t["description:cs"] ?? t["description:en"],
     elevationM: t.ele ? Number(t.ele) : undefined
   };
 }
 
-async function resolveWikidata(qid: string): Promise<ResolvedPlace | null> {
+async function resolveWikidata(
+  qid: string,
+  context: PlaceResolveContext
+): Promise<ResolvedPlace | null> {
   if (!/^Q\d+$/.test(qid)) return null;
   const data = await fetchJson<{
     entities?: Record<
@@ -70,7 +104,13 @@ async function resolveWikidata(qid: string): Promise<ResolvedPlace | null> {
     >;
   }>(
     `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=labels|claims&languages=cs|en|de&format=json&origin=*`,
-    { providerId: "wikidata", ttlMs: 24 * 3600_000, minIntervalMs: 150, retries: 2 }
+    {
+      signal: context.signal,
+      providerId: "wikidata",
+      ttlMs: 24 * 3600_000,
+      minIntervalMs: 150,
+      retries: 2
+    }
   );
 
   const entity = data.entities?.[qid];
@@ -93,6 +133,7 @@ interface UserPinAccessRecord {
   lng: number;
   lat: number;
   tags: string[] | null;
+  description?: string | null;
   ownerUserId: string;
   layerIsPublic: number;
 }
@@ -106,6 +147,7 @@ async function loadUserPin(ref: string): Promise<UserPinAccessRecord | null> {
       lng: userPins.lng,
       lat: userPins.lat,
       tags: userPins.tags,
+      description: userPins.description,
       ownerUserId: userLayers.userId,
       layerIsPublic: userLayers.isPublic
     })
@@ -133,11 +175,49 @@ async function resolveUserPinForViewer(
     lng: pin.lng,
     lat: pin.lat,
     category: "user-pin",
+    description: pin.description ?? undefined,
     tags: Array.isArray(pin.tags) ? (pin.tags as string[]) : undefined
   };
 }
 
+export async function resolveMapyPlace(ref: string): Promise<ResolvedPlace | null> {
+  if (!ref || ref.length > 256) return null;
+  const [row] = await db.select().from(mapyPois).where(eq(mapyPois.id, ref)).limit(1);
+  return row
+    ? {
+        name: row.name,
+        lng: row.lng,
+        lat: row.lat,
+        category: row.category,
+        address: row.location ?? undefined
+      }
+    : null;
+}
+export async function resolvePark4nightPlace(ref: string): Promise<ResolvedPlace | null> {
+  const id = ref.startsWith("p4n-") ? ref : /^\d+$/.test(ref) ? `p4n-${ref}` : null;
+  if (!id) return null;
+  const [row] = await db
+    .select()
+    .from(park4nightPlaces)
+    .where(eq(park4nightPlaces.id, id))
+    .limit(1);
+  return row
+    ? {
+        name: row.name ?? "Park4Night místo",
+        lng: row.lng,
+        lat: row.lat,
+        category: "camp_site",
+        photo: row.photoThumb ?? undefined,
+        rating: row.rating ?? undefined,
+        ratingCount: row.reviews ?? undefined,
+        tags: row.services ?? [],
+        website: `https://park4night.com/en/place/${id.slice(4)}`
+      }
+    : null;
+}
 export const PLACE_RESOLVERS: PlaceResolver[] = [
+  { source: "mapy", resolve: resolveMapyPlace },
+  { source: "park4night", resolve: resolvePark4nightPlace },
   { source: "osm", resolve: resolveOsm },
   { source: "wikidata", resolve: resolveWikidata },
   {
@@ -181,10 +261,13 @@ function provenanceFor(refs: Array<{ source: PlaceSourceId; ref: string }>): Pla
 }
 
 export interface PlaceDetailOptions {
+  /** Source-only projection for AI: never merge commercial enrichment. */
+  enrichment?: boolean;
   /** Substituted in tests so resolving a place never depends on Overpass being up. */
   resolvers?: PlaceResolver[];
   /** Session identity used by resolvers whose records may be private. */
   viewerUserId?: string | null;
+  signal?: AbortSignal;
 }
 
 /** Returns null only when nothing — neither a resolver nor the caller's hints — can say where
@@ -193,23 +276,32 @@ export async function getPlaceDetail(
   query: PlaceDetailQuery,
   options: PlaceDetailOptions = {}
 ): Promise<Place | null> {
+  options.signal?.throwIfAborted();
   const refs = refsFor(query);
   const bySource = options.resolvers
     ? new Map(options.resolvers.map((r) => [r.source, r]))
     : RESOLVER_BY_SOURCE;
 
-  let base: ResolvedPlace | null = null;
+  let base: ResolvedPlace | null =
+    !options.resolvers && /^osm-\d+$/.test(query.id)
+      ? await resolveOsmIndex(query.id, options.signal)
+      : null;
   for (const { source, ref } of refs) {
     const resolver = bySource.get(source);
     if (!resolver) continue;
     try {
-      base = await resolver.resolve(ref, { viewerUserId: options.viewerUserId ?? null });
+      base = await resolver.resolve(ref, {
+        viewerUserId: options.viewerUserId ?? null,
+        signal: options.signal
+      });
     } catch {
+      options.signal?.throwIfAborted();
       base = null;
     }
     if (base) break;
   }
 
+  options.signal?.throwIfAborted();
   const lng = base?.lng ?? query.lng;
   const lat = base?.lat ?? query.lat;
   if (lng == null || lat == null || !Number.isFinite(lng) || !Number.isFinite(lat)) return null;
@@ -221,8 +313,11 @@ export async function getPlaceDetail(
     lat,
     category: base?.category ?? query.category ?? "poi",
     wikidata: base?.wikidata ?? refs.find((r) => r.source === "wikidata")?.ref,
+    description: base?.description,
     address: base?.address,
     photo: base?.photo,
+    rating: base?.rating,
+    ratingCount: base?.ratingCount,
     website: base?.website,
     phone: base?.phone,
     openingHours: base?.openingHours,
@@ -233,15 +328,18 @@ export async function getPlaceDetail(
 
   // Foursquare is enrichment-only (see PLACE_SOURCE_ADAPTERS): it never answers a viewport, but
   // it is the one source with ratings, tips and street-level photos.
-  if (config.fsqKey) {
+  if (config.fsqKey && options.enrichment !== false) {
     const osmRef = refs.find((r) => r.source === "osm")?.ref;
-    const extra = await enrichPlace({
-      lng: place.lng,
-      lat: place.lat,
-      name: place.name,
-      category: place.category,
-      osmId: osmRef
-    });
+    const extra = await enrichPlace(
+      {
+        lng: place.lng,
+        lat: place.lat,
+        name: place.name,
+        category: place.category,
+        osmId: osmRef
+      },
+      options.signal
+    );
     place.fsqId = extra.fsqId ?? undefined;
     place.address ??= extra.address ?? undefined;
     place.rating ??= extra.rating ?? undefined;

@@ -19,6 +19,7 @@ export function resolvePhotoUrl(opts: {
     .then((data: { url?: string } | null) => data?.url ?? null)
     .catch(() => null);
   cache.set(key, promise);
+  while (cache.size > 256) cache.delete(cache.keys().next().value!);
   return promise;
 }
 
@@ -30,6 +31,7 @@ export function preloadPlacePhotos(
     const key = item.photo ?? (item.wikidata ? `wd:${item.wikidata}` : null);
     if (!key || warmed.has(key)) continue;
     warmed.add(key);
+    while (warmed.size > 128) warmed.delete(warmed.values().next().value!);
     void resolvePhotoUrl(item).then((url) => {
       if (!url || typeof Image === "undefined") return;
       const img = new Image();

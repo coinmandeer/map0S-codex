@@ -149,6 +149,8 @@ test("global budgets classify sensitive operations without including request val
   assert.equal(classify("POST", "/v2/layer-imports/preview").bucket, "import");
   assert.equal(classify("POST", "/v2/commerce/webhook").bucket, "commerce");
   assert.equal(classify("GET", "/places").bucket, "read");
+  assert.equal(classify("POST", "/v2/world/position").bucket, "world");
+  assert.equal(classify("POST", "/v2/world/threads/get").bucket, "world");
 
   const app = Fastify({ logger: false });
   app.addHook("preHandler", rateLimitAllRequests(new FixedWindowRateLimiter()));

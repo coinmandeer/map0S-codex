@@ -1,5 +1,7 @@
 # MapOS documentation
 
+Current stabilization status: [23 September 2026 release candidate](releases/2026-09-23-stabilization.md).
+
 This folder is the source-controlled public documentation site. Every link below points to a file
 that is reviewed and versioned with the runtime.
 

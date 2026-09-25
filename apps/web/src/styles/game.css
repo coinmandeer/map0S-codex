@@ -3,197 +3,182 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-    padding-bottom: var(--space-6);
+    padding-bottom: var(--space-4);
   }
 
-  .game-hud-title {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+  .game-player {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr) auto;
     gap: var(--space-3);
-    color: var(--text);
+    align-items: center;
   }
 
-  .game-hud-title strong {
+  .game-avatar {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-pill);
+    background: var(--accent-soft);
+    color: var(--accent);
     font-family: var(--font-display);
     font-size: var(--text-lg);
-  }
-
-  .game-hud-title span {
-    color: var(--accent);
     font-weight: var(--weight-strong);
   }
 
-  .game-hud-games {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-2);
-  }
-
-  .game-hud-games > div {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 28px;
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface-elevated);
-    opacity: 0.65;
-  }
-
-  .game-hud-games > div.active {
-    border-color: var(--accent);
-    opacity: 1;
-  }
-
-  .game-hud-games button {
+  .game-player-copy {
+    display: flex;
     min-width: 0;
-    min-height: 30px;
-    padding: 0 var(--space-2);
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .game-player-name {
     overflow: hidden;
-    font-size: 10px;
-    font-weight: var(--weight-strong);
+    color: var(--text);
+    font-weight: var(--weight-medium);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .game-hud-count {
+  .game-player-rank {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+  }
+
+  .game-player-copy .kit-progress-linear {
+    margin-top: var(--space-1);
+  }
+
+  .game-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+  }
+
+  .game-field-value {
     font-family: var(--font-display);
     font-stretch: var(--display-stretch);
     letter-spacing: var(--display-tracking);
     font-weight: var(--weight-display);
-    font-size: var(--text-lg);
-  }
-
-  .game-hud-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-  }
-
-  .game-hud-controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-  }
-
-  .game-hud-sector-note {
-    margin-top: calc(-1 * var(--space-2));
-  }
-
-  .game-hud-avatar,
-  .game-hud-movement,
-  .game-hud-performance,
-  .game-hud-stake {
-    border-top: 1px solid var(--border);
-    padding-top: var(--space-3);
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-  }
-
-  .game-hud-avatar summary,
-  .game-hud-movement summary,
-  .game-hud-performance summary,
-  .game-hud-stake summary {
-    cursor: pointer;
+    font-size: var(--text-2xl);
+    line-height: 1.1;
     color: var(--text);
-    font-weight: var(--weight-medium);
   }
 
-  .game-hud-avatar[open] summary,
-  .game-hud-movement[open] summary,
-  .game-hud-performance[open] summary,
-  .game-hud-stake[open] summary {
-    margin-bottom: var(--space-3);
-  }
-
-  .game-hud-quests,
-  .game-hud-zones {
-    font-size: var(--text-xs);
+  .game-field-label {
     color: var(--text-muted);
+    font-size: var(--text-xs);
   }
 
-  .game-hud-zone {
-    display: grid;
-    grid-template-columns: 8px minmax(0, 1fr);
-    gap: 2px var(--space-3);
+  .game-field .kit-progress-linear {
+    margin-top: var(--space-2);
+  }
+
+  .game-note {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+  }
+
+  .game-counters {
+    display: flex;
     align-items: center;
-    padding: var(--space-2) 0;
+    gap: var(--space-5);
   }
 
-  .game-hud-zone-dot {
-    grid-row: 1 / span 2;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #21d4b4;
-    box-shadow: 0 0 8px color-mix(in srgb, #21d4b4 75%, transparent);
+  .game-counter {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
   }
 
-  .game-hud-zone[data-kind="event"] .game-hud-zone-dot {
-    background: #ffc857;
-    box-shadow: 0 0 8px color-mix(in srgb, #ffc857 75%, transparent);
-  }
-
-  .game-hud-zone[data-kind="staker_gate"] .game-hud-zone-dot {
-    background: #a855f7;
-    box-shadow: 0 0 8px color-mix(in srgb, #a855f7 75%, transparent);
-  }
-
-  .game-hud-zone[data-lifecycle="scheduled"] {
-    opacity: 0.58;
-  }
-
-  .game-hud-zone-name {
-    overflow: hidden;
+  .game-counter-value {
+    font-family: var(--font-display);
+    font-stretch: var(--display-stretch);
+    font-weight: var(--weight-display);
+    font-size: var(--text-lg);
     color: var(--text);
+  }
+
+  .game-counter-label {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+  }
+
+  .game-counters .kit-icon-button {
+    margin-inline-start: auto;
+  }
+
+  .game-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .game-quest-reward {
+    color: var(--accent);
+    font-size: var(--text-xs);
     font-weight: var(--weight-medium);
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .game-hud-quest {
+  .game-quest-reward[data-done] {
+    color: var(--success);
+  }
+
+  .game-settings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .game-settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .game-settings-field .kit-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .game-settings-game {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
-    width: 100%;
-    padding: var(--space-3) var(--space-4);
-    margin-bottom: var(--space-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface-sunken);
+    min-height: 36px;
     color: var(--text);
-    font: inherit;
-    font-size: var(--text-xs);
-    text-align: left;
-    cursor: pointer;
-    transition:
-      border-color var(--dur) var(--ease-out),
-      background var(--dur) var(--ease-out);
+    font-size: var(--text-sm);
   }
 
-  .game-hud-quest:hover:not(:disabled) {
-    border-color: var(--accent);
-    background: var(--accent-soft);
+  .game-advanced {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
   }
 
-  .game-hud-quest[data-done] {
-    opacity: 0.55;
-    cursor: default;
+  .game-advanced-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
-  .game-hud-quest[data-done] .meta {
-    color: var(--success);
+  .game-advanced-block .kit-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
   }
 
-  .game-hud-quest-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text);
-    font-weight: var(--weight-medium);
+  .game-advanced-actions {
+    display: flex;
+    gap: var(--space-2);
   }
 
   .game-dpad {
@@ -247,7 +232,7 @@
     display: none;
   }
 
-  @media (max-width: 767px) {
+  @media (max-width: 899px) {
     .game-mobile-controls {
       position: fixed;
       left: max(var(--space-4), env(safe-area-inset-left));

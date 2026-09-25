@@ -28,6 +28,15 @@ prohlížeč tahá sám.
 | EOX Terrain Light              | Reliéf bez silnic                 | CC-BY-SA-4.0                                         |
 | NASA GIBS (VIIRS)              | Dnešní satelitní snímek planety   | Public domain, nízké rozlišení                       |
 | Esri World Imagery             | Ostré letecké snímky              | Veřejná služba Esri; pro provoz si zařiď účet (níže) |
+| OpenFreeMap Dark               | Tmavý vektorový styl bez klíče    | Stejná infra jako OpenFreeMap výše                   |
+| OSM France                     | Francouzský komunitní OSM styl    | CC-BY-SA-2.0, fair use                               |
+| ÖPNV-Karte                     | Mapa veřejné dopravy              | CC-BY-SA-2.0, do zoomu 18                            |
+| OSM Humanitarian (HOT)         | Vysoký kontrast pro krizové mapy  | CC-BY-SA-2.0                                         |
+| CyclOSM                        | Cyklomapa (trasy, povrchy, pásy)  | CC-BY-SA-2.0                                         |
+
+Náhledy karet vykresluje `npm run basemap-thumbs` do `apps/web/public/basemaps/*.webp` — jen
+pro podklady, jejichž licence dovoluje šířit vykreslený vzorek; ostatní karty mají schematický
+fallback.
 
 ## Kde se zaregistrovat — bez placení
 
@@ -94,3 +103,23 @@ Dvě věci to nezachytí a musíš na ně myslet ručně:
 
 Nic dalšího není potřeba: výběr v Nastavení mapy, atribuce, přepínání témat i skrytí podkladu
 bez klíče jdou z katalogu.
+
+## Náhledy na kartách
+
+Karta podkladu ukazuje vyrenderovaný screenshot z `apps/web/public/basemaps/<id>.webp`. Generuje
+je `npm run basemap-thumbs` a výsledek je v repozitáři, takže po naklonování jsou obrázky hned
+k dispozici.
+
+Všechny náhledy se fotí nad **stejným výřezem** (Azurové pobřeží, z10). Otázka, na kterou karta
+odpovídá, je „který z těch podkladů chci“ — a to se nedá porovnat, když každá karta ukazuje jiné
+místo. Výřez musí zvládnout všechny typy: pobřeží odliší satelitní mozaiku od pouliční mapy,
+hustá města dají pouličním stylům co kreslit a Alpy padající do moře udělají z reliéfního stylu
+poznatelně reliéfní styl.
+
+Renderují se jen podklady, jejichž licence dovoluje šíření vzorku. Náhled je odvozená kopie
+kartografie poskytovatele, takže Esri a všechny klíčované zdroje jsou vynechané záměrně — ne
+kvůli chybějícímu klíči, ale protože jejich podmínky nám evidentně nedovolují mít obrázek jejich
+mapy v tomhle repozitáři. Skript navíc zahodí náhled, který nic neukazuje: NASA GIBS končí na
+z8, takže nad společným výřezem vyrenderuje černý obdélník. Takové karty použijí schematickou
+kresbu z `BasemapThumb`, což je přesně to, k čemu ten fallback je — chybějící obrázek nemá
+vypadat jako rozbitá aplikace.

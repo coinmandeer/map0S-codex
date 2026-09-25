@@ -1,6 +1,7 @@
 import {
   featureQueryResult,
   featureV1ToV2,
+  isPointFeature,
   type Bbox,
   type FeatureQueryResultV2,
   type GeoFeature
@@ -36,6 +37,7 @@ export function earthquakeFixtureResult(
 ): FeatureQueryResultV2 {
   const minMagnitude = Number(query.minMagnitude) || 0;
   const matching = earthquakeFixtureFeatures().filter((feature) => {
+    if (!isPointFeature(feature)) return false;
     const [lng, lat] = feature.geometry.coordinates;
     return withinBbox(bbox, lng, lat) && Number(feature.properties.magnitude) >= minMagnitude;
   });

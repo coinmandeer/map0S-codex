@@ -76,3 +76,12 @@ test("without an OKAPI key the source says so instead of returning nothing", () 
   // No key is configured in tests, so this is the state a fresh clone starts in.
   assert.match(opencaching.unavailableReason?.() ?? "", /OKAPI/);
 });
+
+test("OKAPI encodes bbox and cache-code separators accepted by all four national instances", () => {
+  const url = __testing.okapiUrl("opencache.uk", "caches/search/bbox", "test-key", {
+    bbox: "51|-1|52|0",
+    limit: "1"
+  });
+  assert.ok(!url.includes("|"));
+  assert.equal(new URL(url).searchParams.get("bbox"), "51|-1|52|0");
+});

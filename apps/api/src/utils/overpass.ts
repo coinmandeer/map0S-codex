@@ -12,13 +12,14 @@ const OVERPASS_PROVIDER_IDS = ["overpass-fr", "overpass-kumi", "overpass-de"] as
 
 export async function fetchOverpass<T = unknown>(
   query: string,
-  options: { timeoutMs?: number } = {}
+  options: { timeoutMs?: number; signal?: AbortSignal } = {}
 ): Promise<T> {
   const timeoutMs = options.timeoutMs ?? 8_000;
   const startedAt = Date.now();
   let lastError: unknown = null;
 
   for (let index = 0; index < OVERPASS_URLS.length; index += 1) {
+    options.signal?.throwIfAborted();
     const remaining = timeoutMs - (Date.now() - startedAt);
     if (remaining < 300) break;
     const remainingEndpoints = OVERPASS_URLS.length - index;
@@ -31,11 +32,13 @@ export async function fetchOverpass<T = unknown>(
           "Content-Type": "application/x-www-form-urlencoded"
         },
         body: new URLSearchParams({ data: query }).toString(),
+        signal: options.signal,
         ttlMs: 0,
         timeoutMs: attemptMs,
         maxResponseBytes: 8 * 1024 * 1024
       });
     } catch (error) {
+      options.signal?.throwIfAborted();
       lastError = error;
     }
   }

@@ -1,41 +1,54 @@
 import type { ServerCapabilities } from "@mapos/layer-sdk";
 import { useMemo, type ReactNode } from "react";
+import { t } from "../i18n";
 import { allAttribution } from "../layers/attribution";
+import { createRecentSearchRepository } from "../search/recentSearches";
 import { SettingsUiRegistry } from "../settings/registry";
 import type { UserPreferences } from "../settings/preferences";
 import { getMapStore, type MapStore, type UserSession } from "../store/mapStore";
 import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
-import { Icon, SettingRow, Sheet, Toggle, type IconName } from "./primitives";
+import { Accordion, Button, Chip, InfoTip, SegmentedButton, Switch } from "./kit";
+import { Sheet } from "./primitives";
 
-function Segmented<T extends string>({
+/** One settings row: label, optional InfoTip, control.
+ *
+ *  The hint used to be a grey paragraph under every row, which is exactly the clutter §21.1
+ *  removes — three sentences of explanation for a two-state switch. The explanation now lives
+ *  behind the info icon, so the row is one line and the drawer scans as a list.
+ */
+function Row({
+  label,
+  info,
+  control,
+  onClick,
   value,
-  options,
-  onChange,
-  testId,
-  label
+  testId
 }: {
-  value: T;
-  options: { id: T; label: string; disabled?: boolean; title?: string }[];
-  onChange: (next: T) => void;
-  testId?: string;
   label: string;
+  info?: ReactNode;
+  control?: ReactNode;
+  onClick?: () => void;
+  /** Right-aligned text. With `onClick` it becomes the label of the row's action button,
+   *  otherwise it is a read-only value. */
+  value?: string;
+  testId?: string;
 }) {
   return (
-    <div className="segmented" data-testid={testId} role="group" aria-label={label}>
-      {options.map((option) => (
-        <button
-          key={option.id}
-          type="button"
-          className={value === option.id ? "active" : ""}
-          disabled={option.disabled}
-          title={option.title}
-          aria-pressed={value === option.id}
-          onClick={() => onChange(option.id)}
-          data-testid={testId ? `${testId}-${option.id}` : undefined}
-        >
-          {option.label}
-        </button>
-      ))}
+    <div className="settings-row" data-testid={onClick ? undefined : testId}>
+      <span className="settings-row-label">{label}</span>
+      {/* The InfoTip is a button, so the row itself must not be one — a nested button is
+          invalid HTML and browsers resolve it by dropping the inner control. */}
+      {info && <InfoTip title={label}>{info}</InfoTip>}
+      {onClick ? (
+        <Button variant="text" size="sm" onClick={onClick} testId={testId}>
+          {value ?? t("action.open")}
+        </Button>
+      ) : (
+        <>
+          {value && <span className="settings-row-value">{value}</span>}
+          {control}
+        </>
+      )}
     </div>
   );
 }
@@ -50,39 +63,46 @@ interface SettingsContext {
   sources: Attribution;
 }
 
+/* Section titles are getters for the same reason the mode manifests are: the registry is built
+   once at import time, so a plain string would keep the language it was imported in. */
 const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
   .registerSection({
     id: "appearance",
-    title: "Vzhled",
-    description: "Jak má MapOS působit na tomto zařízení.",
-    icon: "sparkles",
+    get title() {
+      return t("settings.appearance");
+    },
+    icon: "light_mode",
     order: 10
   })
   .registerSection({
     id: "map",
-    title: "Mapa",
-    description: "Jednotky a chování mapy. Podklady a vrstvy mají vlastní panely.",
-    icon: "tiles",
+    get title() {
+      return t("layers.title");
+    },
+    icon: "map",
     order: 20
   })
   .registerSection({
     id: "account",
-    title: "Účet",
-    description: "Profil, připojené identity a přenositelnost dat.",
-    icon: "user",
+    get title() {
+      return t("settings.account");
+    },
+    icon: "person",
     order: 30
   })
   .registerSection({
     id: "ai",
-    title: "AI",
-    description: "AI je volitelná a nic v mapě nezmění bez potvrzení.",
-    icon: "sparkles",
+    get title() {
+      return t("ai.title");
+    },
+    icon: "auto_awesome",
     order: 40
   })
   .registerSection({
     id: "about",
-    title: "O aplikaci",
-    description: "Verze, zdroje dat a podklady pro tvůrce vrstev.",
+    get title() {
+      return t("settings.about");
+    },
     icon: "info",
     order: 50
   })
@@ -91,21 +111,22 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "appearance",
     order: 10,
     render: ({ store, preferences }) => (
-      <SettingRow
-        label="Motiv"
-        hint="Systém sleduje vzhled zařízení a přepne i dvojče mapového podkladu."
+      <Row
+        label={t("settings.theme")}
+        info={t("settings.theme.info")}
         testId="settings-theme"
         control={
-          <Segmented
+          <SegmentedButton
             value={preferences.theme}
             options={[
-              { id: "system", label: "Systém" },
-              { id: "light", label: "Světlý" },
-              { id: "dark", label: "Tmavý" }
+              { value: "system", label: t("settings.theme.system") },
+              { value: "light", label: t("settings.theme.light") },
+              { value: "dark", label: t("settings.theme.dark") }
             ]}
             onChange={(next) => store.setPreference("theme", next)}
+            size="sm"
+            ariaLabel={t("settings.theme")}
             testId="theme-segmented"
-            label="Motiv aplikace"
           />
         }
       />
@@ -116,20 +137,21 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "appearance",
     order: 20,
     render: ({ store, preferences }) => (
-      <SettingRow
-        label="Hustota"
-        hint="Kompaktní režim ukáže více ovládacích prvků bez zmenšení dotykových cílů."
+      <Row
+        label={t("settings.density")}
+        info={t("settings.density.info")}
         testId="settings-density"
         control={
-          <Segmented
+          <SegmentedButton
             value={preferences.density}
             options={[
-              { id: "comfortable", label: "Komfortní" },
-              { id: "compact", label: "Kompaktní" }
+              { value: "comfortable", label: t("settings.density.comfortable") },
+              { value: "compact", label: t("settings.density.compact") }
             ]}
             onChange={(next) => store.setPreference("density", next)}
+            size="sm"
+            ariaLabel={t("settings.density")}
             testId="density-segmented"
-            label="Hustota rozhraní"
           />
         }
       />
@@ -140,20 +162,22 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "appearance",
     order: 30,
     render: ({ store, preferences }) => (
-      <SettingRow
-        label="Jazyk"
-        hint="English je připravené v registru; úplný překlad textů ještě není vydaný."
+      <Row
+        label={t("settings.language")}
         testId="settings-locale"
         control={
-          <Segmented
+          <SegmentedButton
             value={preferences.locale}
+            /* Language names stay in their own language — nobody looks for "Czech" in a
+               Czech UI, and "Čeština" is recognisable from an English one. */
             options={[
-              { id: "cs", label: "Čeština" },
-              { id: "en", label: "English", disabled: true, title: "Překlad se připravuje" }
+              { value: "en", label: "English" },
+              { value: "cs", label: "Čeština" }
             ]}
             onChange={(next) => store.setPreference("locale", next)}
+            size="sm"
+            ariaLabel={t("settings.language")}
             testId="locale-segmented"
-            label="Jazyk aplikace"
           />
         }
       />
@@ -164,20 +188,40 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "map",
     order: 10,
     render: ({ store, preferences }) => (
-      <SettingRow
-        label="Jednotky vzdálenosti"
-        hint="Použijí se v hledání, trasách a detailech míst."
+      <Row
+        label={t("settings.units")}
         testId="settings-units"
         control={
-          <Segmented
+          <SegmentedButton
             value={preferences.units}
             options={[
-              { id: "metric", label: "km" },
-              { id: "imperial", label: "mi" }
+              { value: "metric", label: t("settings.units.metric") },
+              { value: "imperial", label: t("settings.units.imperial") }
             ]}
             onChange={(next) => store.setPreference("units", next)}
+            size="sm"
+            ariaLabel={t("settings.units")}
             testId="units-segmented"
-            label="Jednotky vzdálenosti"
+          />
+        }
+      />
+    )
+  })
+  .register({
+    id: "low-data",
+    sectionId: "map",
+    order: 15,
+    render: ({ store, preferences }) => (
+      <Row
+        label={t("settings.lowData")}
+        info={t("settings.lowData.info")}
+        testId="settings-low-data"
+        control={
+          <Switch
+            checked={preferences.lowData}
+            label={t("settings.lowData")}
+            onChange={(next) => store.setPreference("lowData", next)}
+            testId="low-data-toggle"
           />
         }
       />
@@ -188,14 +232,13 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "map",
     order: 20,
     render: ({ store, preferences }) => (
-      <SettingRow
-        label="Animace přeletů"
-        hint="Plynulý přesun při otevření výsledku nebo oblasti."
+      <Row
+        label={t("settings.flyAnimations")}
         testId="settings-fly-animations"
         control={
-          <Toggle
-            on={preferences.flyAnimations}
-            label="Animace přeletů"
+          <Switch
+            checked={preferences.flyAnimations}
+            label={t("settings.flyAnimations")}
             onChange={(next) => store.setPreference("flyAnimations", next)}
             testId="fly-animations-toggle"
           />
@@ -208,14 +251,14 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "map",
     order: 30,
     render: ({ store, preferences }) => (
-      <SettingRow
-        label="Zobrazovat ‚Hledat v této oblasti‘"
-        hint="Po posunu mapy nabídne ruční obnovení dat bez zbytečných dotazů během tažení."
+      <Row
+        label={t("search.searchHere")}
+        info={t("settings.searchHere.info")}
         testId="settings-search-here"
         control={
-          <Toggle
-            on={preferences.showSearchHere}
-            label="Zobrazovat Hledat v této oblasti"
+          <Switch
+            checked={preferences.showSearchHere}
+            label={t("search.searchHere")}
             onChange={(next) => store.setPreference("showSearchHere", next)}
             testId="search-here-toggle"
           />
@@ -228,19 +271,21 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "account",
     order: 10,
     render: ({ store, session }) => (
-      <SettingRow
-        label={session ? session.displayName : "Host"}
-        hint={
+      <Row
+        label={session ? session.displayName : t("personal.guest")}
+        info={
           session?.isGuest
-            ? "Anonymní profil je uložený v tomto prohlížeči. Uložením účtu ho přeneseš i jinam."
+            ? t("settings.account.guestInfo")
             : session
               ? session.email
-              : "Postup se ukládá lokálně. Přihlášením ho přeneseš mezi zařízeními."
+              : t("settings.account.localInfo")
         }
-        control={
-          <span className="setting-row-value">
-            {session?.isGuest ? "Uložit účet" : session ? "Spravovat" : "Přihlásit"}
-          </span>
+        value={
+          session?.isGuest
+            ? t("settings.account.saveAccount")
+            : session
+              ? t("settings.account.manage")
+              : t("personal.signIn")
         }
         onClick={() => store.openSheet("auth")}
         testId="settings-account"
@@ -252,10 +297,10 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "account",
     order: 20,
     render: ({ store }) => (
-      <SettingRow
-        label="Export a smazání dat"
-        hint="Stáhni přenositelný archiv nebo otevři bezpečné potvrzení smazání účtu."
-        control={<span className="setting-row-value">Otevřít</span>}
+      <Row
+        label={t("settings.dataRights")}
+        info={t("settings.dataRights.info")}
+        value={t("action.open")}
         onClick={() => store.openSheet("auth")}
         testId="settings-data-rights"
       />
@@ -266,14 +311,14 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "ai",
     order: 10,
     render: ({ store, preferences }) => (
-      <SettingRow
-        label="AI funkce"
-        hint="Vypnutí skryje AI hledání a konverzace; běžná mapa, geokódování i trasy zůstanou."
+      <Row
+        label={t("settings.ai.enabled")}
+        info={t("settings.ai.enabled.info")}
         testId="settings-ai-enabled"
         control={
-          <Toggle
-            on={preferences.aiEnabled}
-            label="AI funkce"
+          <Switch
+            checked={preferences.aiEnabled}
+            label={t("settings.ai.enabled")}
             onChange={(next) => store.setPreference("aiEnabled", next)}
             testId="ai-enabled-toggle"
           />
@@ -286,15 +331,15 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "ai",
     order: 20,
     render: ({ store, preferences }) => (
-      <SettingRow
-        label="Automatický AI souhrn míst"
-        hint="Ve výchozím stavu vypnuto, aby se na mobilních datech nic neposílalo bez vyžádání."
+      <Row
+        label={t("settings.ai.autoSummary")}
+        info={t("settings.ai.autoSummary.info")}
         testId="settings-ai-auto-summary"
         control={
-          <Toggle
-            on={preferences.aiEnabled && preferences.aiAutoSummary}
+          <Switch
+            checked={preferences.aiEnabled && preferences.aiAutoSummary}
             disabled={!preferences.aiEnabled}
-            label="Automaticky načítat AI souhrn u míst"
+            label={t("settings.ai.autoSummary")}
             onChange={(next) => store.setPreference("aiAutoSummary", next)}
             testId="ai-auto-summary-toggle"
           />
@@ -303,18 +348,47 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     )
   })
   .register({
-    id: "ai-provider",
+    id: "ai-history",
     sectionId: "ai",
     order: 30,
+    render: ({ store }) => (
+      <Row
+        label={t("settings.ai.history")}
+        info={t("settings.ai.history.info")}
+        testId="settings-ai-history"
+        control={
+          <Button
+            variant="text"
+            size="sm"
+            testId="ai-history-clear"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                createRecentSearchRepository(window.localStorage).clear();
+              }
+              store.showToast(t("settings.ai.history.cleared"));
+            }}
+          >
+            {t("action.delete")}
+          </Button>
+        }
+      />
+    )
+  })
+  .register({
+    id: "ai-provider",
+    sectionId: "ai",
+    order: 40,
     render: ({ capabilities }) => (
-      <SettingRow
-        label="Aktivní AI poskytovatel"
-        hint="Volí ho server; klíč se nikdy neposílá do prohlížeče."
+      <Row
+        label={t("settings.ai.provider")}
+        info={t("settings.ai.provider.info")}
         testId="settings-ai-provider"
         control={
-          <span className="settings-status-chip">
-            {capabilities?.cml ? (capabilities.cmlProvider ?? "server") : "deterministický režim"}
-          </span>
+          <Chip
+            label={
+              capabilities?.cml ? t("settings.ai.provider.cml") : t("settings.ai.provider.none")
+            }
+          />
         }
       />
     )
@@ -324,15 +398,14 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "about",
     order: 10,
     render: ({ capabilities }) => (
-      <SettingRow
-        label="MapOS v20"
-        hint="Otevřený mapový operační systém · prototyp"
-        control={
-          <span className={`settings-status-chip ${capabilities ? "is-live" : ""}`}>
-            {capabilities ? "server připojen" : "offline"}
-          </span>
-        }
+      <Row
+        label={t("settings.version")}
         testId="settings-version"
+        control={
+          <Chip
+            label={capabilities ? t("settings.version.online") : t("settings.version.offline")}
+          />
+        }
       />
     )
   })
@@ -341,73 +414,89 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     sectionId: "about",
     order: 20,
     render: ({ capabilities }) => (
-      <SettingRow
-        label="Aktivní poskytovatelé"
-        hint="Jen informace; poskytovatele geokódování a tras volí server podle dostupnosti."
-        control={
-          <span className="setting-row-value">
-            {capabilities?.mapy ? "Mapy.com + OSM + OSRM" : "OSM + OSRM"}
-          </span>
-        }
+      <Row
+        label={t("settings.providers")}
+        info={t("settings.providers.info")}
+        value={capabilities?.mapy ? "Mapy.com + OpenStreetMap" : "OpenStreetMap"}
         testId="settings-active-providers"
+      />
+    )
+  })
+  .register({
+    id: "ai-shared-data",
+    sectionId: "about",
+    order: 30,
+    render: () => (
+      <Row
+        label={t("legal.dataShared")}
+        info={t("ai.consent.body")}
+        value="AI"
+        testId="settings-ai-shared"
       />
     )
   })
   .register({
     id: "attribution",
     sectionId: "about",
-    order: 30,
+    order: 40,
     render: ({ sources }) => (
-      <details className="attribution-list settings-attribution" data-testid="attribution-list">
-        <summary>
-          <span>
-            <strong>Zdroje dat a licence</strong>
-            <small>{sources.length} zdrojů · licence jsou informace, ne datová brána</small>
-          </span>
-          <span className="setting-row-value">Rozbalit</span>
-        </summary>
-        <ul>
-          {sources.map((source) => (
-            <li key={`${source.usedBy}:${source.label}`}>
-              <span className="attribution-used-by">{source.usedBy}</span>
-              {source.url ? (
-                <a href={source.url} target="_blank" rel="noreferrer">
-                  {source.label}
-                </a>
-              ) : (
-                <span>{source.label}</span>
-              )}
-              {source.license && <span className="attribution-license">{source.license}</span>}
-            </li>
-          ))}
-        </ul>
-      </details>
+      <Accordion
+        testId="attribution-list"
+        sections={[
+          {
+            id: "sources",
+            title: t("settings.attribution.title"),
+            count: sources.length,
+            children: (
+              <ul className="settings-attribution">
+                {/* A layer can cite the same provider twice (tiles and terms, say), so the pair
+                    of names is not unique — only the position in the aggregated list is. */}
+                {sources.map((source, index) => (
+                  <li key={`${index}:${source.usedBy}:${source.label}`}>
+                    <span className="attribution-used-by">{source.usedBy}</span>
+                    {source.url ? (
+                      <a href={source.url} target="_blank" rel="noreferrer">
+                        {source.label}
+                      </a>
+                    ) : (
+                      <span>{source.label}</span>
+                    )}
+                    {source.license && (
+                      <span className="attribution-license">{source.license}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+        ]}
+      />
     )
   })
   .register({
     id: "creator-docs",
     sectionId: "about",
-    order: 40,
+    order: 50,
     render: () => (
-      <SettingRow
-        label="Dokumentace pro tvůrce vrstev"
-        hint="Layer SDK v2, manifesty, příklady a migrační pravidla jsou součástí repozitáře."
-        control={<span className="setting-row-value">SDK v2</span>}
+      <Row
+        label={t("settings.creatorDocs")}
+        info={t("settings.creatorDocs.info")}
+        value="SDK v2"
         testId="settings-creator-docs"
       />
     )
   });
 
+/** Compatibility shell for `VITE_APP_SHELL_V2=0`; removed with the legacy shell (§6). */
 export function SettingsSheet() {
   const store = getMapStore();
   return (
-    <Sheet title="Nastavení" onClose={() => store.closeSheet()} testId="settings-sheet">
+    <Sheet title={t("settings.title")} onClose={() => store.closeSheet()} testId="settings-sheet">
       <SettingsContent />
     </Sheet>
   );
 }
 
-/** Shared body used by both the compatibility Sheet and the AppShell right utility drawer. */
 export function SettingsContent() {
   const store = getMapStore();
   const preferences = useMapStoreSnapshot((state) => state.preferences);
@@ -420,46 +509,22 @@ export function SettingsContent() {
   );
 
   return (
-    <div className="settings-redesign" data-testid="settings-registry">
-      <section className="settings-overview" aria-label="Přehled nastavení">
-        <span className="settings-overview-icon" aria-hidden="true">
-          <Icon name="settings" size={24} />
-        </span>
-        <div>
-          <p className="settings-overview-eyebrow">MapOS podle tebe</p>
-          <strong>Jedno místo pro vzhled, mapu, účet a AI</strong>
-          <div className="settings-overview-chips" aria-label="Aktivní volby">
-            <span>
-              {preferences.theme === "system" ? "Motiv zařízení" : `Motiv ${preferences.theme}`}
-            </span>
-            <span>{preferences.units === "metric" ? "Kilometry" : "Míle"}</span>
-            <span>{preferences.aiEnabled ? "AI zapnuto" : "AI vypnuto"}</span>
-          </div>
-        </div>
-      </section>
-
+    <div className="settings-drawer" data-testid="settings-registry">
       {registry.list().map((section) => (
         <section
-          className="settings-section-card"
+          className="settings-section"
           key={section.id}
           data-settings-section={section.id}
+          aria-label={section.title}
         >
-          <header>
-            <span className="settings-section-icon" aria-hidden="true">
-              <Icon name={section.icon as IconName} size={18} />
-            </span>
-            <span>
-              <strong>{section.title}</strong>
-              {section.description && <small>{section.description}</small>}
-            </span>
-          </header>
-          <div className="settings-section-items">
-            {section.entries.map((entry) => (
-              <div key={entry.id} data-setting-id={entry.id}>
-                {entry.render(context)}
-              </div>
-            ))}
-          </div>
+          <h3 className="settings-section-title">
+            <span className="kit-eyebrow">{section.title}</span>
+          </h3>
+          {section.entries.map((entry) => (
+            <div key={entry.id} data-setting-id={entry.id}>
+              {entry.render(context)}
+            </div>
+          ))}
         </section>
       ))}
     </div>

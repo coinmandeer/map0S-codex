@@ -33,7 +33,7 @@ test.describe("keyless data layers", () => {
     );
 
     await page.goto("/?lng=13.3775&lat=49.7475&z=14");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await page.getByTestId("overflow-inaturalist").click();
 
     await expect
@@ -61,7 +61,7 @@ test.describe("keyless data layers", () => {
     );
 
     await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await page.getByTestId("overflow-commons-photos").click();
 
     // An empty layer and a refused request must not look the same to the user.
@@ -72,7 +72,7 @@ test.describe("keyless data layers", () => {
 
   test("layers needing a key are absent until the server reports it", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await expect(page.getByTestId("overflow-menu")).toBeVisible();
 
     // The dev server holds no keys, so these must not be offered at all.

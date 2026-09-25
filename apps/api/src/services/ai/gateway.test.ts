@@ -71,7 +71,7 @@ function request(overrides: Partial<AiGatewayRequest<Summary>> = {}): AiGatewayR
 
 class FakeAdapter implements AiModelAdapter {
   readonly id = "fake";
-  readonly capabilities = capabilities;
+  capabilities: AiModelProfile["capabilities"] = capabilities;
   calls: AiAdapterRequest[] = [];
   answer: AiAdapterResult = {
     text: JSON.stringify({ summary: "Hrad stojí za návštěvu.", citedSourceIds: ["osm:1"] }),
@@ -232,6 +232,114 @@ test("metadata traces contain no prompt, source contents or permission partition
   assert.match(encoded, /public-economy/);
 });
 
+test("a tool-capable profile receives the schema as a forced submit_result tool", async () => {
+  const adapter = new FakeAdapter();
+  adapter.capabilities = { ...capabilities, tools: true };
+  adapter.answer = {
+    text: "",
+    finishReason: "tool-call",
+    toolCalls: [
+      {
+        id: "call-1",
+        name: "submit_result",
+        arguments: { summary: "Hrad stojí za návštěvu.", citedSourceIds: ["osm:1"] }
+      }
+    ]
+  };
+  const gateway = new AiGateway([adapter]);
+  const outcome = await gateway.run(
+    request({ profile: profile({ capabilities: { ...capabilities, tools: true } }) })
+  );
+
+  assert.equal(outcome.status, "succeeded");
+  if (outcome.status === "succeeded") {
+    assert.equal(outcome.value.summary, "Hrad stojí za návštěvu.");
+  }
+  // The schema went out as the tool's parameters, not as response_format.
+  assert.equal(adapter.calls[0]?.tools?.[0]?.name, "submit_result");
+  assert.deepEqual(adapter.calls[0]?.toolChoice, { name: "submit_result" });
+  assert.equal(adapter.calls[0]?.outputSchema, undefined);
+});
+
+test("a turn returns tool calls without caching them", async () => {
+  const adapter = new FakeAdapter();
+  adapter.capabilities = { ...capabilities, tools: true };
+  adapter.answer = {
+    text: "",
+    finishReason: "tool-call",
+    toolCalls: [{ id: "call-1", name: "query_layer", arguments: { layerId: "osm-poi" } }]
+  };
+  const gateway = new AiGateway([adapter]);
+  const turn = {
+    taskId: "ai-chat",
+    templateVersion: "ai-chat.v1",
+    system: "Odpovídej česky.",
+    prompt: "Kde je poblíž kemp?",
+    profile: profile({ capabilities: { ...capabilities, tools: true } }),
+    permissionPartition: "user:1",
+    sourceBlocks: [
+      { sourceId: "osm:1", label: "OSM", content: "Kemp", dataClass: "public" as const }
+    ],
+    tools: [
+      {
+        name: "query_layer",
+        description: "Hledá ve vrstvě",
+        parameters: { type: "object", properties: {} }
+      }
+    ],
+    toolChoice: "auto" as const
+  };
+
+  const first = await gateway.turn(turn);
+  assert.equal(first.status, "succeeded");
+  if (first.status === "succeeded") {
+    assert.deepEqual(first.toolCalls, [
+      { id: "call-1", name: "query_layer", arguments: { layerId: "osm-poi" } }
+    ]);
+  }
+
+  // Running the same round again really runs it: a tool loop is not a lookup.
+  await gateway.turn(turn);
+  assert.equal(adapter.calls.length, 2);
+});
+
+test("a turn is denied for private sources and for adapters without tools", async () => {
+  const adapter = new FakeAdapter();
+  const gateway = new AiGateway([adapter]);
+  const base = {
+    taskId: "ai-chat",
+    templateVersion: "ai-chat.v1",
+    system: "Odpovídej česky.",
+    prompt: "Co mám uložené?",
+    profile: profile(),
+    permissionPartition: "user:1",
+    sourceBlocks: [
+      {
+        sourceId: "saved:1",
+        label: "Uložené místo",
+        content: "Tajné místo",
+        dataClass: "account-private" as const
+      }
+    ]
+  };
+  assert.equal((await gateway.turn(base)).status, "policy-denied");
+
+  const publicSources = [
+    { sourceId: "osm:1", label: "OSM", content: "Kemp", dataClass: "public" as const }
+  ];
+  assert.equal(
+    (
+      await gateway.turn({
+        ...base,
+        sourceBlocks: publicSources,
+        tools: [{ name: "query_layer", description: "x", parameters: { type: "object" } }]
+      })
+    ).status,
+    "unavailable"
+  );
+  assert.equal(adapter.calls.length, 0);
+});
+
 test("context token budget is enforced before the adapter runs", async () => {
   const adapter = new FakeAdapter();
   const gateway = new AiGateway([adapter]);
@@ -243,4 +351,45 @@ test("context token budget is enforced before the adapter runs", async () => {
     "policy-denied"
   );
   assert.equal(adapter.calls.length, 0);
+});
+
+test("shared AI generation survives first cancellation, last subscriber stops transport", async () => {
+  const adapter = new FakeAdapter();
+  adapter.delayMs = 40;
+  const gateway = new AiGateway([adapter]);
+  const first = new AbortController(),
+    second = new AbortController();
+  const a = gateway.run(request({ signal: first.signal }));
+  const b = gateway.run(request({ signal: second.signal }));
+  first.abort();
+  assert.equal((await a).status, "aborted");
+  assert.equal((await b).status, "succeeded");
+  assert.equal(adapter.calls.length, 1);
+  let aborted = false,
+    started!: () => void;
+  const ready = new Promise<void>((resolve) => (started = resolve));
+  const blocking: AiModelAdapter = {
+    id: "fake",
+    capabilities,
+    run: async (_input, signal) => {
+      started();
+      return new Promise((_resolve, reject) =>
+        signal.addEventListener(
+          "abort",
+          () => {
+            aborted = true;
+            reject(signal.reason);
+          },
+          { once: true }
+        )
+      );
+    }
+  };
+  const other = new AiGateway([blocking]);
+  const controller = new AbortController();
+  const c = other.run(request({ signal: controller.signal }));
+  await ready;
+  controller.abort();
+  assert.equal((await c).status, "aborted");
+  assert.equal(aborted, true);
 });

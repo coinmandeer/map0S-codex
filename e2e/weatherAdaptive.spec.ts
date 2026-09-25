@@ -35,17 +35,110 @@ function weatherGrid(url: string) {
   };
 }
 
-async function selectWeather(page: Page, id: "temperature" | "clouds") {
-  if (!(await page.getByTestId("overflow-menu").isVisible())) {
-    await page.getByTestId("overflow-btn").click();
+/** A point on the canvas that really hits a rendered weather sector.
+ *
+ *  The grid is rebuilt whenever the camera settles, and the camera now carries the chrome's
+ *  padding, so a point derived from one serialisation of the source can be stale by the time it
+ *  is used. This retries until a sector is both on canvas and hit-testable. */
+async function hittableSectorPoint(page: Page): Promise<{ x: number; y: number }> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const point = await page.evaluate(() => {
+      const map = window.__maposMap;
+      if (!map?.getLayer("fill-weather-temperature-sectors")) return null;
+      const source = map.getSource("source-weather-temperature-sectors") as
+        { serialize?: () => { data?: GeoJSON.FeatureCollection } } | undefined;
+      const sectors = (source?.serialize?.().data?.features ?? []).filter(
+        (feature) => feature.properties?.kind === "sector"
+      );
+      const rect = map.getCanvas().getBoundingClientRect();
+      // Middle out: the centre of the viewport is the least likely to be clipped.
+      const order = sectors
+        .map((sector, index) => ({ sector, index }))
+        .sort(
+          (a, b) => Math.abs(a.index - sectors.length / 2) - Math.abs(b.index - sectors.length / 2)
+        );
+      for (const { sector } of order) {
+        const ring = (sector.geometry as GeoJSON.Polygon).coordinates[0]!;
+        const lng = (Math.min(...ring.map(([x]) => x)) + Math.max(...ring.map(([x]) => x))) / 2;
+        const lat = (Math.min(...ring.map(([, y]) => y)) + Math.max(...ring.map(([, y]) => y))) / 2;
+        const projected = map.project([lng, lat]);
+        if (
+          projected.x < 1 ||
+          projected.y < 1 ||
+          projected.x > rect.width - 1 ||
+          projected.y > rect.height - 1
+        )
+          continue;
+        if (
+          !map.queryRenderedFeatures([projected.x, projected.y], {
+            layers: ["fill-weather-temperature-sectors"]
+          }).length
+        )
+          continue;
+        return { x: rect.left + projected.x, y: rect.top + projected.y };
+      }
+      return null;
+    });
+    if (point) return point;
+    await page.waitForTimeout(250);
   }
-  await page.locator(`label:has([data-testid="weather-visualization-${id}"])`).click();
-  await expect(page.getByTestId(`weather-visualization-${id}`)).toBeChecked();
-  await page.keyboard.press("Escape");
+  throw new Error("no weather sector became hit-testable");
+}
+
+async function selectWeather(page: Page, id: "temperature" | "clouds") {
+  if (!(await page.getByTestId("overflow-menu").isVisible()))
+    await page.getByTestId("layers-btn").click();
+  await page.getByTestId("layers-search").fill("weather");
+  const radar = page.getByTestId("weather-switch-weather-radar");
+  if (await radar.isChecked()) await radar.click();
+  const selected = page.getByTestId(`weather-switch-weather-${id}`);
+  if (!(await selected.isChecked())) await selected.click();
+  // A second weather field is additive; switching it off must keep the temperature source.
+  if (id === "temperature") {
+    const clouds = page.getByTestId("weather-switch-weather-clouds");
+    if (await clouds.isChecked()) await clouds.click();
+  }
+  await expect(selected).toBeChecked();
+  await page.getByTestId("right-utility-close").click();
 }
 
 test.describe("adaptive weather map UI", () => {
-  test("keeps one coloured source stable and exposes equal hover/tap cell detail", async ({
+  test("switches forecast models without recreating the map", async ({ page }) => {
+    test.setTimeout(120_000);
+    const requestedModels: string[] = [];
+    await page.route(/\/api\/weather\/grid\?/u, (route) => {
+      const url = route.request().url();
+      requestedModels.push(new URL(url).searchParams.get("model") ?? "missing");
+      return route.fulfill({ json: weatherGrid(url) });
+    });
+    await page.goto("/?mode=weather&lng=14.42&lat=50.08&z=5");
+    await expect(page.getByTestId("mode-bar")).toBeVisible({ timeout: 60_000 });
+    await selectWeather(page, "temperature");
+    await expect.poll(() => requestedModels.includes("best_match")).toBe(true);
+    await page.evaluate(() => {
+      (window as typeof window & { __weatherModelMap?: Window["__maposMap"] }).__weatherModelMap =
+        window.__maposMap;
+    });
+    await page.getByTestId("layers-btn").click();
+    await page.getByTestId("catalog-settings-btn-weather-weather-temperature").click();
+    for (const model of ["icon_seamless", "chmi_aladin_seamless"]) {
+      await page.getByTestId("weather-model-weather-temperature").selectOption(model);
+      await expect.poll(() => requestedModels.includes(model)).toBe(true);
+      await expect(page.getByTestId("weather-model-weather-temperature")).toHaveValue(model);
+    }
+    await expect(page.getByTestId("weather-settings-weather-temperature")).toContainText(
+      /2[,.]3 km/
+    );
+    expect(
+      await page.evaluate(
+        () =>
+          window.__maposMap ===
+          (window as typeof window & { __weatherModelMap?: Window["__maposMap"] }).__weatherModelMap
+      )
+    ).toBe(true);
+  });
+
+  test("keeps an existing coloured source stable and exposes equal hover/tap cell detail", async ({
     page
   }) => {
     const pageErrors: string[] = [];
@@ -69,7 +162,9 @@ test.describe("adaptive weather map UI", () => {
       timeout: 20_000
     });
     await expect
-      .poll(() => page.evaluate(() => Boolean(window.__maposMap?.getLayer("raster-weather-grid"))))
+      .poll(() =>
+        page.evaluate(() => Boolean(window.__maposMap?.getLayer("raster-weather-temperature-grid")))
+      )
       .toBe(true);
     await page.screenshot({ path: "e2e/screenshots/1440-weather-regional.png", fullPage: true });
 
@@ -80,7 +175,7 @@ test.describe("adaptive weather map UI", () => {
         __weatherStyleLoads?: number;
       };
       scope.__weatherMapBefore = window.__maposMap;
-      scope.__weatherSourceBefore = window.__maposMap?.getSource("source-weather-grid");
+      scope.__weatherSourceBefore = window.__maposMap?.getSource("source-weather-temperature-grid");
       scope.__weatherStyleLoads = 0;
       window.__maposMap?.on("style.load", () => {
         scope.__weatherStyleLoads = (scope.__weatherStyleLoads ?? 0) + 1;
@@ -101,18 +196,19 @@ test.describe("adaptive weather map UI", () => {
         return {
           sameMap: scope.__weatherMapBefore === window.__maposMap,
           sameSource:
-            scope.__weatherSourceBefore === window.__maposMap?.getSource("source-weather-grid"),
+            scope.__weatherSourceBefore ===
+            window.__maposMap?.getSource("source-weather-temperature-grid"),
           styleLoads: scope.__weatherStyleLoads,
           gridLayers:
             window.__maposMap
               ?.getStyle()
-              .layers?.filter((layer) => layer.id === "raster-weather-grid").length ?? 0
+              .layers?.filter((layer) => layer.id === "raster-weather-temperature-grid").length ?? 0
         };
       })
     ).toEqual({ sameMap: true, sameSource: true, styleLoads: 0, gridLayers: 1 });
 
     const panel = page.getByTestId("discover-panel");
-    if (await panel.isVisible()) await panel.getByRole("button", { name: "Zavřít" }).click();
+    if (await panel.isVisible()) await panel.getByRole("button", { name: "Close" }).click();
     await page.setViewportSize({ width: 390, height: 844 });
     const localRequestBaseline = gridRequests.length;
     await page.evaluate(
@@ -123,13 +219,15 @@ test.describe("adaptive weather map UI", () => {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         })
     );
+    // Each camera settles into one bounded replacement; presentation may interpolate it
+    // into more cells without pretending those are additional provider measurements.
     await expect.poll(() => gridRequests.length).toBeGreaterThan(localRequestBaseline);
     await expect
       .poll(() =>
         page.evaluate(() => {
           const map = window.__maposMap;
-          if (!map?.getLayer("fill-weather-sectors")) return 0;
-          const source = map.getSource("source-weather-sectors") as
+          if (!map?.getLayer("fill-weather-temperature-sectors")) return 0;
+          const source = map.getSource("source-weather-temperature-sectors") as
             { serialize?: () => { data?: GeoJSON.FeatureCollection } } | undefined;
           return (
             source
@@ -139,34 +237,13 @@ test.describe("adaptive weather map UI", () => {
         })
       )
       .toBeGreaterThan(0);
-
-    const point = await page.evaluate(() => {
-      const map = window.__maposMap!;
-      const source = map.getSource("source-weather-sectors") as {
-        serialize: () => { data: GeoJSON.FeatureCollection };
-      };
-      const sectors = source
-        .serialize()
-        .data.features.filter((feature) => feature.properties?.kind === "sector");
-      const geometry = sectors[Math.floor(sectors.length / 2)]!.geometry as GeoJSON.Polygon;
-      const ring = geometry.coordinates[0]!;
-      const lng = (Math.min(...ring.map(([x]) => x)) + Math.max(...ring.map(([x]) => x))) / 2;
-      const lat = (Math.min(...ring.map(([, y]) => y)) + Math.max(...ring.map(([, y]) => y))) / 2;
-      const projected = map.project([lng, lat]);
-      const rect = map.getCanvas().getBoundingClientRect();
-      return { x: rect.left + projected.x, y: rect.top + projected.y };
-    });
     await expect
       .poll(() =>
-        page.evaluate(({ x, y }) => {
-          const map = window.__maposMap!;
-          const rect = map.getCanvas().getBoundingClientRect();
-          return map.queryRenderedFeatures([x - rect.left, y - rect.top], {
-            layers: ["fill-weather-sectors"]
-          }).length;
-        }, point)
+        page.evaluate(() => window.__maposMap!.isSourceLoaded("source-weather-temperature-sectors"))
       )
-      .toBeGreaterThan(0);
+      .toBe(true);
+
+    const point = await hittableSectorPoint(page);
     await page.mouse.move(point.x, point.y);
     const detail = page.getByTestId("weather-map-detail");
     await expect(detail).toContainText("Náhled v mapě");
@@ -181,5 +258,44 @@ test.describe("adaptive weather map UI", () => {
 
     expect(gridRequests.length).toBeGreaterThanOrEqual(4);
     expect(gridRequests.every((url) => new URL(url).searchParams.get("cols") !== null)).toBe(true);
+  });
+
+  test("loads a bounded grid and prints sector values at city zoom", async ({ page }) => {
+    const gridRequests: string[] = [];
+    await page.route(/\/api\/weather\/grid\?/u, (route) => {
+      gridRequests.push(route.request().url());
+      return route.fulfill({ json: weatherGrid(route.request().url()) });
+    });
+    await page.route(/\/api\/layers\/osm-poi\/features/u, (route) =>
+      route.fulfill({ json: { type: "FeatureCollection", features: [] } })
+    );
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/?mode=weather&lng=13.3775&lat=49.7475&z=12");
+
+    await selectWeather(page, "temperature");
+
+    await expect.poll(() => gridRequests.length, { timeout: 20_000 }).toBeGreaterThan(0);
+    for (const request of gridRequests) {
+      const params = new URL(request).searchParams;
+      const samples = Number(params.get("cols")) * Number(params.get("rows"));
+      expect(samples).toBeGreaterThan(0);
+      expect(samples).toBeLessThanOrEqual(400);
+    }
+
+    // The numeric labels are real rendered symbols, not just features in the source — this is
+    // what regressed when the label font was missing from the basemap's glyph set.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const map = window.__maposMap;
+            if (!map?.getLayer("symbol-weather-temperature-values")) return 0;
+            return map.queryRenderedFeatures(undefined, {
+              layers: ["symbol-weather-temperature-values"]
+            }).length;
+          }),
+        { timeout: 20_000 }
+      )
+      .toBeGreaterThan(0);
   });
 });

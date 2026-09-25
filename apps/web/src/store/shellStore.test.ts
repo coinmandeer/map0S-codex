@@ -57,10 +57,20 @@ test("shell facade exposes canonical state and mode transitions", () => {
   assert.deepEqual(shell.snapshot.leftContext, { type: "mode", mode: "planning" });
   shell.setMode("game");
   assert.equal(shell.snapshot.mode, "game");
-  assert.deepEqual(shell.snapshot.leftContext, { type: "mode", mode: "game" });
+  assert.deepEqual(
+    shell.snapshot.leftContext,
+    { type: "closed" },
+    "the game opens the board, not a panel"
+  );
+  shell.openLeftContext();
+  assert.deepEqual(
+    shell.snapshot.leftContext,
+    { type: "mode", mode: "game" },
+    "the game panel opens on demand"
+  );
   shell.setMode("discover");
   assert.deepEqual(shell.snapshot.leftContext, { type: "mode", mode: "discover" });
-  assert.equal(notifications, 2);
+  assert.equal(notifications, 3);
 
   unsubscribe();
   shell.dispose();

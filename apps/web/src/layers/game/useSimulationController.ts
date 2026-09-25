@@ -6,7 +6,6 @@ import {
   type CharacterControllerSnapshot
 } from "./characterController";
 import { emit, on } from "../../lib/events";
-import { geolocation } from "../../lib/geolocation";
 
 const MOVEMENT_FRAME_MS = 1000 / 30;
 
@@ -28,11 +27,7 @@ function movementKey(event: KeyboardEvent): string | null {
     : null;
 }
 
-export function useSimulationController(
-  initialPosition: Coordinates,
-  enabled: boolean,
-  onTrackingFallback?: () => void
-) {
+export function useSimulationController(initialPosition: Coordinates, enabled: boolean) {
   const controllerRef = useRef<CharacterController | null>(null);
   if (!controllerRef.current) controllerRef.current = new CharacterController(initialPosition);
   const controller = controllerRef.current;
@@ -69,6 +64,7 @@ export function useSimulationController(
     const keys = new Set<string>();
     let frameId = 0;
     let previousTimestamp = 0;
+    let lastHudAt = 0;
 
     const tick = (timestamp: number) => {
       frameId = 0;
@@ -79,13 +75,25 @@ export function useSimulationController(
         return;
       }
       previousTimestamp = timestamp;
+      if (document.hidden || document.querySelector('[aria-modal="true"],dialog[open]')) {
+        keys.clear();
+        controller.cancelMovement();
+      }
       const snapshot = controller.step(
         elapsed,
         movementBearingRef.current,
         relativeMovementRef.current
       );
-      setPlayerPosition(snapshot.gamePosition);
-      publishStatus(snapshot);
+      // Renderer/camera receive position directly; React HUD is limited to five updates/s.
+      emit("geolocation", {
+        lng: snapshot.gamePosition.longitude,
+        lat: snapshot.gamePosition.latitude
+      });
+      if (timestamp - lastHudAt >= 200 || !snapshot.moving) {
+        lastHudAt = timestamp;
+        setPlayerPosition(snapshot.gamePosition);
+        publishStatus(snapshot);
+      }
       if (snapshot.moving || snapshot.tapTarget) frameId = window.requestAnimationFrame(tick);
     };
 
@@ -96,14 +104,21 @@ export function useSimulationController(
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Shift" && !shouldIgnoreGameKeyEvent(event)) controller.setSprinting(true);
       const key = movementKey(event);
-      if (!key || shouldIgnoreGameKeyEvent(event)) return;
+      if (
+        !key ||
+        shouldIgnoreGameKeyEvent(event) ||
+        document.querySelector('[aria-modal="true"],dialog[open]')
+      )
+        return;
       event.preventDefault();
       keys.add(key);
       controller.setMovementVector("keyboard", keyboardVector(keys));
       ensureTicking();
     };
     const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Shift") controller.setSprinting(false);
       const key = movementKey(event);
       if (!key) return;
       keys.delete(key);
@@ -128,18 +143,32 @@ export function useSimulationController(
       publishStatus();
       ensureTicking();
     });
-    const offCancel = on("game-movement-cancel", () => {
+    const cancel = () => {
+      keys.clear();
       controller.cancelMovement();
       publishStatus();
-    });
+    };
+    const onFocus = (event: FocusEvent) => {
+      if (shouldIgnoreGameKeyEvent(event)) cancel();
+    };
+    const onVisibility = () => {
+      if (document.hidden) cancel();
+    };
+    const offCancel = on("game-movement-cancel", cancel);
 
-    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("blur", cancel);
+    document.addEventListener("focusin", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("keyup", onKeyUp);
     publishStatus();
     return () => {
       if (frameId) window.cancelAnimationFrame(frameId);
       controller.cancelMovement();
-      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("blur", cancel);
+      document.removeEventListener("focusin", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("keyup", onKeyUp);
       offVector();
       offTapMode();
@@ -149,56 +178,17 @@ export function useSimulationController(
   }, [controller, enabled, publishStatus, trackingMode]);
 
   useEffect(() => {
-    if (!enabled || trackingMode !== "gps") return;
-    controller.setAnchorMode("locked-to-gps");
-    publishStatus();
-    let active = true;
-    let stopWatch: (() => void) | null = null;
-    void geolocation
-      .getPosition({ timeoutMs: 10_000, maxAgeMs: 15_000, highAccuracy: true })
-      .then((fix) => {
-        if (!active) return;
-        controller.applyGpsFix({ latitude: fix.lat, longitude: fix.lng }, fix.accuracy);
-        setPlayerPosition(controller.snapshot.gamePosition);
-        publishStatus();
-        stopWatch = geolocation.watch((nextFix) => {
-          controller.applyGpsFix(
-            { latitude: nextFix.lat, longitude: nextFix.lng },
-            nextFix.accuracy
-          );
-          setPlayerPosition(controller.snapshot.gamePosition);
-          publishStatus();
-        });
-      })
-      .catch(() => {
-        if (!active) return;
-        controller.setAnchorMode("free-roam");
-        setTrackingModeState("simulation");
-        onTrackingFallback?.();
-        publishStatus();
-      });
-    return () => {
-      active = false;
-      stopWatch?.();
-    };
-  }, [controller, enabled, onTrackingFallback, publishStatus, trackingMode]);
-
-  useEffect(() => {
     return on("game-tracking-changed", ({ mode }) => setTrackingModeState(mode));
   }, []);
-
-  useEffect(() => {
-    if (!enabled) return;
-    emit("geolocation", { lng: playerPosition.longitude, lat: playerPosition.latitude });
-  }, [playerPosition, enabled]);
 
   const seedPosition = useCallback(
     (coords: Coordinates) => {
       controller.seed(coords, "prototype-center");
       setPlayerPosition(coords);
+      if (enabled) emit("geolocation", { lng: coords.longitude, lat: coords.latitude });
       publishStatus();
     },
-    [controller, publishStatus]
+    [controller, publishStatus, enabled]
   );
   const setMovementBearing = useCallback((bearing: number) => {
     movementBearingRef.current = bearing;

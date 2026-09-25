@@ -4,12 +4,18 @@ import { API_BASE } from "../lib/api";
 import { emit } from "../lib/events";
 import { createSavedPlaceFromFeature } from "../lib/savedPlaces";
 import { getMapStore, type SelectedPin } from "../store/mapStore";
+import { getShellStore } from "../store/shellStore";
+import { useShellStoreSnapshot } from "../store/useShellStoreSnapshot";
+import { PanelShell } from "../ui/PanelShell";
+import { Button, Chip, InlineNotice, Section } from "../ui/kit";
+import { PlaceAction, PlaceActionOverflow, PlaceActionRow } from "../ui/place/PlaceActionRow";
 import {
   EVENT_PLAN_DRAFT_STORAGE_KEY,
   addEventToPlan,
   createEventPlanDocument,
   createEventPlanStopDraft
 } from "./eventPlanStop";
+import { intlLocale } from "../i18n";
 
 function statusLabel(status: EventDocumentV2["status"]): string {
   if (status === "cancelled") return "Zrušeno";
@@ -21,7 +27,7 @@ function statusLabel(status: EventDocumentV2["status"]): string {
 }
 
 function eventTime(event: EventDocumentV2): string {
-  const format = new Intl.DateTimeFormat("cs-CZ", {
+  const format = new Intl.DateTimeFormat(intlLocale(), {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: event.schedule.timezone
@@ -41,6 +47,11 @@ function price(event: EventDocumentV2): string {
   return event.price?.note ?? "Cena není uvedena";
 }
 
+/** The one line that answers "should I go": when, where, how much (§4.10). */
+function eventHeadline(event: EventDocumentV2): string {
+  return [eventTime(event), event.venue.name, price(event)].filter(Boolean).join(" · ");
+}
+
 function localId(prefix: string): string {
   const suffix =
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -51,18 +62,11 @@ function localId(prefix: string): string {
 
 export function EventPinDetail({ pin }: { pin: SelectedPin }) {
   const store = getMapStore();
+  const shell = getShellStore();
+  const leftContext = useShellStoreSnapshot((state) => state.leftContext);
   const [event, setEvent] = useState<EventDocumentV2 | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  const [desktop, setDesktop] = useState(
-    typeof window !== "undefined" ? window.innerWidth >= 900 : false
-  );
-
-  useEffect(() => {
-    const resize = () => setDesktop(window.innerWidth >= 900);
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -97,7 +101,7 @@ export function EventPinDetail({ pin }: { pin: SelectedPin }) {
     if (result === "ok") emit("layers-changed");
     store.showToast(
       result === "ok"
-        ? "Událost je uložená v Personal"
+        ? "Událost je uložená v Osobní"
         : result === "exists"
           ? "Událost už máš uloženou"
           : "Uložení se nepovedlo"
@@ -147,7 +151,7 @@ export function EventPinDetail({ pin }: { pin: SelectedPin }) {
       store.setActivePlanDocument(
         createEventPlanDocument(event, { id: localId("event-plan"), now: draft.createdAt })
       );
-      store.closeSheet();
+      store.selectPin(null);
       store.setMode("planning");
       store.showToast("Vznikl nový plán s datovanou událostí");
     } catch {
@@ -155,166 +159,139 @@ export function EventPinDetail({ pin }: { pin: SelectedPin }) {
     }
   };
 
+  const ticketUrl = event?.ticketUrl ?? event?.ticketOffers?.[0]?.url;
+  const officialUrl = event?.officialUrl ?? undefined;
   const fallbackTitle = String(pin.feature.properties.name ?? "Událost");
+  const returnTo = leftContext.type === "feature" ? leftContext.returnTo : undefined;
+
+  const facts: [string, string][] = event
+    ? [
+        ["Čas", `${eventTime(event)} (${event.schedule.timezone})`],
+        ["Místo", `${event.venue.name}${event.venue.address ? ` · ${event.venue.address}` : ""}`],
+        ["Cena", price(event)],
+        ...(event.performers?.length
+          ? ([["Účinkující", event.performers.map((performer) => performer.name).join(" · ")]] as [
+              string,
+              string
+            ][])
+          : []),
+        ...(event.organizer ? ([["Pořadatel", event.organizer.name]] as [string, string][]) : []),
+        ...(event.schedule.recurrence
+          ? ([["Opakování", event.schedule.recurrence]] as [string, string][])
+          : []),
+        ...(event.ageRestriction
+          ? ([["Věkové omezení", event.ageRestriction]] as [string, string][])
+          : []),
+        ...(event.accessibility?.length
+          ? ([["Přístupnost", event.accessibility.join(" · ")]] as [string, string][])
+          : [])
+      ]
+    : [];
 
   return (
-    <>
-      <div className="overlay" onClick={() => store.closeSheet()} />
-      <div
-        className={`panel ${desktop ? "dialog" : "sheet"} event-detail`}
-        data-testid="event-pin-detail"
-      >
-        {!desktop && <div className="panel-handle" />}
-        <div className="panel-header">
-          <h2>Detail události</h2>
-          <button className="btn btn-ghost" type="button" onClick={() => store.closeSheet()}>
-            ✕
-          </button>
+    <PanelShell
+      title="Detail události"
+      testId="event-pin-detail"
+      className="panel-place-detail"
+      dismissible
+      busy={!event && !error}
+      busyLabel={`Načítám ${fallbackTitle}`}
+      onBack={
+        returnTo && returnTo.type !== "closed" ? () => shell.closeFeatureContext() : undefined
+      }
+    >
+      <header className="place-hero place-hero-plain">
+        <div className="place-hero-copy">
+          <h3>{event?.title ?? fallbackTitle}</h3>
+          <p className="place-hero-meta">{event ? eventHeadline(event) : "Načítám detail…"}</p>
         </div>
-        <div className="panel-body">
-          {!event && !error ? (
-            <p className="meta" aria-live="polite">
-              Načítám {fallbackTitle}…
-            </p>
-          ) : null}
-          {error ? (
-            <div className="detail-load-state error" role="status">
-              <span>Ověřený detail události není dostupný.</span>
-              <button
-                className="btn small"
-                type="button"
-                onClick={() => setRetry((value) => value + 1)}
-              >
-                Zkusit znovu
-              </button>
-            </div>
-          ) : null}
-          {event ? (
-            <article className="event-detail-content">
-              <header>
-                <span className={`event-status status-${event.status}`}>
-                  {statusLabel(event.status)}
-                </span>
-                <h3>{event.title}</h3>
-                {event.description ? <p>{event.description}</p> : null}
-              </header>
+      </header>
 
-              <dl className="info-facts event-facts">
-                <div>
-                  <dt>Čas</dt>
-                  <dd>{eventTime(event)}</dd>
-                </div>
-                <div>
-                  <dt>Časové pásmo</dt>
-                  <dd>{event.schedule.timezone}</dd>
-                </div>
-                <div>
-                  <dt>Místo</dt>
-                  <dd>
-                    {event.venue.name}
-                    {event.venue.address ? ` · ${event.venue.address}` : ""}
-                  </dd>
-                </div>
-                {event.performers?.length ? (
-                  <div>
-                    <dt>Účinkující</dt>
-                    <dd>{event.performers.map((performer) => performer.name).join(" · ")}</dd>
-                  </div>
-                ) : null}
-                {event.organizer ? (
-                  <div>
-                    <dt>Pořadatel</dt>
-                    <dd>{event.organizer.name}</dd>
-                  </div>
-                ) : null}
-                <div>
-                  <dt>Cena</dt>
-                  <dd>{price(event)}</dd>
-                </div>
-                {event.schedule.recurrence ? (
-                  <div>
-                    <dt>Opakování</dt>
-                    <dd>{event.schedule.recurrence}</dd>
-                  </div>
-                ) : null}
-                {event.ageRestriction ? (
-                  <div>
-                    <dt>Věkové omezení</dt>
-                    <dd>{event.ageRestriction}</dd>
-                  </div>
-                ) : null}
-                {event.accessibility?.length ? (
-                  <div>
-                    <dt>Přístupnost</dt>
-                    <dd>{event.accessibility.join(" · ")}</dd>
-                  </div>
-                ) : null}
-              </dl>
+      {error && (
+        <InlineNotice
+          tone="warning"
+          testId="event-detail-error"
+          action={
+            <Button variant="text" size="sm" onClick={() => setRetry((value) => value + 1)}>
+              Zkusit znovu
+            </Button>
+          }
+        >
+          Ověřený detail události není dostupný.
+        </InlineNotice>
+      )}
 
-              {event.notes ? <p className="event-notes">{event.notes}</p> : null}
+      {event && (
+        <>
+          <PlaceActionRow>
+            {ticketUrl && (
+              <PlaceAction
+                icon="confirmation_number"
+                label="Vstupenky"
+                primary
+                testId="event-tickets"
+                onClick={() => window.open(ticketUrl, "_blank", "noreferrer")}
+              />
+            )}
+            <PlaceAction
+              icon="add_location"
+              label="Do plánu"
+              testId="add-event-to-plan"
+              onClick={addToPlan}
+            />
+            <PlaceAction
+              icon="bookmark"
+              label="Uložit"
+              testId="save-event"
+              onClick={() => void save()}
+            />
+            <PlaceAction
+              icon="share"
+              label="Sdílet"
+              testId="share-event"
+              onClick={() => void share()}
+            />
+            {officialUrl && (
+              <PlaceActionOverflow
+                actions={[
+                  {
+                    id: "official",
+                    label: "Otevřít u pořadatele",
+                    icon: "open_in_new",
+                    onSelect: () => window.open(officialUrl, "_blank", "noreferrer")
+                  }
+                ]}
+              />
+            )}
+          </PlaceActionRow>
 
-              <section className="event-source-list" aria-label="Zdroje a čerstvost">
-                <h4>Zdroje</h4>
-                <ul>
-                  {event.sources.map((source) => (
-                    <li key={`${source.providerId}:${source.sourceId}`}>
-                      <span>{source.attribution ?? source.providerId}</span>
-                      <small>ověřeno {new Date(source.retrievedAt).toLocaleString("cs-CZ")}</small>
-                    </li>
-                  ))}
-                </ul>
-              </section>
+          <Chip label={statusLabel(event.status)} icon="event" />
 
-              <div className="pin-actions">
-                <button
-                  className="btn"
-                  type="button"
-                  data-testid="save-event"
-                  onClick={() => void save()}
-                >
-                  Uložit
-                </button>
-                <button
-                  className="btn"
-                  type="button"
-                  data-testid="share-event"
-                  onClick={() => void share()}
-                >
-                  Sdílet
-                </button>
-                <button
-                  className="btn btn-accent"
-                  type="button"
-                  data-testid="add-event-to-plan"
-                  onClick={addToPlan}
-                >
-                  Přidat do plánu
-                </button>
-                {(event.ticketUrl ?? event.ticketOffers?.[0]?.url) ? (
-                  <a
-                    className="btn"
-                    href={event.ticketUrl ?? event.ticketOffers?.[0]?.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Vstupenky
-                  </a>
-                ) : null}
-                {event.officialUrl ? (
-                  <a
-                    className="btn btn-ghost"
-                    href={event.officialUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Otevřít poskytovatele
-                  </a>
-                ) : null}
+          {event.description && <p>{event.description}</p>}
+
+          <dl className="info-facts event-facts">
+            {facts.map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
               </div>
-            </article>
-          ) : null}
-        </div>
-      </div>
-    </>
+            ))}
+          </dl>
+
+          {event.notes && <p className="event-notes">{event.notes}</p>}
+
+          <Section title="Zdroje">
+            <ul className="event-source-list">
+              {event.sources.map((source) => (
+                <li key={`${source.providerId}:${source.sourceId}`}>
+                  <span>{source.attribution ?? source.providerId}</span>
+                  <small>ověřeno {new Date(source.retrievedAt).toLocaleString(intlLocale())}</small>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        </>
+      )}
+    </PanelShell>
   );
 }

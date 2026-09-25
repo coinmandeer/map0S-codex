@@ -1,0 +1,13 @@
+{
+  "release": "20260912-cloud-detail-r10",
+  "desktop": [1280, 900],
+  "mobile": [390, 844],
+  "mobileScrollWidth": 390,
+  "tabSize": [89.5, 44],
+  "reducedMotion": true,
+  "panoramaStatus": "unconfigured-with-provider-links",
+  "tabSwitchDuringOverviewKeptMounted": true,
+  "explicitOverviewRuns": 2,
+  "runsAfterReturningFromPhotos": 2,
+  "gallery": "existing implementation retained; no rights-complete live photos in selected smoke POIs"
+}

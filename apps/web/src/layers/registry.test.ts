@@ -8,6 +8,7 @@ import {
   extraLayerPlugins,
   getLayerManifestV2,
   getLayerPlugin,
+  layerUnavailableReason,
   layerIdsForMode,
   primaryLayerForMode,
   registerLayer,
@@ -69,7 +70,10 @@ describe("layer registry", () => {
   it("treats layers without modes as extras", () => {
     const ids = extraLayerPlugins(null).map((p) => p.manifest.id);
     assert.ok(ids.includes("geology"), "geology belongs to no section");
-    assert.ok(ids.includes("weather"), "weather is an additive layer, not a mode section");
+    assert.ok(
+      ids.some((id) => id.startsWith("weather-")),
+      "weather is an additive layer, not a mode section"
+    );
     assert.ok(!ids.includes("osm-poi"), "osm-poi is a section's primary layer");
     // Park4Night is mode-less too, but its capability is off unless a deployment opts in — so
     // "no section" is not enough to make it an extra.
@@ -101,8 +105,29 @@ describe("layer registry", () => {
 
   it("defaults viewport cost by kind so pin layers wait for Search here", () => {
     assert.equal(viewportCostOf(getLayerPlugin("osm-poi")!), "expensive");
-    assert.equal(viewportCostOf(getLayerPlugin("weather")!), "cheap");
+    assert.equal(viewportCostOf(getLayerPlugin("weather-radar")!), "cheap");
     assert.equal(viewportCostOf(getLayerPlugin("game")!), "cheap");
+  });
+
+  it("gates geocaching without hiding configured quest sources", () => {
+    const without = { opencaching: false } as unknown as ServerCapabilities;
+    const withKey = { opencaching: true } as unknown as ServerCapabilities;
+    assert.match(
+      layerUnavailableReason("game-quests", without, { sources: ["opencaching"] }) ?? "",
+      /OKAPI/
+    );
+    assert.equal(
+      layerUnavailableReason("game-quests", withKey, { sources: ["opencaching"] }),
+      undefined
+    );
+    assert.equal(
+      layerUnavailableReason("game-quests", without, { sources: ["osm-notes"] }),
+      undefined
+    );
+    assert.equal(
+      layerUnavailableReason("game-quests", without, { sources: ["osm-notes", "opencaching"] }),
+      undefined
+    );
   });
 
   it("folds app state into filters through deriveFilters, not engine branches", () => {
@@ -124,14 +149,8 @@ describe("layer registry", () => {
       { country: "CZ" }
     );
 
-    const vanlife = getLayerPlugin("vanlife")!;
-    assert.deepEqual(
-      vanlife.deriveFilters!(
-        { categories: ["camp_site"] },
-        { activeTag: null, countryCode: "CZ", enabledPoiSources: ["osm", "user", "mapy"] }
-      ),
-      { categories: ["camp_site"], sources: ["osm"] }
-    );
+    // The camping duplicate of the POI layer is retired; its categories live in `osm-poi`.
+    assert.equal(getLayerPlugin("vanlife"), undefined);
   });
 
   it("every registered layer carries the fields the shell reads", () => {

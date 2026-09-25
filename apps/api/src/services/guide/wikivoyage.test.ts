@@ -1,9 +1,89 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { __testing } from "./wikivoyage.js";
+import { __testing, createWikivoyageSource } from "./wikivoyage.js";
+import type { fetchJson } from "../../utils/upstream.js";
 import { leadParagraph, parseTemplates, splitSections, stripMarkup } from "./wikitext.js";
 
 const { sectionsFrom } = __testing;
+
+function reader(
+  load: (url: string, options: Parameters<typeof fetchJson>[1]) => unknown
+): typeof fetchJson {
+  return async <T>(url: string, options: Parameters<typeof fetchJson>[1]) =>
+    (await load(url, options)) as T;
+}
+
+test("Prague uses its entity's article instead of the nearby historical Czechoslovakia article", async () => {
+  const urls: string[] = [];
+  const signal = new AbortController().signal;
+  const source = createWikivoyageSource(
+    reader((url, options) => {
+      urls.push(url);
+      assert.equal(options.signal, signal);
+      if (url.includes("wbgetentities"))
+        return { entities: { Q1085: { sitelinks: { enwikivoyage: { title: "Prague" } } } } };
+      if (url.includes("action=parse")) {
+        assert.equal(new URL(url).searchParams.get("page"), "Prague");
+        return { parse: { wikitext: "Prague is the capital of Czechia." } };
+      }
+      return { query: { geosearch: [{ title: "Czechoslovakia", pageid: 1, dist: 0 }] } };
+    })
+  );
+  const guide = await source.fetchGuide(
+    { name: "Praha", wikidataId: "Q1085", lang: "cs", bbox: [14, 49, 15, 51] },
+    signal
+  );
+  assert.equal(guide?.area, "Prague");
+  assert.match(guide?.sections[0]?.intro ?? "", /capital of Czechia/);
+  assert.equal(urls.length, 2);
+  assert.ok(urls.every((url) => !url.includes("geosearch")));
+});
+
+test("named areas follow explicit redirects but never fall back to a different nearby article", async () => {
+  let exists = true;
+  const urls: string[] = [];
+  const source = createWikivoyageSource(
+    reader((url) => {
+      urls.push(url);
+      if (url.includes("action=parse")) return { parse: { wikitext: "Prague is a city." } };
+      assert.equal(new URL(url).searchParams.get("titles"), "Praha");
+      return { query: { pages: [{ title: "Prague", ...(exists ? {} : { missing: true }) }] } };
+    })
+  );
+  const area = {
+    name: "Praha",
+    lang: "en",
+    bbox: [14, 49, 15, 51] as [number, number, number, number]
+  };
+  assert.equal((await source.fetchGuide(area))?.area, "Prague");
+  assert.equal(urls.length, 2, "English fallback must not repeat the same edition");
+  exists = false;
+  assert.equal(await source.fetchGuide(area), null);
+  assert.equal(urls.length, 3);
+});
+
+test("an identified entity with no guide and a disambiguation page are not guides", async () => {
+  const source = createWikivoyageSource(
+    reader((url) =>
+      url.includes("wbgetentities")
+        ? { entities: { Q1085: { sitelinks: {} } } }
+        : { query: { pages: [{ title: "Springfield", pageprops: { disambiguation: "" } }] } }
+    )
+  );
+  assert.equal(
+    await source.fetchGuide({
+      name: "Prague",
+      wikidataId: "Q1085",
+      lang: "en",
+      bbox: [14, 49, 15, 51]
+    }),
+    null
+  );
+  assert.equal(
+    await source.fetchGuide({ name: "Springfield", lang: "en", bbox: [14, 49, 15, 51] }),
+    null
+  );
+});
 
 const ARTICLE = `
 Plzeň is a city in [[West Bohemia]], best known for the beer named after it. It has about
@@ -96,4 +176,34 @@ test("the lead stops at the first heading", () => {
   const lead = leadParagraph(ARTICLE);
   assert.match(lead, /Plzeň is a city/);
   assert.ok(!lead.includes("Synagogue"));
+});
+
+test("selected municipal boundaries reject a namesake article outside their bbox", async () => {
+  let parsed = false;
+  const source = createWikivoyageSource(
+    reader((url) => {
+      if (url.includes("action=parse")) {
+        parsed = true;
+        return { parse: { wikitext: "Prague is a city." } };
+      }
+      return { query: { pages: [{ title: "Praha", coordinates: [{ lat: 50.08, lon: 14.42 }] }] } };
+    })
+  );
+  assert.equal(
+    await source.fetchGuide({
+      name: "Praha",
+      lang: "cs",
+      bbox: [19.47, 48.34, 19.53, 48.4],
+      requireCoordinatesInBbox: true
+    }),
+    null
+  );
+  assert.equal(parsed, false);
+  const guide = await source.fetchGuide({
+    name: "Praha",
+    lang: "cs",
+    bbox: [14.2, 49.9, 14.8, 50.2],
+    requireCoordinatesInBbox: true
+  });
+  assert.equal(guide?.area, "Praha");
 });

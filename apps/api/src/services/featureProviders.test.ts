@@ -12,7 +12,7 @@ import { PLACE_SOURCE_ADAPTERS, adapterFor } from "./poiFusionService.js";
 
 describe("feature provider registry", () => {
   it("serves the layers the client can ask for", () => {
-    for (const id of ["osm-poi", "user-layers", "park4night"]) {
+    for (const id of ["osm-poi", "weed", "user-layers", "park4night"]) {
       assert.equal(typeof featureProvider(id)?.features, "function", `${id} should be fetchable`);
     }
   });
@@ -49,7 +49,7 @@ describe("feature provider registry", () => {
       async features() {
         return {
           type: "FeatureCollection",
-          features: Array.from({ length: 140 }, (_, index) => ({
+          features: Array.from({ length: 640 }, (_, index) => ({
             type: "Feature" as const,
             geometry: { type: "Point" as const, coordinates: [14, 50] as [number, number] },
             properties: { id: `fixture:${index}`, name: `Fixture ${index}`, layerId: "fixture" }
@@ -60,8 +60,13 @@ describe("feature provider registry", () => {
 
     const hostile = await provider.features!({ bbox: [13, 49, 15, 51], query: { limit: "10000" } });
     const requested = await provider.features!({ bbox: [13, 49, 15, 51], query: { limit: "7" } });
-    assert.equal(hostile.features.length, 100);
+    const unspecified = await provider.features!({ bbox: [13, 49, 15, 51], query: {} });
+    // The first-party map may ask for larger legacy pages (one snapshot, fewer round trips), but
+    // never past the legacy ceiling; callers that do not ask keep the historic 100-row page.
+    assert.equal(hostile.features.length, 500);
     assert.equal(requested.features.length, 7);
+    assert.equal(unspecified.features.length, 100);
+    assert.ok(hostile.query?.nextCursor, "the remainder stays reachable through the cursor");
   });
 
   it("repairs an over-budget v2 provider response and its metadata", async () => {
@@ -113,7 +118,15 @@ describe("feature provider registry", () => {
     assert.equal(result.meta.limit, 100);
     assert.equal(result.meta.returned, 100);
     assert.equal(result.meta.truncated, true);
-    assert.equal(result.meta.nextCursor, "provider-cursor");
+    assert.match(result.meta.nextCursor!, /^mapos-page:/);
+    const remainder = await provider.featuresV2!({
+      bbox: [13, 49, 15, 51],
+      query: { limit: "10000", cursor: result.meta.nextCursor! }
+    });
+    assert.equal(remainder.data.features.length, 20);
+    assert.equal(remainder.data.features[0]?.id, "fixture:100");
+    assert.equal(remainder.meta.truncated, false);
+    assert.equal(remainder.meta.nextCursor, null);
   });
 });
 

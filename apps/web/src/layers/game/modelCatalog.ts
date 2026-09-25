@@ -28,9 +28,9 @@ export interface ModelSpec {
 export const MODELS = {
   player: {
     url: "/models/cube-guy-character.glb",
-    // A map-game avatar needs to remain legible from the follow camera. Six metres is still far
-    // below the former building-sized model while clearly reading as the controlled character.
-    targetHeight: 6.8,
+    // A map-game avatar needs to remain legible from the follow camera without towering over
+    // the 1:1 buildings it walks between. Five metres reads as a character, not a kaiju.
+    targetHeight: 5.2,
     yawOffset: Math.PI,
     animated: true
   },

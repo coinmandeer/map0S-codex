@@ -12,10 +12,13 @@ import {
   MAPOS_V2_SCHEMA_VERSION
 } from "../v2/common.js";
 import type {
+  DetailManifestV2,
   FilterFacetV2,
   GeometryKindV2,
   LayerManifestV2,
+  LayerCapabilityV2,
   LayerModeV2,
+  LegendManifestV2,
   RendererDescriptorV2
 } from "../v2/layer.js";
 
@@ -24,6 +27,17 @@ export interface LayerV1AdapterOptions {
   filters?: FilterFacet[];
   attribution?: LayerAttribution[];
   viewportCost?: ViewportCost;
+  /** A legend is a v2 idea, but a raster overlay registered the v1 way needs one just as much:
+   *  a map of coloured lines nobody can read is decoration. Passed as an adapter option rather
+   *  than added to the v1 manifest, which stays frozen. */
+  legend?: LegendManifestV2;
+  /** Likewise for the detail sheet: without a field order the sheet falls back to the generic
+   *  place layout and drops everything the provider actually sent. */
+  detail?: DetailManifestV2;
+  /** Capabilities the layer has beyond what the kind implies — `media` for a layer whose
+   *  features carry photos, `detail` for one worth opening. The derived set covers query,
+   *  filter and temporal, which are the only ones the v1 shape can prove on its own. */
+  capabilities?: LayerCapabilityV2[];
 }
 
 const modeV1ToV2: Partial<Record<LayerMode, LayerModeV2>> = {
@@ -78,14 +92,20 @@ export function layerV1ToV2(
       (entry) => ({ ...entry })
     ),
     capabilities: [
-      ...(options.kind === "pins" ? (["query"] as const) : []),
-      ...(filters?.length ? (["filter"] as const) : []),
-      ...(manifest.temporal ? (["temporal"] as const) : [])
+      ...new Set<LayerCapabilityV2>([
+        ...(options.kind === "pins" ? (["query"] as const) : []),
+        ...(filters?.length ? (["filter"] as const) : []),
+        ...(manifest.temporal ? (["temporal"] as const) : []),
+        ...(options.detail ? (["detail"] as const) : []),
+        ...(options.capabilities ?? [])
+      ])
     ],
     ...(manifest.requiresCapability
       ? { requiresServerCapabilities: [manifest.requiresCapability] }
       : {}),
     ...(manifest.temporal ? { temporal: { enabled: true } } : {}),
+    ...(options.legend ? { legend: options.legend } : {}),
+    ...(options.detail ? { detail: options.detail } : {}),
     compatibility: {
       legacyLayerId: manifest.id,
       legacyAdapter: "layerV1ToV2",

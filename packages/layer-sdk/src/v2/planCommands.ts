@@ -555,7 +555,10 @@ function coreCommand(plan: PlanDocumentV2, command: PlanCommandV2, depth = 0): C
       break;
     }
     case "remove-stop": {
-      if (next.stops.length <= 2) {
+      if (
+        next.stops.length <=
+        (next.status === "draft" && next.metadata?.["dev.mapos.collectingStops"] === true ? 1 : 2)
+      ) {
         throw new PlanCommandError("INVALID_COMMAND", "A plan must retain at least two stops.");
       }
       const index = next.stops.findIndex((stop) => stop.id === command.stopId);

@@ -1,3 +1,10 @@
+import { appearanceKey, type MapAppearance } from "./mapAppearance";
+import { registerInlineLayer } from "../layers/inlineLayers";
+import { unregisterLayer } from "../layers/registry";
+import { AI_RESULT_PREFIX, temporaryAnswerManifest } from "../layers/aiMapResults";
+import type { LayerManifestV2 } from "@mapos/layer-sdk";
+import { readWorldLayers, writeWorldLayers } from "./worldLayerState";
+import type { AreaSelection } from "@mapos/layer-sdk";
 import type {
   Bbox,
   ExperienceId,
@@ -23,14 +30,17 @@ import {
 } from "@mapos/layer-sdk";
 import { getCountryMapConfig } from "../lib/countries";
 import { emit } from "../lib/events";
-import { initialLayerState, primaryLayerForMode } from "../layers";
+import { getLayerManifestV2, initialLayerState, primaryLayerForAppMode } from "../layers";
 import {
-  legacyLayerModeFor,
+  experienceById,
   resolveAppMode,
   type AppModeInput,
   type AppModeResolution
 } from "../product/registry";
-import { readLayerSessionState, writeLayerSessionState } from "./layerSessionState";
+import { writeLayerSessionState } from "./layerSessionState";
+import { foldRetiredLayers, retiredFacetValues, retiredLayerAlias } from "./layerAliases";
+import { MAP_PRESETS } from "../product/presets";
+import { clearPresetBaseline, writePresetBaseline } from "./presetBaseline";
 import {
   loadUserPreferences,
   persistUserPreferences,
@@ -66,6 +76,13 @@ export interface RoutePreview {
     distanceM: number;
     durationS: number;
   }>;
+  /** Variants the user has not chosen, drawn dimmed and clickable so a segment can be swapped
+   *  from the map instead of the itinerary (§16.6). */
+  alternatives?: Array<{
+    segmentId: string;
+    alternativeId: string;
+    coordinates: [number, number][];
+  }>;
   stops?: Array<{
     coordinates: [number, number];
     order: number;
@@ -93,9 +110,29 @@ export type GameTrackingMode = "simulation" | "gps";
 export type GameCameraMode = "follow" | "top";
 export type PinKind = "place" | "route" | "task";
 
+/** A toast is one line plus at most one action — the undo for something the app just did on
+ *  the user's behalf (§4.14). */
+export interface ToastState {
+  message: string;
+  action?: { label: string; onSelect: () => void };
+  secondaryAction?: { label: string; onSelect: () => void };
+}
+
+export interface ToastOptions {
+  durationMs?: number;
+  action?: ToastState["action"];
+  secondaryAction?: ToastState["secondaryAction"];
+}
+
 export interface MapState {
   view: MapViewState;
-  activeLayers: Record<string, { visible: boolean; opacity: number; filters: FilterValues }>;
+  viewportBbox?: Bbox;
+  activeLayers: Record<
+    string,
+    { visible: boolean; selected?: boolean; opacity: number; filters: FilterValues }
+  >;
+  /** Layers the game mode hid when it took over the map, restored on the way out. */
+  gameSuspendedLayers: string[];
   selectedPin: SelectedPin | null;
   sheet: SheetType;
   sidebarOpen: boolean;
@@ -109,7 +146,7 @@ export interface MapState {
   activePlan: TripPlan | null;
   /** Canonical planning state; activePlan stays as a v1 projection for older panels. */
   activePlanDocument: PlanDocumentV2 | null;
-  toast: string | null;
+  toast: ToastState | null;
   mode: LayerModeV2;
   loadingLayers: Record<string, boolean>;
   layerNotices: Record<string, string>;
@@ -121,6 +158,9 @@ export interface MapState {
   experienceId: ExperienceId;
   temporal: TemporalState;
   /** True when the map moved away from the last OSM fetch — show "Hledat zde". */
+  areaSelection: AreaSelection | null;
+  boundariesEnabled: boolean;
+  boundaryLevel: "auto" | "country" | "adm1" | "adm2" | "lau";
   searchHerePending: boolean;
   countryCode: string;
   activeTag: string | null;
@@ -139,6 +179,9 @@ export interface MapState {
   basemapLabels: boolean;
   /** Extrude buildings on backgrounds whose data carries heights. */
   buildings3d: boolean;
+  /** Raise the map onto an elevation mesh. Independent of the background, because the terrain
+   *  comes from its own global DEM rather than from the chosen tiles. */
+  terrain3d: boolean;
   /** Per-POI-source opt-in. Keys are `PLACE_SOURCES` ids from the layer SDK. */
   poiSources: Record<string, boolean>;
   /** Live fetch state per source, driving the SourceIconStrip loaders. */
@@ -158,15 +201,11 @@ const POI_SOURCES_KEY = "mapos:poi-sources";
 const BASEMAP_KEY = "mapos:basemap";
 const BASEMAP_LABELS_KEY = "mapos:basemap-labels";
 const BUILDINGS_3D_KEY = "mapos:buildings-3d";
+const TERRAIN_3D_KEY = "mapos:terrain-3d";
 const EXPERIENCE_KEY = "mapos:experience";
 const ACTIVE_GAMES_KEY = "mapos:active-games";
 const ACTIVE_PLAN_KEY = "mapos:active-plan";
 const ACTIVE_PLAN_DOCUMENT_KEY = "mapos:active-plan-v2";
-
-function loadExperience(): ExperienceId {
-  if (typeof window === "undefined") return "default";
-  return window.localStorage.getItem(EXPERIENCE_KEY) === "aavegotchi" ? "aavegotchi" : "default";
-}
 
 function loadActiveGames(): string[] {
   if (typeof window === "undefined") return ["aavegotchi"];
@@ -179,37 +218,6 @@ function loadActiveGames(): string[] {
     /* Keep the built-in game available when stored state is malformed. */
   }
   return ["aavegotchi"];
-}
-
-function loadActivePlan(): TripPlan | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(ACTIVE_PLAN_KEY) ?? "null") as TripPlan;
-    if (parsed && typeof parsed.id === "string" && Array.isArray(parsed.stops)) return parsed;
-  } catch {
-    /* A corrupt local draft must never prevent the map from opening. */
-  }
-  return null;
-}
-
-function loadActivePlanDocument(legacy: TripPlan | null): PlanDocumentV2 | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(ACTIVE_PLAN_DOCUMENT_KEY) ?? "null"
-    ) as unknown;
-    assertPlanDocumentV2(parsed);
-    return parsed;
-  } catch {
-    if (!legacy) return null;
-    try {
-      return planV1ToV2(legacy, {
-        now: legacy.updatedAt ?? legacy.createdAt ?? legacy.departureAt
-      });
-    } catch {
-      return null;
-    }
-  }
 }
 
 function initialTemporalState(): TemporalState {
@@ -267,15 +275,11 @@ function loadCountryCode(): string {
   return window.localStorage.getItem(COUNTRY_STORAGE_KEY) ?? "CZ";
 }
 
-function loadActiveTag(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TAG_STORAGE_KEY);
-}
-
 function loadGameTracking(): GameTrackingMode {
   if (typeof window === "undefined") return "simulation";
-  const v = window.localStorage.getItem(GAME_TRACKING_KEY);
-  return v === "gps" ? "gps" : "simulation";
+  // Simulation is the default: a map game must be playable on a desk, and GPS stays one switch
+  // away for readers actually standing on the street.
+  return window.localStorage.getItem(GAME_TRACKING_KEY) === "gps" ? "gps" : "simulation";
 }
 
 function loadGameCamera(): GameCameraMode {
@@ -399,6 +403,7 @@ export interface ParsedUrlState {
   view: MapViewState;
   layers: string[];
   modeResolution: AppModeResolution;
+  preset: string | null;
 }
 
 export function parseUrlState(
@@ -410,46 +415,73 @@ export function parseUrlState(
   const zoom = Number(params.get("z"));
   const layers = params.get("layers")?.split(",").filter(Boolean) ?? [];
   const modeResolution = resolveAppMode(params.get("mode"));
+  const preset = params.get("preset");
   const view = isValidView(lng, lat, zoom) ? { lng, lat, zoom } : { ...DEFAULT_VIEW };
-  return { view, layers, modeResolution };
+  return { view, layers, modeResolution, preset };
 }
 
 type Listener = () => void;
 
 /** How long a toast stays up. Long enough to read a sentence, short enough not to sit over the map. */
-export const TOAST_MS = 3000;
+export const TOAST_MS = 4000;
 
 export class MapStore {
   private listeners = new Set<Listener>();
+  private answerLayerId: string | null = null;
+  private worldLayers = new Map<string, string>();
+  private worldStorage = {
+    getItem: (key: string) => this.worldLayers.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      this.worldLayers.set(key, value);
+    }
+  };
+  private worldAreas = new Map<string, AreaSelection | null>();
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   state: MapState;
 
   constructor() {
-    const { view, layers, modeResolution } = parseUrlState();
+    const { view, layers, modeResolution, preset } = parseUrlState();
     const { mode } = modeResolution;
     const activeLayers: MapState["activeLayers"] = {};
-    const layerSession = readLayerSessionState(
-      typeof window === "undefined" ? null : window.sessionStorage
-    );
-    const legacyActivePlan = loadActivePlan();
-    const activePlanDocument = loadActivePlanDocument(legacyActivePlan);
+    // A shared URL is an explicit initial view, never a persistence mechanism.
+    const reloading =
+      typeof performance !== "undefined" &&
+      (performance.getEntriesByType?.("navigation")[0] as PerformanceNavigationTiming | undefined)
+        ?.type === "reload";
+    if (typeof window !== "undefined") {
+      try {
+        for (const key of ["mapos:layer-session-v1", "mapos:layer-session-v2"])
+          window.sessionStorage.removeItem(key);
+      } catch {
+        /* Session storage may be unavailable independently of local storage. */
+      }
+      try {
+        for (const key of [CATS_STORAGE_KEY, LAST_PRESET_KEY, TAG_STORAGE_KEY])
+          window.localStorage.removeItem(key);
+        clearPresetBaseline(window.localStorage);
+      } catch {
+        /* A clean start also works with storage disabled. */
+      }
+    }
+    const legacyActivePlan: TripPlan | null = null;
+    const activePlanDocument: PlanDocumentV2 | null = null;
     const preferences = loadUserPreferences(
       typeof window === "undefined" ? null : window.localStorage,
       typeof window === "undefined" ? null : window.localStorage.getItem(THEME_STORAGE_KEY)
     );
-    for (const id of layers.length ? layers : Object.keys(layerSession)) {
-      activeLayers[id] = layerSession[id] ?? { visible: true, opacity: 1, filters: {} };
+    for (const id of reloading ? [] : layers) {
+      activeLayers[id] = initialLayerState(id);
     }
     this.state = {
       view,
       activeLayers,
       selectedPin: null,
       sheet: null,
-      sidebarOpen:
-        mode === "game" ||
-        (typeof window !== "undefined" && window.innerWidth >= 768) ||
-        mode === "discover",
-      activePresetId: loadLastPresetId(),
+      // Every mode owns a panel, and on a phone that panel is the bottom sheet, which opens at
+      // the snap §21.2 gives it. Leaving it closed on load was why `?mode=planning` showed a
+      // bare handle under the top bar on mobile (§29.2/4).
+      sidebarOpen: true,
+      activePresetId: null,
       session: null,
       editMode: false,
       editLayerId: null,
@@ -464,11 +496,15 @@ export class MapStore {
       visibleFeatures: {},
       theme: resolveThemePreference(preferences.theme, prefersDarkScheme()),
       preferences,
-      experienceId: loadExperience(),
+      experienceId: "default",
       temporal: initialTemporalState(),
+      areaSelection: null,
+      boundariesEnabled: true,
+      boundaryLevel: "auto",
       searchHerePending: false,
       countryCode: loadCountryCode(),
-      activeTag: loadActiveTag(),
+      activeTag: null,
+      gameSuspendedLayers: [],
       gameTrackingMode: loadGameTracking(),
       gameCameraMode: loadGameCamera(),
       avatarStyle: loadAvatarStyle(),
@@ -478,25 +514,63 @@ export class MapStore {
       dataProvider: loadDataProvider(),
       basemapId: loadBasemapId(),
       basemapLabels: loadFlag(BASEMAP_LABELS_KEY, true),
-      buildings3d: loadFlag(BUILDINGS_3D_KEY, false),
+      buildings3d: false,
+      terrain3d: false,
       poiSources: loadPoiSources(),
       sourceStatus: {},
       capabilities: null
     };
 
-    // Activate the mode's primary layer on first load when URL didn't list any layers.
-    const primary = primaryLayerForMode(legacyLayerModeFor(mode));
-    if (!this.state.activeLayers[primary]?.visible) {
-      this.state.activeLayers[primary] = initialStateFor(primary);
-    } else if (primary === "osm-poi" && !this.state.activeLayers["osm-poi"]!.filters?.categories) {
-      this.state.activeLayers["osm-poi"]!.filters = { categories: loadSavedCategories() };
+    // Restoring straight into game mode (reload on a ?mode=game link) suspends the restored
+    // overlays the same way entering the mode later would, and starts on the game board.
+    if (mode === "game") {
+      for (const [id, layer] of Object.entries(this.state.activeLayers)) {
+        if (id === "game" || !layer.visible) continue;
+        layer.visible = false;
+        this.state.gameSuspendedLayers.push(id);
+      }
+      this.gameAppearance = {
+        basemapId: this.state.basemapId,
+        buildings3d: this.state.buildings3d
+      };
+      this.state.buildings3d = true;
+      this.state.basemapId = this.state.theme === "dark" ? "carto-dark" : "carto-positron";
+      this.state.sidebarOpen = false;
     }
-    if (modeResolution.activateLayerId) {
+    // Only an explicit initial mode link activates its required layer.
+    if (!reloading && modeResolution.activateLayerId) {
       this.ensureLayerActive(modeResolution.activateLayerId);
     }
+    const requestedPreset =
+      !reloading && preset ? MAP_PRESETS.find((p) => p.id === preset) : undefined;
+    if (requestedPreset) this.applyPreset(requestedPreset);
+    this.migrateStructuralOverlays();
     this.persistLayerSession();
-    if (modeResolution.rewriteUrl && typeof window !== "undefined") {
+    if (typeof window !== "undefined") {
       this.syncToUrl();
+    }
+  }
+
+  private migrateStructuralOverlays() {
+    // Retired duplicate layers (see layerAliases) come back from URLs and saved sessions as their
+    // canonical layer, never as a second copy of the same pins.
+    this.state.activeLayers = foldRetiredLayers(this.state.activeLayers, initialStateFor);
+    if (!this.state.activeLayers.opentopomap) return;
+    delete this.state.activeLayers.opentopomap;
+    if (typeof window === "undefined") return;
+    try {
+      const key = "mapos:structural-overlays-v2";
+      if (window.localStorage.getItem(key)) return;
+      window.localStorage.setItem(key, "1");
+      this.showToast("OpenTopoMap patří mezi podklady. Váš současný podklad zůstal zachovaný.", {
+        durationMs: 10000,
+        action: {
+          label: "Použít turistický podklad",
+          onSelect: () => this.setBasemap("opentopomap")
+        }
+      });
+    } catch {
+      /* Unavailable storage must not restore an opaque overlay. */
     }
   }
 
@@ -509,8 +583,31 @@ export class MapStore {
 
   /** Wakes up React subscribers. Distinct from the imported `emit`, which broadcasts an
    *  application-wide signal to modules that don't subscribe to the store at all. */
+  private presetBaseline: { id: string; appearance: MapAppearance } | null = null;
+  /** The basemap/buildings the reader had before the game forced its own clean board. */
+  private gameAppearance: { basemapId: string; buildings3d: boolean } | null = null;
   private notify() {
+    // Cloning and hashing the whole layer stack on every notify (which fires for pans, loading
+    // flags and tile counts, not only for layer changes) was measurable CPU in the perf report.
+    // The comparison only exists to drop the preset badge once the config drifts, so it runs
+    // only while a preset baseline is actually armed, and the baseline side is cached.
+    if (this.presetBaseline) {
+      const drift = appearanceKey(this.captureAppearance()) !== this.presetBaselineKey();
+      if (drift && this.state.activePresetId) this.state.activePresetId = null;
+      else if (!drift && this.state.activePresetId === null && this.presetBaseline.id) {
+        this.state.activePresetId = this.presetBaseline.id;
+      }
+    }
     for (const l of this.listeners) l();
+  }
+
+  private presetBaselineKeyCache: string | null = null;
+  private presetBaselineKey(): string {
+    if (!this.presetBaseline) return "";
+    if (this.presetBaselineKeyCache === null) {
+      this.presetBaselineKeyCache = appearanceKey(this.presetBaseline.appearance);
+    }
+    return this.presetBaselineKeyCache;
   }
 
   private patch(partial: Partial<MapState>) {
@@ -559,6 +656,27 @@ export class MapStore {
   }
   get toast() {
     return this.state.toast;
+  }
+  get boundariesEnabled() {
+    return this.state.boundariesEnabled;
+  }
+  setBoundariesEnabled(value: boolean) {
+    this.patch({ boundariesEnabled: value });
+    if (!value) this.setAreaSelection(null);
+  }
+  get areaSelection() {
+    return this.state.areaSelection;
+  }
+  get boundaryLevel() {
+    return this.state.boundaryLevel;
+  }
+  setAreaSelection(areaSelection: AreaSelection | null) {
+    if (JSON.stringify(this.state.areaSelection) === JSON.stringify(areaSelection)) return;
+    this.patch({ areaSelection });
+    emit("layers-changed");
+  }
+  setBoundaryLevel(boundaryLevel: "auto" | "country" | "adm1" | "adm2" | "lau") {
+    this.patch({ boundaryLevel });
   }
   get mode() {
     return this.state.mode;
@@ -649,11 +767,25 @@ export class MapStore {
   get buildings3d() {
     return this.state.buildings3d;
   }
+  get terrain3d() {
+    return this.state.terrain3d;
+  }
 
   setBasemap(id: string) {
     if (this.state.basemapId === id || !basemapById(id)) return;
     this.state.basemapId = id;
     window.localStorage.setItem(BASEMAP_KEY, id);
+    this.notify();
+    emit("basemap-changed", { basemapId: id });
+  }
+
+  /** The game's own board: Carto Positron in light, Dark Matter in dark. Deliberately not
+   *  persisted — the reader's stored basemap survives a game session untouched. */
+  private applyGameBasemap() {
+    if (this.state.mode !== "game") return;
+    const id = this.state.theme === "dark" ? "carto-dark" : "carto-positron";
+    if (this.state.basemapId === id || !basemapById(id)) return;
+    this.state.basemapId = id;
     this.notify();
     emit("basemap-changed", { basemapId: id });
   }
@@ -672,6 +804,14 @@ export class MapStore {
     window.localStorage.setItem(BUILDINGS_3D_KEY, enabled ? "1" : "0");
     this.notify();
     emit("buildings-3d-changed", { enabled });
+  }
+
+  setTerrain3d(enabled: boolean) {
+    if (this.state.terrain3d === enabled) return;
+    this.state.terrain3d = enabled;
+    window.localStorage.setItem(TERRAIN_3D_KEY, enabled ? "1" : "0");
+    this.notify();
+    emit("terrain-3d-changed", { enabled });
   }
 
   setPoiSource(source: PlaceSourceId, enabled: boolean) {
@@ -700,7 +840,14 @@ export class MapStore {
     const next: MapState["sourceStatus"] = {};
     for (const meta of metas) {
       next[meta.source] = {
-        state: meta.state === "ready" ? "ready" : meta.state === "error" ? "error" : "idle",
+        state:
+          meta.state === "ready"
+            ? "ready"
+            : meta.state === "loading"
+              ? "loading"
+              : meta.state === "error"
+                ? "error"
+                : "idle",
         count: meta.count,
         message: meta.message
       };
@@ -719,6 +866,7 @@ export class MapStore {
     const basemapId = needed && !capabilities[needed] ? DEFAULT_BASEMAP_ID : this.state.basemapId;
     const swapped = basemapId !== this.state.basemapId;
     this.patch({ capabilities, dataProvider: provider, basemapId });
+    emit("layers-changed");
     if (swapped) emit("basemap-changed", { basemapId });
   }
 
@@ -728,22 +876,128 @@ export class MapStore {
   }
 
   setView(partial: Partial<MapViewState>) {
+    if (
+      Object.entries(partial).every(([key, value]) =>
+        Object.is(this.state.view[key as keyof MapViewState], value)
+      )
+    )
+      return;
     this.state.view = { ...this.state.view, ...partial };
     this.syncToUrl();
     this.notify();
   }
 
-  toggleLayer(layerId: string) {
+  private statisticsSuspended: string[] = [];
+
+  activateLayer(layerId: string, filters?: FilterValues) {
+    if (!this.state.activeLayers[layerId]?.visible) this.toggleLayer(layerId, filters);
+    else if (filters) this.setLayerFilters(layerId, filters);
+  }
+
+  get currentAnswerLayerId() {
+    return this.answerLayerId;
+  }
+
+  showAnswerResults(manifest: LayerManifestV2) {
+    const next = temporaryAnswerManifest(manifest);
+    registerInlineLayer(next);
+    this.hideAnswerResults();
+    this.answerLayerId = next.id;
+    this.activateLayer(next.id);
+    return next.id;
+  }
+  hideAnswerResults() {
+    const id = this.answerLayerId;
+    if (!id) return;
+    this.answerLayerId = null;
+    unregisterLayer(id);
+    // Temporary answers are session objects, not the user's layer stack: every trace of them
+    // leaves when they are dismissed, including entries parked by earlier replacements.
+    const active: MapState["activeLayers"] = {};
+    for (const [key, entry] of Object.entries(this.state.activeLayers)) {
+      if (!key.startsWith(AI_RESULT_PREFIX)) active[key] = entry;
+    }
+    const features: MapState["visibleFeatures"] = {};
+    for (const [key, value] of Object.entries(this.state.visibleFeatures)) {
+      if (!key.startsWith(AI_RESULT_PREFIX)) features[key] = value;
+    }
+    this.state.activeLayers = active;
+    this.state.visibleFeatures = features;
+    this.persistLayerSession();
+    this.syncToUrl();
+    this.notify();
+    emit("layers-changed");
+  }
+  get viewportBbox() {
+    return this.state.viewportBbox;
+  }
+  setViewportBbox(bbox: Bbox) {
+    if (JSON.stringify(this.state.viewportBbox) !== JSON.stringify(bbox))
+      this.patch({ viewportBbox: bbox });
+  }
+  toggleLayer(layerId: string, filters?: FilterValues) {
+    const alias = retiredLayerAlias(layerId);
+    if (alias) {
+      // A retired id switches on its facet values in the layer that now draws them.
+      const target = this.state.activeLayers[alias.layer];
+      const own = Array.isArray(target?.filters[alias.facet])
+        ? (target!.filters[alias.facet] as string[])
+        : [];
+      const wanted = retiredFacetValues(
+        filters ? { visible: true, opacity: 1, filters } : undefined,
+        alias
+      );
+      const next = {
+        ...(target?.filters ?? initialStateFor(alias.layer).filters),
+        [alias.facet]: [...new Set([...(target?.visible ? own : []), ...wanted])]
+      };
+      if (target?.visible) this.setLayerFilters(alias.layer, next);
+      else this.toggleLayer(alias.layer, next);
+      return;
+    }
     const current = this.state.activeLayers[layerId];
     if (current?.visible) {
-      const { [layerId]: _removed, ...rest } = this.state.activeLayers;
-      this.state.activeLayers = rest;
+      this.state.activeLayers = {
+        ...this.state.activeLayers,
+        [layerId]: { ...current, visible: false, selected: true }
+      };
     } else {
+      const manifest = getLayerManifestV2(layerId);
+      const activation = manifest?.activation;
+      const statistical = manifest?.category === "statistics" || layerId.startsWith("theme-");
+      // Statistical fills only make sense in the Discover context; the spec routes them there
+      // from any other mode rather than leaving them invisible under a planning panel.
+      const preferred = statistical ? "discover" : activation?.preferredMode;
+      const compatible = activation?.compatibleModes ?? (statistical ? ["discover"] : undefined);
+      if (preferred && !compatible?.includes(this.state.mode)) this.setMode(preferred);
+      const group = activation?.exclusiveGroup ?? (statistical ? "statistical-fill" : undefined);
+      if (group) {
+        this.state.activeLayers = Object.fromEntries(
+          Object.entries(this.state.activeLayers).map(([id, entry]) => {
+            const other = getLayerManifestV2(id);
+            const otherGroup =
+              other?.activation?.exclusiveGroup ??
+              (other?.category === "statistics" || id.startsWith("theme-")
+                ? "statistical-fill"
+                : undefined);
+            return [
+              id,
+              id !== layerId && otherGroup === group ? { ...entry, visible: false } : entry
+            ];
+          })
+        );
+      }
       const initial = initialStateFor(layerId);
       this.state.activeLayers = {
         ...this.state.activeLayers,
         // Filters the user already chose survive toggling the layer off and back on.
-        [layerId]: { ...initial, filters: current?.filters ?? initial.filters }
+        [layerId]: {
+          ...initial,
+          ...current,
+          visible: true,
+          selected: true,
+          filters: filters ?? current?.filters ?? initial.filters
+        }
       };
     }
     this.state.activePresetId = null;
@@ -751,6 +1005,20 @@ export class MapStore {
     this.syncToUrl();
     this.notify();
     emit("layers-changed");
+  }
+
+  /** Releases the preset badge without touching the layers it switched on. Tapping the active
+   *  preset again means "stop calling this a preset", not "undo my map". */
+  clearPreset() {
+    this.presetBaseline = null;
+    this.presetBaselineKeyCache = null;
+    clearPresetBaseline(typeof window === "undefined" ? null : window.localStorage);
+    if (this.state.activePresetId === null) return;
+    this.state.activePresetId = null;
+    if (typeof window !== "undefined") window.localStorage.removeItem(LAST_PRESET_KEY);
+    this.persistLayerSession();
+    this.syncToUrl();
+    this.notify();
   }
 
   setSidebarOpen(open: boolean) {
@@ -771,9 +1039,24 @@ export class MapStore {
   }
 
   private persistLayerSession() {
+    // A game-suspended layer is logically on — only hidden under the board — so it is
+    // persisted as visible. Otherwise a reload in game mode would forget it entirely.
+    const suspended = new Set(this.state.gameSuspendedLayers);
+    const sessionLayers = Object.fromEntries(
+      Object.entries(this.state.activeLayers).filter(([id]) => !id.startsWith(AI_RESULT_PREFIX))
+    );
+    const persistable = suspended.size
+      ? Object.fromEntries(
+          Object.entries(sessionLayers).map(([id, entry]) => [
+            id,
+            suspended.has(id) ? { ...entry, visible: true } : entry
+          ])
+        )
+      : sessionLayers;
+    writeWorldLayers(this.worldStorage, this.state.experienceId, persistable);
     writeLayerSessionState(
       typeof window === "undefined" ? null : window.sessionStorage,
-      this.state.activeLayers
+      persistable
     );
   }
 
@@ -785,7 +1068,7 @@ export class MapStore {
    *  nothing changed and skips the render — the map updates, the controls driving it do not. */
   private patchLayer(
     layerId: string,
-    patch: Partial<{ visible: boolean; opacity: number; filters: FilterValues }>
+    patch: Partial<{ visible: boolean; selected?: boolean; opacity: number; filters: FilterValues }>
   ) {
     const entry = this.state.activeLayers[layerId];
     if (!entry) return;
@@ -799,6 +1082,17 @@ export class MapStore {
     const { mode, activateLayerId } = resolveAppMode(input);
     const previousMode = this.state.mode;
     this.state.mode = mode;
+    if (mode !== "discover" && previousMode === "discover") {
+      this.statisticsSuspended = Object.keys(this.state.activeLayers).filter(
+        (id) =>
+          this.state.activeLayers[id]?.visible &&
+          (getLayerManifestV2(id)?.category === "statistics" || id.startsWith("theme-"))
+      );
+      for (const id of this.statisticsSuspended) this.patchLayer(id, { visible: false });
+    } else if (mode === "discover" && this.statisticsSuspended.length) {
+      for (const id of this.statisticsSuspended) this.patchLayer(id, { visible: true });
+      this.statisticsSuspended = [];
+    }
     // The game owns a continuously rendered WebGL scene, not a passive map overlay. Keeping it in
     // the shared layer stack after its HUD has gone means Three.js keeps drawing forever while the
     // user is back in the ordinary map. Other overlays intentionally survive navigation, but the
@@ -807,11 +1101,55 @@ export class MapStore {
       const { game: _game, ...rest } = this.state.activeLayers;
       this.state.activeLayers = rest;
     }
-    this.ensureLayerActive(primaryLayerForMode(legacyLayerModeFor(mode)));
+    // The game board is the whole map: weather, themes and POI pins over it are noise the
+    // player never asked for. They are suspended rather than removed, and come back exactly
+    // as they were when the mode is left.
+    if (mode === "game" && previousMode !== "game") {
+      const suspended: string[] = [];
+      for (const [id, layer] of Object.entries(this.state.activeLayers)) {
+        if (id === "game" || !layer.visible) continue;
+        layer.visible = false;
+        suspended.push(id);
+      }
+      this.state.gameSuspendedLayers = suspended;
+    }
+    if (previousMode === "game" && mode !== "game" && this.state.gameSuspendedLayers.length) {
+      for (const id of this.state.gameSuspendedLayers) {
+        const layer = this.state.activeLayers[id];
+        if (layer) layer.visible = true;
+      }
+      this.state.gameSuspendedLayers = [];
+    }
+    // The game is an arcade over one clean board: Positron by day, Dark Matter by night, with
+    // 3D buildings. The reader's own basemap and building preference come back on the way out.
+    if (mode === "game" && previousMode !== "game") {
+      this.gameAppearance = {
+        basemapId: this.state.basemapId,
+        buildings3d: this.state.buildings3d
+      };
+      this.state.buildings3d = true;
+      this.applyGameBasemap();
+      emit("buildings-3d-changed", { enabled: true });
+      // The game board is the whole screen; the map panel starts closed and the game HUD is
+      // opened from the arcade overlay.
+      this.state.sidebarOpen = false;
+    } else if (mode !== "game" && previousMode === "game" && this.gameAppearance) {
+      const restore = this.gameAppearance;
+      this.gameAppearance = null;
+      if (basemapById(restore.basemapId) && this.state.basemapId !== restore.basemapId) {
+        this.state.basemapId = restore.basemapId;
+        emit("basemap-changed", { basemapId: restore.basemapId });
+      }
+      if (this.state.buildings3d !== restore.buildings3d) {
+        this.state.buildings3d = restore.buildings3d;
+        emit("buildings-3d-changed", { enabled: restore.buildings3d });
+      }
+    }
+    this.ensureLayerActive(primaryLayerForAppMode(mode));
     if (activateLayerId) this.ensureLayerActive(activateLayerId);
     // Every canonical mode owns the same left context surface. GameHud is no longer a detached
     // overlay; users can close the panel to maximise the board without remounting the map.
-    this.state.sidebarOpen = true;
+    if (mode !== "game") this.state.sidebarOpen = true;
     this.persistLayerSession();
     this.syncToUrl();
     this.notify();
@@ -821,8 +1159,33 @@ export class MapStore {
 
   setExperience(id: ExperienceId) {
     if (id === this.state.experienceId) return;
+    this.hideAnswerResults();
+    this.persistLayerSession();
+    const saved = readWorldLayers(this.worldStorage, id);
+    const personal = this.state.activeLayers["user-layers"];
+    const manifest = experienceById(id);
+    this.worldAreas.set(this.state.experienceId, this.state.areaSelection);
+    this.state.areaSelection = this.worldAreas.get(id) ?? null;
     this.state.experienceId = id;
     window.localStorage.setItem(EXPERIENCE_KEY, id);
+    // Exit the heavyweight runtime before replacing the stack. Final persistence below replaces
+    // the transitional mode snapshot; the saved target was read before this transition.
+    if (id !== "aavegotchi" && this.state.mode === "game") this.setMode("discover");
+    this.state.gameSuspendedLayers = [];
+    this.statisticsSuspended = [];
+    this.state.activeLayers =
+      saved ??
+      Object.fromEntries(
+        manifest.recommendedIntegrationIds.map((layerId) => [layerId, initialStateFor(layerId)])
+      );
+    this.migrateStructuralOverlays();
+    if (personal) this.state.activeLayers = { ...this.state.activeLayers, "user-layers": personal };
+    this.state.activePresetId = null;
+    if (id === "global") {
+      if (this.state.mode !== "discover") this.setMode("discover");
+      this.state.sidebarOpen = false;
+    }
+    if (id === "aavegotchi") this.setMode("game");
     if (id === "aavegotchi") {
       this.state.avatarStyle = "aavegotchi";
       window.localStorage.setItem(AVATAR_STYLE_KEY, "aavegotchi");
@@ -831,7 +1194,10 @@ export class MapStore {
         window.localStorage.setItem(ACTIVE_GAMES_KEY, JSON.stringify(this.state.activeGameIds));
       }
     }
+    this.persistLayerSession();
+    this.syncToUrl();
     this.notify();
+    emit("layers-changed");
     emit("experience-changed", { id });
     emit("avatar-changed", {
       style: this.state.avatarStyle,
@@ -943,6 +1309,7 @@ export class MapStore {
     else window.localStorage.setItem(THEME_STORAGE_KEY, preference);
     this.notify();
     emit("theme-changed", { theme });
+    this.applyGameBasemap();
   }
 
   applySystemTheme(prefersDark: boolean) {
@@ -952,6 +1319,7 @@ export class MapStore {
     this.state.theme = theme;
     this.notify();
     emit("theme-changed", { theme });
+    this.applyGameBasemap();
   }
 
   setTheme(theme: ThemeMode) {
@@ -983,45 +1351,136 @@ export class MapStore {
     this.patch({ visibleFeatures: { ...this.state.visibleFeatures, [layerId]: features } });
   }
 
-  applyPreset(preset: { id: string; layers: string[]; categories?: string[] }) {
-    const cats =
-      preset.categories && preset.categories.length
-        ? loadPresetCategories(preset.id, preset.categories)
-        : undefined;
-    if (cats) savePresetCategories(preset.id, cats);
-    const next: MapState["activeLayers"] = { ...this.state.activeLayers };
-    for (const layerId of preset.layers) {
-      const initial = initialLayerState(layerId);
-      // A usecase picks the categories; everything else the layer decides for itself.
-      next[layerId] =
-        layerId === "osm-poi" && cats
-          ? { ...initial, filters: { ...initial.filters, categories: cats } }
-          : initial;
-    }
-    this.state.activeLayers = next;
-    this.state.activePresetId = preset.id;
-    this.state.searchHerePending = false;
+  captureAppearance(): MapAppearance {
+    const { basemapId, basemapLabels, buildings3d, terrain3d, poiSources } = this.state;
+    const layers = Object.fromEntries(
+      Object.entries(this.state.activeLayers)
+        .filter(([id, entry]) => entry.selected !== false && !id.startsWith(AI_RESULT_PREFIX))
+        .map(([id, entry]) => [id, { ...entry, selected: true }])
+    );
+    return structuredClone({
+      layers,
+      basemapId,
+      basemapLabels,
+      buildings3d,
+      terrain3d,
+      poiSources
+    });
+  }
+
+  restoreAppearance(value: MapAppearance) {
+    this.state.activeLayers = foldRetiredLayers(structuredClone(value.layers), initialStateFor);
+    this.setBasemap(value.basemapId);
+    this.setBasemapLabels(value.basemapLabels);
+    this.setBuildings3d(value.buildings3d);
+    this.setTerrain3d(value.terrain3d);
+    this.state.poiSources = { ...value.poiSources };
+    if (typeof window !== "undefined")
+      window.localStorage.setItem(POI_SOURCES_KEY, JSON.stringify(value.poiSources));
     this.persistLayerSession();
     this.syncToUrl();
     this.notify();
     emit("layers-changed");
-    emit("search-here");
+  }
+
+  rememberPreset(id: string) {
+    this.presetBaseline = { id, appearance: this.captureAppearance() };
+    this.presetBaselineKeyCache = null;
+    this.state.activePresetId = id;
+    writePresetBaseline(
+      typeof window === "undefined" ? null : window.localStorage,
+      this.presetBaseline
+    );
+    this.notify();
+  }
+
+  resetPreset() {
+    if (this.presetBaseline) this.restoreAppearance(this.presetBaseline.appearance);
+  }
+
+  removeLayer(id: string) {
+    const entry = this.state.activeLayers[id];
+    if (!entry) return;
+    this.state.activeLayers = {
+      ...this.state.activeLayers,
+      [id]: { ...entry, visible: false, selected: false }
+    };
+    this.persistLayerSession();
+    this.syncToUrl();
+    this.notify();
+    emit("layers-changed");
+  }
+
+  setLayerVisible(id: string, visible: boolean) {
+    if (Boolean(this.state.activeLayers[id]?.visible) !== visible) this.toggleLayer(id);
+  }
+
+  applyPreset(preset: {
+    id: string;
+    layers: string[];
+    categories?: string[];
+    filters?: Record<string, FilterValues>;
+    basemap?: string;
+    keep?: string[];
+    appearance?: MapAppearance;
+  }) {
+    const before = this.captureAppearance();
+    const baseline = this.presetBaseline;
+    let next = preset.appearance;
+    if (!next) {
+      // Layers a usecase must not switch off (saved places, community pins the user built up)
+      // are carried over from the current stack instead of being reset with the rest.
+      const carried = Object.fromEntries(
+        (preset.keep ?? [])
+          .filter((id) => before.layers[id]?.visible)
+          .map((id) => [id, structuredClone(before.layers[id]!)] as const)
+      );
+      const layers = Object.fromEntries(
+        preset.layers.map((id) => {
+          const entry = initialLayerState(id);
+          const extra = preset.filters?.[id] ?? {};
+          const filters = {
+            ...entry.filters,
+            ...extra,
+            ...(id === "osm-poi" && preset.categories ? { categories: preset.categories } : {})
+          };
+          return [id, { ...entry, selected: true, filters }];
+        })
+      );
+      next = { ...before, layers: { ...layers, ...carried } };
+      const wanted = preset.basemap ? basemapById(preset.basemap) : undefined;
+      if (wanted && !wanted.requiresCapability) next = { ...next, basemapId: wanted.id };
+    }
+    this.presetBaseline = null;
+    this.restoreAppearance(next);
+    this.rememberPreset(preset.id);
+    this.syncToUrl();
+    const applied = next;
+    let undone = false;
+    return () => {
+      if (undone) return;
+      undone = true;
+      this.presetBaseline = baseline;
+      this.presetBaselineKeyCache = null;
+      const storage = typeof window === "undefined" ? null : window.localStorage;
+      if (baseline) writePresetBaseline(storage, baseline);
+      else clearPresetBaseline(storage);
+      this.restoreAppearance(preserveManualEdits(before, applied, this.captureAppearance()));
+    };
   }
 
   setLayerOpacity(layerId: string, opacity: number) {
     this.patchLayer(layerId, { opacity });
     this.persistLayerSession();
     this.notify();
-    emit("layers-changed");
+    emit("layer-style-changed", { id: layerId });
   }
 
-  setLayerFilters(layerId: string, filters: FilterValues) {
+  setLayerFilters(layerId: string, filters: FilterValues, options: { refresh?: boolean } = {}) {
     this.patchLayer(layerId, { filters });
     if (layerId === "osm-poi" && Array.isArray(filters.categories)) {
       saveCategories(filters.categories as string[]);
-      if (this.state.activePresetId) {
-        savePresetCategories(this.state.activePresetId, filters.categories as string[]);
-      }
+
       // Manual category edits remain fully supported after applying a preset, but the preset
       // cannot still claim to be an unchanged canned selection.
       this.state.activePresetId = null;
@@ -1030,11 +1489,34 @@ export class MapStore {
     this.persistLayerSession();
     this.notify();
     emit("layers-changed");
-    emit("search-here");
+    if (options.refresh !== false) emit("refresh-layer", { id: layerId });
   }
 
+  /** §4.10: a selected pin is a left-panel context, not a modal, so selecting one no longer
+   *  claims the single sheet slot — the shell opens the detail panel from `selectedPin`. */
   selectPin(pin: SelectedPin | null) {
-    this.patch({ selectedPin: pin, sheet: pin ? "pin" : null });
+    // Resolve only references carried by the registered snapshot, never arbitrary picked properties.
+    const selectedId = pin?.feature.properties.id;
+    const origin = pin
+      ? getLayerManifestV2(pin.layerId)?.source.inline?.features.find(
+          (f) => f.id === String(selectedId)
+        )
+      : undefined;
+    if (pin && origin?.sourceLayerId && getLayerManifestV2(origin.sourceLayerId)) {
+      pin = {
+        layerId: origin.sourceLayerId,
+        feature: {
+          ...pin.feature,
+          properties: {
+            ...pin.feature.properties,
+            id: origin.sourceFeatureId ?? origin.id,
+            layerId: origin.sourceLayerId,
+            sourceId: origin.sourceId
+          }
+        }
+      };
+    }
+    this.patch({ selectedPin: pin, sheet: this.state.sheet === "pin" ? null : this.state.sheet });
   }
 
   openSheet(sheet: SheetType) {
@@ -1116,12 +1598,13 @@ export class MapStore {
     emit("plan-changed", { planId: document?.id ?? null });
   }
 
-  showToast(message: string, durationMs = TOAST_MS) {
+  showToast(message: string, options: ToastOptions = {}) {
+    const { durationMs = TOAST_MS, action, secondaryAction } = options;
     // Each message gets its own countdown. Without dropping the previous timer, a toast that
     // arrives just before an older one expires is swallowed by that older countdown — which is how
     // the greeting from auto-login used to eat whatever the user did next.
     if (this.toastTimer !== null) clearTimeout(this.toastTimer);
-    this.patch({ toast: message });
+    this.patch({ toast: { message, action, secondaryAction } });
     this.toastTimer = setTimeout(() => {
       this.toastTimer = null;
       this.patch({ toast: null });
@@ -1130,14 +1613,15 @@ export class MapStore {
 
   syncToUrl() {
     const params = new URLSearchParams();
+    const existing = new URLSearchParams(window.location.search);
+    for (const key of ["stat", "statPeriod", "statExclude", "statRegions", "statPaused"]) {
+      const value = existing.get(key);
+      if (value) params.set(key, value);
+    }
     params.set("lng", this.state.view.lng.toFixed(5));
     params.set("lat", this.state.view.lat.toFixed(5));
     params.set("z", this.state.view.zoom.toFixed(1));
-    params.set("mode", this.state.mode);
-    const active = Object.entries(this.state.activeLayers)
-      .filter(([, s]) => s.visible)
-      .map(([id]) => id);
-    if (active.length) params.set("layers", active.join(","));
+    // Explicit sharing builds its own URL. Ordinary navigation persists camera only.
     // Shell/browser-back keeps a small same-document sentinel in history.state. Replacing the
     // URL on every map move must preserve it, otherwise the first pan silently breaks Back.
     window.history.replaceState(
@@ -1146,6 +1630,36 @@ export class MapStore {
       `${window.location.pathname}?${params.toString()}${window.location.hash}`
     );
   }
+}
+
+/** Undo restores the pre-preset config except where the user touched a layer themselves after
+ *  applying: a later manual opacity/filters edit is the user's intent, not part of the preset. */
+function preserveManualEdits(
+  before: MapAppearance,
+  applied: MapAppearance,
+  current: MapAppearance
+): MapAppearance {
+  const layers: MapAppearance["layers"] = {};
+  for (const [id, entry] of Object.entries(before.layers)) {
+    const appliedEntry = applied.layers[id];
+    const currentEntry = current.layers[id];
+    if (!appliedEntry || !currentEntry || entry.selected === false) {
+      layers[id] = entry;
+      continue;
+    }
+    // Fields the user changed after the preset landed win; everything else rolls back.
+    const manual = {
+      ...(appliedEntry.opacity !== currentEntry.opacity ? { opacity: currentEntry.opacity } : {}),
+      ...(JSON.stringify(appliedEntry.filters) !== JSON.stringify(currentEntry.filters)
+        ? { filters: currentEntry.filters }
+        : {})
+    };
+    layers[id] = { ...entry, ...manual };
+  }
+  for (const [id, entry] of Object.entries(current.layers)) {
+    if (!(id in before.layers)) layers[id] = entry;
+  }
+  return { ...before, layers };
 }
 
 let storeInstance: MapStore | null = null;

@@ -17,4 +17,10 @@ e2e/screenshots/
 # Fetched by scripts/fetch-models.mjs (npm run models), kept out of git as binary assets.
 apps/web/public/models/
 # Personal deployment log — contains host paths and release notes specific to one operator.
-progress.md
+# Anchored so the tracked redesign ledger in docs/plans/progress.md is not swept up with it.
+/progress.md
+*.tsbuildinfo
+
+# Reproducible validation writes evidence here; summaries belong in docs/releases.
+/.cache/
+/output/

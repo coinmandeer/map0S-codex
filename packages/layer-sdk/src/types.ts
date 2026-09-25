@@ -12,7 +12,9 @@ export type LayerCategory =
   | "outdoor"
   | "transport"
   | "environment"
-  | "community";
+  | "community"
+  /** Thematic statistics drawn as choropleths (§23): one switch per question, many sources. */
+  | "statistics";
 
 /** The bottom-nav sections. A layer declares which ones it belongs to, so adding a layer to a
  *  section is a property of the layer rather than a list the shell has to be taught about. */
@@ -188,7 +190,7 @@ export type ContentReviewStatus =
  * lives in `workflow.authorId`; the client is never trusted to choose it. */
 export interface ContentDraftProvenance {
   kind: "user-contribution";
-  source: "create" | "discover";
+  source: "create" | "discover" | "feed";
   sourceLabel: string;
   regionId?: string;
   regionName?: string;
@@ -285,13 +287,43 @@ export interface GeoFeatureProperties {
   [key: string]: unknown;
 }
 
+/**
+ * A point or a line. The renderer was point-only until routes arrived — a GPX track, a saved
+ * plan — and a route genuinely is a line: anchoring it to its start point and calling it a place
+ * would hide the shape that makes it worth importing. Lines carry `anchorLng`/`anchorLat` in
+ * their properties so anything that still needs a single position has one to use.
+ */
+/** Non-empty by construction, so reading the first position never needs a fallback. */
+export type LinePositions = [[number, number], ...Array<[number, number]>];
+
+export type GeoGeometry =
+  | { type: "Point"; coordinates: [number, number] }
+  | { type: "LineString"; coordinates: LinePositions };
+
 export interface GeoFeature {
   type: "Feature";
-  geometry: {
-    type: "Point";
-    coordinates: [number, number];
-  };
+  geometry: GeoGeometry;
   properties: GeoFeatureProperties;
+}
+
+/** Narrows to the point case, which most consumers still only handle. */
+export function isPointFeature(
+  feature: GeoFeature
+): feature is GeoFeature & { geometry: { type: "Point"; coordinates: [number, number] } } {
+  return feature.geometry.type === "Point";
+}
+
+/**
+ * The one position that stands for a feature — where to centre the map, drop a marker or show
+ * coordinates. For a point that is the point; for a route it is the anchor the producer chose
+ * (a track's start), which keeps a line usable everywhere a place is listed.
+ */
+export function featureAnchor(feature: GeoFeature): [number, number] {
+  if (feature.geometry.type === "Point") return feature.geometry.coordinates;
+  const { anchorLng, anchorLat } = feature.properties;
+  return typeof anchorLng === "number" && typeof anchorLat === "number"
+    ? [anchorLng, anchorLat]
+    : feature.geometry.coordinates[0];
 }
 
 export interface FeatureCollection {
@@ -303,6 +335,20 @@ export interface FeatureCollection {
    * it look identical to the user.
    */
   notice?: string;
+  /** Query coverage is provider evidence, never inferred from the distribution of points. */
+  query?: {
+    status: "complete" | "partial" | "unavailable";
+    reason?: "zoom-required" | "outside-coverage" | "budget-exhausted" | "source-error";
+    bbox?: Bbox;
+    truncated?: boolean;
+    nextCursor?: string | null;
+    revision?: string;
+    retryAfterMs?: number;
+    fetchedAt?: string;
+    cacheTtlMs?: number;
+    /** Counts for locally rendered fields that are not POI collections. */
+    rendered?: { count: number; unit: "samples" | "tiles" };
+  };
 }
 
 /** `TMap` is the renderer handle — MapLibre's `Map` in this app. It stays a type parameter so
@@ -316,8 +362,9 @@ export interface LayerContext<TMap = unknown> {
 }
 
 /**
- * One attached layer instance. `update` returns the features it fetched so the engine can cache
- * them and feed the results list; layers that render straight from tiles return `null`.
+ * One attached layer instance. Data handles return data without writing it to the map: the
+ * engine validates the request and invokes setData exactly once. Tile/custom renderers return
+ * null and must guard any asynchronous mutation with the supplied AbortSignal.
  */
 export interface LayerHandle {
   update(
@@ -346,6 +393,9 @@ export type ViewportCost = "cheap" | "expensive";
  * small: every field here is one the engine used to special-case by layer id.
  */
 export interface LayerRuntimeContext {
+  /** Optional presentation context for source-provided contrast variants. */
+  theme?: "light" | "dark";
+  basemapId?: string;
   activeTag: string | null;
   countryCode: string | null;
   enabledPoiSources: string[];
@@ -479,6 +529,7 @@ export const OSM_POI_CATEGORIES = {
   cafe: { label: "Kavárny", group: "food", overpass: 'node["amenity"="cafe"]' },
   restaurant: { label: "Restaurace", group: "food", overpass: 'node["amenity"="restaurant"]' },
   brewery: { label: "Pivovary", group: "food", overpass: 'node["craft"="brewery"]' },
+  cannabis: { label: "Cannabis prodejny", group: "services", overpass: 'node["shop"="cannabis"]' },
   shop: { label: "Obchody", group: "services", overpass: 'node["shop"]' },
   parking: { label: "Parkoviště", group: "services", overpass: 'node["amenity"="parking"]' },
   fuel: { label: "Palivo", group: "services", overpass: 'node["amenity"="fuel"]' },
@@ -532,6 +583,11 @@ export const OSM_POI_CATEGORIES = {
     group: "sport",
     overpass: 'node["leisure"="disc_golf_course"]'
   },
+  golf: {
+    label: "Golf",
+    group: "sport",
+    overpass: 'node["leisure"="golf_course"]'
+  },
   skatepark: {
     label: "Skateparky",
     group: "sport",
@@ -546,6 +602,39 @@ export const OSM_POI_CATEGORIES = {
     label: "Sportoviště",
     group: "sport",
     overpass: 'node["leisure"="sports_centre"]'
+  },
+  airport: {
+    label: "Letiště",
+    group: "services",
+    overpass: 'node["aeroway"="aerodrome"]'
+  },
+  helipad: {
+    label: "Heliporty",
+    group: "services",
+    overpass: 'node["aeroway"="helipad"]'
+  },
+  // Cash access points, kept apart from the Bitcoin rows so "where can I actually get or
+  // deposit money" reads as one family. `bitcoin_atm` intentionally re-queries amenity=atm
+  // with the currency filter, so an ATM with XBT support appears in both rows on purpose.
+  atm: { label: "Bankomaty", group: "services", overpass: 'node["amenity"="atm"]' },
+  bank: { label: "Banky", group: "services", overpass: 'node["amenity"="bank"]' },
+  lighthouse: {
+    label: "Majáky",
+    group: "nature",
+    overpass: 'node["man_made"="lighthouse"]'
+  },
+  // Bitcoin places, using the exact OpenStreetMap tagging BTC Map is built on
+  // (currency:XBT marks places that take bitcoin, including ATMs; payment:bitcoin does the
+  // same for merchants). No key, no vendor: BTC Map itself re-reads these tags every 10 min.
+  bitcoin_atm: {
+    label: "Bitcoinmaty",
+    group: "services",
+    overpass: 'node["amenity"="atm"]["currency:XBT"="yes"]'
+  },
+  bitcoin: {
+    label: "Platby Bitcoinem",
+    group: "services",
+    overpass: 'node["payment:bitcoin"="yes"]'
   }
 } as const;
 

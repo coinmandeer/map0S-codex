@@ -93,17 +93,27 @@ test("the built-in panels cover a bare place and grow with what it knows", async
   const bare = infoPanelsFor({ place: place(), refs: {} }).map((p) => p.id);
   assert.equal(bare[0], "prehled", "the overview always leads");
   // Anything that only needs coordinates is available for every place.
-  for (const id of ["wikipedia", "pocasi", "mapy-okoli", "mapillary", "windy", "odkazy"]) {
+  for (const id of ["pocasi", "mapy-okoli", "mapillary", "windy", "odkazy"]) {
     assert.ok(bare.includes(id), `${id} should apply to any place`);
   }
   assert.ok(!bare.includes("wikidata"));
-  assert.ok(!bare.includes("foursquare"));
+  assert.ok(!bare.includes("wikipedia"), "a common place name is not an article identity");
+  assert.ok(
+    bare.includes("foursquare"),
+    "explicit Foursquare lookup is available without a known ID"
+  );
 
   const rich = infoPanelsFor({
     place: place({ wikidata: "Q42", fsqId: "4b0" }),
     refs: {}
   }).map((p) => p.id);
   assert.ok(rich.includes("wikidata"));
+  assert.ok(rich.includes("wikipedia"));
+  assert.ok(
+    infoPanelsFor({ place: place(), refs: { wikipedia: "cs:Hrad Okoř" } }).some(
+      (panel) => panel.id === "wikipedia"
+    )
+  );
   assert.ok(rich.includes("foursquare"));
   assert.ok(rich.indexOf("odkazy") === rich.length - 1, "external links sort last");
 

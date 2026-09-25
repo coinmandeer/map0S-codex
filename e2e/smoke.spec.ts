@@ -3,11 +3,11 @@ import { discoverContextFixture, stubDiscoverContext } from "./fixtures/discover
 
 test.describe("MapOS V3 smoke", () => {
   test("mode bar is visible with layers control", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/?mode=planning");
     await expect(page.getByTestId("mode-bar")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("overflow-btn")).toBeVisible();
+    await expect(page.getByTestId("layers-btn")).toBeVisible();
     await expect(page.getByTestId("hamburger-btn")).toHaveCount(0);
-    await page.getByTestId("planning-panel").getByRole("button", { name: "Zavřít" }).click();
+    await page.getByTestId("planning-panel").getByRole("button", { name: "Close" }).click();
     const panelToggle = page.getByTestId("hamburger-btn");
     await expect(panelToggle).toBeVisible();
     await expect(page.getByTestId("left-context-host")).toHaveAttribute("data-context", "closed");
@@ -15,51 +15,79 @@ test.describe("MapOS V3 smoke", () => {
     await panelToggle.click();
     await expect(page.getByTestId("left-context-host")).toHaveAttribute("data-context", "mode");
     await expect(page.getByTestId("hamburger-btn")).toHaveCount(0);
-    await expect(page.getByTestId("brand-pill")).toContainText("MapOS");
+    await expect(page.getByTestId("command-center")).toBeVisible();
+  });
+
+  test("the command pill shows the wordmark when the map has the window to itself", async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/?mode=planning");
+    await page.getByTestId("planning-panel").getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("button", { name: "Map status", exact: true })).toContainText(
+      "MapOS"
+    );
+    // The modes left the top bar for the floating dock, so an open panel no longer competes
+    // with anything up here — the wordmark stays.
+    await page.getByTestId("hamburger-btn").click();
+    await expect(page.getByRole("button", { name: "Map status", exact: true })).toContainText(
+      "MapOS"
+    );
+    await expect(page.getByTestId("mode-planning")).toHaveAccessibleName("Planning");
   });
 
   test("planning panel opens", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/?mode=planning");
     await expect(page.getByTestId("planning-panel")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("layer-switcher")).toBeVisible();
+    await expect(page.getByTestId("layers-btn")).toBeVisible();
   });
 
-  test("layers drawer exposes only the four canonical presets", async ({ page }) => {
+  test("layers drawer exposes the seven canonical presets", async ({ page }) => {
     await page.goto("/?layers=osm-poi&mode=poi");
-    await page.getByTestId("overflow-btn").click();
+    await page.getByTestId("layers-btn").click();
     await expect(page.getByTestId("overflow-menu")).toBeVisible();
-    await expect(page.getByTestId("usecase-menu")).toBeVisible();
-    await expect(page.locator("[data-preset-index]")).toHaveCount(4);
-    await expect(page.getByTestId("preset-day-trip")).toBeVisible();
-    await expect(page.getByTestId("preset-city")).toBeVisible();
-    await expect(page.getByTestId("preset-travel")).toBeVisible();
-    await expect(page.getByTestId("preset-sport")).toBeVisible();
+    const picker = page.getByLabel("Preset");
+    await expect(picker).toBeVisible();
+    await picker.click();
+    for (const name of ["Výlet", "Město", "Cestování", "Sport", "Planeta", "Hra", "Data"]) {
+      await expect(page.getByRole("option", { name, exact: true })).toBeVisible();
+    }
   });
 
   test("the sport usecase turns on its categories and the trail overlay", async ({ page }) => {
     await page.goto("/?layers=osm-poi&mode=poi");
-    await page.getByTestId("overflow-btn").click();
-    await page.getByTestId("preset-sport").click();
+    await page.getByTestId("layers-btn").click();
+    await page.getByLabel("Preset").click();
+    await page.getByRole("option", { name: "Sport", exact: true }).click();
 
     const layers = await page.evaluate(
       () => new URLSearchParams(location.search).get("layers") ?? ""
     );
     expect(layers).toContain("waymarked-trails");
 
-    await expect(page.getByTestId("filter-via_ferrata")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("filter-skatepark")).toHaveAttribute("aria-pressed", "true");
+    const categories = await page.evaluate(async () => {
+      const { getMapStore } = await import("/src/store/mapStore.ts");
+      return getMapStore().activeLayers["osm-poi"]?.filters.categories;
+    });
+    expect(categories).toContain("via_ferrata");
+    expect(categories).toContain("skatepark");
   });
 
   test("filter categories toggle in layers megamenu", async ({ page }) => {
     await page.goto("/?layers=osm-poi&mode=poi");
-    await page.getByTestId("overflow-btn").click();
-    await page.getByTestId("category-accordion").locator("summary").click();
-    await expect(page.getByTestId("filter-castle")).toBeVisible();
-    await page.getByTestId("filter-castle").click();
+    await page.getByTestId("layers-btn").click();
+    await page.getByTestId("layers-search").fill("hrad");
+    await expect(page.getByTestId("catalog-places-poi-castle")).toBeVisible();
+    await page.getByTestId("places-switch-poi-castle").click();
+    const categories = await page.evaluate(async () => {
+      const { getMapStore } = await import("/src/store/mapStore.ts");
+      return getMapStore().activeLayers["osm-poi"]?.filters.categories;
+    });
+    expect(categories).toContain("castle");
   });
 
   test("settings uses the target registry while place sources stay in Layers", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/?mode=planning");
     await page.getByTestId("settings-btn").click();
     await expect(page.getByTestId("settings-sheet")).toBeVisible();
     await expect(page.getByTestId("settings-registry")).toBeVisible();
@@ -71,8 +99,8 @@ test.describe("MapOS V3 smoke", () => {
     await expect(page.getByTestId("provider-mapy")).toHaveCount(0);
     await expect(page.getByText("Pohyb", { exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
-    await page.getByTestId("overflow-btn").click();
-    await page.getByTestId("experience-selector").locator("summary").click();
+    await page.getByTestId("layers-btn").click();
+    await page.getByTestId("layers-sources").click();
     for (const source of [
       "osm",
       "mapy",
@@ -86,15 +114,15 @@ test.describe("MapOS V3 smoke", () => {
       await expect(page.getByTestId(`layer-source-${source}`)).toBeVisible();
     }
     await expect(page.getByTestId("layer-source-wikipedia")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "true"
     );
     await expect(page.getByTestId("layer-source-park4night")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "true"
     );
     await expect(page.getByTestId("layer-source-overture")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "false"
     );
   });
@@ -104,7 +132,7 @@ test.describe("MapOS V3 smoke", () => {
   test("auth sheet upgrades the guest profile or lets it sign into an existing account", async ({
     page
   }) => {
-    await page.goto("/");
+    await page.goto("/?mode=planning");
     await page.getByTestId("settings-btn").click();
     await expect(page.getByTestId("settings-sheet")).toBeVisible();
     await page.getByTestId("settings-account").click();
@@ -117,13 +145,20 @@ test.describe("MapOS V3 smoke", () => {
     await expect(page.getByTestId("auth-submit")).toContainText("Přihlásit");
   });
 
-  test("park4night stays out of the menu until a deployment asks for it", async ({ page }) => {
+  test("park4night explains its unavailable deployment capability", async ({ page }) => {
     // The source preference remains visible, while the separately rendered layer needs the
     // technical server capability. The offline fixture server deliberately reports it as off.
-    await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
+    await page.goto("/?mode=planning");
+    await page.getByTestId("layers-btn").click();
     await expect(page.getByTestId("overflow-menu")).toBeVisible();
-    await expect(page.getByTestId("overflow-park4night")).toHaveCount(0);
+    await page.getByTestId("layers-search").fill("Motorhome stops");
+    await expect(page.getByTestId("places-switch-park4night")).toBeDisabled();
+    await expect(page.getByTestId("catalog-places-park4night")).toContainText(
+      /Needs setup|Je potřeba nastavit|není nakonfigurovaný/
+    );
+    await expect(page.getByTestId("catalog-places-park4night")).toContainText(
+      "PARK4NIGHT_ENABLED=1"
+    );
   });
 
   test("park4night appears once the server reports the capability", async ({ page }) => {
@@ -137,10 +172,14 @@ test.describe("MapOS V3 smoke", () => {
       route.fulfill({ json: { type: "FeatureCollection", features: [] } })
     );
 
-    await page.goto("/");
-    await page.getByTestId("overflow-btn").click();
-    await page.getByTestId("overflow-park4night").click();
-    await expect(page.getByTestId("toast")).toContainText("Park4Night");
+    await page.goto("/?mode=planning");
+    await page.getByTestId("layers-btn").click();
+    await page.getByTestId("layers-search").fill("Motorhome stops");
+    const toggle = page.getByTestId("places-switch-park4night");
+    await expect(toggle).toBeEnabled();
+    await toggle.click();
+    await expect(toggle).toBeChecked();
+    await expect(page).toHaveURL(/layers=[^&]*park4night/);
   });
 
   test("game mode lazy-loads the three.js layer without crashing", async ({ page }) => {
@@ -155,7 +194,7 @@ test.describe("MapOS V3 smoke", () => {
       route.fulfill({ json: { encounters: [] } })
     );
 
-    await page.goto("/");
+    await page.goto("/?mode=planning");
     await page.getByTestId("mode-game").click();
     await expect(page.getByTestId("game-hud")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("map-container")).toBeVisible();
@@ -164,12 +203,12 @@ test.describe("MapOS V3 smoke", () => {
   });
 
   test("search input is always visible with my location", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/?mode=planning");
     await expect(page.getByTestId("place-search")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("location-btn")).toBeVisible();
   });
 
-  test("mobile exposes exactly four canonical modes and keeps weather additive", async ({
+  test("mobile exposes exactly the canonical modes and keeps weather additive", async ({
     page
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -181,43 +220,47 @@ test.describe("MapOS V3 smoke", () => {
       route.fulfill({ json: { encounters: [] } })
     );
 
-    await page.goto("/");
+    await page.goto("/?mode=planning");
     const bottomNav = page.getByTestId("bottom-nav");
     await expect(bottomNav).toBeVisible({ timeout: 30_000 });
-    await expect(bottomNav.getByRole("button")).toHaveCount(4);
+    await expect(bottomNav.getByRole("button")).toHaveCount(5);
     await expect(page.getByTestId("place-search")).toBeVisible();
     await expect(page.getByTestId("mode-personal")).toBeVisible();
     await expect(page.getByTestId("mode-planning")).toBeVisible();
     await expect(page.getByTestId("mode-discover")).toBeVisible();
+    await expect(page.getByTestId("mode-feed")).toBeVisible();
     await expect(page.getByTestId("mode-game")).toBeVisible();
     await expect(page.getByTestId("mode-weather")).toHaveCount(0);
     await expect(page.getByTestId("mode-mine")).toHaveCount(0);
-    await expect(bottomNav).toContainText("Personal");
-    await expect(bottomNav).toContainText("Plán");
-    await expect(bottomNav).toContainText("Discover");
-    await expect(bottomNav).toContainText("Hra");
+    await expect(bottomNav.getByRole("button", { name: /^Personal/ })).toBeVisible();
+    await expect(bottomNav.getByRole("button", { name: /^Plan/ })).toBeVisible();
+    await expect(bottomNav.getByRole("button", { name: /^Discover/ })).toBeVisible();
+    await expect(bottomNav.getByRole("button", { name: /^Feed/ })).toBeVisible();
+    await expect(bottomNav.getByRole("button", { name: /^Game/ })).toBeVisible();
 
     await page.getByTestId("mode-game").click();
     await expect(page.getByTestId("game-hud")).toBeVisible({ timeout: 15_000 });
 
     await page.goto("/?mode=weather");
     await expect(page).toHaveURL(/[?&]mode=discover(?:&|$)/);
-    await expect(page.getByTestId("mode-discover")).toHaveClass(/active/);
+    await expect(page.getByTestId("mode-discover")).toHaveAttribute("data-active", "true");
     await expect(page.getByTestId("global-timeline")).toBeVisible({ timeout: 30_000 });
-    await page.getByTestId("overflow-btn").click();
-    await expect(page.getByTestId("weather-visualization-radar")).toBeChecked();
-    await expect(page.getByTestId("weather-visualization-temperature")).toBeVisible();
+    await page.getByTestId("layers-btn").click();
+    await page.getByTestId("layers-search").fill("weather");
+    await expect(page.getByTestId("weather-switch-weather-radar")).toBeChecked();
+    await expect(page.getByTestId("weather-switch-weather-temperature")).toBeVisible();
   });
 
-  test("discover mode follows the map with a sourced region hierarchy", async ({ page }) => {
+  test("discover mode shows a sourced region hierarchy", async ({ page }) => {
     await stubDiscoverContext(page);
     await page.goto("/?mode=discover");
     await expect(page.getByTestId("discover-panel")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("discover-context-pin")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Plzeň", exact: true })).toBeVisible();
+    // The hierarchy is a chip row now: each level is its own tappable target (§4.4).
     await expect(page.getByRole("navigation", { name: "Hierarchie oblasti" })).toContainText(
-      "Česko / Plzeňský kraj / Plzeň"
+      "ČeskoPlzeňský kraj"
     );
-    await expect(page.getByRole("button", { name: "Zjistit co je tady" })).toBeVisible();
+    await expect(page.getByTestId("discover-add-to-plan")).toBeVisible();
     await expect(page.getByTestId("discover-panel").getByTestId("country-picker")).toHaveCount(0);
     await expect(page.locator('[data-testid^="region-"]')).toHaveCount(0);
   });
@@ -249,9 +292,10 @@ test.describe("MapOS V3 smoke", () => {
 
     await page.goto("/?mode=discover");
     const weather = page.getByTestId("discover-weather");
+    const trigger = page.getByTestId("discover-accordion-weather");
     await expect(weather).toBeVisible({ timeout: 30_000 });
     expect(weatherRequests).toBe(0);
-    await weather.locator(":scope > summary").click();
+    await trigger.click();
     await expect(weather).toContainText("18°");
     expect(weatherRequests).toBe(1);
     const firstDay = weather.getByTestId("forecast-day").first();
@@ -262,8 +306,9 @@ test.describe("MapOS V3 smoke", () => {
     expect(await weather.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true
     );
-    await weather.locator(":scope > summary").click();
-    await weather.locator(":scope > summary").click();
+    // Closing and reopening keeps the loaded forecast instead of paying for it twice.
+    await trigger.click();
+    await trigger.click();
     await expect(weather).toContainText("18°");
     expect(weatherRequests).toBe(1);
   });
@@ -319,5 +364,52 @@ test.describe("MapOS V3 smoke", () => {
     await expect(page.getByTestId("discover-panel")).toContainText("Wikivoyage");
     await expect(page.locator('[data-testid^="discover-tab-"]')).toHaveCount(0);
     await expect(page.getByText("Příspěvky lidí")).toHaveCount(0);
+  });
+
+  test("the guide names the source of each highlight and admits what did not load", async ({
+    page
+  }) => {
+    await page.route("**/v2/discover/context**", (route) =>
+      route.fulfill({
+        json: discoverContextFixture({
+          guideSynthesis: {
+            kind: "model",
+            label: "Souhrn ze zdrojů",
+            lead: "Plzeň leží na soutoku čtyř řek a je známá pivovarem.",
+            highlights: [
+              {
+                title: "Velká synagoga",
+                text: "Druhá největší synagoga v Evropě.",
+                sourceIds: ["guide:wikivoyage"],
+                place: { id: "wv:synagoga", longitude: 13.3736, latitude: 49.7466 }
+              }
+            ],
+            practical: { arrival: "Vlakem z Prahy 1:30", warnings: ["V srpnu bývá plno."] },
+            degraded: ["events"],
+            model: "fixture-model"
+          },
+          sources: [
+            {
+              id: "guide:wikivoyage",
+              label: "Wikivoyage (CC BY-SA 4.0)",
+              attribution: "Wikivoyage (CC BY-SA 4.0)",
+              url: "https://cs.wikivoyage.org/wiki/Plze%C5%88",
+              license: "CC BY-SA 4.0",
+              fetchedAt: "2026-09-01T12:00:00.000Z"
+            }
+          ]
+        })
+      })
+    );
+
+    await page.goto("/?mode=discover");
+    await expect(page.getByTestId("discover-panel")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("discover-summary")).toContainText("soutoku čtyř řek");
+    await expect(page.getByTestId("discover-summary-ai")).toBeVisible();
+    const highlight = page.getByTestId("discover-guide-highlight").first();
+    await expect(highlight).toContainText("Velká synagoga");
+    await expect(highlight).toContainText("Wikivoyage");
+    await expect(page.getByTestId("discover-guide-practical")).toContainText("Vlakem z Prahy");
+    await expect(page.getByTestId("discover-guide-degraded")).toContainText("events");
   });
 });

@@ -1,0 +1,95 @@
+.area-controls {
+  position: absolute;
+  z-index: 25;
+  top: calc(env(safe-area-inset-top, 0px) + 76px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(420px, calc(100vw - 112px));
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface-solid, #fff);
+  color: var(--text, #172033);
+  box-shadow: 0 3px 18px #0002;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  pointer-events: auto;
+}
+.area-controls label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.area-controls select,
+.area-controls button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid #8885;
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-height: 36px;
+}
+.area-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.area-controls details,
+.area-controls p {
+  flex-basis: 100%;
+  margin: 0;
+}
+.area-controls summary {
+  cursor: pointer;
+}
+.area-controls button:hover {
+  background: #2563eb18;
+}
+.area-controls button:focus-visible,
+.area-controls select:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+@media (max-width: 600px) {
+  .area-controls {
+    top: calc(env(safe-area-inset-top, 0px) + 64px);
+    max-width: calc(100vw - 100px);
+    font-size: 12px;
+  }
+  .area-controls button {
+    min-height: 44px;
+  }
+}
+
+.area-guide {
+  max-height: 35vh;
+  overflow: auto;
+  flex-basis: 100%;
+  overscroll-behavior: contain;
+}
+.area-guide p {
+  margin: 6px 0;
+}
+
+.cluster-choices {
+  top: auto;
+  bottom: 96px;
+  z-index: 30;
+}
+
+.area-layer-notices {
+  flex-basis: 100%;
+  max-height: 88px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.area-layer-notices .layer-notice {
+  box-shadow: none;
+  padding: 6px 0;
+  background: transparent;
+  border: 0;
+  font-size: 12px;
+}

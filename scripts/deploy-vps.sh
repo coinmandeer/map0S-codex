@@ -16,6 +16,8 @@ MAPOS_HOST="${DEPLOY_HOST:-}"
 MAPOS_REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/ps3000/apps/mapos-v3}"
 MAPOS_PUBLIC_HOST="${DEPLOY_PUBLIC_HOST:-mapos.promptstudio3000.com}"
 MAPOS_DRY_RUN="${DRY_RUN:-1}"
+MAPOS_USE_SUDO="${DEPLOY_SUDO:-0}"
+MAPOS_REMOTE_SHELL=(bash)
 MAPOS_TEMP_DIR=""
 MAPOS_ARCHIVE=""
 
@@ -44,9 +46,12 @@ cleanup_local() {
 }
 trap cleanup_local EXIT
 
+[[ "${MAPOS_DRY_RUN}" != "0" || -n "${DEPLOY_REMOTE_DIR:-}" ]] || fail "DEPLOY_REMOTE_DIR must explicitly identify the active installation."
 [[ -n "${MAPOS_HOST}" ]] || fail "DEPLOY_HOST is required (for example user@your-server)."
 [[ "${MAPOS_HOST}" != *[[:space:]]* ]] || fail "DEPLOY_HOST must not contain whitespace."
 [[ "${MAPOS_DRY_RUN}" == "0" || "${MAPOS_DRY_RUN}" == "1" ]] || fail "DRY_RUN must be 0 or 1."
+[[ "${MAPOS_USE_SUDO}" == "0" || "${MAPOS_USE_SUDO}" == "1" ]] || fail "DEPLOY_SUDO must be 0 or 1."
+if [[ "${MAPOS_USE_SUDO}" == "1" ]]; then MAPOS_REMOTE_SHELL=(sudo -n bash); fi
 [[ "${MAPOS_TAG}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "Invalid release tag: ${MAPOS_TAG}"
 [[ "${MAPOS_REMOTE_DIR}" == /* && "${MAPOS_REMOTE_DIR}" != *".."* && "${MAPOS_REMOTE_DIR}" != *[[:space:]]* ]] ||
   fail "DEPLOY_REMOTE_DIR must be a safe absolute path."
@@ -82,10 +87,14 @@ COPYFILE_DISABLE=1 tar --no-xattrs -czf "${MAPOS_ARCHIVE}" \
   package-lock.json \
   tsconfig.base.json \
   Dockerfile \
+  .dockerignore \
   apps/api \
   apps/web \
   packages/layer-sdk \
+  packages/adapter-sdk \
   packages/map-runtime \
+  scripts/copy-ai-assets.mjs \
+  scripts/check-release-identity.mjs \
   infra/compose.production.yml \
   infra/nginx.conf \
   infra/security-headers.inc
@@ -106,7 +115,7 @@ if [[ "${MAPOS_DRY_RUN}" == "1" ]]; then
 fi
 
 echo "==> Running read-only VPS preflight"
-ssh "${MAPOS_HOST}" bash -s -- "${MAPOS_REMOTE_DIR}" "${MAPOS_TAG}" <<'MAPOS_PREFLIGHT'
+ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "${MAPOS_HOST}" "${MAPOS_REMOTE_SHELL[@]}" -s -- "${MAPOS_REMOTE_DIR}" "${MAPOS_TAG}" <<'MAPOS_PREFLIGHT'
 set -Eeuo pipefail
 
 MAPOS_REMOTE_DIR="$1"
@@ -158,10 +167,10 @@ MAPOS_PREFLIGHT
 
 MAPOS_REMOTE_ARCHIVE="/tmp/mapos-v3-${MAPOS_TAG}.tar.gz"
 echo "==> Uploading ${MAPOS_ARCHIVE_BYTES} compressed bytes"
-scp -q "${MAPOS_ARCHIVE}" "${MAPOS_HOST}:${MAPOS_REMOTE_ARCHIVE}"
+scp -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -q "${MAPOS_ARCHIVE}" "${MAPOS_HOST}:${MAPOS_REMOTE_ARCHIVE}"
 
 echo "==> Staging, backing up and deploying ${MAPOS_TAG}"
-ssh "${MAPOS_HOST}" bash -s -- "${MAPOS_REMOTE_DIR}" "${MAPOS_TAG}" "${MAPOS_REMOTE_ARCHIVE}" "${MAPOS_PUBLIC_HOST}" <<'MAPOS_REMOTE'
+ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "${MAPOS_HOST}" "${MAPOS_REMOTE_SHELL[@]}" -s -- "${MAPOS_REMOTE_DIR}" "${MAPOS_TAG}" "${MAPOS_REMOTE_ARCHIVE}" "${MAPOS_PUBLIC_HOST}" <<'MAPOS_REMOTE'
 set -Eeuo pipefail
 
 MAPOS_REMOTE_DIR="$1"
@@ -200,12 +209,12 @@ mapos_rollback() {
   set +e
   mapos_release_compose logs --since "${MAPOS_VERIFY_SINCE:-5m}" --tail 120 --no-color api web >&2
   mapos_atomic_current "${MAPOS_PREVIOUS_TARGET}" || MAPOS_ROLLBACK_STATUS=1
-  docker image tag "${MAPOS_OLD_API_IMAGE}" mapos-v3-api:latest || MAPOS_ROLLBACK_STATUS=1
-  docker image tag "${MAPOS_OLD_WEB_IMAGE}" mapos-v3-web:latest || MAPOS_ROLLBACK_STATUS=1
+  docker image tag "${MAPOS_OLD_API_IMAGE}" "${MAPOS_API_IMAGE}" || MAPOS_ROLLBACK_STATUS=1
+  docker image tag "${MAPOS_OLD_WEB_IMAGE}" "${MAPOS_WEB_IMAGE}" || MAPOS_ROLLBACK_STATUS=1
   mapos_current_compose up -d --no-build --force-recreate --wait --wait-timeout 180 api web ||
     MAPOS_ROLLBACK_STATUS=1
-  curl -fsS --max-time 10 http://127.0.0.1:4033/health >/dev/null || MAPOS_ROLLBACK_STATUS=1
-  curl -fsS --max-time 10 -o /dev/null http://127.0.0.1:4032/ || MAPOS_ROLLBACK_STATUS=1
+  curl -fsS --max-time 10 "http://127.0.0.1:${MAPOS_API_PORT}/health" >/dev/null || MAPOS_ROLLBACK_STATUS=1
+  curl -fsS --max-time 10 -o /dev/null "http://127.0.0.1:${MAPOS_WEB_PORT}/" || MAPOS_ROLLBACK_STATUS=1
   set -e
   if [[ "${MAPOS_ROLLBACK_STATUS}" -eq 0 ]]; then
     echo "deploy: previous release restored and healthy" >&2
@@ -277,22 +286,42 @@ sed -i '/^MODELS_HOST_DIR=/d' "${MAPOS_RELEASE_ENV}"
 printf '\nMODELS_HOST_DIR=%s/models\n' "${MAPOS_RELEASE_DIR}" >> "${MAPOS_RELEASE_ENV}"
 mapos_release_compose config -q
 
+# Resolve the deployment-specific Compose project and host ports from the inherited environment.
+# This keeps preview installations such as mapos2 isolated from the primary mapos-v3 images and
+# loopback ports during staging, verification and rollback.
+MAPOS_COMPOSE_PROJECT="$(sed -n 's/^MAPOS_COMPOSE_PROJECT=//p' "${MAPOS_RELEASE_ENV}" | tail -n 1)"
+MAPOS_API_PORT="$(sed -n 's/^MAPOS_API_PORT=//p' "${MAPOS_RELEASE_ENV}" | tail -n 1)"
+MAPOS_WEB_PORT="$(sed -n 's/^MAPOS_WEB_PORT=//p' "${MAPOS_RELEASE_ENV}" | tail -n 1)"
+MAPOS_COMPOSE_PROJECT="${MAPOS_COMPOSE_PROJECT:-mapos-v3}"
+MAPOS_API_PORT="${MAPOS_API_PORT:-4033}"
+MAPOS_WEB_PORT="${MAPOS_WEB_PORT:-4032}"
+[[ "${MAPOS_COMPOSE_PROJECT}" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || { echo "deploy: invalid compose project" >&2; exit 1; }
+[[ "${MAPOS_API_PORT}" =~ ^[0-9]+$ && "${MAPOS_WEB_PORT}" =~ ^[0-9]+$ ]] || { echo "deploy: invalid host ports" >&2; exit 1; }
+MAPOS_API_IMAGE="${MAPOS_COMPOSE_PROJECT}-api:latest"
+MAPOS_WEB_IMAGE="${MAPOS_COMPOSE_PROJECT}-web:latest"
+
 # Save the exact images currently running. A staged build replaces the implicit :latest tags,
 # while the old containers remain live until the atomic cutover.
 MAPOS_OLD_API_CONTAINER="$(mapos_current_compose ps -q api)"
 MAPOS_OLD_WEB_CONTAINER="$(mapos_current_compose ps -q web)"
 MAPOS_OLD_API_IMAGE="$(docker inspect -f '{{.Image}}' "${MAPOS_OLD_API_CONTAINER}")"
 MAPOS_OLD_WEB_IMAGE="$(docker inspect -f '{{.Image}}' "${MAPOS_OLD_WEB_CONTAINER}")"
-docker image tag "${MAPOS_OLD_API_IMAGE}" "mapos-v3-api:rollback-${MAPOS_TAG}"
-docker image tag "${MAPOS_OLD_WEB_IMAGE}" "mapos-v3-web:rollback-${MAPOS_TAG}"
+docker image tag "${MAPOS_OLD_API_IMAGE}" "${MAPOS_COMPOSE_PROJECT}-api:rollback-${MAPOS_TAG}"
+docker image tag "${MAPOS_OLD_WEB_IMAGE}" "${MAPOS_COMPOSE_PROJECT}-web:rollback-${MAPOS_TAG}"
 
 set +e
 (
   set -Eeuo pipefail
   echo "deploy: building staged API and web images while the current release stays live"
-  mapos_release_compose build api web
-  docker image inspect mapos-v3-api:latest >/dev/null
-  docker image inspect mapos-v3-web:latest >/dev/null
+  # Two TypeScript builds in parallel exhaust this shared 8 GiB host during other releases.
+  # Keep the same staged/rollback flow, but bound peak build memory.
+  mapos_release_compose build api
+  mapos_release_compose build web
+  docker image inspect "${MAPOS_API_IMAGE}" >/dev/null
+  docker image inspect "${MAPOS_WEB_IMAGE}" >/dev/null
+  # Materialise the European overview pyramid from imported local data before cutover.
+  # Persistent volume is shared across releases; this neither downloads providers nor migrates DB.
+  mapos_release_compose run --rm --no-deps api node apps/api/dist/geo/warmBoundaryTiles.js </dev/null
 
   # The API runs its forward migrations before becoming healthy. Take and verify a consistent
   # logical backup immediately before it can start, and preserve the production env alongside it.
@@ -393,7 +422,7 @@ set +e
   done
   [[ "${MAPOS_CANDIDATE_HEALTH_OK}" == "1" ]]
   docker exec "${MAPOS_CANDIDATE_HEALTH_CONTAINER}" node --input-type=module -e \
-    'const drill = await import("./apps/api/dist/releaseHttpDrill.js"); await drill.runReleaseHttpDrill();'
+    'const drill = await import("./apps/api/dist/releaseHttpDrill.js"); await drill.runReleaseHttpDrill(); const aiDrill = await import("./apps/api/dist/services/ai/overviewPostgresDrill.js"); await aiDrill.runOverviewPostgresDrill();'
   docker rm -f "${MAPOS_CANDIDATE_HEALTH_CONTAINER}" >/dev/null
   MAPOS_CANDIDATE_HEALTH_CONTAINER=""
 
@@ -440,7 +469,7 @@ set +e
     </dev/null
   mapos_restore_drill_cleanup
   trap - EXIT
-  printf 'release=%s\nrestored_tables=%s\nlegacy_baseline_precondition=pass\ncandidate_migrations=0001-0009-idempotent\ndurable_preview_store=pass\ncandidate_api_http_health=pass\ncandidate_web_http_health=pass\nlayer_import_http_postgres=pass\ndata_rights_postgres=pass\nprevious_image_read_write=pass\nverified_at=%s\n' \
+  printf 'release=%s\nrestored_tables=%s\nlegacy_baseline_precondition=pass\ncandidate_migrations=all-registered-idempotent\ndurable_preview_store=pass\ncandidate_api_http_health=pass\ncandidate_web_http_health=pass\nlayer_import_http_postgres=pass\ndata_rights_postgres=pass\nprevious_image_read_write=pass\nverified_at=%s\n' \
     "${MAPOS_TAG}" "${MAPOS_RESTORED_TABLES}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     > "${MAPOS_BACKUP_DIR}/RESTORE_DRILL.txt"
 )
@@ -450,9 +479,9 @@ set -e
 if [[ "${MAPOS_PREPARE_STATUS}" -ne 0 ]]; then
   echo "deploy: staged build or backup failed; restoring the previous image tags" >&2
   set +e
-  docker image tag "${MAPOS_OLD_API_IMAGE}" mapos-v3-api:latest
+  docker image tag "${MAPOS_OLD_API_IMAGE}" "${MAPOS_API_IMAGE}"
   MAPOS_RESTORE_API_STATUS=$?
-  docker image tag "${MAPOS_OLD_WEB_IMAGE}" mapos-v3-web:latest
+  docker image tag "${MAPOS_OLD_WEB_IMAGE}" "${MAPOS_WEB_IMAGE}"
   MAPOS_RESTORE_WEB_STATUS=$?
   set -e
   if [[ "${MAPOS_RESTORE_API_STATUS}" -ne 0 || "${MAPOS_RESTORE_WEB_STATUS}" -ne 0 ]]; then
@@ -470,12 +499,22 @@ set +e
   set -Eeuo pipefail
   mapos_release_compose up -d --no-build --force-recreate --wait --wait-timeout 180 api web
 
-  MAPOS_API_HEALTH="$(curl -fsS --max-time 10 http://127.0.0.1:4033/health)"
+  MAPOS_API_HEALTH="$(curl -fsS --max-time 10 "http://127.0.0.1:${MAPOS_API_PORT}/health")"
   grep -q '"status":"ok"' <<<"${MAPOS_API_HEALTH}"
-  curl -fsS --max-time 10 -o /dev/null http://127.0.0.1:4032/
+  curl -fsS --max-time 10 -o /dev/null "http://127.0.0.1:${MAPOS_WEB_PORT}/"
+  MAPOS_WEB_RELEASE="$(curl -fsS --max-time 10 --max-filesize 4096 "http://127.0.0.1:${MAPOS_WEB_PORT}/release.json")"
+  mapos_release_compose exec -T api node --input-type=module - "${MAPOS_TAG}" "${MAPOS_API_HEALTH}" "${MAPOS_WEB_RELEASE}" \
+    < "${MAPOS_RELEASE_DIR}/scripts/check-release-identity.mjs"
+
+  # Validate the routed public origin inside the rollback boundary too: loopback health alone
+  # cannot detect a reverse proxy still pointing to the previous installation.
+  MAPOS_PUBLIC_HEALTH="$(curl -fsS --max-time 15 --max-filesize 4096 "https://${MAPOS_PUBLIC_HOST}/api/health")"
+  MAPOS_PUBLIC_RELEASE="$(curl -fsS --max-time 15 --max-filesize 4096 "https://${MAPOS_PUBLIC_HOST}/release.json")"
+  mapos_release_compose exec -T api node --input-type=module - "${MAPOS_TAG}" "${MAPOS_PUBLIC_HEALTH}" "${MAPOS_PUBLIC_RELEASE}" \
+    < "${MAPOS_RELEASE_DIR}/scripts/check-release-identity.mjs"
 
   MAPOS_BLOCKED_MODEL_STATUS="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
-    "http://127.0.0.1:4032/models/cube-guy-character.glb")"
+    "http://127.0.0.1:${MAPOS_WEB_PORT}/models/cube-guy-character.glb")"
   [[ "${MAPOS_BLOCKED_MODEL_STATUS}" == "404" ]]
 
   for MAPOS_SERVICE in postgres api web; do
@@ -500,8 +539,8 @@ set +e
   MAPOS_HTTP_TIMINGS="${MAPOS_BACKUP_DIR}/HTTP_SOAK.raw"
   : > "${MAPOS_HTTP_TIMINGS}"
   for MAPOS_SOAK_ITERATION in {1..30}; do
-    curl -fsS --max-time 10 -o /dev/null -w '%{time_total}\n' http://127.0.0.1:4033/health >> "${MAPOS_HTTP_TIMINGS}"
-    curl -fsS --max-time 10 -o /dev/null -w '%{time_total}\n' http://127.0.0.1:4033/layers >> "${MAPOS_HTTP_TIMINGS}"
+    curl -fsS --max-time 10 -o /dev/null -w '%{time_total}\n' "http://127.0.0.1:${MAPOS_API_PORT}/health" >> "${MAPOS_HTTP_TIMINGS}"
+    curl -fsS --max-time 10 -o /dev/null -w '%{time_total}\n' "http://127.0.0.1:${MAPOS_API_PORT}/layers" >> "${MAPOS_HTTP_TIMINGS}"
   done
   sort -n "${MAPOS_HTTP_TIMINGS}" > "${MAPOS_HTTP_TIMINGS}.sorted"
   MAPOS_HTTP_COUNT="$(wc -l < "${MAPOS_HTTP_TIMINGS}.sorted" | tr -d '[:space:]')"
@@ -527,12 +566,12 @@ MAPOS_REMOTE
 
 # A second SSH process is intentional: it cannot share or accidentally consume the rollout
 # script's stdin, and prevents a staged-only release from ever being reported as deployed.
-ssh "${MAPOS_HOST}" bash -s -- "${MAPOS_REMOTE_DIR}" "${MAPOS_TAG}" <<'MAPOS_ACTIVATION_CHECK'
+ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "${MAPOS_HOST}" "${MAPOS_REMOTE_SHELL[@]}" -s -- "${MAPOS_REMOTE_DIR}" "${MAPOS_TAG}" <<'MAPOS_ACTIVATION_CHECK'
 set -Eeuo pipefail
 MAPOS_REMOTE_DIR="$1"
 MAPOS_TAG="$2"
 [[ "$(readlink "${MAPOS_REMOTE_DIR}/current")" == "releases/${MAPOS_TAG}" ]]
 MAPOS_ACTIVATION_CHECK
 
-echo "==> Deployed ${MAPOS_TAG} on ports 4032/4033 — https://${MAPOS_PUBLIC_HOST}"
+echo "==> Deployed ${MAPOS_TAG} — https://${MAPOS_PUBLIC_HOST}"
 echo "    Public smoke checks remain intentionally separate to avoid unnecessary mobile data."

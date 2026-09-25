@@ -8,11 +8,7 @@
  */
 
 import { config } from "../config.js";
-import { DisabledAiAdapter, OpenAiCompatibleAdapter } from "./ai/adapters.js";
-import type { AiModelAdapter, AiModelProfile } from "./ai/contracts.js";
-import { AiGateway } from "./ai/gateway.js";
-import { operationalTelemetry } from "../observability/operationalTelemetry.js";
-import type { AiRunTrace } from "./ai/contracts.js";
+import { __resetAiModelRuntime, aiModelRuntime, recordAiRunTrace } from "./ai/modelRuntime.js";
 
 export interface CmlRequest {
   cacheKey: string;
@@ -36,114 +32,23 @@ export interface CmlAnswer {
   cached: boolean;
 }
 
-let runtime: { gateway: AiGateway; profile: AiModelProfile } | null = null;
-
 /** Production observer for metadata-only AI aggregates. The trace contract contains richer
  * diagnostics, but this boundary intentionally forwards only status/cache/duration. */
-export function recordCmlTrace(trace: AiRunTrace): void {
-  operationalTelemetry.recordAiRun({
-    status: trace.status,
-    cached: trace.meta.cached,
-    durationMs: trace.meta.durationMs
-  });
-}
-
-const capabilities: AiModelProfile["capabilities"] = {
-  text: true,
-  jsonSchema: true,
-  tools: false,
-  streaming: false,
-  vision: false
-};
-
-function disabledRuntime() {
-  const adapter = new DisabledAiAdapter();
-  return {
-    gateway: new AiGateway([adapter], { onTrace: recordCmlTrace }),
-    profile: {
-      id: "disabled",
-      providerId: adapter.id,
-      model: "none",
-      capabilities: adapter.capabilities,
-      limits: {
-        contextTokens: 4_000,
-        outputTokens: 1_000,
-        maxToolRounds: 0,
-        timeoutMs: 15_000,
-        maxResponseBytes: 16_384
-      },
-      privacy: {
-        execution: "disabled",
-        allowedDataClasses: [],
-        retention: "none"
-      },
-      costPolicy: "economy"
-    } satisfies AiModelProfile
-  };
-}
-
-function configuredRuntime(): { gateway: AiGateway; profile: AiModelProfile } {
-  if (!config.aiGatewayEnabled) return disabledRuntime();
-
-  let adapter: AiModelAdapter | null = null;
-  let model = "none";
-  if (config.cmlProvider === "openai" && config.openaiKey) {
-    model = config.openaiModel;
-    adapter = new OpenAiCompatibleAdapter({
-      id: "openai",
-      baseUrl: "https://api.openai.com/v1",
-      apiKey: config.openaiKey,
-      model
-    });
-  } else if (config.cmlProvider === "ollama" && config.ollamaKey) {
-    model = config.ollamaModel;
-    adapter = new OpenAiCompatibleAdapter({
-      id: "ollama",
-      baseUrl: config.ollamaBaseUrl,
-      apiKey: config.ollamaKey,
-      model
-    });
-  }
-  if (!adapter) return disabledRuntime();
-
-  const profile: AiModelProfile = {
-    id: `${adapter.id}-economy`,
-    providerId: adapter.id,
-    model,
-    capabilities,
-    limits: {
-      contextTokens: 8_000,
-      outputTokens: 2_000,
-      maxToolRounds: 0,
-      timeoutMs: 25_000,
-      maxResponseBytes: 16_384
-    },
-    privacy: {
-      execution: "external",
-      allowedDataClasses: ["public", "account-private"],
-      retention: "provider-policy"
-    },
-    costPolicy: "economy"
-  };
-  return { gateway: new AiGateway([adapter], { onTrace: recordCmlTrace }), profile };
-}
-
-function currentRuntime() {
-  runtime ??= configuredRuntime();
-  return runtime;
-}
+export const recordCmlTrace = recordAiRunTrace;
 
 /** Test/config seam. No generated answer or prompt remains after reset. */
 export function __resetCmlCache() {
-  runtime?.gateway.reset();
-  runtime = null;
+  __resetAiModelRuntime();
 }
 
 export async function askCml(request: CmlRequest): Promise<CmlAnswer | null> {
   const accountPrivate =
     request.accountPrivateConsent === true && Boolean(request.permissionPartition?.trim());
   if (!request.verifiedPublic && !accountPrivate) return null;
-  const { gateway, profile } = currentRuntime();
+  const { gateway, profiles } = aiModelRuntime();
+  // Short generated prose is the fast slot's job; the strong slot is reserved for the one answer
+  // per request that has to be right.
+  const profile = profiles("fast")[0]!;
   const outcome = await gateway.run({
     taskId: "legacy-public-text",
     templateVersion: "legacy-public-text.v1",

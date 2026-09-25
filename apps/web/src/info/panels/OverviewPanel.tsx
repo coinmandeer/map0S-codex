@@ -1,6 +1,7 @@
 import { PLACE_SOURCE_BY_ID, distanceMeters } from "@mapos/layer-sdk";
 import { getMapStore } from "../../store/mapStore";
 import { useMapStoreSnapshot } from "../../store/useMapStoreSnapshot";
+import { Chip, IconButton } from "../../ui/kit";
 import type { InfoPanelProps } from "../registry";
 
 function formatDistance(meters: number): string {
@@ -40,10 +41,20 @@ export function OverviewPanel({ place }: InfoPanelProps) {
         <dt>GPS</dt>
         <dd className="info-gps">
           <span>{gps}</span>
-          <button className="btn small" type="button" data-testid="copy-gps" onClick={copyGps}>
-            Kopírovat
-          </button>
+          <IconButton
+            icon="content_copy"
+            label="Kopírovat GPS"
+            size="sm"
+            testId="copy-gps"
+            onClick={() => void copyGps()}
+          />
         </dd>
+        {place.elevationM !== undefined && (
+          <>
+            <dt>Nadm. výška</dt>
+            <dd>{Math.round(place.elevationM)} m n. m.</dd>
+          </>
+        )}
       </dl>
       {/* Which sources vouch for this place. Shown rather than hidden: a place confirmed by
           three independent sources is a different thing from one scraped pin. */}
@@ -51,13 +62,10 @@ export function OverviewPanel({ place }: InfoPanelProps) {
         <span className="meta">Zdroje</span>
         <div className="tag-grid">
           {place.sources.map((source) => (
-            <span
+            <Chip
               key={`${source.source}:${source.sourceRef}`}
-              className="tag"
-              title={PLACE_SOURCE_BY_ID[source.source]?.attribution ?? source.source}
-            >
-              {PLACE_SOURCE_BY_ID[source.source]?.label ?? source.source}
-            </span>
+              label={PLACE_SOURCE_BY_ID[source.source]?.label ?? source.source}
+            />
           ))}
         </div>
         {caveats.map((caveat) => (

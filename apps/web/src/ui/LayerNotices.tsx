@@ -8,15 +8,18 @@ import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
  * an area that genuinely has nothing in it are the same blank map, and the user is left to
  * guess which one they're looking at.
  */
-export function LayerNotices() {
+export function LayerNotices({ inline = false }: { inline?: boolean } = {}) {
   const notices = useMapStoreSnapshot((s) => s.layerNotices);
   const active = useMapStoreSnapshot((s) => s.activeLayers);
+  const inAreaControls = useMapStoreSnapshot(
+    (s) => s.mode !== "game" && (s.mode === "discover" || !!s.areaSelection)
+  );
 
   const visible = Object.entries(notices).filter(([layerId]) => active[layerId]?.visible);
-  if (!visible.length) return null;
+  if (!visible.length || (!inline && inAreaControls)) return null;
 
   return (
-    <div className="layer-notices" data-testid="layer-notice">
+    <div className={inline ? "area-layer-notices" : "layer-notices"} data-testid="layer-notice">
       {visible.map(([layerId, message]) => {
         const manifest = getLayerPlugin(layerId)?.manifest;
         return (

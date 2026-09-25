@@ -16,13 +16,18 @@ import type { LayerAttribution } from "./types.js";
  *   `GET /basemap/:provider/:mapset/:z/:x/:y` and the key stays on the server.
  */
 
-export type BasemapGroup = "street" | "outdoor" | "satellite" | "terrain";
+/** `historic` and `national` have no keyless members yet; they exist so the historical imagery
+ *  and the national geoportals land in a named category instead of being appended to
+ *  "Základní". The picker skips a group with nothing in it. */
+export type BasemapGroup = "street" | "outdoor" | "satellite" | "terrain" | "historic" | "national";
 
 export const BASEMAP_GROUP_LABELS: Record<BasemapGroup, string> = {
   street: "Základní",
-  outdoor: "Turistické",
+  outdoor: "Turistické a outdoor",
   satellite: "Letecké a satelitní",
-  terrain: "Terén a reliéf"
+  terrain: "Terén a reliéf",
+  historic: "Historické",
+  national: "Národní geoportály"
 };
 
 export interface BasemapDefinition {
@@ -43,6 +48,8 @@ export interface BasemapDefinition {
   requiresCapability?: string;
   attribution: LayerAttribution[];
   maxzoom?: number;
+  minzoom?: number;
+  bounds?: [number, number, number, number];
   tileSize?: number;
   /** Imagery with no labels — pairs with a label overlay so places stay findable. */
   imagery?: boolean;
@@ -50,6 +57,10 @@ export interface BasemapDefinition {
   darkVariantId?: string;
   /** Something the user should know before switching, e.g. patchy zoom coverage. */
   note?: string;
+  /** Illustration for the picker card. Defaults by convention to `/basemaps/<id>.webp`, which
+   *  `scripts/render-basemap-thumbs.mjs` writes; set it to override, e.g. where an upstream's
+   *  terms do not allow republishing a rendered sample. */
+  thumbnail?: string;
   /** Vector schema whose building polygons can be extruded. Absent means no 3D. */
   buildingSourceLayer?: string;
 }
@@ -73,6 +84,28 @@ const OSM: LayerAttribution = {
 };
 
 export const BASEMAPS: BasemapDefinition[] = [
+  {
+    id: "cuzk-ortofoto",
+    label: "Ortofoto ČR — ČÚZK",
+    group: "national",
+    kind: "raster",
+    hint: "Oficiální letecký podklad České republiky",
+    imagery: true,
+    tiles: ["https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO_WM/MapServer/tile/{z}/{y}/{x}"],
+    bounds: [12.09, 48.55, 18.87, 51.06],
+    maxzoom: 19,
+    tileSize: 256,
+    note: "Pokrytí pouze ČR. Mimo území zvolte jiný podklad; datum snímkování se liší podle místa.",
+    thumbnail:
+      "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO_WM/MapServer/tile/11/693/1106",
+    attribution: [
+      {
+        label: "© ČÚZK — Ortofoto ČR",
+        url: "https://geoportal.cuzk.gov.cz/",
+        license: "Podmínky užití dat a služeb Zeměměřického úřadu"
+      }
+    ]
+  },
   // ---- Keyless: everything below works in a fresh clone -------------------------------
   {
     id: "carto-voyager",
@@ -133,6 +166,53 @@ export const BASEMAPS: BasemapDefinition[] = [
     attribution: [
       OSM,
       { label: "OpenFreeMap", url: "https://openfreemap.org/", license: "OpenMapTiles" }
+    ]
+  },
+  {
+    id: "openfreemap-dark",
+    label: "OpenFreeMap Dark",
+    group: "street",
+    hint: "Dark keyless vector style — the night mode that still draws 3D buildings",
+    kind: "vector",
+    styleUrl: "https://tiles.openfreemap.org/styles/dark",
+    buildingSourceLayer: "building",
+    attribution: [
+      OSM,
+      { label: "OpenFreeMap", url: "https://openfreemap.org/", license: "OpenMapTiles" }
+    ]
+  },
+  {
+    id: "osm-france",
+    label: "OSM France",
+    group: "street",
+    hint: "The French community's OSM style — dense local detail, keyless",
+    kind: "raster",
+    tiles: [
+      "https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
+      "https://b.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
+      "https://c.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png"
+    ],
+    maxzoom: 20,
+    attribution: [
+      OSM,
+      {
+        label: "OpenStreetMap France",
+        url: "https://www.openstreetmap.fr/",
+        license: "CC-BY-SA-2.0"
+      }
+    ]
+  },
+  {
+    id: "opnvkarte",
+    label: "ÖPNV-Karte",
+    group: "street",
+    hint: "Public transport map: bus, tram, rail and ferry lines",
+    kind: "raster",
+    tiles: ["https://tileserver.memomaps.de/tilegen/{z}/{x}/{y}.png"],
+    maxzoom: 18,
+    attribution: [
+      OSM,
+      { label: "ÖPNVKarte", url: "https://www.öpnvkarte.de/", license: "CC-BY-SA-2.0" }
     ]
   },
   {
@@ -217,6 +297,81 @@ export const BASEMAPS: BasemapDefinition[] = [
     note: "Denní mozaika v nízkém rozlišení — na počasí a požáry, ne na navigaci.",
     attribution: [
       { label: "NASA GIBS / EOSDIS", url: "https://earthdata.nasa.gov/", license: "public domain" }
+    ]
+  },
+  {
+    // Full cartography belongs to backgrounds; the separate overlay uses CyclOSM Lite.
+    id: "cyclosm",
+    label: "CyclOSM — plná cyklistická mapa",
+    group: "outdoor",
+    hint: "Plný podklad: cyklostezky, sítě tras, povrchy a služby pro kola",
+    kind: "raster",
+    tiles: [
+      "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+      "https://b.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+      "https://c.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
+    ],
+    maxzoom: 20,
+    attribution: [
+      OSM,
+      { label: "CyclOSM", url: "https://www.cyclosm.org/", license: "CC-BY-SA-2.0" }
+    ]
+  },
+  {
+    id: "osm-hot",
+    label: "OSM Humanitarian",
+    group: "street",
+    hint: "High-contrast OSM style built for field and crisis mapping",
+    kind: "raster",
+    tiles: [
+      "https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+      "https://b.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png"
+    ],
+    maxzoom: 19,
+    attribution: [
+      OSM,
+      {
+        label: "Tiles: OpenStreetMap France",
+        url: "https://www.openstreetmap.fr/usage/",
+        license: "OpenStreetMap France usage policy"
+      },
+      {
+        label: "Humanitarian OpenStreetMap Team",
+        url: "https://www.hotosm.org/",
+        license: "CC-BY-SA-2.0"
+      }
+    ]
+  },
+  {
+    id: "carto-positron",
+    label: "CARTO Positron",
+    group: "street",
+    hint: "Almost colourless background — data layers carry all the colour",
+    kind: "vector",
+    styleUrl: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    darkVariantId: "carto-dark",
+    buildingSourceLayer: "building",
+    attribution: [
+      OSM,
+      { label: "© CARTO", url: "https://carto.com/attributions", license: "CARTO Maps API Terms" }
+    ]
+  },
+  {
+    id: "esri-topo",
+    label: "Esri World Topo",
+    group: "terrain",
+    hint: "Terrain, land cover and place names in one readable sheet",
+    kind: "raster",
+    tiles: [
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
+    ],
+    maxzoom: 19,
+    attribution: [
+      {
+        label: "Esri, HERE, Garmin, FAO, NOAA",
+        url: "https://www.esri.com/en-us/legal/terms/full-master-agreement",
+        license: "Esri Master Agreement"
+      }
     ]
   },
   {
@@ -317,7 +472,7 @@ export const BASEMAPS: BasemapDefinition[] = [
     hint: "Google satelitní podklad bez popisků",
     kind: "raster",
     proxy: { provider: "google", mapset: "satellite" },
-    requiresCapability: "googleTiles",
+    requiresCapability: "googleSatellite",
     maxzoom: 22,
     imagery: true,
     attribution: [

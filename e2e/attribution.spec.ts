@@ -30,7 +30,7 @@ test.describe("attribution", () => {
     await page.getByTestId("settings-btn").click();
 
     const list = page.getByTestId("attribution-list");
-    await list.locator("summary").click();
+    await page.getByTestId("attribution-list-sources").click();
 
     await expect(list).toContainText("OpenStreetMap");
     // Off by default, so its presence proves the list is the catalogue and not the live credits.

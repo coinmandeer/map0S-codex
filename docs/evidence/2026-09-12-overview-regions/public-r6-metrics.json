@@ -1,0 +1,733 @@
+{
+  "at": "2026-09-12T18:48:34.075Z",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "results": [
+    {
+      "name": "Praha",
+      "first": {
+        "status": 200,
+        "firstMs": 80,
+        "firstMapMs": 425,
+        "totalMs": 1744,
+        "decodedBytes": 173179,
+        "events": 9,
+        "terminal": "partial",
+        "composition": "facts",
+        "sections": [
+          {
+            "id": "summary",
+            "claims": 3
+          },
+          {
+            "id": "character",
+            "claims": 1
+          },
+          {
+            "id": "statistics",
+            "claims": 1
+          },
+          {
+            "id": "highlights",
+            "claims": 8
+          },
+          {
+            "id": "context",
+            "claims": 10
+          },
+          {
+            "id": "local-index",
+            "claims": 8
+          }
+        ],
+        "summaryWords": 38,
+        "mapRefs": 8,
+        "sourceRecords": 24,
+        "limitations": [
+          "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+        ],
+        "phases": [
+          "Ověřuji identitu a dostupné podklady",
+          "Základní informace připravené · doplňuji zdroje"
+        ],
+        "encoding": null
+      },
+      "warm": [
+        {
+          "status": 200,
+          "firstMs": 237,
+          "firstMapMs": 237,
+          "totalMs": 237,
+          "decodedBytes": 35700,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "summary",
+              "claims": 3
+            },
+            {
+              "id": "character",
+              "claims": 1
+            },
+            {
+              "id": "statistics",
+              "claims": 1
+            },
+            {
+              "id": "highlights",
+              "claims": 8
+            },
+            {
+              "id": "context",
+              "claims": 10
+            },
+            {
+              "id": "local-index",
+              "claims": 8
+            }
+          ],
+          "summaryWords": 38,
+          "mapRefs": 8,
+          "sourceRecords": 24,
+          "limitations": [
+            "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+          ],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 568,
+          "firstMapMs": 568,
+          "totalMs": 568,
+          "decodedBytes": 35700,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "summary",
+              "claims": 3
+            },
+            {
+              "id": "character",
+              "claims": 1
+            },
+            {
+              "id": "statistics",
+              "claims": 1
+            },
+            {
+              "id": "highlights",
+              "claims": 8
+            },
+            {
+              "id": "context",
+              "claims": 10
+            },
+            {
+              "id": "local-index",
+              "claims": 8
+            }
+          ],
+          "summaryWords": 38,
+          "mapRefs": 8,
+          "sourceRecords": 24,
+          "limitations": [
+            "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+          ],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 857,
+          "firstMapMs": 857,
+          "totalMs": 857,
+          "decodedBytes": 35700,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "summary",
+              "claims": 3
+            },
+            {
+              "id": "character",
+              "claims": 1
+            },
+            {
+              "id": "statistics",
+              "claims": 1
+            },
+            {
+              "id": "highlights",
+              "claims": 8
+            },
+            {
+              "id": "context",
+              "claims": 10
+            },
+            {
+              "id": "local-index",
+              "claims": 8
+            }
+          ],
+          "summaryWords": 38,
+          "mapRefs": 8,
+          "sourceRecords": 24,
+          "limitations": [
+            "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+          ],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 332,
+          "firstMapMs": 332,
+          "totalMs": 332,
+          "decodedBytes": 35700,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "summary",
+              "claims": 3
+            },
+            {
+              "id": "character",
+              "claims": 1
+            },
+            {
+              "id": "statistics",
+              "claims": 1
+            },
+            {
+              "id": "highlights",
+              "claims": 8
+            },
+            {
+              "id": "context",
+              "claims": 10
+            },
+            {
+              "id": "local-index",
+              "claims": 8
+            }
+          ],
+          "summaryWords": 38,
+          "mapRefs": 8,
+          "sourceRecords": 24,
+          "limitations": [
+            "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+          ],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 818,
+          "firstMapMs": 818,
+          "totalMs": 818,
+          "decodedBytes": 35700,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "summary",
+              "claims": 3
+            },
+            {
+              "id": "character",
+              "claims": 1
+            },
+            {
+              "id": "statistics",
+              "claims": 1
+            },
+            {
+              "id": "highlights",
+              "claims": 8
+            },
+            {
+              "id": "context",
+              "claims": 10
+            },
+            {
+              "id": "local-index",
+              "claims": 8
+            }
+          ],
+          "summaryWords": 38,
+          "mapRefs": 8,
+          "sourceRecords": 24,
+          "limitations": [
+            "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+          ],
+          "phases": [],
+          "encoding": null
+        }
+      ]
+    },
+    {
+      "name": "Tarragona",
+      "first": {
+        "status": 200,
+        "firstMs": 81,
+        "firstMapMs": 457,
+        "totalMs": 1579,
+        "decodedBytes": 145555,
+        "events": 9,
+        "terminal": "partial",
+        "composition": "facts",
+        "sections": [
+          {
+            "id": "summary",
+            "claims": 3
+          },
+          {
+            "id": "character",
+            "claims": 1
+          },
+          {
+            "id": "statistics",
+            "claims": 1
+          },
+          {
+            "id": "highlights",
+            "claims": 8
+          },
+          {
+            "id": "context",
+            "claims": 5
+          },
+          {
+            "id": "local-index",
+            "claims": 8
+          }
+        ],
+        "summaryWords": 36,
+        "mapRefs": 8,
+        "sourceRecords": 19,
+        "limitations": [
+          "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+        ],
+        "phases": [
+          "Ověřuji identitu a dostupné podklady",
+          "Základní informace připravené · doplňuji zdroje"
+        ],
+        "encoding": null
+      },
+      "warm": [
+        {
+          "status": 200,
+          "firstMs": 551,
+          "firstMapMs": 551,
+          "totalMs": 551,
+          "decodedBytes": 29481,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "summary",
+              "claims": 3
+            },
+            {
+              "id": "character",
+              "claims": 1
+            },
+            {
+              "id": "statistics",
+              "claims": 1
+            },
+            {
+              "id": "highlights",
+              "claims": 8
+            },
+            {
+              "id": "context",
+              "claims": 5
+            },
+            {
+              "id": "local-index",
+              "claims": 8
+            }
+          ],
+          "summaryWords": 36,
+          "mapRefs": 8,
+          "sourceRecords": 19,
+          "limitations": [
+            "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+          ],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 714,
+          "firstMapMs": 714,
+          "totalMs": 714,
+          "decodedBytes": 29481,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "summary",
+              "claims": 3
+            },
+            {
+              "id": "character",
+              "claims": 1
+            },
+            {
+              "id": "statistics",
+              "claims": 1
+            },
+            {
+              "id": "highlights",
+              "claims": 8
+            },
+            {
+              "id": "context",
+              "claims": 5
+            },
+            {
+              "id": "local-index",
+              "claims": 8
+            }
+          ],
+          "summaryWords": 36,
+          "mapRefs": 8,
+          "sourceRecords": 19,
+          "limitations": [
+            "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+          ],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 347,
+          "firstMapMs": 347,
+          "totalMs": 347,
+          "decodedBytes": 29481,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "summary",
+              "claims": 3
+            },
+            {
+              "id": "character",
+              "claims": 1
+            },
+            {
+              "id": "statistics",
+              "claims": 1
+            },
+            {
+              "id": "highlights",
+              "claims": 8
+            },
+            {
+              "id": "context",
+              "claims": 5
+            },
+            {
+              "id": "local-index",
+              "claims": 8
+            }
+          ],
+          "summaryWords": 36,
+          "mapRefs": 8,
+          "sourceRecords": 19,
+          "limitations": [
+            "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+          ],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 507,
+          "firstMapMs": 507,
+          "totalMs": 507,
+          "decodedBytes": 29481,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "summary",
+              "claims": 3
+            },
+            {
+              "id": "character",
+              "claims": 1
+            },
+            {
+              "id": "statistics",
+              "claims": 1
+            },
+            {
+              "id": "highlights",
+              "claims": 8
+            },
+            {
+              "id": "context",
+              "claims": 5
+            },
+            {
+              "id": "local-index",
+              "claims": 8
+            }
+          ],
+          "summaryWords": 36,
+          "mapRefs": 8,
+          "sourceRecords": 19,
+          "limitations": [
+            "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+          ],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 396,
+          "firstMapMs": 396,
+          "totalMs": 396,
+          "decodedBytes": 29481,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "summary",
+              "claims": 3
+            },
+            {
+              "id": "character",
+              "claims": 1
+            },
+            {
+              "id": "statistics",
+              "claims": 1
+            },
+            {
+              "id": "highlights",
+              "claims": 8
+            },
+            {
+              "id": "context",
+              "claims": 5
+            },
+            {
+              "id": "local-index",
+              "claims": 8
+            }
+          ],
+          "summaryWords": 36,
+          "mapRefs": 8,
+          "sourceRecords": 19,
+          "limitations": [
+            "Počty z lokálního indexu nejsou úplným pokrytím oblasti. Údaje za širší statistický region nejsou místním měřením."
+          ],
+          "phases": [],
+          "encoding": null
+        }
+      ]
+    },
+    {
+      "name": "unknown-coordinate",
+      "first": {
+        "status": 200,
+        "firstMs": 85,
+        "firstMapMs": null,
+        "totalMs": 85,
+        "decodedBytes": 4572,
+        "events": 4,
+        "terminal": "partial",
+        "composition": "facts",
+        "sections": [
+          {
+            "id": "facts",
+            "claims": 1
+          }
+        ],
+        "mapRefs": 0,
+        "sourceRecords": 1,
+        "limitations": ["Nejbližší podnik není identitou vybraného bodu."],
+        "phases": [
+          "Ověřuji identitu a dostupné podklady",
+          "Základní informace připravené · doplňuji zdroje"
+        ],
+        "encoding": null
+      },
+      "warm": [
+        {
+          "status": 200,
+          "firstMs": 50,
+          "firstMapMs": null,
+          "totalMs": 50,
+          "decodedBytes": 1283,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "facts",
+              "claims": 1
+            }
+          ],
+          "mapRefs": 0,
+          "sourceRecords": 1,
+          "limitations": ["Nejbližší podnik není identitou vybraného bodu."],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 50,
+          "firstMapMs": null,
+          "totalMs": 51,
+          "decodedBytes": 1283,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "facts",
+              "claims": 1
+            }
+          ],
+          "mapRefs": 0,
+          "sourceRecords": 1,
+          "limitations": ["Nejbližší podnik není identitou vybraného bodu."],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 67,
+          "firstMapMs": null,
+          "totalMs": 67,
+          "decodedBytes": 1283,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "facts",
+              "claims": 1
+            }
+          ],
+          "mapRefs": 0,
+          "sourceRecords": 1,
+          "limitations": ["Nejbližší podnik není identitou vybraného bodu."],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 61,
+          "firstMapMs": null,
+          "totalMs": 61,
+          "decodedBytes": 1283,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "facts",
+              "claims": 1
+            }
+          ],
+          "mapRefs": 0,
+          "sourceRecords": 1,
+          "limitations": ["Nejbližší podnik není identitou vybraného bodu."],
+          "phases": [],
+          "encoding": null
+        },
+        {
+          "status": 200,
+          "firstMs": 77,
+          "firstMapMs": null,
+          "totalMs": 77,
+          "decodedBytes": 1283,
+          "events": 1,
+          "terminal": "partial",
+          "composition": "facts",
+          "sections": [
+            {
+              "id": "facts",
+              "claims": 1
+            }
+          ],
+          "mapRefs": 0,
+          "sourceRecords": 1,
+          "limitations": ["Nejbližší podnik není identitou vybraného bodu."],
+          "phases": [],
+          "encoding": null
+        }
+      ]
+    },
+    {
+      "name": "legacy-index-poi",
+      "target": {
+        "type": "poi",
+        "layerId": "osm-poi",
+        "featureId": "osm-10107260"
+      },
+      "first": {
+        "status": 200,
+        "firstMs": 165,
+        "firstMapMs": 191,
+        "totalMs": 5001,
+        "decodedBytes": 26943,
+        "events": 6,
+        "terminal": "complete",
+        "composition": "facts",
+        "sections": [
+          {
+            "id": "summary",
+            "claims": 1
+          },
+          {
+            "id": "character",
+            "claims": 1
+          },
+          {
+            "id": "practical",
+            "claims": 3
+          },
+          {
+            "id": "facts",
+            "claims": 2
+          }
+        ],
+        "summaryWords": 22,
+        "mapRefs": 1,
+        "sourceRecords": 2,
+        "limitations": [],
+        "phases": [
+          "Ověřuji identitu a dostupné podklady",
+          "Základní informace připravené · doplňuji zdroje"
+        ],
+        "encoding": null
+      }
+    }
+  ]
+}

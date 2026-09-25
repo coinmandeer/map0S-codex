@@ -46,3 +46,13 @@ When the payload is absent, the URL is unsafe or the budget fails, `ThreeScene` 
 MapOS procedural 3D placeholder. It never calls the former on-chain SVG sprite path for the player
 or ghost artwork. `VITE_GAME_AVATAR_V2=0` is the code-path rollback to the pre-existing generic
 player while keeping the GameHost, orbs, quests and zones active.
+
+## 2026-09-05 runtime guest appearance
+
+The new default appearance resolves token #100 through the existing official renderer/indexer
+pipeline. It is a guest visual, never a declaration that the visitor owns the token. No GLB was
+added to the repository or release archive. The same-origin model route permits the known default
+appearance and its LOD URLs for guests; other model hashes retain the authenticated access check.
+The existing on-demand cache/conversion pipeline is reused. The renderer returned a 1,094,808-byte
+low LOD with 11,796 triangles and 14 draw calls during local verification. Upstream unavailability
+still falls back to the clearly provisional explorer; the VPS now has an operator-warmed persistent cache for this fixed guest appearance.

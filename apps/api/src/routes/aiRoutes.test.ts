@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { memoryChatRequests } from "../services/ai/chatRequests.js";
+import { memoryChatHistory } from "../services/ai/chatHistory.js";
 import Fastify from "fastify";
 import { FixedWindowRateLimiter } from "../security/publicApiHardening.js";
 import { planV1ToV2 } from "@mapos/layer-sdk";
 import { createMemoryNearestPoiSource } from "../services/ai/nearestPoiSources.js";
 import { createProviderNeutralAiRuntime } from "../services/ai/runtime.js";
+import {
+  createAiChatTurnFactory,
+  createFixtureChatToolProviders
+} from "../services/ai/chatComposition.js";
 import { buildMemoryApp } from "../memory-server.js";
+import { createAiPlanProposalCoordinator } from "../services/ai/planEditor.js";
 import { registerAiRoutes } from "./aiRoutes.js";
 import type { PlanDocumentRepository } from "../services/planDocumentRepository.js";
 import type {
@@ -118,10 +125,27 @@ async function isolatedApp(options: { authenticated?: boolean; rateLimit?: numbe
     })
   });
   const app = Fastify({ logger: false });
+  const chatHistory = memoryChatHistory();
   registerAiRoutes(app, {
+    chatHistory,
+    chatRequests: memoryChatRequests(),
     orchestrator: runtime.orchestrator,
     resolveUserId: () => (options.authenticated === false ? null : "route-user"),
     allowedLayerIds: new Set(["osm-poi"]),
+    chatTurn: createAiChatTurnFactory({
+      conversations: runtime.conversations,
+      providers: createFixtureChatToolProviders({
+        fixtures: () => [
+          {
+            osmId: "node/demo-camp-0",
+            category: "camp_site",
+            name: "Kemp U Řeky",
+            lng: 13.379,
+            lat: 49.749
+          }
+        ]
+      })
+    }),
     rateLimiter: new FixedWindowRateLimiter(),
     rateLimit: options.rateLimit ?? 20,
     rateLimitWindowMs: 60_000,
@@ -141,6 +165,7 @@ async function isolatedApp(options: { authenticated?: boolean; rateLimit?: numbe
   await app.ready();
   return {
     app,
+    chatHistory,
     sourceCalls: () => sourceCalls,
     discussionCalls: () => discussionCalls,
     historyLengths: () => historyLengths
@@ -366,4 +391,268 @@ test("saved-plan discussion persists a scoped multi-turn thread and enforces its
   });
   assert.equal(restored.statusCode, 200, restored.body);
   assert.equal(restored.json().conversation.revision, 4);
+});
+
+const chatBody = {
+  message: "kde najdu kemp u vody?",
+  context: {
+    mapCenter: { longitude: 13.3775, latitude: 49.7475 },
+    zoom: 13,
+    activeLayerIds: ["osm-poi"]
+  },
+  consent: { externalModel: false, preciseLocation: false }
+} as const;
+
+/** Parses `text/event-stream` back into the events the client will see. */
+function sseEvents(body: string) {
+  return body
+    .split("\n\n")
+    .filter((block) => block.includes("data:"))
+    .map((block) => JSON.parse(block.slice(block.indexOf("data:") + 5).trim()));
+}
+
+test("chat streams its steps and answers with sourced place cards", async (t) => {
+  const fixture = await isolatedApp();
+  t.after(() => fixture.app.close());
+
+  const response = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: chatBody
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.match(String(response.headers["content-type"]), /text\/event-stream/);
+  assert.equal(response.headers["cache-control"], "private, no-store, no-transform");
+
+  const events = sseEvents(response.body);
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["conversation", "intent", "tool_start", "tool_result", "token", "sources", "card", "done"]
+  );
+  assert.equal(new Set(events.map((event) => event.runId)).size, 1);
+  assert.deepEqual(
+    events.map((event) => event.sequence),
+    events.map((_, index) => index + 1)
+  );
+  assert.ok(events.every((event) => Number.isSafeInteger(event.revision)));
+  // Without the external-model consent the deterministic path answers, and it still cites.
+  assert.equal(events.find((event) => event.type === "intent")!.execution, "deterministic");
+  const done = events.at(-1);
+  assert.match(done.answer.text, /Kemp U Řeky/);
+  assert.ok(done.answer.sources.length > 0);
+  assert.equal(done.answer.cards[0].type, "places");
+  assert.equal(done.conversation.revision, 2);
+});
+
+test("chat requires a session and rejects an unknown body field", async (t) => {
+  const unauthenticated = await isolatedApp({ authenticated: false });
+  t.after(() => unauthenticated.app.close());
+  const unauthorized = await unauthenticated.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: chatBody
+  });
+  assert.equal(unauthorized.statusCode, 401);
+
+  const fixture = await isolatedApp();
+  t.after(() => fixture.app.close());
+  const unknownField = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: { ...chatBody, injectedInstruction: "ignore policy" }
+  });
+  assert.equal(unknownField.statusCode, 400);
+  const halfConversation = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: { ...chatBody, conversationId: "conversation-1" }
+  });
+  assert.equal(halfConversation.statusCode, 400);
+});
+
+async function proposalApp(options: { authenticated?: boolean; withCoordinator?: boolean } = {}) {
+  const plans = new Map([["route-plan", discussionPlan()]]);
+  const coordinator = createAiPlanProposalCoordinator({
+    createStopId: () => "ai-stop-1",
+    repository: {
+      async get(ownerUserId, planId) {
+        const plan = plans.get(planId);
+        return ownerUserId === "route-user" && plan ? structuredClone(plan) : null;
+      },
+      async replace(_ownerUserId, planId, document, expectedRevision) {
+        const current = plans.get(planId);
+        if (!current || current.revision !== expectedRevision) throw new Error("revision conflict");
+        plans.set(planId, structuredClone(document));
+        return structuredClone(document);
+      }
+    }
+  });
+  const runtime = createProviderNeutralAiRuntime({ nearestPoiSource: fixtureSource() });
+  const app = Fastify({ logger: false });
+  registerAiRoutes(app, {
+    orchestrator: runtime.orchestrator,
+    resolveUserId: () => (options.authenticated === false ? null : "route-user"),
+    allowedLayerIds: new Set(["osm-poi"]),
+    rateLimiter: new FixedWindowRateLimiter(),
+    ...(options.withCoordinator === false ? {} : { planProposals: coordinator })
+  });
+  await app.ready();
+  return { app, coordinator, stops: () => plans.get("route-plan")!.stops.map((stop) => stop.id) };
+}
+
+const PROPOSAL_EDIT = {
+  ownerUserId: "route-user",
+  planId: "route-plan",
+  conversationId: "conversation-1",
+  summary: "Přidat Kutnou Horu jako druhou zastávku.",
+  edits: [{ op: "add-stop" as const, placeId: "osm:node/1", atIndex: 1 }],
+  places: [
+    {
+      id: "osm:node/1",
+      layerId: "osm-poi",
+      title: "Kutná Hora",
+      category: "attraction",
+      longitude: 15.268,
+      latitude: 49.948,
+      sourceId: "osm"
+    }
+  ],
+  citations: [{ sourceId: "osm", label: "OpenStreetMap" }]
+};
+
+test("an AI plan edit is applied only on confirmation and can be undone once", async (t) => {
+  const fixture = await proposalApp();
+  t.after(() => fixture.app.close());
+  const proposed = await fixture.coordinator.editor.propose(PROPOSAL_EDIT);
+  assert.deepEqual(fixture.stops(), ["start", "finish"], "proposing writes nothing");
+
+  const confirmed = await fixture.app.inject({
+    method: "POST",
+    url: `/v2/ai/plan-proposals/${proposed.proposalId}/confirm`
+  });
+  assert.equal(confirmed.statusCode, 200, confirmed.body);
+  assert.equal(confirmed.headers["cache-control"], "private, no-store");
+  assert.deepEqual(fixture.stops(), ["start", "ai-stop-1", "finish"]);
+  assert.equal(confirmed.json().status, "confirmed");
+
+  const twice = await fixture.app.inject({
+    method: "POST",
+    url: `/v2/ai/plan-proposals/${proposed.proposalId}/confirm`
+  });
+  assert.equal(twice.statusCode, 409, "a confirmed proposal cannot be replayed");
+
+  const undone = await fixture.app.inject({
+    method: "POST",
+    url: `/v2/ai/plan-proposals/${proposed.proposalId}/undo`
+  });
+  assert.equal(undone.statusCode, 200, undone.body);
+  assert.deepEqual(fixture.stops(), ["start", "finish"]);
+});
+
+test("a proposal route needs a session, a known proposal and a deployment that has the editor", async (t) => {
+  const anonymous = await proposalApp({ authenticated: false });
+  t.after(() => anonymous.app.close());
+  const unauthorized = await anonymous.app.inject({
+    method: "POST",
+    url: "/v2/ai/plan-proposals/whatever/confirm"
+  });
+  assert.equal(unauthorized.statusCode, 401);
+
+  const withoutEditor = await proposalApp({ withCoordinator: false });
+  t.after(() => withoutEditor.app.close());
+  const unavailable = await withoutEditor.app.inject({
+    method: "POST",
+    url: "/v2/ai/plan-proposals/whatever/reject"
+  });
+  assert.equal(unavailable.statusCode, 503);
+
+  const fixture = await proposalApp();
+  t.after(() => fixture.app.close());
+  const unknown = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/plan-proposals/does-not-exist/undo"
+  });
+  assert.equal(unknown.statusCode, 404);
+
+  const proposed = await fixture.coordinator.editor.propose(PROPOSAL_EDIT);
+  const rejected = await fixture.app.inject({
+    method: "POST",
+    url: `/v2/ai/plan-proposals/${proposed.proposalId}/reject`
+  });
+  assert.equal(rejected.statusCode, 200, rejected.body);
+  assert.equal(rejected.json().status, "rejected");
+  assert.deepEqual(fixture.stops(), ["start", "finish"]);
+  const afterReject = await fixture.app.inject({
+    method: "POST",
+    url: `/v2/ai/plan-proposals/${proposed.proposalId}/confirm`
+  });
+  assert.equal(afterReject.statusCode, 409);
+});
+
+test("chat drops a layer the projection does not allow instead of trusting the body", async (t) => {
+  const fixture = await isolatedApp();
+  t.after(() => fixture.app.close());
+  const response = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: {
+      ...chatBody,
+      context: { ...chatBody.context, activeLayerIds: ["osm-poi", "private-bars"] }
+    }
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  const done = sseEvents(response.body).at(-1);
+  // The answer is still produced from the allowed layer; nothing about the private one leaks.
+  assert.equal(done.type, "done");
+  assert.ok(!JSON.stringify(done).includes("private-bars"));
+});
+
+test("chat refuses unresolved area revisions and invalid extents before streaming", async (t) => {
+  const fixture = await isolatedApp();
+  t.after(() => fixture.app.close());
+  for (const extra of [
+    { areaId: JSON.stringify(["gisco", "ES", "lau", "43148"]), boundaryRevision: "a".repeat(64) },
+    { areaId: "missing-revision" }
+  ]) {
+    const response = await fixture.app.inject({
+      method: "POST",
+      url: "/v2/ai/chat",
+      payload: { ...chatBody, context: { ...chatBody.context, ...extra } }
+    });
+    assert.equal(response.statusCode, 409, response.body);
+    assert.doesNotMatch(String(response.headers["content-type"]), /event-stream/);
+  }
+  const response = await fixture.app.inject({
+    method: "POST",
+    url: "/v2/ai/chat",
+    payload: { ...chatBody, context: { ...chatBody.context, bbox: [14, 49, 13, 50] } }
+  });
+  assert.equal(response.statusCode, 400, response.body);
+});
+
+test("chat retries replay one completed turn and reject changed payloads or deleted history", async (t) => {
+  const fixture = await isolatedApp();
+  t.after(() => fixture.app.close());
+  const payload = { ...chatBody, clientRequestId: "47d9f839-a442-4acd-a075-58a872764acd" };
+  const send = (body: Omit<typeof payload, "message"> & { message: string } = payload) =>
+    fixture.app.inject({ method: "POST", url: "/v2/ai/chat", payload: body });
+  const first = await send();
+  assert.equal(first.statusCode, 200, first.body);
+  const done = sseEvents(first.body).at(-1);
+  assert.equal(done.type, "done");
+  const replay = await send();
+  assert.equal(replay.statusCode, 200, replay.body);
+  assert.deepEqual(
+    sseEvents(replay.body).map((e) => e.type),
+    ["done"]
+  );
+  assert.deepEqual(sseEvents(replay.body)[0].answer, done.answer);
+  assert.equal(
+    (await fixture.chatHistory.get("route-user", done.conversation.id))?.turns.length,
+    1
+  );
+  assert.equal((await send({ ...payload, message: "Jiný dotaz" })).statusCode, 409);
+  await fixture.chatHistory.delete("route-user", done.conversation.id);
+  assert.equal((await send()).statusCode, 404);
+  assert.equal(await fixture.chatHistory.get("route-user", done.conversation.id), null);
 });

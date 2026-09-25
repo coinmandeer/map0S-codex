@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { t } from "../i18n";
 import { getShellStore } from "../store/shellStore";
-import { useIsMobile } from "./useIsMobile";
-import { Icon } from "./primitives";
-import { captureFocusedElement, restoreFocus } from "./shell/focusRestore";
+import { IconButton, ProgressLinear } from "./kit";
+import {
+  PANEL_SNAPS,
+  defaultSnapFor,
+  nearestSnap,
+  readSnap,
+  snapAt,
+  snapHeightPx,
+  snapIndex,
+  writeSnap,
+  type PanelSnap
+} from "./panelSnap";
 import {
   LEFT_PANEL_DEFAULT_WIDTH,
   LEFT_PANEL_KEYBOARD_STEP,
@@ -11,32 +21,81 @@ import {
   readLeftPanelWidth,
   writeLeftPanelWidth
 } from "./panelWidth";
+import { captureFocusedElement, restoreFocus } from "./shell/focusRestore";
+import { useIsMobile } from "./useIsMobile";
 
-/** Fractions of the viewport the mobile sheet snaps to: peek, half, near-full. */
-const SNAP_POINTS = [0.3, 0.62, 0.9] as const;
-const DEFAULT_SNAP = 1;
-const DISMISS_DRAG_PX = 140;
-const DISMISS_FRACTION = 0.22;
+/** Dragging the handle this far down from `peek` dismisses a dismissible panel. */
+const DISMISS_DRAG_PX = 120;
 
-/** Shared chrome for the left-docked panels (Places, Discover). Desktop renders a fixed
- *  sidebar; mobile renders a draggable bottom sheet that snaps between three heights so the
- *  map stays partly visible while browsing a list. */
+function chromeLayout(): {
+  viewportHeight: number;
+  topBarBottom: number;
+  bottomNavHeight: number;
+} {
+  const styles = getComputedStyle(document.documentElement);
+  const read = (name: string, fallback: number) => {
+    const value = Number.parseFloat(styles.getPropertyValue(name));
+    return Number.isFinite(value) ? value : fallback;
+  };
+  return {
+    viewportHeight: window.innerHeight,
+    topBarBottom: read("--chrome-top", 60),
+    bottomNavHeight: read("--bottom-nav-h", 64)
+  };
+}
+
+/** Shared chrome for the left-docked panels.
+ *
+ *  Desktop renders a full-height sidebar starting at the top edge of the viewport — the top bar
+ *  floats over the map beside it rather than above it, so there is no band of wasted space at
+ *  the top of the panel. Mobile renders a bottom sheet on the three snaps from §21.2, and keeps
+ *  the map's bottom padding in step with the sheet height so a selected pin is never hidden
+ *  underneath it.
+ */
 export function PanelShell({
   title,
   testId,
   headerExtra,
   className,
+  busy = false,
+  busyLabel,
+  footer,
+  dismissible = false,
+  hasContent = true,
+  onBack,
+  backLabel,
+  onSnapChange,
   children
 }: {
   title: string;
   testId: string;
   headerExtra?: ReactNode;
   className?: string;
+  /** Work in flight that refreshes the whole panel. Shown as a 2 px bar under the header
+   *  instead of a sentence in the body — the panel keeps its previous content readable. */
+  busy?: boolean;
+  busyLabel?: string;
+  /** Sticky bottom bar for the panel's primary action, if it has one (§4.2). */
+  footer?: ReactNode;
+  /** Mode panels stay at `peek` when swiped down; only a place detail closes (§21.2), so this
+   *  is opt-in rather than the default. */
+  dismissible?: boolean;
+  /** Drives the opening snap: a panel showing a list opens full, an empty form opens half. */
+  hasContent?: boolean;
+  /** Renders `arrow_back` before the title. Set by a panel that covered another one — a place
+   *  detail opened from Objevuj returns there instead of dropping the user on the map (§4.10). */
+  onBack?: () => void;
+  backLabel?: string;
+  onSnapChange?: (snap: PanelSnap) => void;
   children: ReactNode;
 }) {
   const shell = getShellStore();
   const mobile = useIsMobile();
-  const [snap, setSnap] = useState(DEFAULT_SNAP);
+  const [snap, setSnap] = useState<PanelSnap>(
+    () =>
+      (typeof window === "undefined" ? null : readSnap(window.sessionStorage, testId)) ??
+      defaultSnapFor(testId, hasContent)
+  );
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? 1440 : window.innerWidth
   );
@@ -47,18 +106,27 @@ export function PanelShell({
     )
   );
   const preferredPanelWidthRef = useRef(panelWidth);
-  const mobileDragRef = useRef<{ startY: number; startFraction: number } | null>(null);
   const desktopResizeRef = useRef<{
     startX: number;
     startWidth: number;
     currentWidth: number;
   } | null>(null);
+  const mobileDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const dragFrameRef = useRef(0);
   const asideRef = useRef<HTMLElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   useLayoutEffect(() => {
     document.documentElement.style.setProperty("--sidebar-w", `${panelWidth}px`);
   }, [panelWidth]);
+
+  // The top bar centres itself over the map area, which means it needs to know how much of the
+  // window the panel is currently eating.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--sidebar-w-open", mobile ? "0px" : `${panelWidth}px`);
+    return () => root.style.setProperty("--sidebar-w-open", "0px");
+  }, [mobile, panelWidth]);
 
   useEffect(() => {
     const onResize = () => {
@@ -87,61 +155,89 @@ export function PanelShell({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [shell]);
 
-  // Reset to the default height whenever the sheet is re-mounted (mode switch, reopen) so a
-  // panel never reappears collapsed to a sliver the user last dragged it to.
+  // Publish the sheet height as the map's bottom padding so `easeTo`/`fitBounds` centre into the
+  // visible strip rather than behind the sheet.
+  const publishSheetHeight = useCallback(
+    (heightPx: number | null) => {
+      const root = document.documentElement;
+      if (!mobile || heightPx == null) {
+        root.style.removeProperty("--sheet-h");
+        return;
+      }
+      root.style.setProperty("--sheet-h", `${Math.round(heightPx)}px`);
+    },
+    [mobile]
+  );
+
   useEffect(() => {
-    if (!mobile) setSnap(DEFAULT_SNAP);
-  }, [mobile]);
+    if (!mobile) {
+      publishSheetHeight(null);
+      return;
+    }
+    publishSheetHeight(snapHeightPx(snap, chromeLayout()));
+    return () => publishSheetHeight(null);
+  }, [mobile, snap, publishSheetHeight]);
+
+  const applySnap = useCallback(
+    (next: PanelSnap) => {
+      setSnap(next);
+      if (typeof window !== "undefined") writeSnap(window.sessionStorage, testId, next);
+      onSnapChange?.(next);
+    },
+    [onSnapChange, testId]
+  );
 
   const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
+    (event: React.PointerEvent) => {
       if (!mobile) return;
-      mobileDragRef.current = { startY: e.clientY, startFraction: SNAP_POINTS[snap]! };
-      e.currentTarget.setPointerCapture(e.pointerId);
+      mobileDragRef.current = {
+        startY: event.clientY,
+        startHeight: snapHeightPx(snap, chromeLayout())
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
     },
     [mobile, snap]
   );
 
   const onPointerMove = useCallback(
-    (e: React.PointerEvent) => {
+    (event: React.PointerEvent) => {
       const drag = mobileDragRef.current;
       const el = asideRef.current;
       if (!drag || !el) return;
-      if (e.clientY - drag.startY >= DISMISS_DRAG_PX) {
-        mobileDragRef.current = null;
-        el.style.removeProperty("--panel-snap");
-        shell.closeLeftContext();
-        return;
-      }
-      const delta = (drag.startY - e.clientY) / window.innerHeight;
-      const fraction = Math.min(0.92, Math.max(0.18, drag.startFraction + delta));
-      el.style.setProperty("--panel-snap", `${fraction * 100}dvh`);
+      const height = drag.startHeight + (drag.startY - event.clientY);
+      // rAF-throttled: the map padding follows the finger, and doing that synchronously on every
+      // pointermove costs a layout per event.
+      if (dragFrameRef.current) cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = requestAnimationFrame(() => {
+        dragFrameRef.current = 0;
+        el.style.setProperty("--panel-snap-h", `${Math.round(height)}px`);
+        publishSheetHeight(height);
+      });
     },
-    [shell]
+    [publishSheetHeight]
   );
 
   const onPointerUp = useCallback(
-    (e: React.PointerEvent) => {
+    (event: React.PointerEvent) => {
       const drag = mobileDragRef.current;
       const el = asideRef.current;
       mobileDragRef.current = null;
+      if (dragFrameRef.current) {
+        cancelAnimationFrame(dragFrameRef.current);
+        dragFrameRef.current = 0;
+      }
       if (!drag || !el) return;
-      const delta = (drag.startY - e.clientY) / window.innerHeight;
-      const fraction = drag.startFraction + delta;
-      const draggedDownPx = e.clientY - drag.startY;
-      el.style.removeProperty("--panel-snap");
-      if (fraction <= DISMISS_FRACTION || draggedDownPx >= DISMISS_DRAG_PX) {
+      el.style.removeProperty("--panel-snap-h");
+      const draggedDown = event.clientY - drag.startY;
+      const height = drag.startHeight - draggedDown;
+      const layout = chromeLayout();
+      if (dismissible && snap === "peek" && draggedDown >= DISMISS_DRAG_PX) {
         shell.closeLeftContext();
         return;
       }
-      let nearest = 0;
-      for (let i = 1; i < SNAP_POINTS.length; i += 1) {
-        if (Math.abs(SNAP_POINTS[i]! - fraction) < Math.abs(SNAP_POINTS[nearest]! - fraction))
-          nearest = i;
-      }
-      setSnap(nearest);
+      applySnap(nearestSnap(height, layout));
     },
-    [shell]
+    [applySnap, dismissible, shell, snap]
   );
 
   const onDesktopResizePointerDown = useCallback(
@@ -197,14 +293,18 @@ export function PanelShell({
 
   return (
     <>
-      <div className="panel-left-overlay" onClick={() => shell.closeLeftContext()} />
+      {/* Only the `full` snap covers the map: a tap on the remaining strip brings the sheet
+          back to `half` (§21.2). At `half` and `peek` the map itself takes the taps. */}
+      {mobile && snap === "full" && (
+        <div className="panel-left-overlay" onClick={() => applySnap("half")} aria-hidden="true" />
+      )}
       <aside
         ref={asideRef}
         className={`panel-left${className ? ` ${className}` : ""}`}
         data-testid={testId}
         data-snap={mobile ? snap : undefined}
         role={mobile ? "dialog" : undefined}
-        aria-modal={mobile ? "true" : undefined}
+        aria-modal={mobile ? "false" : undefined}
         aria-label={title}
       >
         {mobile && (
@@ -214,21 +314,26 @@ export function PanelShell({
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onClick={() => applySnap(snap === "full" ? "peek" : "full")}
             role="slider"
             tabIndex={0}
-            aria-label="Výška panelu"
+            aria-label={t("drawer.height")}
             aria-valuemin={0}
-            aria-valuemax={SNAP_POINTS.length - 1}
-            aria-valuenow={snap}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowUp") {
-                e.preventDefault();
-                setSnap((s) => Math.min(SNAP_POINTS.length - 1, s + 1));
+            aria-valuemax={PANEL_SNAPS.length - 1}
+            aria-valuenow={snapIndex(snap)}
+            aria-valuetext={t(`drawer.snap.${snap}`)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                applySnap(snapAt(snapIndex(snap) + 1));
               }
-              if (e.key === "ArrowDown") {
-                e.preventDefault();
-                if (snap === 0) shell.closeLeftContext();
-                else setSnap((s) => Math.max(0, s - 1));
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                if (snap === "peek") {
+                  if (dismissible) shell.closeLeftContext();
+                  return;
+                }
+                applySnap(snapAt(snapIndex(snap) - 1));
               }
             }}
           >
@@ -236,26 +341,40 @@ export function PanelShell({
           </div>
         )}
         <div className="panel-left-header">
+          {onBack && (
+            <IconButton
+              icon="arrow_back"
+              label={backLabel ?? t("panel.back")}
+              size="sm"
+              testId={`${testId}-back`}
+              onClick={onBack}
+            />
+          )}
           <h2>{title}</h2>
           {headerExtra}
-          <button
-            className="icon-btn small"
+          <IconButton
+            icon="close"
+            label={t("panel.close")}
+            size="sm"
             onClick={() => shell.closeLeftContext()}
-            aria-label="Zavřít"
-          >
-            <Icon name="close" size={15} />
-          </button>
+          />
         </div>
+        {busy && (
+          <div className="panel-left-progress" data-testid={`${testId}-busy`}>
+            <ProgressLinear label={busyLabel ?? t("status.loading")} />
+          </div>
+        )}
         <div id={`${testId}-body`} className="panel-left-body" data-testid="layer-switcher">
           {children}
         </div>
+        {footer && <div className="panel-left-footer">{footer}</div>}
         {!mobile && (
           <div
             className="panel-left-resizer"
             data-testid="left-panel-resizer"
             role="separator"
             tabIndex={0}
-            aria-label="Šířka levého panelu"
+            aria-label={t("panel.resize")}
             aria-orientation="vertical"
             aria-controls={`${testId}-body`}
             aria-valuemin={widthBounds.min}

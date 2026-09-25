@@ -1,7 +1,16 @@
+import { statDataset } from "@mapos/adapter-sdk";
+import { publishedDiscoverStatistics } from "./discoverPublishedStatistics.js";
 import { createHash } from "node:crypto";
-import type { Bbox, Guide } from "@mapos/layer-sdk";
+import type { AreaSelection, Bbox, Guide } from "@mapos/layer-sdk";
 import { getGuide } from "./guide/index.js";
+import {
+  buildGuideSynthesis,
+  collectGuideEvidence,
+  type GuideAreaRef,
+  type GuideSynthesis
+} from "./guide/guideAggregator.js";
 import { askCml } from "./cmlService.js";
+import { aiPrompt } from "./ai/prompts/index.js";
 import { fetchJson, fetchText } from "../utils/upstream.js";
 
 export type DiscoverRegionLevel = "country" | "admin1" | "admin2" | "locality" | "neighbourhood";
@@ -17,6 +26,7 @@ export type DiscoverBoundaryGeometry =
 
 export interface ResolvedDiscoverRegion {
   id: string;
+  selectedArea?: AreaSelection;
   name: string;
   level: DiscoverRegionLevel;
   hierarchy: DiscoverHierarchyItem[];
@@ -32,6 +42,8 @@ export interface ResolvedDiscoverRegion {
 }
 
 export interface DiscoverContextInput {
+  /** Resolved by the server before cache lookup. Never client-provided facts. */
+  area?: AreaSelection;
   lng: number;
   lat: number;
   zoom: number;
@@ -78,19 +90,28 @@ export interface DiscoverStatistic {
   sourceIds: string[];
 }
 
+/**
+ * Which administrative level the map offers to pick from.
+ *
+ * It follows the zoom, because the useful answer to "what is this area" changes with it: a
+ * continent view wants countries, a country view wants its regions, and a city view wants the
+ * municipality — offering NUTS 3 to someone looking at three streets is offering nothing.
+ */
+export type DiscoverCatalogueLevel = 0 | 1 | 2 | 3 | "lau";
+
 export interface DiscoverRegionOption {
   id: string;
   code: string;
   name: string;
-  nutsLevel: 0 | 1 | 2 | 3;
+  nutsLevel: DiscoverCatalogueLevel;
   geometry: DiscoverBoundaryGeometry;
-  sourceId: typeof GISCO_NUTS_SOURCE_ID;
+  sourceId: typeof GISCO_NUTS_SOURCE_ID | typeof GISCO_LAU_SOURCE_ID;
 }
 
 export interface DiscoverRegionCatalogue {
-  nutsLevel: 0 | 1 | 2 | 3;
+  nutsLevel: DiscoverCatalogueLevel;
   truncated: boolean;
-  sourceId: typeof GISCO_NUTS_SOURCE_ID;
+  sourceId: typeof GISCO_NUTS_SOURCE_ID | typeof GISCO_LAU_SOURCE_ID;
   regions: DiscoverRegionOption[];
 }
 
@@ -102,6 +123,10 @@ export interface DiscoverContext {
   region: Omit<ResolvedDiscoverRegion, "boundary"> | null;
   guide: Guide | null;
   synthesis: DiscoverSynthesis | null;
+  /** The multi-source guide of §30.5: lead, highlights and practical lines, each with the ids of
+   *  the sources it came from. Always present — its last fallback is an empty state with an
+   *  action, never nothing. */
+  guideSynthesis: GuideSynthesis | null;
   statistics: DiscoverStatistic[];
   regionCatalogue: DiscoverRegionCatalogue | null;
   sources: DiscoverCitation[];
@@ -177,6 +202,13 @@ export interface DiscoverContextDependencies {
     signal?: AbortSignal
   ) => Promise<DiscoverRegionCatalogue | null>;
   capabilities?: DiscoverContextCapability[];
+  /** The §30.5 guide. It receives what the capabilities already resolved so the Wikivoyage
+   *  article and the statistics are fetched once per request, not twice. */
+  resolveGuideSynthesis?: (
+    area: GuideAreaRef,
+    seed: { guide: Guide | null; statistics: DiscoverStatistic[]; sources: DiscoverCitation[] },
+    options: { allowModel: boolean; signal?: AbortSignal }
+  ) => Promise<GuideSynthesis | null>;
   synthesize?: (
     input: DiscoverContextInput,
     structured: {
@@ -262,6 +294,10 @@ export interface DiscoverContextService {
 }
 
 interface NominatimReverseResult {
+  name?: string;
+  addresstype?: string;
+  namedetails?: Record<string, string | undefined>;
+  boundingbox?: string[];
   osm_type?: string;
   osm_id?: number;
   display_name?: string;
@@ -274,6 +310,8 @@ const NOMINATIM_SOURCE_ID = "nominatim-osm";
 const WIKIDATA_SOURCE_PREFIX = "wikidata:";
 const EUROSTAT_GDP_SOURCE_ID = "eurostat:nama_10r_3gdp";
 const GISCO_NUTS_SOURCE_ID = "eurostat-gisco-nuts-2024";
+/** Municipalities (LAU). What "region" means at city zoom is the town, not a statistical region. */
+const GISCO_LAU_SOURCE_ID = "eurostat-gisco-lau-2024";
 const MAX_REGION_OPTIONS = 16;
 const MAX_CONTEXT_CACHE_ENTRIES = 256;
 const BOUNDARY_GATE_REASON =
@@ -346,19 +384,26 @@ function populationYear(value: unknown): number | null {
 export function discoverContextKey(input: DiscoverContextInput): string {
   const band = zoomBand(input.zoom);
   const precision = coordinatePrecision(band);
-  const layers = [...new Set(input.activeLayerIds ?? [])].sort().join(",");
+  // Only the model synthesis reads the active layers. The structured context (region, guide,
+  // statistics) is the same whatever is switched on, so toggling a layer must not turn every
+  // cached area into a miss.
+  const layers = input.allowModelFallback
+    ? [...new Set(input.activeLayerIds ?? [])].sort().join(",")
+    : "";
   const catalogueExtent =
     giscoNutsLevelForZoom(input.zoom) !== null && validBbox(input.bbox)
       ? input.bbox.map((coordinate) => coordinate.toFixed(precision)).join(",")
       : "no-catalogue-extent";
   return [
+    input.area?.id ?? "",
+    input.area?.revision ?? "",
     Number(input.lng).toFixed(precision),
     Number(input.lat).toFixed(precision),
-    band,
+    input.area ? "selected-area" : band,
     (input.lang ?? "cs").slice(0, 2).toLowerCase(),
     input.useCase?.trim().toLowerCase() || "general",
     layers,
-    catalogueExtent,
+    input.area ? "selected-area" : catalogueExtent,
     input.allowModelFallback ? "model" : "structured"
   ].join("|");
 }
@@ -445,17 +490,38 @@ export function normalizeNominatimRegion(
   const selected = hierarchy[resolvedIndex];
   if (!selected) return null;
   const selectedHierarchy = hierarchy.slice(0, resolvedIndex + 1);
+  // Address parents are labels, not the object returned by reverse. Its population, geometry
+  // and Wikidata identity cannot be assigned to a parent merely because it contains the point.
+  const objectNames = [
+    value.name,
+    ...Object.entries(value.namedetails ?? {})
+      .filter(([key]) => key === "name" || key.startsWith("name:"))
+      .map(([, name]) => name)
+  ]
+    .filter((name): name is string => !!name?.trim())
+    .map((name) => name.trim().normalize("NFC").toLocaleLowerCase());
+  const objectLevel = LEVEL_FIELDS.find((group) =>
+    group.keys.includes(value.addresstype ?? "")
+  )?.level;
+  const sameObject =
+    objectNames.includes(selected.name.normalize("NFC").toLocaleLowerCase()) &&
+    (!value.addresstype || objectLevel === selected.level);
+  const hierarchyIdentity = createHash("sha256")
+    .update(JSON.stringify([value.address.country_code?.toLowerCase() ?? null, selectedHierarchy]))
+    .digest("hex")
+    .slice(0, 24);
   const sourceId =
-    value.osm_type && Number.isFinite(value.osm_id)
+    sameObject && value.osm_type && Number.isFinite(value.osm_id)
       ? `${value.osm_type}:${value.osm_id}`
-      : `point:${selected.name.toLocaleLowerCase()}`;
+      : `hierarchy:${hierarchyIdentity}`;
   const code = value.address.country_code?.trim().toUpperCase() ?? null;
-  const geometry = normalizeNominatimBoundary(value.geojson);
-  const wikidataId = value.extratags?.wikidata?.trim();
-  const nutsCode = [value.extratags?.["ref:nuts:3"], value.extratags?.["ref:nuts"]]
+  const geometry = sameObject ? normalizeNominatimBoundary(value.geojson) : null;
+  const tags = sameObject ? value.extratags : undefined;
+  const wikidataId = tags?.wikidata?.trim();
+  const nutsCode = [tags?.["ref:nuts:3"], tags?.["ref:nuts"]]
     .map((candidate) => candidate?.trim().toUpperCase())
     .find((candidate) => candidate && /^[A-Z]{2}[A-Z0-9]{3}$/u.test(candidate));
-  const osmPopulation = boundedPopulation(value.extratags?.population);
+  const osmPopulation = boundedPopulation(tags?.population);
   return {
     id: `nominatim:${sourceId}`,
     name: selected.name,
@@ -469,7 +535,7 @@ export function normalizeNominatimRegion(
       ? {
           populationSeed: {
             value: osmPopulation,
-            year: populationYear(value.extratags?.["population:date"])
+            year: populationYear(tags?.["population:date"])
           }
         }
       : {})
@@ -478,7 +544,8 @@ export function normalizeNominatimRegion(
 
 export async function resolveDiscoverRegion(
   input: DiscoverContextInput,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  io: typeof fetchJson = fetchJson
 ): Promise<ResolvedDiscoverRegion | null> {
   try {
     if (signal?.aborted) return null;
@@ -490,22 +557,84 @@ export async function resolveDiscoverRegion(
       zoom: String(reverseZoom(level)),
       addressdetails: "1",
       extratags: "1",
+      namedetails: "1",
       polygon_geojson: "1",
       polygon_threshold: String(polygonThreshold(level)),
       "accept-language": (input.lang ?? "cs").slice(0, 2).toLowerCase()
     });
-    const value = await fetchJson<NominatimReverseResult>(
+    const value = await io<NominatimReverseResult>(
       `https://nominatim.openstreetmap.org/reverse?${params}`,
       {
         providerId: "nominatim",
         ttlMs: 24 * 60 * 60_000,
         timeoutMs: 6_000,
         minIntervalMs: 1_100,
-        maxResponseBytes: 1024 * 1024
+        maxResponseBytes: 1024 * 1024,
+        signal
       }
     );
     if (signal?.aborted) return null;
-    return normalizeNominatimRegion(value, level);
+    const region = normalizeNominatimRegion(value, level);
+    if (!region || !region.id.startsWith("nominatim:hierarchy:") || !region.countryCode)
+      return region;
+    // Reverse sometimes answers with a child. Resolve the selected parent explicitly rather
+    // than silently losing its statistics. Accept only one identity with matching hierarchy
+    // whose provider bounds contain the requested point; ambiguity keeps the label-only result.
+    const search = new URLSearchParams(params);
+    for (const key of ["lat", "lon", "zoom"]) search.delete(key);
+    search.set(
+      "q",
+      [...region.hierarchy]
+        .reverse()
+        .map((item) => item.name)
+        .join(", ")
+    );
+    search.set("countrycodes", region.countryCode.toLowerCase());
+    search.set("limit", "5");
+    try {
+      const candidates = await io<NominatimReverseResult[]>(
+        `https://nominatim.openstreetmap.org/search?${search}`,
+        {
+          providerId: "nominatim",
+          ttlMs: 24 * 60 * 60_000,
+          timeoutMs: 6_000,
+          minIntervalMs: 1_100,
+          maxResponseBytes: 1024 * 1024,
+          signal
+        }
+      );
+      if (signal?.aborted) return null;
+      const nameKey = (name: string) => name.normalize("NFC").trim().toLocaleLowerCase();
+      const matches = new Map<string, ResolvedDiscoverRegion>();
+      for (const candidate of Array.isArray(candidates) ? candidates : []) {
+        const resolved = normalizeNominatimRegion(candidate, region.level);
+        const box = candidate.boundingbox?.map(Number);
+        if (
+          !resolved ||
+          resolved.id.startsWith("nominatim:hierarchy:") ||
+          resolved.level !== region.level ||
+          resolved.countryCode !== region.countryCode ||
+          nameKey(resolved.name) !== nameKey(region.name) ||
+          !box ||
+          box.length !== 4 ||
+          !box.every(Number.isFinite) ||
+          input.lat < box[0]! ||
+          input.lat > box[1]! ||
+          input.lng < box[2]! ||
+          input.lng > box[3]! ||
+          !region.hierarchy.every((parent) =>
+            resolved.hierarchy.some(
+              (item) => item.level === parent.level && nameKey(item.name) === nameKey(parent.name)
+            )
+          )
+        )
+          continue;
+        matches.set(resolved.id, resolved);
+      }
+      return matches.size === 1 ? [...matches.values()][0]! : region;
+    } catch {
+      return signal?.aborted ? null : region;
+    }
   } catch {
     return null;
   }
@@ -520,7 +649,8 @@ export async function resolveDiscoverGuide(
     {
       bbox: guideQueryExtent(input),
       lang: (input.lang ?? "cs").slice(0, 2).toLowerCase(),
-      name: region?.name
+      name: region?.name,
+      wikidataId: region?.wikidataId
     },
     signal
   );
@@ -535,25 +665,75 @@ interface GiscoNutsFeatureCollection {
   }>;
 }
 
+interface GiscoLauFeatureCollection {
+  numberMatched?: unknown;
+  features?: Array<{
+    properties?: { gisco_id?: unknown; lau_name?: unknown };
+    geometry?: unknown;
+  }>;
+}
+
+/** GISCO's LAU items carry a country-prefixed id and a local name, and no level column. */
+export function normalizeGiscoLauCatalogue(value: unknown): DiscoverRegionCatalogue | null {
+  const collection = value as GiscoLauFeatureCollection | null;
+  if (!collection || !Array.isArray(collection.features)) return null;
+  const seen = new Set<string>();
+  const regions: DiscoverRegionOption[] = [];
+  for (const feature of collection.features) {
+    const code = feature.properties?.gisco_id;
+    const name = feature.properties?.lau_name;
+    const geometry = normalizeNominatimBoundary(feature.geometry);
+    if (
+      typeof code !== "string" ||
+      !/^[A-Z]{2}_[A-Za-z0-9._-]{1,32}$/u.test(code) ||
+      seen.has(code) ||
+      !geometry
+    ) {
+      continue;
+    }
+    seen.add(code);
+    regions.push({
+      id: `lau:${code}`,
+      code,
+      name: typeof name === "string" && name.trim() ? name.trim() : code,
+      nutsLevel: "lau",
+      geometry,
+      sourceId: GISCO_LAU_SOURCE_ID
+    });
+    if (regions.length >= MAX_REGION_OPTIONS) break;
+  }
+  if (!regions.length) return null;
+  const matched = Number(collection.numberMatched);
+  return {
+    nutsLevel: "lau",
+    truncated: Number.isFinite(matched) && matched > collection.features.length,
+    sourceId: GISCO_LAU_SOURCE_ID,
+    regions
+  };
+}
+
 interface EurostatRegionLabels {
   dimension?: {
     geo?: { category?: { label?: unknown } };
   };
 }
 
-/** One statistical boundary level is visible at a time; local/city zoom stays on Nominatim. */
-export function giscoNutsLevelForZoom(zoom: number): 0 | 1 | 2 | 3 | null {
+/** One boundary level is offered at a time, chosen by how much of the world is on screen. */
+export function giscoNutsLevelForZoom(zoom: number): DiscoverCatalogueLevel {
   if (zoom <= 4) return 0;
   if (zoom <= 5.5) return 1;
   if (zoom <= 6.5) return 2;
   if (zoom <= 10) return 3;
-  return null;
+  return "lau";
 }
 
 function selectedNutsCode(
   region: ResolvedDiscoverRegion | null,
-  nutsLevel: 0 | 1 | 2 | 3
+  nutsLevel: DiscoverCatalogueLevel
 ): string | null {
+  // A municipality has no NUTS code to compare against, so nothing is excluded as "the one
+  // already selected"; the list is simply what is on screen.
+  if (nutsLevel === "lau") return null;
   if (region?.nutsCode) return region.nutsCode.slice(0, 2 + nutsLevel);
   return nutsLevel === 0 ? (region?.countryCode ?? null) : null;
 }
@@ -615,13 +795,46 @@ export function normalizeGiscoRegionCatalogue(
   };
 }
 
+/** Municipalities in view, for the zooms where a statistical region is too coarse to click. */
+async function resolveLauCatalogue(
+  input: DiscoverContextInput,
+  signal?: AbortSignal
+): Promise<DiscoverRegionCatalogue | null> {
+  const bbox = validBbox(input.bbox) ? input.bbox : guideQueryExtent(input);
+  const params = new URLSearchParams({
+    bbox: bbox.map((coordinate) => coordinate.toFixed(4)).join(","),
+    limit: String(MAX_REGION_OPTIONS + 1)
+  });
+  try {
+    const raw = await fetchText(
+      `https://gisco-services.ec.europa.eu/features/collections/gisco.lau_rg_01m_2024_4326/items.json?${params}`,
+      {
+        providerId: "eurostat-gisco-lau",
+        ttlMs: 7 * 24 * 60 * 60_000,
+        timeoutMs: 8_000,
+        minIntervalMs: 250,
+        // Municipal outlines carry far more vertices than a NUTS region, and a city view can
+        // hold dozens of them.
+        maxResponseBytes: 2 * 1024 * 1024,
+        acceptedContentTypes: ["application/geo+json", "application/json"],
+        signal
+      }
+    );
+    if (signal?.aborted) return null;
+    return normalizeGiscoLauCatalogue(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveDiscoverRegionCatalogue(
   input: DiscoverContextInput,
   region: ResolvedDiscoverRegion | null,
   signal?: AbortSignal
 ): Promise<DiscoverRegionCatalogue | null> {
   const nutsLevel = giscoNutsLevelForZoom(input.zoom);
-  if (nutsLevel === null || signal?.aborted) return null;
+  if (signal?.aborted) return null;
+  if (nutsLevel === "lau") return resolveLauCatalogue(input, signal);
   const bbox = validBbox(input.bbox) ? input.bbox : guideQueryExtent(input);
   const params = new URLSearchParams({
     bbox: bbox.map((coordinate) => coordinate.toFixed(4)).join(","),
@@ -866,7 +1079,18 @@ function sourceCitations(
   fetchedAt: string
 ): DiscoverCitation[] {
   const sources: DiscoverCitation[] = [];
-  if (region) {
+  if (region?.selectedArea)
+    sources.push({
+      id: region.selectedArea.source,
+      label: region.selectedArea.source,
+      attribution: region.selectedArea.source,
+      license: null,
+      url: region.selectedArea.source.startsWith("gisco-")
+        ? "https://ec.europa.eu/eurostat/web/gisco/geodata"
+        : "https://www.geoboundaries.org/",
+      fetchedAt
+    });
+  if (region && !region.selectedArea) {
     sources.push({
       id: NOMINATIM_SOURCE_ID,
       label: "OpenStreetMap Nominatim",
@@ -879,7 +1103,8 @@ function sourceCitations(
   if (guide) {
     sources.push({
       id: `guide:${guide.sourceId}`,
-      label: guide.sourceId,
+      // The attribution is the name a reader recognises; the id is for joining, not for reading.
+      label: guide.attribution || guide.sourceId,
       attribution: guide.attribution,
       url: guide.url ?? "https://www.wikivoyage.org/",
       license: null,
@@ -908,10 +1133,24 @@ function sourceCitations(
       fetchedAt
     });
   }
+  for (const id of new Set(statistics.flatMap((stat) => stat.sourceIds))) {
+    if (!id.startsWith("published:")) continue;
+    const descriptor = statDataset(id.slice(10));
+    if (descriptor)
+      sources.push({
+        id,
+        label: descriptor.name,
+        attribution: descriptor.attribution,
+        url: descriptor.documentationUrl,
+        license: descriptor.license,
+        fetchedAt
+      });
+  }
   if (regionCatalogue?.regions.length) {
+    const lau = regionCatalogue.sourceId === GISCO_LAU_SOURCE_ID;
     sources.push({
-      id: GISCO_NUTS_SOURCE_ID,
-      label: "Eurostat GISCO · NUTS 2024",
+      id: regionCatalogue.sourceId,
+      label: lau ? "Eurostat GISCO · LAU 2024" : "Eurostat GISCO · NUTS 2024",
       attribution: "European Commission — Eurostat/GISCO",
       url: "https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/territorial-units-statistics",
       license: "GISCO/NUTS reuse notice (advisory)",
@@ -938,8 +1177,10 @@ function structuredSynthesis(
     return {
       kind: "structured",
       label: "Kontext mapy",
-      text: `Střed mapy leží v oblasti ${region.name}. Zapni datové vrstvy nebo použij ruční obnovení pro další ověřitelné informace.`,
-      sourceIds: [NOMINATIM_SOURCE_ID]
+      text: region.selectedArea
+        ? `Vybraná oblast: ${region.name}. Níže jsou dostupná místní data; širší regionální údaje mají vlastní označení.`
+        : `Střed mapy leží v oblasti ${region.name}. Zapni datové vrstvy nebo použij ruční obnovení pro další ověřitelné informace.`,
+      sourceIds: [region.selectedArea?.source ?? NOMINATIM_SOURCE_ID]
     };
   }
   return null;
@@ -1008,12 +1249,7 @@ export async function synthesizeDiscoverContext(
   const answer = await askCml({
     cacheKey: `discover:${digest}`,
     verifiedPublic: true,
-    system: [
-      "Jsi stručný mapový průvodce MapOS. Odpovídej česky ve 2 až 4 krátkých větách.",
-      "Používej pouze dodaný veřejný kontext. Nevymýšlej aktuální fakta, ceny, otevírací dobu ani konkrétní místa.",
-      "Když zdroje nestačí, napiš obecný GPS-aware návrh a jasně přiznej omezení.",
-      "Zohledni use case a aktivní vrstvy, ale netvrď, že jejich data byla prohledána, pokud v kontextu nejsou."
-    ].join(" "),
+    system: aiPrompt("region-digest.v1"),
     prompt: JSON.stringify(publicContext),
     maxTokens: 420,
     temperature: 0.25,
@@ -1027,6 +1263,25 @@ export async function synthesizeDiscoverContext(
         sourceIds: structured.sources.map((source) => source.id)
       }
     : null;
+}
+
+/** The region as the guide aggregator wants it: a name, a language, an extent and the joins it
+ *  can use to find an article. */
+export function guideAreaFor(
+  input: DiscoverContextInput,
+  region: ResolvedDiscoverRegion
+): GuideAreaRef {
+  return {
+    ...(input.area ? { selectedArea: input.area } : {}),
+    regionId: region.id,
+    name: region.name,
+    level: region.level,
+    lang: input.lang?.trim().slice(0, 2) || "cs",
+    center: { longitude: input.lng, latitude: input.lat },
+    bbox: guideQueryExtent(input),
+    ...(region.wikidataId ? { wikidataId: region.wikidataId } : {}),
+    ...(region.nutsCode ? { nutsCode: region.nutsCode } : {})
+  };
 }
 
 function withCacheMetadata(
@@ -1061,7 +1316,23 @@ export function createDiscoverContextService(
 
     const work = (async (): Promise<DiscoverContext> => {
       // Ordering is intentional: structured sources are exhausted before the optional model seam.
-      const region = await dependencies.resolveRegion(input, signal);
+      const region: ResolvedDiscoverRegion | null = input.area
+        ? {
+            id: input.area.id,
+            selectedArea: input.area,
+            name: input.area.name,
+            level:
+              input.area.level === "lau"
+                ? "locality"
+                : input.area.level === "adm1"
+                  ? "admin1"
+                  : input.area.level === "adm2"
+                    ? "admin2"
+                    : "country",
+            countryCode: input.area.country,
+            hierarchy: []
+          }
+        : await dependencies.resolveRegion(input, signal);
       const capabilitySettled = await Promise.allSettled(
         registeredCapabilities.map((capability) => capability.resolve(input, region, signal))
       );
@@ -1106,6 +1377,32 @@ export function createDiscoverContextService(
       }
       const fetchedAt = new Date(now()).toISOString();
       const sources = sourceCitations(region, guide, statistics, regionCatalogue, fetchedAt);
+      const guideSynthesis =
+        region && dependencies.resolveGuideSynthesis
+          ? await dependencies
+              .resolveGuideSynthesis(
+                guideAreaFor(input, region),
+                { guide, statistics, sources },
+                {
+                  allowModel: input.allowModelFallback === true,
+                  ...(signal ? { signal } : {})
+                }
+              )
+              .catch(() => null)
+          : null;
+      // A source the guide cited but the structured blocks did not know about still has to be
+      // listed, or the panel would show a chip with nothing behind it.
+      for (const citation of guideSynthesis?.sources ?? []) {
+        if (sources.some((source) => source.id === citation.sourceId)) continue;
+        sources.push({
+          id: citation.sourceId,
+          label: citation.label,
+          attribution: citation.label,
+          url: citation.url ?? "",
+          license: null,
+          fetchedAt
+        });
+      }
       let synthesis = structuredSynthesis(region, guide);
       let modelStatus: "ready" | "empty" | "skipped" = "skipped";
 
@@ -1152,6 +1449,7 @@ export function createDiscoverContextService(
         region: publicRegion,
         guide,
         synthesis,
+        guideSynthesis,
         statistics,
         regionCatalogue,
         sources,
@@ -1167,8 +1465,8 @@ export function createDiscoverContextService(
             id: "region",
             status: region ? "ready" : "empty",
             sourceIds: [
-              ...(region ? [NOMINATIM_SOURCE_ID] : []),
-              ...(regionCatalogue?.regions.length ? [GISCO_NUTS_SOURCE_ID] : [])
+              ...(region ? [region.selectedArea?.source ?? NOMINATIM_SOURCE_ID] : []),
+              ...(regionCatalogue?.regions.length ? [regionCatalogue.sourceId] : [])
             ]
           },
           {
@@ -1234,7 +1532,9 @@ export function createDiscoverContextService(
   };
 }
 
-export const discoverContextService = createDiscoverContextService({
+/** The live composition, exported so the guide wiring can extend it without a second cache and
+ *  without this module having to know how a guide is written (§30.5). */
+export const PRODUCTION_DISCOVER_DEPENDENCIES: DiscoverContextDependencies = {
   resolveRegion: resolveDiscoverRegion,
   resolveGuide: resolveDiscoverGuide,
   capabilities: [
@@ -1244,16 +1544,21 @@ export const discoverContextService = createDiscoverContextService({
       kind: "guide",
       resolve: async (input, region, signal) => ({
         kind: "guide",
-        value: await resolveDiscoverGuide(input, region, signal)
+        value: input.area ? null : await resolveDiscoverGuide(input, region, signal)
       })
     },
     {
       id: "regional-statistics",
-      label: "Obyvatelstvo a ekonomika",
+      label: "Obyvatelstvo, prostředí a regionální data",
       kind: "statistics",
       resolve: async (input, region, signal) => ({
         kind: "statistics",
-        value: await resolveDiscoverStatistics(input, region, signal)
+        value: (
+          await Promise.all([
+            input.area ? [] : resolveDiscoverStatistics(input, region, signal),
+            publishedDiscoverStatistics(input.lng, input.lat, signal, input.area)
+          ])
+        ).flat()
       })
     },
     {
@@ -1262,19 +1567,125 @@ export const discoverContextService = createDiscoverContextService({
       kind: "region-catalogue",
       resolve: async (input, region, signal) => ({
         kind: "region-catalogue",
-        value: await resolveDiscoverRegionCatalogue(input, region, signal)
+        value: input.area ? null : await resolveDiscoverRegionCatalogue(input, region, signal)
       })
     }
   ],
   synthesize: synthesizeDiscoverContext
-});
+};
 
-/** Deterministic no-network service for the explicit offline fixture composition. */
+export const discoverContextService = createDiscoverContextService(
+  PRODUCTION_DISCOVER_DEPENDENCIES
+);
+
+const OFFLINE_GUIDE_SOURCE_ID = "wikivoyage:fixture";
+
+const OFFLINE_REGION: ResolvedDiscoverRegion = {
+  id: "fixture:plzen",
+  name: "Plzeň",
+  level: "locality",
+  hierarchy: [
+    { name: "Česko", level: "country" },
+    { name: "Plzeňský kraj", level: "admin1" }
+  ],
+  countryCode: "CZ",
+  populationSeed: { value: 181_000, year: 2025 }
+};
+
+const OFFLINE_GUIDE: Guide = {
+  area: "Plzeň",
+  lang: "cs",
+  sourceId: OFFLINE_GUIDE_SOURCE_ID,
+  attribution: "Wikivoyage (fixture)",
+  url: "https://fixture.test/wikivoyage/plzen",
+  sections: [
+    {
+      id: "understand",
+      title: "O místě",
+      intro:
+        "Plzeň leží na soutoku čtyř řek a je známá pivovarem, katedrálou a druhou největší synagogou v Evropě.",
+      items: []
+    },
+    {
+      id: "see",
+      title: "Co vidět",
+      items: [
+        {
+          name: "Velká synagoga",
+          description: "Druhá největší synagoga v Evropě, dokončená roku 1893.",
+          lng: 13.371,
+          lat: 49.747,
+          sourceRef: `${OFFLINE_GUIDE_SOURCE_ID}:synagoga`
+        },
+        {
+          name: "Pivovar Plzeňský Prazdroj",
+          description: "Prohlídka sklepů, kde se od roku 1842 vaří ležák.",
+          lng: 13.388,
+          lat: 49.748,
+          sourceRef: `${OFFLINE_GUIDE_SOURCE_ID}:prazdroj`
+        }
+      ]
+    }
+  ]
+};
+
+/**
+ * Deterministic no-network service for the explicit offline fixture composition.
+ *
+ * The offline profile answers with one labelled fixture region rather than with nothing: an
+ * Objevuj panel that is structurally empty cannot show that its guide, statistics and provenance
+ * work, and that is exactly what the offline profile exists to demonstrate.
+ */
 export function createOfflineDiscoverContextService(): DiscoverContextService {
+  const now = () => Date.parse("2026-09-01T12:00:00.000Z");
   return createDiscoverContextService({
-    resolveRegion: async () => null,
-    resolveGuide: async () => null,
-    now: () => Date.parse("2026-09-01T12:00:00.000Z")
+    resolveRegion: async () => structuredClone(OFFLINE_REGION),
+    resolveGuide: async () => structuredClone(OFFLINE_GUIDE),
+    resolveStatistics: async (_input, region) =>
+      region
+        ? [
+            {
+              id: "population",
+              label: "Počet obyvatel",
+              value: 181_000,
+              unit: "people",
+              scope: { regionId: region.id, regionName: region.name, level: region.level },
+              year: 2025,
+              uncertainty: "fixture",
+              uncertaintyLabel: "Ukázková data offline profilu.",
+              sourceIds: ["wikidata:fixture"]
+            }
+          ]
+        : [],
+    resolveGuideSynthesis: async (area, seed) =>
+      buildGuideSynthesis(
+        await collectGuideEvidence(
+          area,
+          {},
+          {
+            seed: {
+              guide: seed.guide,
+              statistics: seed.statistics.map((statistic) => ({
+                id: statistic.id,
+                label: statistic.label,
+                value: statistic.value,
+                unit: statistic.unit,
+                year: statistic.year,
+                uncertaintyLabel: statistic.uncertaintyLabel,
+                sourceIds: statistic.sourceIds
+              })),
+              sources: seed.sources.map((source) => ({
+                sourceId: source.id,
+                label: source.label,
+                ...(source.url ? { url: source.url } : {})
+              }))
+            }
+          }
+        ),
+        // No model offline: the fallback chain writes the guide from the fixture article itself.
+        { allowModel: false }
+      ),
+    now
   });
 }
 

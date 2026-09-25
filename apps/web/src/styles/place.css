@@ -1,0 +1,514 @@
+/* Place detail in the left panel (§4.10): hero, the five Google-Maps-style actions, the AI
+   summary card and the registry tabs. */
+@layer place {
+  .panel-place-detail .panel-left-body {
+    padding-top: 0;
+    display: grid;
+    /* Explicit minmax(0, …): an auto track takes the widest child's min-content, and one long
+       GPS string or URL inside the fact table would otherwise widen every row above it. */
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-7);
+    align-content: start;
+  }
+
+  /* ---- Hero ------------------------------------------------------------ */
+
+  /* Without a photo there is no hero band at all — a gradient with a placeholder glyph reads
+     as a broken image. The name simply sits beside its category icon. */
+  .place-hero-plain {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    padding-top: var(--space-7);
+  }
+
+  .place-hero-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: var(--radius-pill);
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+  }
+
+  .place-hero-copy {
+    min-width: 0;
+  }
+
+  .place-hero h3 {
+    font: var(--type-title-lg);
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .place-hero-meta {
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+    margin: var(--space-1) 0 0;
+  }
+
+  .place-hero-photo {
+    position: relative;
+    /* The photo bleeds to the panel edges and has a negative top margin, which puts it in the
+       same paint band as the rows below it. It stays at the bottom of that band so the hero can
+       never cover the action row (route/save/share) that follows it in the DOM. */
+    z-index: 0;
+    /* Bleeds to the panel edges: the body's padding would leave two white columns beside a
+       16:9 image. */
+    margin-inline: calc(var(--space-7) * -1);
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: var(--surface-sunken);
+  }
+
+  .place-hero-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .place-hero-overlay {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    padding: var(--space-9) var(--space-7) var(--space-5);
+    display: grid;
+    gap: var(--space-4);
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
+    color: #fff;
+  }
+
+  .place-hero-overlay h3 {
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  }
+
+  .place-hero-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .place-hero-credit {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-4);
+    margin: 0;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-xs);
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font: var(--type-label-sm);
+  }
+
+  .place-hero-gallery {
+    position: absolute;
+    bottom: var(--space-3);
+    right: var(--space-4);
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  /* ---- Action row ------------------------------------------------------ */
+
+  .place-actions {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: var(--space-3);
+    align-items: start;
+    /* Above the hero: the relatively-positioned photo would otherwise paint over these static
+       buttons when the panel is narrow and the rows are tight. */
+    position: relative;
+    z-index: 1;
+  }
+
+  .place-action {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .place-action-label {
+    font: var(--type-label-md);
+    color: var(--text-muted);
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+
+  .place-action[data-primary] .place-action-label {
+    color: var(--accent);
+  }
+
+  /* ---- AI summary ------------------------------------------------------ */
+
+  .place-brief {
+    background: var(--surface-sunken);
+    border-radius: var(--radius);
+    padding: var(--space-6);
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .place-brief-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0;
+    font: var(--type-label-md);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .place-brief-head .kit-button {
+    margin-left: auto;
+  }
+
+  .place-brief-skeleton {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .place-brief-text {
+    margin: 0;
+    font: var(--type-body-md);
+  }
+
+  .place-brief-empty {
+    margin: 0;
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+  }
+
+  .place-brief-nearby {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .place-brief-sources {
+    margin: 0;
+    font: var(--type-label-sm);
+    color: var(--text-faint);
+  }
+
+  /* ---- Tabs and fact rows --------------------------------------------- */
+
+  /* 120 px label column (§4.10). Wide enough for "Otevírací doba" and narrow enough that the
+     value column still holds a URL, which wraps rather than pushing the panel sideways. */
+  .panel-place-detail .info-facts {
+    grid-template-columns: minmax(0, 120px) minmax(0, 1fr);
+    gap: var(--space-4) var(--space-6);
+    font: var(--type-body-md);
+  }
+
+  .panel-place-detail .info-facts dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .panel-place-detail .info-facts dt {
+    color: var(--text-muted);
+  }
+
+  .panel-place-detail .info-gps {
+    gap: var(--space-2);
+  }
+
+  .panel-place-detail .info-provenance .tag-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+  }
+
+  /* ---- AI conversation panel (§4.13) ---------------------------------- */
+
+  .ai-panel-thread {
+    display: grid;
+    gap: var(--space-7);
+  }
+
+  .ai-turn {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  /* The question right in accent-soft, the answer left without a bubble: two speakers are
+     legible from the alignment alone. */
+  .ai-turn-question {
+    margin: 0;
+    margin-left: auto;
+    max-width: 85%;
+    padding: var(--space-4) var(--space-6);
+    border-radius: var(--radius) var(--radius) var(--radius-xs) var(--radius);
+    background: var(--accent-soft);
+    font: var(--type-body-md);
+  }
+
+  .ai-turn-answer {
+    margin: 0;
+    font: var(--type-body-md);
+  }
+
+  .ai-turn-places {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .ai-turn-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .ai-turn-facts {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    width: 100%;
+  }
+
+  .ai-turn-facts > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .ai-turn-facts dt {
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+  }
+
+  .ai-turn-facts dd {
+    margin: 0;
+    font: var(--type-title-sm);
+    text-align: right;
+  }
+
+  /* The vintage of a number, set quietly under it: present for the reader who checks, out of the
+     way of the reader who does not. */
+  .ai-turn-facts dd span {
+    display: block;
+    font: var(--type-label-md);
+    color: var(--text-muted);
+  }
+
+  /* Naming the running tool instead of an anonymous spinner: the wait is the only place the
+     assistant can say what it is doing. */
+  .ai-turn-step {
+    margin: 0;
+    font: var(--type-label-md);
+    color: var(--text-muted);
+  }
+
+  .ai-turn-card {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+    justify-items: start;
+  }
+
+  .ai-turn-card-head {
+    margin: 0;
+    font: var(--type-label-md);
+    color: var(--text-muted);
+  }
+
+  .ai-turn-card-note {
+    margin: 0;
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+  }
+
+  .ai-turn-card-actions,
+  .ai-turn-card-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  /* A proposed itinerary reads as an order, so it is numbered by the list itself. */
+  .ai-turn-plan {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+    padding-left: var(--space-6);
+    font: var(--type-body-sm);
+  }
+
+  .ai-turn-plan em {
+    margin-left: var(--space-2);
+    font-style: normal;
+    color: var(--text-muted);
+  }
+
+  .ai-turn-link {
+    font: var(--type-body-md);
+    color: var(--accent);
+    overflow-wrap: anywhere;
+  }
+
+  .ai-panel-context-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding-left: var(--space-6);
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+  }
+
+  .ai-panel-followups {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .ai-panel-composer {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  /* ---- Header stepper -------------------------------------------------- */
+
+  .place-stepper {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .place-stepper-count {
+    font: var(--type-label-md);
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+}
+
+@layer place {
+  .place-identity-meta {
+    margin: 0;
+    padding-top: var(--space-4);
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+  }
+  .panel-place-detail .place-action-label {
+    overflow-wrap: normal;
+    white-space: nowrap;
+  }
+  .panel-place-detail .place-stepper-count {
+    display: none;
+  }
+  .detail-curated {
+    display: grid;
+    gap: var(--space-7);
+  }
+  .detail-curated .info-panel,
+  .detail-curated .detail-source-group,
+  .detail-curated .detail-panel-group {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+  .detail-curated .detail-source-group {
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--border);
+  }
+  .detail-curated .detail-source-group[hidden] {
+    display: none;
+  }
+  .detail-curated h4 {
+    margin: 0 0 var(--space-4);
+    font: var(--type-title-sm);
+  }
+  .detail-curated .info-facts {
+    margin: 0;
+  }
+  .detail-curated .info-gps {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+  .detail-curated .info-gps .kit-icon-button {
+    flex-shrink: 0;
+  }
+  .detail-description {
+    margin: 0;
+  }
+  .detail-more {
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-6);
+  }
+  .detail-more > summary {
+    cursor: pointer;
+    font: var(--type-title-sm);
+    padding-block: var(--space-4);
+  }
+  .detail-more[open] > * + * {
+    margin-top: var(--space-7);
+  }
+  .detail-external-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-5);
+  }
+  .detail-external-actions > a {
+    font: var(--type-body-sm);
+  }
+  .detail-section-retry {
+    margin-top: var(--space-4);
+  }
+  [data-testid="detail-embed-dialog"] .info-frame {
+    width: 100%;
+    max-height: 65dvh;
+  }
+}
+
+@layer components {
+  .ai-session-menu {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .ai-session-menu > summary {
+    cursor: pointer;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ai-session-controls {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 30;
+    width: min(280px, 65vw);
+    max-height: 65dvh;
+    overflow-y: auto;
+    padding: var(--space-3);
+    background: var(--surface-elevated);
+    box-shadow: var(--shadow-md);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+  .ai-session-controls select {
+    width: 100%;
+    min-width: 0;
+  }
+}

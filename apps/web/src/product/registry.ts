@@ -6,6 +6,8 @@ import type {
   LayerModeV2,
   SurfaceManifest
 } from "@mapos/layer-sdk";
+import { t } from "../i18n";
+import type { IconName } from "../ui/kit/icons";
 
 export type AppMode = LayerModeV2;
 export type LegacyAppMode = "mine" | "weather" | "poi";
@@ -16,49 +18,95 @@ export interface ModeManifest {
   label: string;
   shortLabel: string;
   description: string;
-  icon: "bookmark" | "compass" | "route" | "gamepad";
+  /** A Material Symbols Rounded name from `ui/kit/icons.ts`. */
+  icon: IconName;
   testId: `mode-${AppMode}`;
 }
 
-/** The single shell-mode registry. Layers and surfaces deliberately have their own registries. */
+/** The single shell-mode registry. Layers and surfaces deliberately have their own registries.
+ *
+ *  The top bar, the mobile navigation bar and the history handling all read this list rather than
+ *  hard-coding its length, which is how Feed (§13.2) became one entry plus a panel.
+ *
+ *  The three copy fields are getters, not strings: this list is built once at import time, and a
+ *  string would freeze the labels in whichever language was active then. A getter is read at
+ *  render time, so switching language relabels the mode bar without rebuilding the registry. */
 export const MODE_MANIFESTS: readonly ModeManifest[] = [
   {
     id: "personal",
-    label: "Personal",
-    shortLabel: "Personal",
-    description: "Profil, ranky, uložené trasy, místa a vlastní obsah",
-    icon: "bookmark",
+    get label() {
+      return t("mode.personal");
+    },
+    get shortLabel() {
+      return t("mode.personal.short");
+    },
+    get description() {
+      return t("mode.personal.description");
+    },
+    icon: "person_pin_circle",
     testId: "mode-personal"
   },
   {
+    id: "feed",
+    get label() {
+      return t("mode.feed");
+    },
+    get shortLabel() {
+      return t("mode.feed.short");
+    },
+    get description() {
+      return t("mode.feed.description");
+    },
+    icon: "dynamic_feed",
+    testId: "mode-feed"
+  },
+  {
     id: "discover",
-    label: "Discover",
-    shortLabel: "Discover",
-    description: "Regiony, lidé a zajímavá místa napříč Evropou",
-    icon: "compass",
+    get label() {
+      return t("mode.discover");
+    },
+    get shortLabel() {
+      return t("mode.discover.short");
+    },
+    get description() {
+      return t("mode.discover.description");
+    },
+    icon: "explore",
     testId: "mode-discover"
   },
   {
     id: "planning",
-    label: "Plánování",
-    shortLabel: "Plán",
-    description: "Trasy, zastávky, vozidlo, náklady a podmínky po cestě",
+    get label() {
+      return t("mode.planning");
+    },
+    get shortLabel() {
+      return t("mode.planning.short");
+    },
+    get description() {
+      return t("mode.planning.description");
+    },
     icon: "route",
     testId: "mode-planning"
   },
   {
     id: "game",
-    label: "Hra",
-    shortLabel: "Hra",
-    description: "Souběžné mapové hry nad jedním hráčem a jednou mapou",
-    icon: "gamepad",
+    get label() {
+      return t("mode.game");
+    },
+    get shortLabel() {
+      return t("mode.game.short");
+    },
+    get description() {
+      return t("mode.game.description");
+    },
+    icon: "stadia_controller",
     testId: "mode-game"
   }
 ];
 
 export interface AppModeResolution {
   mode: AppMode;
-  activateLayerId?: "weather";
+  activateLayerId?: string;
   source: "canonical" | "legacy" | "fallback";
   rewriteUrl: boolean;
 }
@@ -70,10 +118,10 @@ export function isAppMode(value: unknown): value is AppMode {
 }
 
 /**
- * Resolves old public links and callers without allowing a fifth shell mode back into state.
+ * Resolves old public links and callers, and keeps anything not in the registry out of state.
  * Weather remains additive: its old route lands in Discover and switches the weather layer on.
  */
-export function resolveAppMode(value: unknown, fallback: AppMode = "planning"): AppModeResolution {
+export function resolveAppMode(value: unknown, fallback: AppMode = "discover"): AppModeResolution {
   if (isAppMode(value)) {
     return { mode: value, source: "canonical", rewriteUrl: false };
   }
@@ -89,7 +137,8 @@ export function resolveAppMode(value: unknown, fallback: AppMode = "planning"): 
     if (normalized === "weather") {
       return {
         mode: "discover",
-        activateLayerId: "weather",
+        // Weather is a family of layers now; the old route lands on the radar one.
+        activateLayerId: "weather-radar",
         source: "legacy",
         rewriteUrl: true
       };
@@ -97,15 +146,28 @@ export function resolveAppMode(value: unknown, fallback: AppMode = "planning"): 
     if (normalized === "poi") {
       return { mode: "planning", source: "legacy", rewriteUrl: true };
     }
+    // The mode was called Social while it was being designed, and links to it exist.
+    if (normalized === "social") {
+      return { mode: "feed", source: "legacy", rewriteUrl: true };
+    }
     return { mode: fallback, source: "fallback", rewriteUrl: normalized.length > 0 };
   }
 
   return { mode: fallback, source: "fallback", rewriteUrl: false };
 }
 
-/** Temporary bridge into v1 layer manifests while the shell already speaks canonical v2 IDs. */
+/**
+ * Temporary bridge into v1 layer manifests while the shell already speaks canonical v2 IDs.
+ *
+ * Feed has no v1 equivalent and deliberately does not get one — widening the frozen v1 `LayerMode`
+ * would change a type third-party plugins are compiled against. It reports as Discover so that v1
+ * manifests still resolve for it; which layer Feed actually opens with is decided by
+ * `primaryLayerForAppMode`, not here.
+ */
 export function legacyLayerModeFor(mode: AppMode): LayerMode {
-  return mode === "personal" ? "mine" : mode;
+  if (mode === "personal") return "mine";
+  if (mode === "feed") return "discover";
+  return mode;
 }
 
 const BUILTIN_EXPERIENCE_MANIFESTS: ExperienceManifest[] = [
@@ -113,17 +175,27 @@ const BUILTIN_EXPERIENCE_MANIFESTS: ExperienceManifest[] = [
     id: "default",
     name: "Default",
     description: "Čistý MapOS pro cestování, objevování a komunitní mapy",
-    icon: "◎",
-    accent: "#b7791f",
+    icon: "public",
+    accent: "#1e4fd8",
     recommendedIntegrationIds: ["osm-poi", "user-layers"],
+    gameIds: []
+  },
+  {
+    id: "global",
+    name: "Global",
+    icon: "public",
+    accent: "#0891b2",
+    description:
+      "Světový přehled přírodních událostí. Lodě, letadla a orbitální pohled se připravují.",
+    recommendedIntegrationIds: ["eonet", "earthquakes"],
     gameIds: []
   },
   {
     id: "aavegotchi",
     name: "Aavegotchi",
     description: "Gotchi avatar, questy, zóny a sběratelská hra nad mapou",
-    icon: "👻",
-    accent: "#a855f7",
+    icon: "stadia_controller",
+    accent: "#7c3aed",
     recommendedIntegrationIds: ["osm-poi", "game"],
     gameIds: ["aavegotchi"],
     avatarProviderId: "aavegotchi"
@@ -162,7 +234,7 @@ export function createExperienceRegistry(
 
 export const experienceRegistry = createExperienceRegistry(BUILTIN_EXPERIENCE_MANIFESTS);
 
-/** Snapshot kept for callers that only need the two built-in worlds at module load. */
+/** Snapshot kept for callers that only need the built-in worlds at module load. */
 export const EXPERIENCE_MANIFESTS = experienceRegistry.list();
 
 export const SURFACE_MANIFESTS: SurfaceManifest[] = [

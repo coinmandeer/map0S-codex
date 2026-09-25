@@ -30,3 +30,11 @@ test("buildOverpassQuery includes categories", () => {
   assert.match(q, /tourism"="viewpoint"/);
   assert.match(q, /out center 800;/);
 });
+
+test("bitcoin categories use the OpenStreetMap tags BTC Map is built on", () => {
+  const q = buildOverpassQuery([14.2, 49.9, 14.7, 50.2], ["bitcoin_atm", "bitcoin"]);
+  assert.match(q, /currency:XBT"="yes"/);
+  assert.match(q, /payment:bitcoin"="yes"/);
+  // Both are queried as nodes, ways and relations, like every other category.
+  assert.match(q, /way\["amenity"="atm"\]\["currency:XBT"="yes"\]\(49\.9,14\.2,50\.2,14\.7\)/);
+});

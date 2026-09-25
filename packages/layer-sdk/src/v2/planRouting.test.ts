@@ -20,6 +20,7 @@ test("documents a finite request mapping for every vehicle and canonical prefere
         assert.ok(mapping.providerProfile.length > 0);
         assert.ok(["native", "fallback"].includes(mapping.profileCapability));
         assert.ok(["native", "fallback"].includes(mapping.preferenceCapability));
+        assert.ok([1, 2].includes(mapping.alternativesSupported));
         if (mapping.preferenceCapability === "fallback") assert.ok(mapping.warnings.length > 0);
       }
     }
@@ -37,16 +38,9 @@ test("keeps native Mapy requests distinct and never relabels unsupported routes"
     preferenceCapability: "native",
     avoidTolls: false,
     avoidMotorways: false,
+    alternativesSupported: 1,
     warnings: []
   });
-  assert.equal(
-    resolvePlanRoutingRequestV2("mapy", "foot", "adventure").providerProfile,
-    "foot_hiking"
-  );
-  assert.equal(
-    resolvePlanRoutingRequestV2("mapy", "bike", "adventure").providerProfile,
-    "bike_mountain"
-  );
 
   const noHighways = resolvePlanRoutingRequestV2("mapy", "car", "nohwy");
   assert.equal(noHighways.preferenceCapability, "fallback");
@@ -57,8 +51,30 @@ test("keeps native Mapy requests distinct and never relabels unsupported routes"
   assert.match(noHighways.warnings.join(" "), /negarantuje vynechání dálnic/);
 });
 
+test("an adventure on foot or by bike is a BRouter request, not a renamed fast route", () => {
+  for (const provider of ["osm", "mapy", "memory"] as const) {
+    const walking = resolvePlanRoutingRequestV2(provider, "foot", "adventure");
+    assert.equal(walking.providerProfile, "trekking");
+    assert.equal(walking.adventureRouter, "brouter");
+    assert.equal(walking.effectivePreference, "adventure");
+    assert.equal(walking.preferenceCapability, "native");
+    assert.equal(walking.alternativesSupported, 2, "BRouter answers with variants of its own");
+    assert.deepEqual(walking.warnings, []);
+    assert.equal(resolvePlanRoutingRequestV2(provider, "bike", "adventure").providerProfile, "mtb");
+  }
+  // A camper has nothing to gain from a trekking profile, so it keeps the honest fallback.
+  const camper = resolvePlanRoutingRequestV2("osm", "camper", "adventure");
+  assert.equal(camper.adventureRouter, undefined);
+  assert.equal(camper.preferenceCapability, "fallback");
+});
+
+test("Mapy.com is reported as a single-variant router", () => {
+  assert.equal(resolvePlanRoutingRequestV2("mapy", "car", "fast").alternativesSupported, 1);
+  assert.equal(resolvePlanRoutingRequestV2("osm", "car", "fast").alternativesSupported, 2);
+});
+
 test("makes OSM and vehicle-category fallbacks explicit", () => {
-  for (const preference of ["short", "nohwy", "adventure"] as const) {
+  for (const preference of ["short", "nohwy"] as const) {
     const mapping = resolvePlanRoutingRequestV2("osm", "car", preference);
     assert.equal(mapping.providerProfile, "car");
     assert.equal(mapping.effectivePreference, "fast");

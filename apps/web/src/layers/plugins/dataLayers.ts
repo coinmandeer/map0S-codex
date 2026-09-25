@@ -1,4 +1,5 @@
-import { registerLayer, registerLayerV2 } from "../registry";
+import { GOLEMIO_LAYERS } from "@mapos/layer-sdk";
+import { registerLayer, registerLayerV2, type MapLayerPlugin } from "../registry";
 import { createDataLayer, type DataLayerSpec } from "../dataLayer";
 import type {
   FilterFacet,
@@ -25,9 +26,17 @@ function dataPlugin(args: {
   defaultFilters?: Record<string, unknown>;
   attribution: LayerAttribution[];
   experimental?: boolean;
+  /** Providers intentionally reject continent-sized viewports. Keep them quiet until a useful
+   *  region is visible instead of issuing a request that can only return an empty result. */
+  minQueryZoom?: number;
   /** Server capability gating the layer. Without it the layer isn't offered at all, which is
    *  kinder than showing a toggle that can only ever produce an error. */
   requiresCapability?: string;
+  /** Which of the feature's own fields the detail sheet shows, and in what order. Without it the
+   *  sheet falls back to the generic place layout, which drops the photo credit, the opening
+   *  hours and the link back — the things that make one answer better than another. */
+  detail?: MapLayerPlugin["detail"];
+  capabilities?: MapLayerPlugin["capabilities"];
 }) {
   registerLayer({
     kind: "pins",
@@ -43,6 +52,9 @@ function dataPlugin(args: {
     },
     filters: args.filters,
     defaultFilters: args.defaultFilters,
+    ...(args.detail ? { detail: args.detail } : {}),
+    ...(args.capabilities ? { capabilities: args.capabilities } : {}),
+    ...(args.minQueryZoom !== undefined ? { minQueryZoom: args.minQueryZoom } : {}),
     create: (ctx) => createDataLayer(ctx.map, ctx.apiBaseUrl, ctx.layerId, args.spec),
     attribution: args.attribution
   });
@@ -191,6 +203,7 @@ dataPlugin({
   icon: "🦋",
   description: "Nálezy rostlin a živočichů s fotkou z iNaturalistu",
   category: "environment",
+  minQueryZoom: 5,
   spec: { color: "#16a34a" },
   filters: [
     {
@@ -207,6 +220,9 @@ dataPlugin({
       ]
     }
   ],
+  // An observation is a photo plus who saw what, and when.
+  detail: { fieldOrder: ["taxon", "observedOn", "observer", "license", "website"] },
+  capabilities: ["media", "detail"],
   attribution: [{ label: "iNaturalist", url: "https://www.inaturalist.org/", license: "CC-BY-NC" }]
 });
 
@@ -216,6 +232,7 @@ dataPlugin({
   icon: "🔬",
   description: "Historické i současné nálezy druhů z muzejních a vědeckých sbírek",
   category: "environment",
+  minQueryZoom: 5,
   spec: { color: "#0d9488" },
   attribution: [{ label: "GBIF", url: "https://www.gbif.org/", license: "CC-BY-4.0" }]
 });
@@ -226,6 +243,7 @@ dataPlugin({
   icon: "💨",
   description: "Měření prachových částic z občanské sítě Sensor.Community",
   category: "environment",
+  minQueryZoom: 6,
   spec: {
     color: "#a855f7",
     sizeBy: { property: "pm25", min: 0, max: 60, minRadius: 4, maxRadius: 18 },
@@ -243,6 +261,13 @@ dataPlugin({
   description: "Volně licencované fotografie míst z Wikimedia Commons",
   category: "community",
   spec: { color: "#f59e0b", labelFromZoom: 15 },
+  // A photograph's card is the photograph: the credit and the licence are the only other
+  // things a reader of a Commons image needs, and the link back is where they can check.
+  detail: {
+    fieldOrder: ["author", "license", "website"],
+    aiEnrichment: "on-demand"
+  },
+  capabilities: ["media", "detail"],
   attribution: [
     {
       label: "Wikimedia Commons",
@@ -286,6 +311,11 @@ dataPlugin({
     sizeBy: { property: "powerKw", min: 3, max: 350, minRadius: 4, maxRadius: 14 },
     labelFromZoom: 14
   },
+  // What decides a charger: how fast, how many, whose network, and how to pay.
+  detail: {
+    fieldOrder: ["powerKw", "connectors", "network", "operator", "fee", "openingHours", "website"]
+  },
+  capabilities: ["detail"],
   attribution: [
     { label: "Open Charge Map", url: "https://openchargemap.org/", license: "ODbL-1.0" }
   ]
@@ -299,7 +329,34 @@ dataPlugin({
   category: "community",
   requiresCapability: "mapillary",
   spec: { color: "#22d3ee" },
+  filters: [{ id: "pano", label: "Jen 360° panoramata", kind: "toggle" }],
+  defaultFilters: { pano: false },
+  detail: { fieldOrder: ["capturedAt", "author", "license", "website"] },
+  capabilities: ["media", "detail"],
   attribution: [{ label: "Mapillary", url: "https://www.mapillary.com/", license: "CC-BY-SA-4.0" }]
+});
+
+// Panoramax is keyless to read, so it ships without a capability gate: a fresh clone gets open
+// street-level photography the same way it gets OSM. It is a separate layer rather than a facet
+// of Mapillary because the two are different communities with different coverage.
+dataPlugin({
+  id: "panoramax",
+  name: "Fotky ulic (Panoramax)",
+  icon: "🛣️",
+  description: "Otevřené snímky ulic z federované sítě Panoramax",
+  category: "community",
+  spec: { color: "#2563eb" },
+  filters: [{ id: "pano", label: "Jen 360° panoramata", kind: "toggle" }],
+  defaultFilters: { pano: false },
+  detail: { fieldOrder: ["capturedAt", "author", "license", "website"] },
+  capabilities: ["media", "detail"],
+  attribution: [
+    {
+      label: "Panoramax",
+      url: "https://panoramax.fr/",
+      license: "CC-BY-SA-4.0 / open licence per instance"
+    }
+  ]
 });
 
 dataPlugin({
@@ -512,11 +569,251 @@ dataPlugin({
   // visit to a city can come back empty until the right operator has been seen once.
   experimental: true,
   spec: { color: "#22c55e", labelFromZoom: 14 },
+  minQueryZoom: 9,
+  detail: {
+    fieldOrder: [
+      "operator",
+      "vehiclesAvailable",
+      "docksAvailable",
+      "availabilityStatus",
+      "reportedAt",
+      "renting",
+      "returning",
+      "capacity",
+      "attribution",
+      "license",
+      "licenseUrl",
+      "sourceUrl"
+    ]
+  },
   attribution: [
     {
       label: "GBFS operátoři",
       url: "https://github.com/MobilityData/gbfs",
       license: "GBFS feed-specific operator terms"
+    }
+  ]
+});
+
+dataPlugin({
+  id: "eonet",
+  name: "Přírodní události · NASA",
+  icon: "🌍",
+  category: "environment",
+  description:
+    "Poslední publikované polohy přírodních událostí EONET; nejde o úplné pokrytí ani živé výstrahy.",
+  spec: { color: "#ea580c", labelFromZoom: 7 },
+  filters: [
+    { id: "days", label: "Posledních dní", kind: "range", min: 1, max: 365 },
+    {
+      id: "category",
+      label: "Typ události",
+      kind: "multi-select",
+      options: [
+        { id: "wildfires", label: "Požáry" },
+        { id: "severeStorms", label: "Silné bouře" },
+        { id: "volcanoes", label: "Sopky" },
+        { id: "floods", label: "Povodně" },
+        { id: "landslides", label: "Sesuvy" },
+        { id: "seaLakeIce", label: "Mořský a jezerní led" },
+        { id: "snow", label: "Sníh" },
+        { id: "drought", label: "Sucho" },
+        { id: "dustHaze", label: "Prach a zákal" },
+        { id: "earthquakes", label: "Zemětřesení" },
+        { id: "manmade", label: "Události způsobené člověkem" },
+        { id: "tempExtremes", label: "Teplotní extrémy" },
+        { id: "waterColor", label: "Změny barvy vody" }
+      ]
+    }
+  ],
+  defaultFilters: { days: 30, category: [] },
+  detail: {
+    fieldOrder: [
+      "eventTypes",
+      "occurredAt",
+      "eventStatus",
+      "closedAt",
+      "locationMeaning",
+      "attribution",
+      "website"
+    ]
+  },
+  attribution: [
+    {
+      label: "NASA EONET a původní zdroje událostí",
+      url: "https://eonet.gsfc.nasa.gov/",
+      license: "NASA EONET terms; underlying event sources retain their licences"
+    }
+  ]
+});
+
+dataPlugin({
+  id: "webcams",
+  name: "Webkamery · otevřený katalog",
+  icon: "📷",
+  category: "environment",
+  description:
+    "Místní katalog OSM, Open Data Hub a Fintraffic. Snímky a přenosy se načtou až otevřením odkazu.",
+  minQueryZoom: 5,
+  spec: { color: "#0e7490", labelFromZoom: 12 },
+  filters: [
+    {
+      id: "provider",
+      label: "Zdroj kamer",
+      kind: "multi-select",
+      options: [
+        { id: "osm", label: "OpenStreetMap" },
+        { id: "odh", label: "Open Data Hub" },
+        { id: "digitraffic", label: "Fintraffic · Finsko" }
+      ]
+    }
+  ],
+  defaultFilters: { provider: [] },
+  detail: {
+    fieldOrder: [
+      "catalogueSource",
+      "operator",
+      "dataUpdatedAt",
+      "cameraAccess",
+      "locationMeaning",
+      "website",
+      "sourceUrl",
+      "mediaRights",
+      "attribution"
+    ]
+  },
+  attribution: [
+    {
+      label: "© OpenStreetMap contributors",
+      url: "https://www.openstreetmap.org/copyright",
+      license: "ODbL"
+    },
+    {
+      label: "Open Data Hub · licence u záznamu",
+      url: "https://docs.opendatahub.com/licensing/",
+      license: "Open Data Hub instance licence, stated per record"
+    },
+    {
+      label: "Fintraffic / digitraffic.fi",
+      url: "https://www.digitraffic.fi/en/terms-of-service/",
+      license: "CC-BY-4.0"
+    }
+  ]
+});
+
+dataPlugin({
+  id: "meshcore",
+  name: "MeshCore síť",
+  icon: "📡",
+  category: "community",
+  description:
+    "Uzly komunitní LoRa sítě MeshCore z veřejného MeshCore Analyzeru. U každého uzlu je jeho role, stáří poslední zprávy a skóre pokrytí; offline uzly zůstávají na mapě.",
+  spec: { color: "#7c3aed", labelFromZoom: 10 },
+  detail: {
+    fieldOrder: ["role", "lastSeen", "relayCount24h", "coverage", "usefulnessGrade", "publicKey"]
+  },
+  attribution: [
+    {
+      label: "MeshCore Analyzer",
+      url: "https://analyzer.meshcore.cz/",
+      license: "community data"
+    }
+  ]
+});
+
+for (const [id, , name] of GOLEMIO_LAYERS)
+  dataPlugin({
+    id,
+    name,
+    icon: "📍",
+    description: `${name} · Golemio. Pokrytí Praha a okolí, datum aktualizace u objektů.`,
+    category: "community",
+    minQueryZoom: 10,
+    requiresCapability: "golemio",
+    spec: { color: "#0d9488", labelFromZoom: 14 },
+    detail: {
+      fieldOrder: [
+        "address",
+        "district",
+        "description",
+        "openingHours",
+        "updatedAt",
+        "dataScope",
+        "sourceUrl"
+      ]
+    },
+    attribution: [
+      {
+        label: "Golemio / Operátor ICT a poskytovatel datasetu",
+        url: "https://api.golemio.cz/docs/openapi/",
+        license: "Golemio Open Data — podmínky jednotlivých datasetů"
+      }
+    ]
+  });
+
+dataPlugin({
+  id: "makerspaces",
+  name: "Hackerspaces a makerspaces",
+  icon: "🛠️",
+  category: "community",
+  description:
+    "Dobrovolný adresář SpaceAPI; podmínky vstupu podle provozovatele, nejde o úplnou mapu coworkingů.",
+  spec: { color: "#7c3aed", labelFromZoom: 12 },
+  detail: {
+    fieldOrder: ["address", "availability", "reportedAt", "description", "website", "sourceUrl"]
+  },
+  attribution: [
+    {
+      label: "SpaceAPI a provozovatelé prostorů",
+      url: "https://spaceapi.io/",
+      license: "Veřejné údaje poskytované provozovateli prostřednictvím SpaceAPI"
+    }
+  ]
+});
+
+dataPlugin({
+  id: "btcmap",
+  name: "Bitcoin místa · BTC Map",
+  icon: "₿",
+  category: "community",
+  minQueryZoom: 9,
+  description: "Komunitní mapa přijímání bitcoinu; datum ověření v detailu místa.",
+  spec: { color: "#f7931a", labelFromZoom: 13 },
+  detail: {
+    fieldOrder: [
+      "address",
+      "openingHours",
+      "verifiedAt",
+      "updatedAt",
+      "website",
+      "description",
+      "sourceUrl"
+    ]
+  },
+  attribution: [
+    {
+      label: "BTC Map / OpenStreetMap contributors",
+      url: "https://btcmap.org/",
+      license: "ODbL (OpenStreetMap data)"
+    }
+  ]
+});
+dataPlugin({
+  id: "europeana",
+  name: "Kulturní záznamy · Europeana",
+  icon: "🏛️",
+  category: "community",
+  minQueryZoom: 9,
+  requiresCapability: "europeana",
+  description:
+    "Experimentální výběr kulturních záznamů s jednoznačnou polohou; nejde o úplný seznam památek.",
+  spec: { color: "#9d174d", labelFromZoom: 13 },
+  detail: { fieldOrder: ["year", "dataProvider", "description", "objectRights", "sourceUrl"] },
+  attribution: [
+    {
+      label: "Europeana a poskytovatelé sbírek",
+      url: "https://www.europeana.eu/",
+      license: "CC0 (metadata); digitální objekty podle vlastních práv"
     }
   ]
 });

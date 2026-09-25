@@ -6,6 +6,7 @@ import {
   resolveLocationIntent,
   type LocationIntent
 } from "../../search";
+import { IconButton } from "../kit";
 
 interface GeoHit {
   display_name: string;
@@ -202,18 +203,37 @@ export function StopLocationInput({
           }}
         />
         {searching && <span className="spinner" aria-label="Hledám zastávku" />}
-        {query && (
+        {/* An open question gets its own button in the field, so the AI route is one click and
+            not a menu item to find (§4.5). */}
+        {intent.kind === "ai" && aiEnabled && (
           <button
             type="button"
+            className="planner-stop-ai-button"
+            data-testid={`stop-ai-inline-${index}`}
+            aria-label={`Zeptat se AI na zastávku ${index}`}
+            disabled={aiBusy}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onAiQuery(intent.query)}
+          >
+            <span className="material-symbols-rounded" aria-hidden="true">
+              auto_awesome
+            </span>
+            <span className="planner-stop-ai-button-label">AI</span>
+          </button>
+        )}
+        {query && (
+          <IconButton
+            icon="close"
+            size="sm"
+            variant="plain"
+            round
             className="planner-stop-clear"
-            aria-label={`Vymazat zastávku ${index}`}
+            label={`Vymazat zastávku ${index}`}
             onClick={() => {
               setQuery("");
               setHits([]);
             }}
-          >
-            ×
-          </button>
+          />
         )}
       </div>
 

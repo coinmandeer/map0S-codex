@@ -76,6 +76,52 @@ test("concurrent POST requests with the same body are coalesced", async () => {
   assert.equal(calls, 1);
 });
 
+test("large responses evict least recently used payloads before the entry count limit", async () => {
+  const calls = new Map<string, number>();
+  const payload = JSON.stringify({ value: "x".repeat(7 * 1024 * 1024) });
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    calls.set(url, (calls.get(url) ?? 0) + 1);
+    return new Response(payload, { headers: { "content-type": "application/json" } });
+  };
+  useMockFetch();
+  const get = (id: number) =>
+    fetchJson(`https://example.test/large/${id}`, {
+      providerId: "cache-budget-test",
+      maxResponseBytes: 8 * 1024 * 1024,
+      ttlMs: 60_000
+    });
+  for (const id of [0, 1, 2, 3]) await get(id);
+  await get(0); // Keep the oldest insertion hot.
+  await get(4); // Five payloads exceed 32 MiB; entry 1 must be evicted.
+  await get(0);
+  assert.equal(calls.get("https://example.test/large/0"), 1);
+  await get(1);
+  assert.equal(calls.get("https://example.test/large/1"), 2);
+});
+
+test("a warm response cannot bypass a stricter freshness or size policy", async () => {
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests++;
+    return new Response(JSON.stringify({ revision: requests, value: "x".repeat(2_000) }), {
+      headers: { "content-type": "application/json" }
+    });
+  };
+  useMockFetch();
+  const url = "https://example.test/policy";
+  const common = { providerId: "cache-policy-test", maxResponseBytes: 4_096 };
+  await fetchJson(url, { ...common, ttlMs: 600_000 });
+  const fresh = await fetchJson<{ revision: number }>(url, { ...common, ttlMs: 0 });
+  assert.equal(fresh.revision, 2);
+  await fetchJson(url, { ...common, ttlMs: 0 });
+  assert.equal(requests, 3);
+  await assert.rejects(
+    fetchJson(url, { ...common, ttlMs: 600_000, maxResponseBytes: 1_024 }),
+    /příliš velkou/
+  );
+});
+
 test("429 is retried when the caller opts in", async () => {
   let calls = 0;
   globalThis.fetch = async () => {
@@ -218,8 +264,9 @@ test("caller abort is telemetry, not a provider failure or circuit signal", asyn
       providerId: "abort-safe",
       signal: controller.signal
     }),
-    /zrušen/
+    { name: "AbortError" }
   );
+  await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(providerCircuitBreaker.snapshots(), [
     {
       provider: "abort-safe",
@@ -234,5 +281,130 @@ test("caller abort is telemetry, not a provider failure or circuit signal", asyn
     operationalTelemetry.snapshot().providers.find((entry) => entry.provider === "abort-safe")
       ?.outcome,
     "aborted"
+  );
+});
+
+test("budget admission follows dedup, reserves every retry, and never caches commercial responses", async () => {
+  useMockFetch();
+  let reservations = 0,
+    requests = 0;
+  globalThis.fetch = async () => {
+    requests++;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
+  const options = {
+    providerId: "budget-fixture",
+    retries: 0,
+    ttlMs: 99999,
+    budget: {
+      scope: "account-one",
+      reserve: async () => {
+        reservations++;
+      }
+    }
+  };
+  await Promise.all([
+    fetchJson("https://example.test/budget", options),
+    fetchJson("https://example.test/budget", options)
+  ]);
+  assert.equal(reservations, 1);
+  assert.equal(requests, 1);
+  await fetchJson("https://example.test/budget", options);
+  assert.equal(reservations, 2);
+  assert.equal(requests, 2);
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts++;
+    throw new Error("network error");
+  };
+  await assert.rejects(fetchJson("https://example.test/retry", { ...options, retries: 1 }));
+  assert.equal(attempts, 2);
+  assert.equal(reservations, 4);
+});
+
+test("denied budget never reaches transport or consumes retries", async () => {
+  useMockFetch();
+  let calls = 0,
+    reservations = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    throw new Error("must not call");
+  };
+  const denied = new Error("budget-exhausted");
+  await assert.rejects(
+    fetchJson("https://example.test/denied", {
+      providerId: "budget-denied",
+      retries: 2,
+      budget: {
+        scope: "account-one",
+        reserve: async () => {
+          reservations++;
+          throw denied;
+        }
+      }
+    }),
+    (e) => e === denied
+  );
+  assert.equal(calls, 0);
+  assert.equal(reservations, 1);
+});
+
+test("explicitly cacheable web budget does not charge cache hits and stays account partitioned", async () => {
+  useMockFetch();
+  let reservations = 0,
+    requests = 0;
+  globalThis.fetch = async () => {
+    requests++;
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { "content-type": "application/json" }
+    });
+  };
+  const options = {
+    providerId: "budget-web-cache",
+    ttlMs: 60000,
+    budget: {
+      scope: "web-account-one",
+      cacheable: true,
+      reserve: async () => {
+        reservations++;
+      }
+    }
+  };
+  await fetchJson("https://example.test/web-cache", options);
+  await fetchJson("https://example.test/web-cache", options);
+  assert.equal(reservations, 1);
+  assert.equal(requests, 1);
+  await fetchJson("https://example.test/web-cache", {
+    ...options,
+    budget: { ...options.budget, scope: "web-account-two" }
+  });
+  assert.equal(reservations, 2);
+  assert.equal(requests, 2);
+});
+
+test("provider-specific JSON MIME exception does not leak through cache to strict callers", async () => {
+  globalThis.fetch = async () =>
+    new Response('{"results":[]}', { headers: { "content-type": "text/html; charset=utf-8" } });
+  useMockFetch();
+  const options = { providerId: "ollama-test", ttlMs: 60000 };
+  assert.deepEqual(
+    await fetchJson("https://example.test/search", {
+      ...options,
+      acceptedContentTypes: ["application/json", "text/html"]
+    }),
+    { results: [] }
+  );
+  await assert.rejects(fetchJson("https://example.test/search", options), /nepodporovaný/);
+  __resetUpstreamCache();
+  useMockFetch();
+  globalThis.fetch = async () =>
+    new Response("<html>gateway failure</html>", { headers: { "content-type": "text/html" } });
+  await assert.rejects(
+    fetchJson("https://example.test/search", { ...options, acceptedContentTypes: ["text/html"] }),
+    /neplatný JSON/
   );
 });

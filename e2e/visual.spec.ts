@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures/offlineTest";
 import { mkdir } from "node:fs/promises";
-import { stubDiscoverContext } from "./fixtures/discoverContext";
+import { openAccessibleMapFeature, stubDiscoverContext } from "./fixtures/discoverContext";
 import { stubEvents } from "./fixtures/events";
 
 const DIR = "e2e/screenshots";
@@ -110,8 +110,8 @@ test.describe("visual snapshots", () => {
     for (const width of [1440, 768, 390] as const) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.goto("/");
-      await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
-      const mobile = width < 768;
+      await page.getByTestId(width < 900 ? "bottom-nav" : "mode-bar").waitFor({ timeout: 30_000 });
+      const mobile = width < 900;
       if (mobile) {
         await page.getByTestId("bottom-nav").getByTestId("mode-planning").click();
       } else {
@@ -127,7 +127,7 @@ test.describe("visual snapshots", () => {
       await page.screenshot({ path: `${DIR}/${width}-planning-actions.png`, fullPage: true });
       await aiPlanToggle.click();
 
-      await page.getByTestId("overflow-btn").click();
+      await page.getByTestId("layers-btn").click();
       await page.getByTestId("overflow-menu").waitFor();
       await page.screenshot({ path: `${DIR}/${width}-megamenu.png`, fullPage: true });
       await page.keyboard.press("Escape");
@@ -142,7 +142,7 @@ test.describe("visual snapshots", () => {
       await page.getByTestId("discover-guide").waitFor({ timeout: 15_000 });
       await page.screenshot({ path: `${DIR}/${width}-discover.png`, fullPage: true });
       const discoverWeather = page.getByTestId("discover-weather");
-      await discoverWeather.locator(":scope > summary").click();
+      await page.getByTestId("discover-accordion-weather").click();
       await discoverWeather.locator(".discover-weather-days").waitFor({ timeout: 15_000 });
       await discoverWeather.getByTestId("forecast-day").first().locator(":scope > summary").click();
       expect(
@@ -150,7 +150,7 @@ test.describe("visual snapshots", () => {
         "expanded daily weather must not overflow its panel"
       ).toBe(true);
       await page.screenshot({ path: `${DIR}/${width}-discover-weather.png`, fullPage: true });
-      await discoverWeather.locator(":scope > summary").click();
+      await page.getByTestId("discover-accordion-weather").click();
       // Reached by URL rather than by clicking through: the Discover panel's overlay sits over
       // the nav it would have to click, and this screenshot is about the game screen, not about
       // how you get there.
@@ -195,16 +195,19 @@ test.describe("visual snapshots", () => {
       await page.getByTestId("plan-name").fill(`Víkendový plán ${width}`);
       await page.getByTestId("save-plan").click();
       await expect(page.getByTestId("toast")).toContainText("uložený v Moje");
-      const shareManager = page.getByTestId("plan-share-manager");
-      await shareManager.locator("summary").click();
+      // §29.3: share, export and hand-off are one dialog with tabs, not three footer surfaces.
+      await page.getByRole("button", { name: "Share", exact: true }).click();
+      const shareDialog = page.getByTestId("plan-share-dialog");
+      await expect(shareDialog.getByTestId("plan-share-manager")).toBeVisible();
       await expect(page.getByTestId("create-plan-share")).toBeEnabled();
       await page.getByTestId("create-plan-share").click();
       await expect(page.getByTestId("plan-share-url")).toBeVisible();
-      await shareManager.scrollIntoViewIfNeeded();
       await page.screenshot({
         path: `${DIR}/${width}-planning-share.png`,
         fullPage: true
       });
+      await shareDialog.getByRole("button", { name: "Close" }).click();
+      await expect(shareDialog).toHaveCount(0);
       await page.getByTestId("plan-ai-toggle").click();
       await page
         .getByLabel("Co chceš s plánem probrat?")
@@ -226,9 +229,9 @@ test.describe("visual snapshots", () => {
     for (const width of [1440, 390] as const) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.goto("/");
-      await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
+      await page.getByTestId(width < 900 ? "bottom-nav" : "mode-bar").waitFor({ timeout: 30_000 });
 
-      await page.getByTestId("overflow-btn").click();
+      await page.getByTestId("layers-btn").click();
       const layerDrawer = page.getByTestId("right-utility-drawer");
       await expect(layerDrawer).toBeVisible();
       const expectedDrawerWidth = Math.min(400, width);
@@ -259,7 +262,7 @@ test.describe("visual snapshots", () => {
       await page.goto("/?mode=discover&layers=events&lng=13.3775&lat=49.7475&z=10");
       const explorer = page.getByTestId("event-explorer");
       if (width === 390) {
-        await page.getByRole("slider", { name: "Výška panelu" }).press("ArrowUp");
+        await page.getByRole("slider", { name: "Panel height" }).press("ArrowUp");
         await explorer.scrollIntoViewIfNeeded();
         await explorer.getByTestId("events-explorer-preset-year").click();
       } else {
@@ -304,14 +307,130 @@ test.describe("visual snapshots", () => {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
       const panel = page.getByTestId("discover-panel");
+      await page.getByTestId("discover-accordion-boundary").click();
       await expect(page.getByTestId("discover-boundary-ready")).toBeVisible({ timeout: 20_000 });
       await page.getByRole("button", { name: "Ukázat celou" }).click();
       await expect
         .poll(() => page.evaluate(() => window.__maposMap?.isMoving() ?? true))
         .toBe(false);
-      await panel.getByRole("button", { name: "Zavřít" }).click();
+      await panel.getByRole("button", { name: "Close" }).click();
       await expect(panel).toHaveCount(0);
       await page.screenshot({ path: `${DIR}/${width}-discover-boundary-map.png`, fullPage: true });
+    }
+  });
+
+  test("capture the place detail and the assistant in the left panel", async ({ page }) => {
+    await mkdir(DIR, { recursive: true });
+    await stubDiscoverContext(page);
+    await page.route("**/layers/osm-poi/features**", (route) => {
+      const [west, south, east, north] = new URL(route.request().url()).searchParams
+        .get("bbox")!
+        .split(",")
+        .map(Number) as [number, number, number, number];
+      route.fulfill({
+        json: {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [(west + east) / 2, (south + north) / 2] },
+              properties: {
+                id: "osm:240",
+                name: "Hrad Okoř",
+                category: "castle",
+                layerId: "osm-poi",
+                sourceRefs: "osm:240|wikidata:Q1132187",
+                wikidata: "Q1132187",
+                website: "https://example.org/okor",
+                opening_hours: "Út-Ne 09:00-17:00"
+              }
+            }
+          ]
+        }
+      });
+    });
+    await page.route("**/info/brief**", (route) =>
+      route.fulfill({
+        json: {
+          text: "Zřícenina gotického hradu v zaříznutém údolí, přístupná po značené cestě od parkoviště.",
+          model: "fixture",
+          nearby: [
+            { name: "Parkoviště", category: "parking", categoryLabel: "Parkoviště", distanceM: 320 }
+          ],
+          attribution: "OpenStreetMap, Wikidata"
+        }
+      })
+    );
+    const aiPlace = {
+      id: "osm:41",
+      layerId: "osm-poi",
+      title: "Kemp U Řeky",
+      category: "stay.camp_site",
+      longitude: 13.3785,
+      latitude: 49.7485,
+      distanceMeters: 1240,
+      sourceId: "osm-poi"
+    };
+    await page.route("**/v2/ai/chat", (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body: [
+          { type: "tool_start", tool: "search_places", title: "Hledám místa v okolí" },
+          {
+            type: "done",
+            conversation: { id: "conv-1", revision: 1 },
+            answer: {
+              execution: "deterministic",
+              intent: "question",
+              text: "V okolí jsou dva klidné kempy u vody, oba do 15 minut jízdy.",
+              cards: [
+                {
+                  type: "places",
+                  title: "Nejbližší místa",
+                  places: [aiPlace],
+                  layerIds: ["osm-poi"]
+                }
+              ],
+              sources: [{ sourceId: "osm-poi", label: "OpenStreetMap" }],
+              followUps: ["Kde se dá dolít voda?", "Naplánuj mi tu dva dny"]
+            }
+          }
+        ]
+          .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+          .join("")
+      })
+    );
+
+    for (const width of [1440, 390] as const) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.goto("/?layers=osm-poi&mode=discover&lng=13.3775&lat=49.7475&z=14");
+      await openAccessibleMapFeature(page, "Hrad Okoř");
+      await expect(page.getByTestId("pin-detail")).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId("brief-text")).toBeVisible({ timeout: 20_000 });
+      await page.screenshot({ path: `${DIR}/${width}-place-detail.png`, fullPage: true });
+
+      await page.getByTestId("place-search").fill("kde najdu klidný kemp u vody?");
+      await page.getByTestId("search-offer-ai").click();
+      await page.getByTestId("search-ai-open-panel").click();
+      await expect(page.getByTestId("ai-panel-thread")).toContainText("klidné kempy", {
+        timeout: 20_000
+      });
+      // The top bar re-centres over the narrowed map; photographing mid-slide shows it in two
+      // places at once.
+      let previousBarX = Number.NaN;
+      await expect
+        .poll(
+          async () => {
+            const box = await page.locator(".chrome-bar").boundingBox();
+            const settled = box?.x === previousBarX;
+            previousBarX = box?.x ?? Number.NaN;
+            return settled;
+          },
+          { intervals: [150, 150, 150, 150] }
+        )
+        .toBe(true);
+      await page.screenshot({ path: `${DIR}/${width}-ai-panel.png`, fullPage: true });
     }
   });
 
@@ -320,7 +439,7 @@ test.describe("visual snapshots", () => {
     for (const width of [1440, 390] as const) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.goto("/");
-      await page.getByTestId("mode-bar").waitFor({ timeout: 30_000 });
+      await page.getByTestId(width < 900 ? "bottom-nav" : "mode-bar").waitFor({ timeout: 30_000 });
       await page.getByTestId("settings-btn").click();
       const drawer = page.getByTestId("right-utility-drawer");
       await expect(drawer).toBeVisible();
@@ -363,7 +482,6 @@ test.describe("visual snapshots", () => {
       await page.screenshot({ path: `${DIR}/${width}-search-grounded.png`, fullPage: true });
 
       await page.getByTestId("search-offer-ai").click();
-      await page.getByTestId("search-run-ai").click();
       await expect(page.getByTestId("search-ai-results")).toContainText("Irish Pub", {
         timeout: 20_000
       });

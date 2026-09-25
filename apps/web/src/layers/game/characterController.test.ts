@@ -83,3 +83,17 @@ test("game keys are ignored while form controls own focus", () => {
   );
   assert.equal(shouldIgnoreGameKeyEvent({ defaultPrevented: true }), true);
 });
+
+test("public movement uses4m/s, sprint8m/s and cancellation clears sprint", () => {
+  const controller = new CharacterController({ longitude: 0, latitude: 0 });
+  controller.setMovementVector("keyboard", { x: 0, y: 1 });
+  for (let i = 0; i < 10; i++) controller.step(100, 0, false);
+  assert.ok(Math.abs(controller.snapshot.gamePosition.latitude * 110540 - 4) < 0.03);
+  controller.setSprinting(true);
+  for (let i = 0; i < 10; i++) controller.step(100, 0, false);
+  assert.ok(Math.abs(controller.snapshot.gamePosition.latitude * 110540 - 12) < 0.06);
+  controller.cancelMovement();
+  controller.setMovementVector("keyboard", { x: 0, y: 1 });
+  for (let i = 0; i < 10; i++) controller.step(100, 0, false);
+  assert.ok(Math.abs(controller.snapshot.gamePosition.latitude * 110540 - 16) < 0.08);
+});

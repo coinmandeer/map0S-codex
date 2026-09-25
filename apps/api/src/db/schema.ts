@@ -35,6 +35,10 @@ const geographyPoint4326 = customType<{ data: string; driverData: string }>({
 const geometryPolygon4326 = customType<{ data: string; driverData: string }>({
   dataType: () => "geometry(Polygon,4326)"
 });
+/** Territory boundaries: a country with islands is one multipolygon, not several rows. */
+const geometryMultiPolygon4326 = customType<{ data: string; driverData: string }>({
+  dataType: () => "geometry(MultiPolygon,4326)"
+});
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -165,17 +169,35 @@ export const identityAuditEvents = pgTable(
   ]
 );
 
-export const userLayers = pgTable("user_layers", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  color: text("color").notNull().default("#10b981"),
-  slug: text("slug").notNull().unique(),
-  isPublic: integer("is_public").notNull().default(0),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
-});
+export const userLayers = pgTable(
+  "user_layers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    color: text("color").notNull().default("#10b981"),
+    slug: text("slug").notNull().unique(),
+    isPublic: integer("is_public").notNull().default(0),
+    /**
+     * Set when the layer is a source somebody pasted rather than a collection of pins: the URL
+     * as entered, the manifest the adapter built from it, and which adapter built it. A pin
+     * layer leaves all three null, and the check constraint keeps a manifest from existing
+     * without the URL it came from.
+     */
+    sourceUrl: text("source_url"),
+    sourceManifest: jsonb("source_manifest").$type<LayerManifestV2 | null>(),
+    sourceAdapterId: text("source_adapter_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (t) => [
+    check(
+      "user_layers_source_complete",
+      sql`(${t.sourceUrl} IS NULL) = (${t.sourceManifest} IS NULL)`
+    )
+  ]
+);
 
 export const userPins = pgTable(
   "user_pins",
@@ -191,6 +213,8 @@ export const userPins = pgTable(
     geog: geographyPoint4326("geog"),
     tags: jsonb("tags").$type<string[]>().default([]),
     kind: text("kind").notNull().default("place"),
+    /** Set for a `route` pin; `lng`/`lat` remain its anchor. See migration 0011. */
+    path: jsonb("path").$type<Array<[number, number]>>(),
     country: text("country"),
     authorName: text("author_name"),
     properties: jsonb("properties").$type<Record<string, unknown>>().default({}),
@@ -250,7 +274,7 @@ export const layerImports = pgTable(
     index("layer_imports_owner_created_idx").on(t.userId, t.createdAt, t.id),
     index("layer_imports_layer_idx").on(t.layerId),
     check("layer_imports_digest", sql`${t.packageDigest} ~ '^[0-9a-f]{64}$'`),
-    check("layer_imports_format", sql`${t.format} IN ('mapos-package', 'geojson', 'csv')`),
+    check("layer_imports_format", sql`${t.format} IN ('mapos-package', 'geojson', 'csv', 'gpx')`),
     check("layer_imports_feature_count", sql`${t.featureCount} BETWEEN 0 AND 1000`),
     check("layer_imports_status", sql`${t.status} IN ('committed', 'rolled-back')`)
   ]
@@ -1210,6 +1234,46 @@ export const gameQuests = pgTable(
   (t) => [index("game_quests_geog_gist").using("gist", t.geog)]
 );
 
+/** Cached anchors from the quest source adapters, so panning the map queries an index instead
+ *  of four volunteer-run APIs. See migration 0012. */
+export const questAnchors = pgTable(
+  "quest_anchors",
+  {
+    /** `${source}:${nativeId}`, the same shape `QuestAnchor.ref` uses. */
+    ref: text("ref").primaryKey(),
+    sourceId: text("source_id").notNull(),
+    name: text("name").notNull(),
+    category: text("category").notNull(),
+    kind: text("kind"),
+    lng: doublePrecision("lng").notNull(),
+    lat: doublePrecision("lat").notNull(),
+    geog: geographyPoint4326("geog"),
+    weight: doublePrecision("weight"),
+    radiusM: doublePrecision("radius_m"),
+    description: text("description"),
+    externalUrl: text("external_url"),
+    refreshedAt: timestamp("refreshed_at", { withTimezone: true }).notNull()
+  },
+  (t) => [
+    index("quest_anchors_geog_gist").using("gist", t.geog),
+    index("quest_anchors_source_refreshed_idx").on(t.sourceId, t.refreshedAt)
+  ]
+);
+
+/** Which viewports have already been swept, per source, so an area that really is empty is
+ *  remembered as empty rather than re-asked on every pan. */
+export const questAnchorSweeps = pgTable(
+  "quest_anchor_sweeps",
+  {
+    sourceId: text("source_id").notNull(),
+    /** The rounded viewport key; see `sweepCell` in `questAnchorCache.ts`. */
+    cell: text("cell").notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    anchorCount: integer("anchor_count").notNull().default(0)
+  },
+  (t) => [primaryKey({ columns: [t.sourceId, t.cell] })]
+);
+
 /** One row per (player, quest) completion. The unique primary key is the idempotency
  *  guarantee: claiming twice fails at the database rather than paying out twice. */
 export const questCompletions = pgTable(
@@ -1314,3 +1378,111 @@ export const regionSummaries = pgTable("region_summaries", {
   model: text("model"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+/** Territories every thematic overlay joins against; see migration 0014 for why the key is the
+ *  `(level, code)` pair the upstreams publish rather than a surrogate id. */
+export const geoUnits = pgTable(
+  "geo_units",
+  {
+    level: text("level").notNull(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    parentCode: text("parent_code"),
+    country: text("country"),
+    sourceId: text("source_id").notNull(),
+    edition: text("edition"),
+    geom: geometryMultiPolygon4326("geom").notNull(),
+    centroid: geographyPoint4326("centroid"),
+    areaKm2: doublePrecision("area_km2"),
+    importedAt: timestamp("imported_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.level, t.code] }),
+    index("geo_units_country_level_idx").on(t.country, t.level),
+    index("geo_units_parent_idx").on(t.parentCode),
+    index("geo_units_geom_gist").using("gist", t.geom)
+  ]
+);
+
+/** One value per dataset, territory and period. Periods are text because upstream publishes
+ *  years, quarters and months in the same series. */
+export const statSeries = pgTable(
+  "stat_series",
+  {
+    datasetId: text("dataset_id").notNull(),
+    geoLevel: text("geo_level").notNull(),
+    geoCode: text("geo_code").notNull(),
+    period: text("period").notNull(),
+    value: doublePrecision("value"),
+    flag: text("flag"),
+    sourceId: text("source_id").notNull(),
+    refreshedAt: timestamp("refreshed_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.datasetId, t.geoLevel, t.geoCode, t.period] }),
+    index("stat_series_dataset_period_idx").on(t.datasetId, t.geoLevel, t.period)
+  ]
+);
+
+export const statDatasets = pgTable("stat_datasets", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  unit: text("unit"),
+  normalization: text("normalization").notNull().default("raw"),
+  higherIsWorse: integer("higher_is_worse").notNull().default(0),
+  sourceId: text("source_id").notNull(),
+  sourceUrl: text("source_url"),
+  license: text("license"),
+  attribution: text("attribution"),
+  geoLevels: jsonb("geo_levels").$type<string[]>().notNull().default([]),
+  periods: jsonb("periods").$type<string[]>().notNull().default([]),
+  refreshedAt: timestamp("refreshed_at", { withTimezone: true })
+});
+
+/** Which dataset answers for which territory; see migration 0015. */
+export const themeCoverage = pgTable(
+  "theme_coverage",
+  {
+    themeId: text("theme_id").notNull(),
+    sourceId: text("source_id").notNull(),
+    geoLevel: text("geo_level").notNull(),
+    geoCode: text("geo_code").notNull(),
+    periodFrom: text("period_from"),
+    periodTo: text("period_to"),
+    quality: doublePrecision("quality").notNull().default(1),
+    observations: integer("observations").notNull().default(0),
+    refreshedAt: timestamp("refreshed_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.themeId, t.sourceId, t.geoLevel, t.geoCode] }),
+    index("theme_coverage_theme_level_idx").on(t.themeId, t.geoLevel, t.geoCode)
+  ]
+);
+
+/** A user's uploaded or linked table; the values live in `stat_series`. See migration 0016. */
+export const userTables = pgTable(
+  "user_tables",
+  {
+    id: text("id").primaryKey(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    sourceUrl: text("source_url"),
+    format: text("format").notNull(),
+    encoding: text("encoding"),
+    geoLevel: text("geo_level").notNull(),
+    codeColumn: integer("code_column").notNull(),
+    valueColumn: integer("value_column").notNull(),
+    valueLabel: text("value_label").notNull(),
+    unit: text("unit"),
+    period: text("period").notNull(),
+    refreshIntervalMinutes: integer("refresh_interval_minutes"),
+    rowCount: integer("row_count").notNull().default(0),
+    matchedCount: integer("matched_count").notNull().default(0),
+    warnings: jsonb("warnings").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    refreshedAt: timestamp("refreshed_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (t) => [index("user_tables_owner_idx").on(t.ownerId, t.createdAt)]
+);

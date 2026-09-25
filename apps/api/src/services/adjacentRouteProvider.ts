@@ -1,6 +1,8 @@
 import type { DataProvider, Position } from "@mapos/layer-sdk";
 import { resolvePlanRoutingRequestV2 } from "@mapos/layer-sdk";
-import { fetchRouteAlternatives } from "./routingService.js";
+import { fetchRouteAlternatives, type RouteResult } from "./routingService.js";
+import { fetchBrouterRoutes, isBrouterProfile } from "./brouterService.js";
+import { safeErrorLogFields } from "../utils/clientError.js";
 import type { AdjacentRouteProvider, AdjacentRouteRequest } from "./segmentRoutingService.js";
 
 function encodedPoint(position: Position): string {
@@ -8,13 +10,22 @@ function encodedPoint(position: Position): string {
 }
 
 type RouteFetcher = typeof fetchRouteAlternatives;
+type BrouterFetcher = typeof fetchBrouterRoutes;
+
+export interface AdjacentRouteProviderOptions {
+  routeFetcher?: RouteFetcher;
+  /** The adventure router, injected so a test can exercise the branch without a network call. */
+  brouterFetcher?: BrouterFetcher;
+}
 
 export function createAdjacentRouteProvider(
   provider: DataProvider,
-  routeFetcher: RouteFetcher = fetchRouteAlternatives
+  options: AdjacentRouteProviderOptions | RouteFetcher = {}
 ): AdjacentRouteProvider {
+  const { routeFetcher = fetchRouteAlternatives, brouterFetcher = fetchBrouterRoutes } =
+    typeof options === "function" ? { routeFetcher: options } : options;
   return {
-    id: `mapos-routing:${provider}`,
+    id: `mapos-routing:${provider}:v2`,
     async route(request) {
       const mapping = resolvePlanRoutingRequestV2(
         provider,
@@ -22,10 +33,36 @@ export function createAdjacentRouteProvider(
         request.preference,
         request.avoid
       );
+
+      // "Dobrodružná" on foot or by bike is BRouter's question to answer (§16.6). If it cannot,
+      // the segment still gets a route from the plan's own provider, and says so.
+      const adventure =
+        mapping.adventureRouter === "brouter" && isBrouterProfile(mapping.providerProfile)
+          ? await adventureRoutes(brouterFetcher, request, mapping.providerProfile)
+          : null;
+      if (adventure) {
+        return {
+          alternatives: adventure.map((result, index) => ({
+            id: `provider-route-${index + 1}`,
+            profile: result.profile,
+            geometry: { type: "LineString", coordinates: result.coordinates },
+            distanceM: result.distanceM,
+            durationS: result.durationS,
+            warnings: index === 0 ? [] : ["Alternativní trasa"]
+          }))
+        };
+      }
+
       const results = await routeFetcher(
         encodedPoint(request.endpoints[0]),
         encodedPoint(request.endpoints[1]),
-        mapping.providerProfile,
+        // A trekking profile means nothing to OSRM or Mapy, so the fallback asks them for the way
+        // of travelling that was requested in the first place.
+        isBrouterProfile(mapping.providerProfile)
+          ? request.profile === "bike"
+            ? "bike"
+            : "foot"
+          : mapping.providerProfile,
         {
           provider,
           avoidToll: mapping.avoidTolls,
@@ -35,18 +72,20 @@ export function createAdjacentRouteProvider(
       const primary = results[0];
       if (!primary) throw new TypeError("Route provider returned no adjacent route.");
       const fallbackWarnings =
-        primary.provider === provider
-          ? mapping.warnings
-          : [
-              ...mapping.warnings,
-              ...resolvePlanRoutingRequestV2(
-                primary.provider,
-                request.profile,
-                request.preference,
-                request.avoid
-              ).warnings,
-              `Provider ${provider} nebyl dostupný; segment použil ${primary.provider}.`
-            ];
+        mapping.adventureRouter === "brouter"
+          ? [...mapping.warnings, "BRouter nebyl dostupný; úsek počítal běžný profil."]
+          : primary.provider === provider
+            ? mapping.warnings
+            : [
+                ...mapping.warnings,
+                ...resolvePlanRoutingRequestV2(
+                  primary.provider,
+                  request.profile,
+                  request.preference,
+                  request.avoid
+                ).warnings,
+                `Provider ${provider} nebyl dostupný; segment použil ${primary.provider}.`
+              ];
       return {
         alternatives: results.map((result, index) => ({
           id: `provider-route-${index + 1}`,
@@ -59,6 +98,34 @@ export function createAdjacentRouteProvider(
       };
     }
   };
+}
+
+/** BRouter's answer for one segment, or `null` when it has none and the ordinary provider has to
+ *  speak instead. */
+async function adventureRoutes(
+  fetcher: BrouterFetcher,
+  request: AdjacentRouteRequest,
+  profile: "trekking" | "mtb"
+): Promise<RouteResult[] | null> {
+  try {
+    const routes = await fetcher({
+      points: request.endpoints.map(encodedPoint),
+      profile,
+      alternatives: 2
+    });
+    if (!routes.length) return null;
+    return routes.map((route) => ({
+      coordinates: route.coordinates,
+      distanceM: route.distanceM,
+      durationS: route.durationS,
+      provider: "osm" as const,
+      profile,
+      ...(route.elevation ? { elevation: route.elevation } : {})
+    }));
+  } catch (error) {
+    console.warn("BRouter routing failed; using the plan provider", safeErrorLogFields(error));
+    return null;
+  }
 }
 
 function radians(value: number): number {

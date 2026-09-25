@@ -13,6 +13,7 @@
 
 import type { CmlAnswer } from "./cmlService.js";
 import { askCml } from "./cmlService.js";
+import { aiPrompt } from "./ai/prompts/index.js";
 import { fetchJson } from "../utils/upstream.js";
 
 const MACROSTRAT_POINT = "https://macrostrat.org/api/v2/geologic_units/map";
@@ -299,13 +300,7 @@ function humanAge(range: [number, number]): string {
   return `před ${fmt(older)} až ${fmt(younger)}`;
 }
 
-const SYSTEM = [
-  "Jsi geolog, který umí mluvit s lidmi. Odpovídáš česky, bez markdownu a bez odrážek.",
-  "Vysvětli, co je pod nohama: jaká hornina, jak stará a co se tu tehdy dělo.",
-  "Odborné termíny přelož nebo opiš. Cizojazyčný popis přelož do češtiny.",
-  "Názvy období a stáří opisuj přesně z podkladů — nepřejmenovávej je a nedopočítávej.",
-  "Nejvýš tři věty. Nevymýšlej si nic, co v datech není."
-].join(" ");
+const GEOLOGY_TEMPLATE_VERSION = "geology-explanation.v1";
 
 function prompt(units: GeologyUnit[]): string {
   const lines = units.slice(0, 3).map((u) => {
@@ -340,7 +335,7 @@ export async function getGeologyAt(lng: number, lat: number): Promise<GeologyRep
 
   const answer: CmlAnswer | null = await askCml({
     cacheKey: `geology|${units.map((u) => u.id).join(",")}`,
-    system: SYSTEM,
+    system: aiPrompt(GEOLOGY_TEMPLATE_VERSION),
     prompt: prompt(units),
     maxTokens: 2000,
     verifiedPublic: true

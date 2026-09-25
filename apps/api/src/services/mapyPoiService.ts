@@ -16,7 +16,8 @@
  *  and unnamed amenities not at all. Fusion (poiFusionService) is what makes the pair useful.
  */
 
-import type { Bbox, OsmPoiCategoryId } from "@mapos/layer-sdk";
+import { areaPredicate } from "../geo/areaSelection.js";
+import type { AreaSelection, Bbox, OsmPoiCategoryId } from "@mapos/layer-sdk";
 import { and, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { mapyCells, mapyPois } from "../db/schema.js";
@@ -186,7 +187,8 @@ async function runProbe(probe: Probe, iso: string | undefined): Promise<void> {
 
 export async function getMapyPois(
   bbox: Bbox,
-  categories: OsmPoiCategoryId[]
+  categories: OsmPoiCategoryId[],
+  area?: AreaSelection | null
 ): Promise<MapyPoiResult> {
   if (!config.mapyKey) throw new MapyNotConfiguredError();
 
@@ -214,6 +216,11 @@ export async function getMapyPois(
     .from(mapyPois)
     .where(
       and(
+        areaPredicate(
+          area,
+          sql`ST_SetSRID(ST_MakePoint(${mapyPois.lng},${mapyPois.lat}),4326)`,
+          true
+        ),
         inArray(mapyPois.category, categories),
         gte(mapyPois.lng, w),
         lte(mapyPois.lng, e),

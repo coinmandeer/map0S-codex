@@ -61,7 +61,7 @@ export function detailMediaFromFeature(
   manifest?: LayerManifestV2
 ): DetailMediaAsset[] {
   const raw = feature.properties.media;
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) return flatPhotoMedia(feature, manifest);
   const attributions = new Map(
     (manifest?.attribution ?? []).map((item) => [item.label, item] as const)
   );
@@ -114,10 +114,75 @@ export function detailMediaFromFeature(
     seen.add(id);
     assets.push(asset);
   }
-  return assets;
+  return assets.length ? assets : flatPhotoMedia(feature, manifest);
+}
+
+/**
+ * A photo that arrived as a plain URL on the feature.
+ *
+ * Most photo-bearing sources — Commons, iNaturalist, Park4Night, fused OSM — send one string,
+ * `properties.photo`, not a structured `media[]`. The detail card only read `media[]`, so a card
+ * for a photograph showed everything about the photograph except the photograph. The author and
+ * licence travel in the same flat shape, and Commons images are free but nearly all of them
+ * still require credit, so those are carried across too.
+ */
+function flatPhotoMedia(feature: GeoFeature, manifest?: LayerManifestV2): DetailMediaAsset[] {
+  const properties = feature.properties;
+  const url =
+    safeExternalUrl(properties.photo) ??
+    safeExternalUrl(properties.photoUrl) ??
+    safeExternalUrl(properties.image) ??
+    safeExternalUrl(properties.imageUrl);
+  if (!url) return [];
+
+  const source = manifest?.attribution?.[0];
+  const sourceId = manifest?.id ?? properties.layerId;
+  return [
+    {
+      id: `${properties.id}:photo`,
+      kind: "photo",
+      url,
+      thumbnailUrl: url,
+      ...(text(properties.name) ? { caption: text(properties.name)! } : {}),
+      sourceId,
+      sourceLabel: source?.label ?? manifest?.name ?? sourceId,
+      ...(safeExternalUrl(properties.website ?? properties.sourceUrl ?? source?.url)
+        ? {
+            sourceUrl: safeExternalUrl(properties.website ?? properties.sourceUrl ?? source?.url)!
+          }
+        : {}),
+      attribution: text(properties.author) ?? text(properties.attribution) ?? "",
+      license: text(properties.license) ?? source?.license ?? "",
+      // Already published by the provider under a free licence, and already a thumbnail: the
+      // moderation queue exists for what our users upload, not for what Commons has served for
+      // fifteen years, and there is nothing left to transform.
+      moderationStatus: "approved",
+      transformStatus: "ready"
+    }
+  ];
 }
 
 const FIELD_LABELS: Record<string, string> = {
+  vehiclesAvailable: "Dostupná vozidla",
+  docksAvailable: "Volné stojany",
+  availabilityStatus: "Dostupnost údajů",
+  reportedAt: "Poslední hlášení",
+  renting: "Výpůjčky povoleny",
+  returning: "Vrácení povoleno",
+  capacity: "Kapacita",
+  operator: "Provozovatel",
+  attribution: "Uvedení zdroje",
+  license: "Licence",
+  licenseUrl: "Licenční podmínky",
+  sourceUrl: "Zdroj",
+  waveHeight: "Výška vln (m)",
+  wavePeriod: "Perioda vln (s)",
+  waterTemperature: "Teplota hladiny (°C)",
+  validAt: "Platnost modelu",
+  solarEnergy: "Sluneční energie (kWh/m²/den)",
+  temperature: "Teplota (°C)",
+  precipitation: "Srážky (mm/den)",
+  period: "Období",
   address: "Adresa",
   openingHours: "Otevírací doba",
   opening_hours: "Otevírací doba",
@@ -125,6 +190,8 @@ const FIELD_LABELS: Record<string, string> = {
   email: "E-mail",
   website: "Web",
   elevationM: "Nadmořská výška",
+  altitudeKm: "Výška nad povrchem",
+  epoch: "Epocha prvků",
   magnitude: "Magnituda",
   depthKm: "Hloubka",
   occurredAt: "Čas",
@@ -134,7 +201,28 @@ const FIELD_LABELS: Record<string, string> = {
   note: "Poznámka",
   tags: "Štítky",
   collection: "Sbírka",
-  status: "Stav"
+  status: "Stav",
+  serviceLabels: "Vybavení",
+  externalUrl: "Zdroj",
+  callsign: "Volací znak",
+  registration: "Registrace",
+  aircraftType: "Typ letadla",
+  altitudeFt: "Výška",
+  speedKt: "Rychlost",
+  headingDeg: "Směr",
+  courseDeg: "Kurz",
+  verticalRateFpm: "Stoupání / klesání",
+  onGround: "Na zemi",
+  seenPosSeconds: "Stáří zprávy",
+  fixAgeSeconds: "Stáří polohy",
+  squawk: "Squawk",
+  emergency: "Nouzový stav",
+  mmsi: "MMSI",
+  imo: "IMO",
+  shipType: "Typ plavidla",
+  navStatus: "Plavební stav",
+  destination: "Cíl plavby",
+  callSign: "Volací znak lodi"
 };
 
 export function detailFieldLabel(id: string): string {
@@ -155,7 +243,7 @@ function fieldKind(id: string, value: unknown): DetailFieldValueKind {
   if (/email/.test(leaf)) return "email";
   if (/price|cost|fee/.test(leaf)) return "currency";
   if (/rating|score/.test(leaf)) return "rating";
-  if (/date|time|at$/.test(leaf)) return "date";
+  if (/date|time|epoch|at$/.test(leaf)) return "date";
   if (/hours|schedule/.test(leaf)) return "schedule";
   if (/status|state/.test(leaf)) return "status";
   if (typeof value === "number") return "number";

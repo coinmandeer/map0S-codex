@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { DiscoverViewport } from "./context";
-import { isMeaningfulViewportChange, StableViewportController } from "./StableViewportController";
+import {
+  stableViewportKey,
+  isMeaningfulViewportChange,
+  StableViewportController
+} from "./StableViewportController";
 
 class FakeScheduler {
   now = 0;
@@ -181,4 +185,26 @@ test("a user-cancelled request returns to neutral state instead of a red error",
   await controller.refresh(viewport);
   assert.equal(controller.snapshot().status, "idle");
   assert.equal(controller.snapshot().error, null);
+});
+
+test("selected areas and editions never share a viewport cache identity", () => {
+  const point = { lng: 1, lat: 41, zoom: 10 };
+  assert.notEqual(
+    stableViewportKey({ ...point, areaId: "municipality", boundaryRevision: "a" }),
+    stableViewportKey({ ...point, areaId: "province", boundaryRevision: "a" })
+  );
+  assert.equal(
+    isMeaningfulViewportChange(
+      { ...point, areaId: "municipality", boundaryRevision: "a" },
+      { ...point, areaId: "municipality", boundaryRevision: "b" }
+    ),
+    true
+  );
+});
+
+test("camera movement does not refetch an unchanged selected area", () => {
+  const selected = { lng: 1, lat: 41, zoom: 10, areaId: "municipality", boundaryRevision: "a" };
+  const moved = { ...selected, lng: 2, lat: 42, zoom: 15 };
+  assert.equal(stableViewportKey(selected), stableViewportKey(moved));
+  assert.equal(isMeaningfulViewportChange(selected, moved), false);
 });

@@ -48,8 +48,9 @@ test("unknown sources are dropped rather than trusted", () => {
 });
 
 /** Every resolver is offline here — these tests are about how the detail is assembled, not
- *  about whether Overpass answered. */
-const offline = { resolvers: [] };
+ *  about whether Overpass answered. Enrichment is disabled explicitly so a configured Foursquare
+ *  key cannot turn a unit test into a network call. */
+const offline = { resolvers: [], enrichment: false };
 
 test("a place no resolver owns still opens from the pin's own coordinates", async () => {
   const place = await getPlaceDetail(
@@ -87,6 +88,7 @@ test("the owning source's record wins over the pin's hints", async () => {
   const place = await getPlaceDetail(
     { id: "osm:240", lng: 0, lat: 0, name: "Zastaralý název" },
     {
+      enrichment: false,
       resolvers: [
         {
           source: "osm",
@@ -103,6 +105,7 @@ test("a resolver that throws degrades to the hints instead of failing the reques
   const place = await getPlaceDetail(
     { id: "osm:240", lng: 14.2, lat: 50.1, name: "Hrad" },
     {
+      enrichment: false,
       resolvers: [
         {
           source: "osm",
@@ -148,4 +151,58 @@ test("a pin in a public layer resolves without a session", async () => {
   const place = await __testing.resolveUserPinForViewer("pin-id", null, load);
   assert.equal(place?.name, "Veřejné místo");
   assert.equal(place?.category, "user-pin");
+});
+
+test("lazy detail retains the description resolved from its owning source", async () => {
+  const place = await getPlaceDetail(
+    { id: "osm:node:123", sourceRefs: "osm:node:123" },
+    {
+      enrichment: false,
+      resolvers: [
+        {
+          source: "osm",
+          resolve: async () => ({
+            name: "Landmark",
+            lng: 14,
+            lat: 50,
+            category: "castle",
+            description: "Full description loaded on opening the pin."
+          })
+        }
+      ]
+    }
+  );
+  assert.equal(place?.description, "Full description loaded on opening the pin.");
+});
+
+test("single-source summaries omit lazy contact data, mixed sources retain unresolved enrichment", () => {
+  const source = {
+    source: "mapy" as const,
+    sourceRef: "base:1",
+    confidence: 0.8,
+    refreshedAt: now
+  };
+  const place = {
+    id: "mapy:base:1",
+    name: "Test",
+    lng: 14,
+    lat: 50,
+    category: "poi",
+    address: "A".repeat(200),
+    phone: "123",
+    website: "https://example.com",
+    openingHours: "Mo-Fr 09:00-17:00",
+    sources: [source]
+  };
+  const response = { places: [place], meta: { sources: [], merged: 0 } };
+  const summary = placesToFeatureCollection(response);
+  assert.equal(summary.features[0]!.properties.address, undefined);
+  assert.equal(summary.features[0]!.properties.phone, undefined);
+  assert.equal(sourceRef(summary.features[0]!.properties.sourceRefs, "mapy"), "base:1");
+  const mixed = placesToFeatureCollection({
+    ...response,
+    places: [{ ...place, sources: [source, { ...source, source: "osm", sourceRef: "node/1" }] }]
+  });
+  assert.equal(mixed.features[0]!.properties.address, place.address);
+  assert.ok(Buffer.byteLength(JSON.stringify(summary)) < Buffer.byteLength(JSON.stringify(mixed)));
 });

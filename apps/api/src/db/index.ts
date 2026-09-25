@@ -1,3 +1,10 @@
+import { aiChatHistoryMigration } from "./migrations/0026AiChatHistory.js";
+import { geoCorrespondenceMigration } from "./migrations/0025GeoCorrespondence.js";
+import { aiOverviewMigration } from "./migrations/0024AiOverview.js";
+import { providerBudgetsMigration } from "./migrations/0023ProviderBudgets.js";
+import { worldLookupIndexesMigration } from "./migrations/0022WorldLookupIndexes.js";
+import { gameWorldMigration } from "./migrations/0021GameWorld.js";
+import { statReleasesMigration } from "./migrations/0020StatReleases.js";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema.js";
@@ -11,6 +18,15 @@ import { commerceMigration } from "./migrations/0007_commerce.js";
 import { rateLimitsAndOperationsMigration } from "./migrations/0008_rateLimitsAndOperations.js";
 import { layerImportPreviewsMigration } from "./migrations/0009_layerImportPreviews.js";
 import { planCollaborationMigration } from "./migrations/0010PlanCollaboration.js";
+import { pinPathsMigration } from "./migrations/0011PinPaths.js";
+import { questAnchorsMigration } from "./migrations/0012QuestAnchors.js";
+import { sourceBackedLayersMigration } from "./migrations/0013SourceBackedLayers.js";
+import { geoUnitsStatSeriesMigration } from "./migrations/0014GeoUnitsStatSeries.js";
+import { themeCoverageMigration } from "./migrations/0015ThemeCoverage.js";
+import { userTablesMigration } from "./migrations/0016UserTables.js";
+import { viewportIndexesMigration } from "./migrations/0017ViewportIndexes.js";
+import { geoUnitReleasesMigration } from "./migrations/0018GeoUnitReleases.js";
+import { boundaryManifestsMigration } from "./migrations/0019BoundaryManifests.js";
 import {
   runVersionedMigrations,
   type MigrationDatabase,
@@ -337,7 +353,23 @@ const VERSIONED_MIGRATIONS = [
   commerceMigration,
   rateLimitsAndOperationsMigration,
   layerImportPreviewsMigration,
-  planCollaborationMigration
+  planCollaborationMigration,
+  pinPathsMigration,
+  questAnchorsMigration,
+  sourceBackedLayersMigration,
+  geoUnitsStatSeriesMigration,
+  themeCoverageMigration,
+  userTablesMigration,
+  viewportIndexesMigration,
+  geoUnitReleasesMigration,
+  boundaryManifestsMigration,
+  statReleasesMigration,
+  gameWorldMigration,
+  worldLookupIndexesMigration,
+  providerBudgetsMigration,
+  aiOverviewMigration,
+  geoCorrespondenceMigration,
+  aiChatHistoryMigration
 ] as const;
 
 function migrationMetadata(env: Readonly<Record<string, string | undefined>> = process.env) {

@@ -22,6 +22,17 @@ export interface DataSourceV2Descriptor {
  * coordinates back. Sources implement `load` and get caching, error reporting and registration
  * as a layer for free.
  */
+export interface DataSourceResult {
+  features: GeoFeature[];
+  status: "complete" | "partial";
+  notice?: string;
+}
+
+/** Legacy array sources remain compatible; multi-source adapters can report incomplete coverage. */
+export function sourceResult(value: GeoFeature[] | DataSourceResult): DataSourceResult {
+  return Array.isArray(value) ? { features: value, status: "complete" } : value;
+}
+
 export interface DataSource {
   id: string;
   /** Present only after this source has a reviewed v2 mapping and contract fixture. */
@@ -30,7 +41,11 @@ export interface DataSource {
    *  asking for a continent just wastes a request. Returning a string explains it to the user
    *  instead of showing an empty layer. */
   tooLarge?(bbox: Bbox): string | null;
-  load(bbox: Bbox, query: Record<string, string | undefined>): Promise<GeoFeature[]>;
+  load(
+    bbox: Bbox,
+    query: Record<string, string | undefined>,
+    signal?: AbortSignal
+  ): Promise<GeoFeature[] | DataSourceResult>;
 }
 
 export function featureCollection(features: GeoFeature[]): FeatureCollection {

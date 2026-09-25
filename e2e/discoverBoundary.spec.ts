@@ -122,21 +122,22 @@ test.describe("map-first Discover boundary", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
 
-    const useCase = page.getByTestId("discover-usecase");
-    await expect(useCase).toBeVisible();
-    await page.getByTestId("discover-preset-city").click();
-    await expect(useCase).toHaveAttribute("data-active-preset", "city");
-    await expect(page.getByTestId("discover-preset-city")).toHaveAttribute("aria-pressed", "true");
-    await expect(useCase).toContainText("Město");
-    await expect(useCase).toContainText("Kavárna u náměstí");
+    // The preset lives in the Layers drawer (§4.7); Discover only consumes the use case.
+    await page.getByTestId("layers-btn").click();
+    await page.getByLabel("Preset").selectOption("city");
+
+    const panel = page.getByTestId("discover-panel");
+    await page.getByTestId("discover-accordion-places").click();
+    await expect(panel.getByTestId("discover-map-features")).toContainText("Kavárna u náměstí");
+    await page.getByTestId("discover-accordion-statistics").click();
     const statistics = page.getByTestId("discover-statistics");
-    await expect(statistics).toContainText("614 640");
-    await expect(statistics).toContainText("2025");
-    await expect(statistics).toContainText("Wikidata");
+    await expect(statistics).toContainText("614,640");
     await expect(statistics).toContainText("Regionální HDP na obyvatele");
-    await expect(statistics).toContainText("2024");
-    await expect(statistics).toContainText("CZ032");
-    await expect(statistics).toContainText("Eurostat");
+    // Year, scope and source belong in the InfoTip rather than in the row (§21.1).
+    await statistics.getByTestId("discover-statistic-population").getByRole("button").click();
+    const info = page.getByRole("dialog");
+    await expect(info).toContainText("2025");
+    await expect(info).toContainText("Wikidata");
     await expect.poll(() => requestedUseCases.filter((value) => value === "city").length).toBe(1);
     await page.screenshot({ path: "e2e/screenshots/1440-discover-usecase.png", fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -144,7 +145,7 @@ test.describe("map-first Discover boundary", () => {
     await page.screenshot({ path: "e2e/screenshots/390-discover-usecase.png", fullPage: true });
   });
 
-  test("registers one cancellable context task for the explicit map action", async ({ page }) => {
+  test("registers one context task for the explicit map action", async ({ page }) => {
     let requestCount = 0;
     let releaseRequest!: () => void;
     const requestGate = new Promise<void>((resolve) => {
@@ -161,18 +162,19 @@ test.describe("map-first Discover boundary", () => {
     await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
 
     const panel = page.getByTestId("discover-panel");
-    await panel.getByRole("button", { name: "Zjistit co je tady" }).click();
-    const center = page.getByTestId("task-center");
-    await expect(center).toBeVisible();
+    await panel.getByRole("button", { name: "What is here?" }).click();
+    const indicator = page.getByTestId("activity-indicator");
+    await expect(indicator).toBeVisible();
     await expect.poll(() => requestCount).toBe(1);
-    await center.getByRole("button", { name: /1 aktivní/u }).click();
-    await expect(center.getByTestId("task-center-entry")).toHaveCount(1);
-    await expect(center).toContainText("Zjišťuji kontext oblasti");
-    await expect(center.getByRole("button", { name: "Zrušit" })).toHaveCount(1);
+    await expect(
+      indicator.getByTestId("activity-row").filter({ hasText: "Zjišťuji kontext oblasti" })
+    ).toHaveCount(1);
 
     releaseRequest();
-    await expect(center).toHaveCount(0);
-    await expect(panel.getByText("Kontext odpovídá tomuto výřezu.")).toBeVisible();
+    await expect(
+      indicator.getByTestId("activity-row").filter({ hasText: "Zjišťuji kontext oblasti" })
+    ).toHaveCount(0);
+    await expect(page.getByTestId("discover-panel-busy")).toHaveCount(0);
     expect(requestCount).toBe(1);
   });
 
@@ -195,6 +197,7 @@ test.describe("map-first Discover boundary", () => {
 
     const panel = page.getByTestId("discover-panel");
     await expect(panel).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("discover-accordion-boundary").click();
     await expect(page.getByTestId("discover-boundary-ready")).toBeVisible();
     await expect
       .poll(
@@ -210,7 +213,7 @@ test.describe("map-first Discover boundary", () => {
       )
       .toBeGreaterThan(0);
 
-    await panel.getByRole("button", { name: "Zavřít" }).click();
+    await panel.getByRole("button", { name: "Close" }).click();
     await expect(panel).toHaveCount(0);
     const point = await page.evaluate(() => {
       const map = window.__maposMap!;
@@ -223,6 +226,7 @@ test.describe("map-first Discover boundary", () => {
     await expect(panel).toBeVisible();
     await expect(page.getByTestId("toast")).toContainText("Vybraná oblast: Plzeň");
 
+    await page.getByTestId("discover-accordion-boundary").click();
     await page.getByRole("button", { name: "Ukázat celou" }).click();
     await expect.poll(() => page.evaluate(() => window.__maposMap?.isMoving() ?? true)).toBe(false);
     expect(
@@ -271,6 +275,7 @@ test.describe("map-first Discover boundary", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
 
+    await page.getByTestId("discover-accordion-boundary").click();
     const options = page.getByTestId("discover-region-options");
     await expect(options).toContainText("Karlovarský kraj");
     await expect(options).toContainText("NUTS 3");
@@ -359,7 +364,21 @@ test.describe("map-first Discover boundary", () => {
             sourceId: "nominatim-osm"
           },
           regionCatalogue: localityLevel
-            ? null
+            ? {
+                nutsLevel: "lau" as never,
+                truncated: false,
+                sourceId: "eurostat-gisco-lau-2024",
+                regions: [
+                  {
+                    id: "lau:CZ_554791",
+                    code: "CZ_554791",
+                    name: "Plzeň",
+                    nutsLevel: "lau" as never,
+                    geometry: neighbouringBoundary,
+                    sourceId: "eurostat-gisco-lau-2024"
+                  }
+                ]
+              }
             : {
                 nutsLevel: countryLevel ? 0 : 3,
                 truncated: false,
@@ -384,11 +403,14 @@ test.describe("map-first Discover boundary", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=4");
 
+    await page.getByTestId("discover-accordion-boundary").click();
     const options = page.getByTestId("discover-region-options");
     await expect(options).toContainText("Deutschland", { timeout: 20_000 });
     await expect(options).toContainText("NUTS 0");
 
-    await page.evaluate(() => window.__maposMap!.jumpTo({ zoom: 7 }));
+    await page.evaluate(() => {
+      window.__maposMap!.jumpTo({ zoom: 7 });
+    });
     await expect(options).toContainText("Karlovarský kraj", { timeout: 20_000 });
     await expect(options).toContainText("NUTS 3");
     await expect(options).not.toContainText("Deutschland");
@@ -405,8 +427,80 @@ test.describe("map-first Discover boundary", () => {
       )
       .toEqual([3]);
 
-    await page.evaluate(() => window.__maposMap!.jumpTo({ zoom: 11 }));
+    await page.evaluate(() => {
+      window.__maposMap!.jumpTo({ zoom: 11 });
+    });
     await expect.poll(() => requestedZooms.some((zoom) => zoom >= 11)).toBe(true);
+    // At city zoom the catalogue switches from statistical regions to municipalities.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = window.__maposMap?.getSource("discover-regions") as
+            { serialize?: () => { data?: GeoJSON.FeatureCollection } } | undefined;
+          return source
+            ?.serialize?.()
+            .data?.features.filter((feature) => feature.properties?.kind === "candidate")
+            .map((feature) => feature.properties?.nutsLevel);
+        })
+      )
+      .toEqual(["lau"]);
+    await expect(options).toContainText("Plzeň");
+    await expect(options).toContainText("Municipality");
+    await expect(page.getByTestId("discover-panel")).toContainText("město / obec");
+    expect(requestedZooms.some((zoom) => zoom <= 4)).toBe(true);
+    expect(requestedZooms.some((zoom) => zoom >= 7)).toBe(true);
+  });
+
+  test("highlights the region under the pointer", async ({ page }) => {
+    await stubDiscoverContext(page, {
+      boundary: {
+        status: "ready",
+        geometry: boundary,
+        reason: "Simplified OpenStreetMap administrative geometry.",
+        sourceId: "nominatim-osm"
+      },
+      regionCatalogue: {
+        nutsLevel: 3,
+        truncated: false,
+        sourceId: "eurostat-gisco-nuts-2024",
+        regions: [
+          {
+            id: "nuts:CZ041",
+            code: "CZ041",
+            name: "Karlovarský kraj",
+            nutsLevel: 3,
+            geometry: neighbouringBoundary,
+            sourceId: "eurostat-gisco-nuts-2024"
+          }
+        ]
+      }
+    });
+    await page.route(/\/api\/layers\/osm-poi\/features/u, (route) =>
+      route.fulfill({ json: { type: "FeatureCollection", features: [] } })
+    );
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
+
+    const point = await page.evaluate(() => {
+      const projected = window.__maposMap!.project([13.72, 49.75]);
+      const rect = window.__maposMap!.getCanvas().getBoundingClientRect();
+      return { x: rect.left + projected.x, y: rect.top + projected.y };
+    });
+    // The hover flag is feature state, not paint: read it back off the source feature.
+    const hovered = () =>
+      page.evaluate(() => {
+        const map = window.__maposMap!;
+        const source = map.getSource("discover-regions") as
+          { serialize?: () => { data?: GeoJSON.FeatureCollection } } | undefined;
+        const feature = source
+          ?.serialize?.()
+          .data?.features.find((candidate) => candidate.properties?.kind === "candidate");
+        return feature?.id === undefined
+          ? null
+          : (map.getFeatureState({ source: "discover-regions", id: feature.id }).hover ?? false);
+      });
+
+    // Hover only exists once the catalogue polygons are on the map.
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -415,17 +509,49 @@ test.describe("map-first Discover boundary", () => {
           return (
             source
               ?.serialize?.()
-              .data?.features.filter((feature) => feature.properties?.kind === "candidate")
-              .length ?? -1
+              .data?.features.some((feature) => feature.properties?.kind === "candidate") ?? false
           );
         })
       )
-      .toBe(0);
-    await expect(options).toHaveCount(0);
-    await expect(page.getByTestId("discover-panel")).toContainText("město / obec");
-    await expect(page.getByTestId("discover-panel")).toContainText("Plzeň");
-    expect(requestedZooms.some((zoom) => zoom <= 4)).toBe(true);
-    expect(requestedZooms.some((zoom) => zoom >= 7)).toBe(true);
+      .toBe(true);
+
+    await page.mouse.move(20, 20);
+    await expect.poll(hovered).toBe(false);
+    // The data may arrive after the first pass over the polygon, so keep nudging until a
+    // mousemove lands on the rendered fill.
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.move(point.x + 6, point.y);
+      if (await hovered()) break;
+      await page.waitForTimeout(300);
+    }
+
+    await page.mouse.move(20, 20);
+    await expect.poll(hovered).toBe(false);
+  });
+
+  test("the What is here chip refreshes the context for the map centre", async ({ page }) => {
+    let requests = 0;
+    await page.route("**/v2/discover/context**", (route) => {
+      requests += 1;
+      return route.fulfill({ json: discoverContextFixture() });
+    });
+    await page.route(/\/api\/layers\/osm-poi\/features/u, (route) =>
+      route.fulfill({ json: { type: "FeatureCollection", features: [] } })
+    );
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
+
+    const chip = page.getByTestId("discover-here-fab");
+    await expect(chip).toBeVisible();
+    await expect.poll(() => requests).toBeGreaterThan(0);
+    const settled = requests;
+    await chip.click();
+    await expect.poll(() => requests).toBeGreaterThan(settled);
+
+    // The chip belongs to the discover mode; elsewhere the map keeps its own questions.
+    await page.getByTestId("mode-personal").click();
+    await expect(chip).toBeHidden();
   });
 
   test("keeps a detailed POI clickable above the regional overlay", async ({ page }) => {
@@ -473,6 +599,7 @@ test.describe("map-first Discover boundary", () => {
     );
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/?mode=discover&lng=13.3775&lat=49.7475&z=10");
+    await page.getByTestId("discover-accordion-boundary").click();
     await expect(page.getByTestId("discover-boundary-ready")).toBeVisible();
     await expect
       .poll(() =>

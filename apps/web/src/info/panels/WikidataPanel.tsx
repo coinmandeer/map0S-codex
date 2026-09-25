@@ -1,3 +1,5 @@
+import { t } from "../../i18n";
+import { useSectionEmpty } from "../SectionAvailability";
 import { Fragment } from "react";
 import { EmptyState, Skeleton } from "../../ui/primitives";
 import { useInfoData } from "../useInfoData";
@@ -17,6 +19,10 @@ export function WikidataPanel({ place }: InfoPanelProps) {
     qid: place.wikidata
   });
 
+  useSectionEmpty(
+    state.status === "empty" ||
+      (state.status === "ready" && !state.data.description && !state.data.facts.length)
+  );
   if (state.status === "loading") return <Skeleton height={72} />;
   if (state.status !== "ready") {
     return (
@@ -40,11 +46,9 @@ export function WikidataPanel({ place }: InfoPanelProps) {
       ) : (
         <p className="meta">Wikidata k tomuto místu neuvádí žádné z podporovaných tvrzení.</p>
       )}
-      <p className="meta">
-        Popsáno v {data.sitelinks} jazykových verzích — hrubý ukazatel významnosti.
-      </p>
+      <p className="meta">{t("polish.wikidataVersions", { count: data.sitelinks })}</p>
       <a className="btn" href={data.url} target="_blank" rel="noreferrer">
-        {data.qid} na Wikidatech
+        {data.qid} · Wikidata
       </a>
     </div>
   );
