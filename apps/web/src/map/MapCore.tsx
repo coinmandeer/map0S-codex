@@ -1003,10 +1003,7 @@ export function MapCore() {
       if (!map.getSource("route-preview")) {
         map.addSource("route-preview", {
           type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-          // Segment ids are strings ("segment:a:b"); MapLibre only keeps numeric feature ids, so
-          // feature-state (the selected segment) has to key on a property instead.
-          promoteId: "segmentId"
+          data: { type: "FeatureCollection", features: [] }
         });
         map.addLayer({
           id: "route-preview-casing",
@@ -1431,6 +1428,7 @@ export function MapCore() {
         needsWrite && route.segments?.length
           ? route.segments.map((segment) => ({
               type: "Feature" as const,
+              id: segment.id,
               geometry: { type: "LineString" as const, coordinates: segment.coordinates },
               properties: {
                 kind: "route",

@@ -255,7 +255,9 @@ function EmptyPlanningPanel({ seed, onEdit }: { seed: TripPlan | null; onEdit():
     }
   };
   return (
-    <PanelShell title="Plánování" testId="planning-panel">
+    // An empty plan is a form, not a list: on a phone it opens half so the map stays in view
+    // (§21.2), the same as the editor does before it has stops.
+    <PanelShell title="Plánování" testId="planning-panel" hasContent={false}>
       <div
         className="planner-empty"
         onInput={onEdit}

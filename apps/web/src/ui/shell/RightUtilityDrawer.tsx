@@ -110,7 +110,7 @@ function OpenRightUtilityDrawer({ type }: { type: Exclude<RightUtility["type"], 
   }, [shell]);
 
   const compatibilityTestId =
-    type === "settings" ? "settings-sheet" : type === "basemaps" ? "tiles-sheet" : undefined;
+    type === "settings" ? "settings-sheet" : tab === "basemaps" ? "tiles-sheet" : undefined;
 
   return (
     <aside
@@ -126,12 +126,18 @@ function OpenRightUtilityDrawer({ type }: { type: Exclude<RightUtility["type"], 
           <h2>{titles[type]}</h2>
         ) : (
           <div className="map-panel-tabs" role="tablist" aria-label={t("topbar.layers")}>
-            <button role="tab" aria-selected={tab === "layers"} onClick={() => selectTab("layers")}>
+            <button
+              role="tab"
+              aria-selected={tab === "layers"}
+              data-testid="map-panel-tab-layers"
+              onClick={() => selectTab("layers")}
+            >
               {t("topbar.layers")}
             </button>
             <button
               role="tab"
               aria-selected={tab === "basemaps"}
+              data-testid="map-panel-tab-basemaps"
               onClick={() => selectTab("basemaps")}
             >
               {t("topbar.basemaps.full")}

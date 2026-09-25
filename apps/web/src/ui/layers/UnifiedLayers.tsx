@@ -607,6 +607,7 @@ export function UnifiedLayers() {
             size="sm"
             variant={view === id ? "tonal" : "text"}
             aria-pressed={view === id}
+            testId={`layers-view-${id}`}
             onClick={() => setView(id)}
           >
             {st(cs, en)}
