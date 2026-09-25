@@ -5,10 +5,7 @@ import { createTileLayer } from "../tileLayer";
 /**
  * Land cover from NASA GIBS (MODIS IGBP, annual).
  *
- * The plan asks for "Pokryv krajiny — WorldCover v kategorii Využití území". ESA WorldCover is
- * not served as keyless tiles, but GIBS publishes the equivalent annual IGBP land-cover product
- * for free, with a documented colormap — so the layer is real rather than a placeholder that
- * names a dataset nothing can draw.
+ * ESA WorldCover is a separate 10 m layer; this source retains the annual MODIS series.
  *
  * One edition per year: the class boundaries are the IGBP scheme's own, and the legend uses the
  * exact colours and names GIBS publishes, so the key matches the pixels.

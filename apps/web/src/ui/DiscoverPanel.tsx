@@ -15,6 +15,7 @@ import {
   type StableViewportState
 } from "../discover/StableViewportController";
 import { discoverBoundaryBbox } from "../discover/boundary";
+import { showAreaBoundaries } from "../discover/boundaryLevel";
 import { EventExplorerPanel } from "../events/EventExplorerPanel";
 import { apiGet } from "../lib/api";
 import { emit, on } from "../lib/events";
@@ -243,6 +244,7 @@ function DiscoverWeather({
  */
 export function DiscoverPanel() {
   const overviewArea = useMapStoreSnapshot((state) => state.areaSelection);
+  const [overviewExpanded, setOverviewExpanded] = useState(false);
   const overviewAi = useMapStoreSnapshot((state) => state.preferences.aiEnabled);
 
   const store = getMapStore();
@@ -406,7 +408,7 @@ export function DiscoverPanel() {
     if (
       mode !== "discover" ||
       statisticsOn ||
-      !highlightBoundary ||
+      !showAreaBoundaries(highlightBoundary, view.zoom, overviewArea?.level) ||
       (!context?.boundary.geometry && !context?.regionCatalogue?.regions.length)
     ) {
       emit("discover-geojson", { geojson: { type: "FeatureCollection", features: [] } });
@@ -446,7 +448,7 @@ export function DiscoverPanel() {
         features: features.map((feature, index) => ({ ...feature, id: index + 1 }))
       }
     });
-  }, [context, highlightBoundary, mode, statisticsOn]);
+  }, [context, highlightBoundary, mode, overviewArea?.level, statisticsOn, view.zoom]);
 
   // The map asks the question and the panel answers it: the chip only makes sense while the
   // discover panel is open, and it refreshes the context for wherever the map is now centred.
@@ -871,21 +873,6 @@ export function DiscoverPanel() {
         }
       >
         <div className="discover-stack" data-testid="discover-context">
-          {overviewArea && (
-            <OverviewView
-              key={overviewArea.id}
-              request={{
-                target: {
-                  type: "area",
-                  areaId: overviewArea.id,
-                  boundaryRevision: overviewArea.revision
-                },
-                language: "cs",
-                consent: { externalModel: overviewAi }
-              }}
-              localFacts={overviewArea.name}
-            />
-          )}
           <header className="discover-hero">
             <span className="kit-eyebrow">{overviewArea ? "Vybraná oblast" : "Střed mapy"}</span>
             <h2 className="discover-hero-title">
@@ -930,6 +917,29 @@ export function DiscoverPanel() {
             onValueChange={setOpenSections}
             testId="discover-accordion"
           />
+          {overviewArea && (
+            <details
+              data-testid="discover-overview-disclosure"
+              onToggle={(event) => setOverviewExpanded(event.currentTarget.open)}
+            >
+              <summary>{t("polish.aiHead")}</summary>
+              {overviewExpanded && (
+                <OverviewView
+                  key={overviewArea.id}
+                  request={{
+                    target: {
+                      type: "area",
+                      areaId: overviewArea.id,
+                      boundaryRevision: overviewArea.revision
+                    },
+                    language: "cs",
+                    consent: { externalModel: overviewAi }
+                  }}
+                  localFacts={overviewArea.name}
+                />
+              )}
+            </details>
+          )}
         </div>
       </PanelShell>
     </>

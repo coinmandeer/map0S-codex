@@ -3,7 +3,8 @@ import { useCatalogActions } from "./useCatalogActions";
 import { CzechSubgroups } from "./CzechSubgroups";
 import { consumeLayerSettingsRequest } from "./useFavoriteLayers";
 import { catalogEvidence } from "./catalogEvidence";
-import { layerUnavailableReason } from "../../layers/registry";
+import { layerSetupRequirement, layerUnavailableReason } from "../../layers/registry";
+import { setupHint } from "./setupHints";
 import { useStatistics } from "../../statistics/explorerStore";
 import { themeLayerId } from "../../layers/themes/themeLayers";
 import { Fragment, useEffect, useMemo, useState } from "react";
@@ -17,6 +18,7 @@ import { LayerActivityBadge, useLayerActivity } from "./LayerActivityBadge";
 import { activityLabel } from "../../tasks/layerActivity";
 import {
   CATALOG_GROUPS,
+  NOT_CATALOGUED,
   catalogItemState,
   type CatalogGroup,
   type CatalogItem,
@@ -89,7 +91,7 @@ export function UnifiedLayers() {
   const { reasonFor, change } = useCatalogActions();
   const layers = useMapStoreSnapshot((s) => s.activeLayers);
   const presetId = useMapStoreSnapshot((s) => s.activePresetId);
-  const [query, setQuery] = useState(() => read("mapos:catalog-query", ""));
+  const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string[]>(() => read("mapos:catalog-sections", []));
   const [revealItem, setRevealItem] = useState<{ id: string } | null>(null);
   const [settings, setSettings] = useState<string | null>(null);
@@ -100,12 +102,11 @@ export function UnifiedLayers() {
   useEffect(() => on("layers-changed", () => setVersion((v) => v + 1)), []);
   useEffect(() => {
     try {
-      sessionStorage.setItem("mapos:catalog-query", JSON.stringify(query));
       sessionStorage.setItem("mapos:catalog-sections", JSON.stringify(open));
     } catch {
       /* storage can be unavailable; the drawer still works without it */
     }
-  }, [query, open]);
+  }, [open]);
 
   // localStorage-backed, plugin-list-backed and catalogue-derived lists are all computed once per
   // relevant change instead of on every keystroke and every layer toggle. `version`/`save` are
@@ -123,7 +124,7 @@ export function UnifiedLayers() {
         (p) =>
           !known.has(p.manifest.id) &&
           !p.manifest.id.startsWith("theme-") &&
-          p.manifest.id !== "vanlife"
+          !NOT_CATALOGUED.has(p.manifest.id)
       )
       .map((p) => ({
         id: p.manifest.id,
@@ -178,7 +179,31 @@ export function UnifiedLayers() {
     return { groups, unique };
   }, [version, statistics.catalog]);
 
-  const scopedGroups = groups.map((group) => ({
+  // Rows the operator has not configured yet (a missing key or data extract) are not everyday
+  // choices: a disabled switch with "not configured" in every category read as a broken app.
+  // They move into one closing section that says what each one needs.
+  const setupFor = (item: CatalogItem) =>
+    layerSetupRequirement(
+      item.layer,
+      capabilities,
+      item.facet ? { [item.facet]: item.values } : undefined
+    );
+  const parkSetupRows = view === "all" && !query;
+  const setupRows = parkSetupRows
+    ? unique.filter((item) => setupFor(item) && !catalogItemState(item, layers).selected)
+    : [];
+  const setupIds = new Set(setupRows.map((item) => item.id));
+  const baseGroups = groups.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !setupIds.has(item.id))
+  }));
+  const withSetup: CatalogGroup[] = setupRows.length
+    ? [
+        ...baseGroups,
+        { id: "setup", cs: "Vyžaduje nastavení", en: "Needs setup", items: setupRows }
+      ]
+    : baseGroups;
+  const scopedGroups = withSetup.map((group) => ({
     ...group,
     items: group.items.filter((item) => {
       if (view === "all" && !query && group.id === "mine") return false;
@@ -240,7 +265,26 @@ export function UnifiedLayers() {
           <span className="catalog-name">
             {name}
             <LayerStatus id={item.layer} enabled={state.enabled} />
-            {unavailable && <small>{unavailable}</small>}
+            {unavailable &&
+              (() => {
+                const missing = setupFor(item);
+                if (!missing) return <small>{unavailable}</small>;
+                const hint = setupHint(missing);
+                return (
+                  <small data-testid={`catalog-setup-${item.id}`}>
+                    {st("Chybí nastavení", "Needs setup")}: {st(hint.cs, hint.en)} ·{" "}
+                    <code>{hint.env}</code>
+                    {hint.url && (
+                      <>
+                        {" "}
+                        <a href={hint.url} target="_blank" rel="noreferrer">
+                          {st("registrace", "sign up")}
+                        </a>
+                      </>
+                    )}
+                  </small>
+                );
+              })()}
             {state.selected && !state.enabled && <small>{st("Pozastaveno", "Paused")}</small>}
           </span>
           <IconButton

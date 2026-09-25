@@ -1,5 +1,6 @@
 import type { LayerManifestV2, LegendManifestV2 } from "@mapos/layer-sdk";
 import { safeBrowserErrorFields } from "../../lib/safeError";
+import { API_BASE } from "../../lib/api";
 import { registerLayerV2, unregisterLayer, allLayerPlugins, getLayerManifestV2 } from "../registry";
 import { createChoroplethLayer, NO_DATA_COLOR, type ChoroplethBreak } from "./choropleth";
 import { intlLocale, t } from "../../i18n";
@@ -187,7 +188,7 @@ function registerThemeLayer(id: string, detail: ThemeDetail): void {
 
 function tileTemplate(detail: ThemeDetail): string {
   return (
-    `/api/v2/themes/${detail.id}/tiles/{z}/{x}/{y}.pbf` +
+    `${API_BASE}/v2/themes/${detail.id}/tiles/{z}/{x}/{y}.pbf` +
     themeQuery({
       period: detail.period ?? undefined,
       excluded: detail.excluded,

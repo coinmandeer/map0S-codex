@@ -69,40 +69,6 @@
   transform: none;
   margin-top: 10px;
 }
-.borders-control {
-  padding: 0;
-  box-shadow: none;
-  background: transparent;
-  left: auto;
-  right: 16px;
-  transform: none;
-  align-items: flex-end;
-  flex-direction: column;
-}
-.borders-control > button,
-.borders-options {
-  background: var(--surface-solid);
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border);
-}
-.borders-control > button {
-  min-height: 44px;
-  padding: 8px 14px;
-}
-.borders-options {
-  display: grid;
-  gap: 10px;
-  width: 260px;
-  border-radius: 14px;
-  padding: 14px;
-}
-.borders-options button {
-  min-height: 44px;
-}
-.borders-options small {
-  line-height: 1.5;
-  color: var(--text-muted);
-}
 @keyframes mapos-loading {
   50% {
     transform: translateY(-2px) rotate(-8deg);
@@ -192,9 +158,6 @@
   }
   .map-status-trigger {
     min-width: 28px;
-  }
-  .borders-control {
-    top: 174px;
   }
 }
 @media (max-width: 600px) {

@@ -11,6 +11,7 @@ import { useShellStoreSnapshot } from "../../store/useShellStoreSnapshot";
 import { MapStatus } from "./MapStatus";
 
 import { CommandSearch } from "../CommandSearch";
+import { AreaControls } from "../../discover/AreaControls";
 import { Icon, IconButton, useElementWidth } from "../kit";
 import { activeLayerSummary } from "../modeBarPresentation";
 import { LAYER_MODES } from "../modes";
@@ -126,6 +127,7 @@ export function TopBar({ onFlyToMe }: { onFlyToMe: () => Promise<Fix | null> }) 
           <MapStatus compact={mobile || brand !== "full"} />
 
           <CommandSearch onFlyToMe={onFlyToMe} mode={mode} showLocationLabel={showLocationLabel} />
+          <AreaControls />
 
           {!mobile && !settingsInRail && (
             <>

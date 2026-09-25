@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AiChatService, classifyChatIntent, type AiChatEvent } from "./chatService.js";
+import {
+  AiChatService,
+  classifyChatIntent,
+  explicitTripDestination,
+  type AiChatEvent
+} from "./chatService.js";
 import { createAiChatTurnFactory, createFixtureChatToolProviders } from "./chatComposition.js";
 import { AiConversationStore } from "./conversation.js";
 import type {
@@ -476,7 +481,9 @@ test("a layer selection may only name layers a tool listed for this user", async
             text: "Zapnula jsem vrstvu s kempy.",
             title: "Kempování",
             layerIds: ["osm-poi", "secret-layer"],
-            filters: { openNow: true, tags: ["kemp"] }
+            filters: { openNow: true, tags: ["kemp"] },
+            opacityByLayer: { "osm-poi": 0.4, "secret-layer": 0.8 },
+            time: "2026-09-24T22:00:00Z"
           }
         }
       ]
@@ -493,6 +500,8 @@ test("a layer selection may only name layers a tool listed for this user", async
   assert.ok(card && card.type === "layer");
   assert.deepEqual(card.layerIds, ["osm-poi"], "a layer outside the projection is dropped");
   assert.deepEqual(card.filters, { openNow: true, tags: ["kemp"] });
+  assert.deepEqual(card.opacityByLayer, { "osm-poi": 0.4 });
+  assert.equal(card.time, "2026-09-24T22:00:00Z");
 });
 
 test("an edit to an open plan arrives as a diff to confirm, never as a write", async () => {
@@ -878,4 +887,405 @@ test("explicit question about the selected area shares the exact overview rather
   assert.equal(code, "verified-praha");
   assert.match(answer!.text, /Praha/);
   assert(!answer!.text.includes("Plzeň"));
+});
+
+// Catalog and geometry tool results must remain parseable, even at the context limit.
+test("tool serialization preserves complete catalog JSON and rejects oversized data", async () => {
+  const { serializeToolResult } = await import("./chatService.js");
+  const catalog = {
+    layers: Array.from({ length: 40 }, (_, i) => ({
+      layerId: `layer-${i}`,
+      description: "a".repeat(200)
+    })),
+    nextOffset: 40
+  };
+  assert.deepEqual(JSON.parse(serializeToolResult(catalog)), catalog);
+  assert.equal(
+    JSON.parse(serializeToolResult({ data: "a".repeat(140000) })).error,
+    "result_too_large"
+  );
+});
+
+test("Málaga planning from Prague resolves the destination before place search and routing", async () => {
+  const providers = createFixtureChatToolProviders({
+    fixtures: () => [
+      { osmId: "node/101", category: "viewpoint", name: "Mirador uno", lng: -4.421, lat: 36.72 },
+      { osmId: "node/102", category: "viewpoint", name: "Mirador dos", lng: -4.42, lat: 36.73 }
+    ]
+  });
+  providers.resolveLocation = async (query) => {
+    assert.equal(query, "Malagy");
+    return [{ name: "Málaga", longitude: -4.421, latitude: 36.72 }];
+  };
+  let routed = false;
+  let previewed = false;
+  providers.routeMatrix = async (stops) =>
+    stops.map((_, i) => stops.map((_, j) => (i === j ? 0 : 3600)));
+  providers.routePlan = async (stops, profile, signal) => {
+    assert.equal(profile, "foot");
+    assert.ok(stops.every((s) => s.longitude < -4 && s.latitude < 37));
+    assert.equal(signal?.aborted ?? false, false);
+    assert.equal(previewed, true, "verified stops are delivered before routing starts");
+    routed = true;
+    return {
+      coordinates: stops.map((s) => [s.longitude, s.latitude]),
+      distanceM: 6500,
+      durationS: 7200,
+      provider: "osm",
+      profile
+    };
+  };
+  const make = createAiChatTurnFactory({ providers, conversations: new AiConversationStore() });
+  const context = {
+    center: { longitude: 14.42, latitude: 50.08 },
+    zoom: 13,
+    activeLayerIds: ["osm-poi"]
+  };
+  const service = make(context);
+  const input = request("hezký výlet v okolí Malagy", {
+    externalModel: false,
+    preciseLocation: false
+  });
+  input.context.mapCenter = { ...context.center };
+  const answer = await service.run(input, (event) => {
+    if (event.type === "map_preview") {
+      previewed = true;
+      assert.ok(event.answer.cards.some((c) => c.type === "plan" && c.stops.length >= 2));
+    }
+  });
+  const card = answer?.cards.find((c) => c.type === "plan");
+  assert.ok(card && card.type === "plan");
+  assert.equal(routed, true);
+  assert.ok(card.route && card.route.distanceM > 0 && card.route.coordinates.length >= 2);
+  assert.equal(
+    context.center.longitude,
+    -4.421,
+    "tool context changes with the resolved destination"
+  );
+});
+
+test("adding a cafe updates the draft while retaining locks, endpoints, order and bike profile", async () => {
+  const { planV1ToV2 } = await import("@mapos/layer-sdk");
+  const draft = planV1ToV2({
+    id: "draft",
+    name: "Málaga",
+    departureAt: new Date().toISOString(),
+    variant: "fast",
+    visibility: "private",
+    vehicle: { profile: "bike" },
+    stops: [
+      { id: "start", name: "Start", lng: -4.42, lat: 36.72, dwellMinutes: 0 },
+      { id: "locked", name: "Pevná zastávka", lng: -4.41, lat: 36.72, dwellMinutes: 30 },
+      { id: "finish", name: "Cíl", lng: -4.4, lat: 36.72, dwellMinutes: 0 }
+    ]
+  });
+  draft.stops[1]!.locked = true;
+  const providers = createFixtureChatToolProviders({
+    fixtures: () => [
+      { osmId: "node/coffee", category: "cafe", name: "Café", lng: -4.415, lat: 36.72 }
+    ]
+  });
+  providers.routeMatrix = async (stops, profile) => {
+    assert.equal(profile, "bike");
+    assert.ok(stops.length <= 10);
+    return stops.map((a) => stops.map((b) => Math.abs(a.longitude - b.longitude) * 100000));
+  };
+  providers.routePlan = async (stops, profile) => ({
+    coordinates: stops.map((s) => [s.longitude, s.latitude]),
+    distanceM: 2500,
+    durationS: 900,
+    provider: "osm",
+    profile
+  });
+  const make = createAiChatTurnFactory({ providers, conversations: new AiConversationStore() });
+  const input = request("přidej kavárnu", { externalModel: false, preciseLocation: false });
+  const answer = await make({
+    center: input.context.mapCenter,
+    zoom: 13,
+    activeLayerIds: ["osm-poi"]
+  }).run({ ...input, context: { ...input.context, tripDraft: draft } }, collect().emit);
+  const card = answer?.cards.find((c) => c.type === "plan");
+  assert.ok(card && card.type === "plan" && card.draft);
+  assert.equal(card.profile, "bike");
+  assert.equal(card.draft.stops.length, 4);
+  assert.deepEqual(
+    card.draft.stops
+      .filter((s) => s.id !== card.draft!.stops.find((s) => s.name === "Café")?.id)
+      .map((s) => s.id),
+    ["start", "locked", "finish"]
+  );
+  assert.equal(card.draft.stops.find((s) => s.id === "locked")?.locked, true);
+  assert.equal(draft.stops.length, 3, "saved/input document is not mutated");
+  assert.equal(card.draft.revision, draft.revision + 1);
+});
+
+test("requested radius uses the geometry tool and emits a sourced polygon without a model", async () => {
+  const answer = await service().run(
+    request("ukaž okruh 10 km", { externalModel: false, preciseLocation: false }),
+    collect().emit
+  );
+  assert.ok(answer);
+  assert.equal(answer.execution, "deterministic");
+  assert.equal(answer.mapResults?.length, 1);
+  assert.equal(answer.mapResults![0]!.data.features[0]!.geometry.type, "Polygon");
+  assert.equal(answer.mapResults![0]!.derived?.method, "geodesic-buffer");
+  assert.match(answer.text, /Nejde o dojezdovou oblast/);
+});
+
+test("explicit radius origin wins over the viewport without interpreting here as a place", () => {
+  assert.equal(explicitTripDestination("Zobraz oblast 10 km od Málagy"), "Málagy");
+  assert.equal(explicitTripDestination("Show area 5 km from Málaga"), "Málaga");
+  assert.equal(explicitTripDestination("Zobraz oblast 10 km od nás"), null);
+});
+
+test("night-sky planning compares bounded real candidates for the upcoming astronomical night", async () => {
+  const providers = createFixtureChatToolProviders({
+    fixtures: () => [
+      { osmId: "node/201", category: "viewpoint", name: "Bright hill", lng: 13.379, lat: 49.749 },
+      { osmId: "node/202", category: "viewpoint", name: "Dark hill", lng: 13.4, lat: 49.749 },
+      { osmId: "node/203", category: "viewpoint", name: "Unknown hill", lng: 13.42, lat: 49.749 },
+      { osmId: "node/204", category: "viewpoint", name: "Further hill", lng: 13.45, lat: 49.749 }
+    ]
+  });
+  const nightStart = new Date(Date.now() + 2 * 3600000).toISOString();
+  const calls: { lng: number; at: string }[] = [];
+  providers.nightSky = async (lng, _lat, at) => {
+    calls.push({ lng, at });
+    return {
+      at,
+      timezone: "Europe/Prague",
+      localTime: at,
+      nightStart,
+      nightEnd: new Date(Date.parse(nightStart) + 8 * 3600000).toISOString(),
+      moonAltitudeDeg: -12,
+      moonIlluminatedFraction: 0.2,
+      cloudCoverPercent: 10,
+      skyBrightness:
+        lng > 13.41
+          ? null
+          : {
+              value: lng > 13.39 ? 0.1 : 5,
+              unit: "mcd/m²",
+              modelYear: 2015,
+              component: "artificial-zenith",
+              sourceId: "falchi-world-atlas"
+            },
+      limitations: [],
+      sources: ["falchi-world-atlas", "astronomy-suncalc", "open-meteo"].map((sourceId) => ({
+        sourceId,
+        label: sourceId,
+        url: "https://example.org",
+        retrievedAt: at
+      }))
+    };
+  };
+  const make = createAiChatTurnFactory({ providers, conversations: new AiConversationStore() });
+  const input = request("chci pozorovat noční oblohu", {
+    externalModel: false,
+    preciseLocation: false
+  });
+  input.projection = {
+    ...projection,
+    allowedLayerIds: new Set([
+      "osm-poi",
+      "carto-dark",
+      "sky-brightness",
+      "dark-sky",
+      "weather-clouds"
+    ])
+  };
+  const result = await make({
+    center: input.context.mapCenter,
+    zoom: 13,
+    activeLayerIds: ["osm-poi"]
+  }).run(input, collect().emit);
+  assert.ok(result);
+  assert.equal(
+    calls.length,
+    5,
+    "one center lookup, one night adjustment, and only three candidates"
+  );
+  assert.ok(
+    calls.slice(1).every((c) => c.at === new Date(Date.parse(nightStart) + 3600000).toISOString())
+  );
+  const places = result.cards.find((c) => c.type === "places");
+  assert.equal(places?.type === "places" ? places.places[0]?.title : null, "Dark hill");
+  const facts = result.cards.find(
+    (c) => c.type === "facts" && c.title === "Porovnání doložených vyhlídek"
+  );
+  assert.equal(facts?.type === "facts" ? facts.items.length : 0, 3);
+  assert.match(JSON.stringify(facts), /bez dat/);
+  assert.match(result.text, /první hodinu/);
+});
+
+test("the production catalogue accepts Czech aliases and preserves numerical capability metadata", async () => {
+  const { layerCatalog } = await import("./chatComposition.js");
+  const catalog = layerCatalog();
+  const providers = createFixtureChatToolProviders({ fixtures: () => [] });
+  providers.layers = () => catalog;
+  const { registry } = createChatToolRegistry({
+    providers,
+    mapContext: { center: { longitude: 0, latitude: 0 }, zoom: 2, activeLayerIds: [] }
+  });
+  const context = {
+    actor,
+    projection: { ...projection, allowedLayerIds: new Set(catalog.map((c) => c.layerId)) }
+  };
+  for (let offset = 0; offset < catalog.length; offset += 40) {
+    const result = await registry.invoke("list_available_layers", { offset, limit: 40 }, context);
+    assert.equal(result.status, "succeeded", JSON.stringify(result));
+  }
+  const result = await registry.invoke<{
+    layers: import("./chatTools.js").AiChatLayerDescriptor[];
+  }>("list_available_layers", { query: "světelný smog" }, context);
+  assert.equal(result.status, "succeeded", JSON.stringify(result));
+  if (result.status !== "succeeded") return;
+  assert.deepEqual(result.value.layers.find((l) => l.layerId === "dark-sky")?.data?.operations, [
+    "display"
+  ]);
+  assert.ok(
+    result.value.layers
+      .find((l) => l.layerId === "sky-brightness")
+      ?.data?.operations.includes("query-point")
+  );
+});
+
+test("night-sky destination excludes the Czech vicinity phrase", () => {
+  assert.equal(explicitTripDestination("chci pozorovat noční oblohu v okolí Malagy"), "Malagy");
+  assert.equal(explicitTripDestination("pozorovat hvězdy v Praze"), "Praze");
+  assert.equal(explicitTripDestination("stargazing near Málaga"), "Málaga");
+});
+
+test("model can edit an unsaved working trip without a saved-plan permission or write", async () => {
+  const { planV1ToV2 } = await import("@mapos/layer-sdk");
+  const draft = planV1ToV2({
+    id: "unsaved",
+    departureAt: "2026-09-24T10:00:00Z",
+    name: "Výlet",
+    visibility: "private",
+    variant: "fast",
+    vehicle: { profile: "foot" },
+    stops: [
+      { id: "start", name: "Start", lng: 14, lat: 50, dwellMinutes: 0 },
+      { id: "view", name: "Vyhlídka", lng: 14.01, lat: 50, dwellMinutes: 15 },
+      { id: "cafe", name: "Kavárna", lng: 14.02, lat: 50, dwellMinutes: 15 },
+      { id: "end", name: "Cíl", lng: 14.03, lat: 50, dwellMinutes: 0 }
+    ]
+  });
+  const { runtime, requests } = scriptedRuntime([
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "edit",
+          name: "apply_plan_commands",
+          arguments: {
+            text: "Přesunul jsem vyhlídku za kavárnu.",
+            summary: "Nové pořadí",
+            edits: [{ op: "move-stop", stopId: "view", toIndex: 2 }]
+          }
+        }
+      ]
+    }
+  ]);
+  const base = request("přesuň vyhlídku za kavárnu");
+  const answer = await service(runtime).run(
+    { ...base, context: { ...base.context, tripDraft: draft } },
+    collect().emit
+  );
+  const card = answer?.cards.find((c) => c.type === "plan");
+  assert.ok(card?.type === "plan" && card.draft);
+  assert.deepEqual(
+    card.draft.stops.map((s) => s.id),
+    ["start", "cafe", "view", "end"]
+  );
+  assert.deepEqual(
+    draft.stops.map((s) => s.id),
+    ["start", "view", "cafe", "end"]
+  );
+  assert.equal(card.draft.revision, draft.revision + 1);
+  const context = requests[0]!.prompt;
+  assert.ok(context.includes("working-trip"));
+  assert.ok(context.includes('"locked":true'));
+  assert.ok(!context.includes("coordinates"));
+});
+
+test("web discoveries geocode into grounded pins and an automatically computed route", async () => {
+  const { runtime } = scriptedRuntime([
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [{ id: "web", name: "web_search", arguments: { query: "dvě dílny v Praze" } }]
+    },
+    {
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "a",
+          name: "resolve_location",
+          arguments: { query: "Dílna A, Praha", asPlace: true }
+        },
+        { id: "b", name: "resolve_location", arguments: { query: "Dílna B, Praha", asPlace: true } }
+      ]
+    },
+    (input) => ({
+      text: "",
+      finishReason: "tool-call",
+      toolCalls: [
+        {
+          id: "answer",
+          name: "submit_plan",
+          arguments: {
+            name: "Dílny",
+            text: "Trasa mezi ověřenými adresami.",
+            stops: placeIdsFromHistory(input).map((placeId) => ({ placeId }))
+          }
+        }
+      ]
+    })
+  ]);
+  const providers = createFixtureChatToolProviders({ fixtures: () => [] });
+  providers.web = createFixtureWebTools([
+    { url: "https://fixture.test/dilny", title: "Dílny", text: "Dílna A, Praha. Dílna B, Praha." }
+  ]);
+  providers.resolveLocation = async (query) => [
+    { name: query, longitude: query.includes("A,") ? 14.42 : 14.43, latitude: 50.08 }
+  ];
+  let routed = false;
+  providers.routePlan = async (stops, profile) => {
+    routed = true;
+    assert.equal(stops.length, 2);
+    assert.equal(profile, "foot");
+    return {
+      coordinates: stops.map((s) => [s.longitude, s.latitude]),
+      distanceM: 900,
+      durationS: 750,
+      profile,
+      provider: "mapy"
+    };
+  };
+  const context = { center: { longitude: 13.37, latitude: 49.74 }, zoom: 13, activeLayerIds: [] };
+  const { registry, available } = createChatToolRegistry({ providers, mapContext: context });
+  const service = new AiChatService({
+    registry,
+    availableTools: available,
+    runtime,
+    conversations: new AiConversationStore(),
+    routePlan: providers.routePlan
+  });
+  const debug = collect();
+  const answer = await service.run(request("Najdi dvě dílny a spoj je pěšky"), debug.emit);
+
+  const plan = answer?.cards.find((c) => c.type === "plan");
+  assert.ok(plan?.type === "plan");
+  assert.ok(plan.stops.every((s) => s.sourceId === "mapos-geocoder"));
+  assert.equal(plan.route?.distanceM, 900);
+  assert.equal(routed, true);
+  assert.equal(
+    context.center.longitude,
+    13.37,
+    "geocoding a result does not redirect subsequent context"
+  );
 });

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { memoryChatRequests } from "../services/ai/chatRequests.js";
+import { memoryChatHistory } from "../services/ai/chatHistory.js";
 import Fastify from "fastify";
 import { FixedWindowRateLimiter } from "../security/publicApiHardening.js";
 import { planV1ToV2 } from "@mapos/layer-sdk";
@@ -123,7 +125,10 @@ async function isolatedApp(options: { authenticated?: boolean; rateLimit?: numbe
     })
   });
   const app = Fastify({ logger: false });
+  const chatHistory = memoryChatHistory();
   registerAiRoutes(app, {
+    chatHistory,
+    chatRequests: memoryChatRequests(),
     orchestrator: runtime.orchestrator,
     resolveUserId: () => (options.authenticated === false ? null : "route-user"),
     allowedLayerIds: new Set(["osm-poi"]),
@@ -160,6 +165,7 @@ async function isolatedApp(options: { authenticated?: boolean; rateLimit?: numbe
   await app.ready();
   return {
     app,
+    chatHistory,
     sourceCalls: () => sourceCalls,
     discussionCalls: () => discussionCalls,
     historyLengths: () => historyLengths
@@ -423,6 +429,12 @@ test("chat streams its steps and answers with sourced place cards", async (t) =>
     events.map((event) => event.type),
     ["conversation", "intent", "tool_start", "tool_result", "token", "sources", "card", "done"]
   );
+  assert.equal(new Set(events.map((event) => event.runId)).size, 1);
+  assert.deepEqual(
+    events.map((event) => event.sequence),
+    events.map((_, index) => index + 1)
+  );
+  assert.ok(events.every((event) => Number.isSafeInteger(event.revision)));
   // Without the external-model consent the deterministic path answers, and it still cites.
   assert.equal(events.find((event) => event.type === "intent")!.execution, "deterministic");
   const done = events.at(-1);
@@ -616,4 +628,31 @@ test("chat refuses unresolved area revisions and invalid extents before streamin
     payload: { ...chatBody, context: { ...chatBody.context, bbox: [14, 49, 13, 50] } }
   });
   assert.equal(response.statusCode, 400, response.body);
+});
+
+test("chat retries replay one completed turn and reject changed payloads or deleted history", async (t) => {
+  const fixture = await isolatedApp();
+  t.after(() => fixture.app.close());
+  const payload = { ...chatBody, clientRequestId: "47d9f839-a442-4acd-a075-58a872764acd" };
+  const send = (body: Omit<typeof payload, "message"> & { message: string } = payload) =>
+    fixture.app.inject({ method: "POST", url: "/v2/ai/chat", payload: body });
+  const first = await send();
+  assert.equal(first.statusCode, 200, first.body);
+  const done = sseEvents(first.body).at(-1);
+  assert.equal(done.type, "done");
+  const replay = await send();
+  assert.equal(replay.statusCode, 200, replay.body);
+  assert.deepEqual(
+    sseEvents(replay.body).map((e) => e.type),
+    ["done"]
+  );
+  assert.deepEqual(sseEvents(replay.body)[0].answer, done.answer);
+  assert.equal(
+    (await fixture.chatHistory.get("route-user", done.conversation.id))?.turns.length,
+    1
+  );
+  assert.equal((await send({ ...payload, message: "Jiný dotaz" })).statusCode, 409);
+  await fixture.chatHistory.delete("route-user", done.conversation.id);
+  assert.equal((await send()).statusCode, 404);
+  assert.equal(await fixture.chatHistory.get("route-user", done.conversation.id), null);
 });

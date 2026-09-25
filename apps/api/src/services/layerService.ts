@@ -29,6 +29,9 @@ function matchCategory(
   tags: Record<string, string>,
   candidates: OsmPoiCategoryId[]
 ): OsmPoiCategoryId {
+  // The broad `shop` category and the dedicated cannabis layer share OSM ids in one table.
+  // Keep cannabis rows in their specific category whichever cell request arrived last.
+  if (tags.shop === "cannabis") return "cannabis";
   for (const c of candidates) {
     const spec = OSM_POI_CATEGORIES[c].overpass;
     const match = spec.match(/\["([^"]+)"="([^"]+)"\]/);
@@ -243,6 +246,7 @@ export async function getOsmPoiFeatures(
       name: osmPois.name,
       lng: osmPois.lng,
       lat: osmPois.lat,
+      tags: osmPois.tags,
       wikidata: sql<string | null>`${osmPois.tags}->>'wikidata'`,
       revision: osmPois.fetchedAt
     })
@@ -274,6 +278,20 @@ export async function getOsmPoiFeatures(
       category: r.category,
       layerId: "osm-poi",
       osmId: r.osmId,
+      ...(r.category === "cannabis"
+        ? {
+            cannabisMedical: r.tags?.["cannabis:medical"] ?? null,
+            cannabisRecreational: r.tags?.["cannabis:recreational"] ?? null,
+            cannabisCbd: r.tags?.["cannabis:cbd"] ?? null,
+            address:
+              [r.tags?.["addr:street"], r.tags?.["addr:housenumber"], r.tags?.["addr:city"]]
+                .filter(Boolean)
+                .join(" ") || null,
+            website: r.tags?.website ?? r.tags?.["contact:website"] ?? null,
+            phone: r.tags?.phone ?? r.tags?.["contact:phone"] ?? null,
+            opening_hours: r.tags?.opening_hours ?? null
+          }
+        : {}),
       ...(r.wikidata ? { wikidata: r.wikidata } : {}),
       revision: r.revision.toISOString()
     }

@@ -1,15 +1,7 @@
 import { registerLayer } from "../registry";
 import { createTileLayer } from "../tileLayer";
 
-/**
- * Sky darkness from satellite night lights.
- *
- * The overlay is the flip side of a light-pollution map: bright pixels are places that emit
- * light (and therefore have little darkness left), black pixels are where the night sky is still
- * genuinely dark. NASA GIBS serves the VIIRS "Black Marble" composite as keyless Web-Mercator
- * tiles, so a fresh clone gets it without a key. Above the source's own maximum zoom MapLibre
- * overzooms the same pixels rather than fetching a pyramid that does not exist.
- */
+/** Historical light emissions, not measured sky brightness. */
 registerLayer({
   kind: "raster",
   manifest: {

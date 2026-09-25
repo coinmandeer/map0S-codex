@@ -1,3 +1,4 @@
+import { WORLD_BANK_COUNTRY_CODES } from "./worldBankCountries.js";
 /**
  * The statistical series MapOS imports, and how each one is addressed.
  *
@@ -149,6 +150,22 @@ const LEGACY_STAT_DATASETS: readonly StatDatasetDescriptor[] = [
         "population",
         "SP.POP.65UP.TO.ZS",
         "%"
+      ],
+      [
+        "electricity-access",
+        "Access to electricity",
+        "Přístup k elektřině",
+        "energy",
+        "EG.ELC.ACCS.ZS",
+        "% of population"
+      ],
+      [
+        "internet-use",
+        "Individuals using the Internet",
+        "Používání internetu",
+        "digital",
+        "IT.NET.USER.ZS",
+        "% of population"
       ],
       ["forest-cover", "Forest area", "Lesní pokryv", "land", "AG.LND.FRST.ZS", "% of land"],
       ["physicians", "Physicians", "Lékaři", "health", "SH.MED.PHYS.ZS", "physicians/1,000 people"],
@@ -306,14 +323,7 @@ export function parseStatDataset(
         row.geoCode =
           ({ EL: "GR", UK: "GB" } as Record<string, string>)[row.geoCode] ?? row.geoCode;
     }
-    if (
-      dataset.providerId === "worldbank" &&
-      !new Set(
-        "AL AD AT BY BE BA BG HR CY CZ DK EE FI FR DE GR HU IS IE IT XK LV LI LT LU MT MD MC ME NL MK NO PL PT RO RU SM RS SK SI ES SE CH TR UA GB VA".split(
-          " "
-        )
-      ).has(row.geoCode)
-    )
+    if (dataset.providerId === "worldbank" && !WORLD_BANK_COUNTRY_CODES.has(row.geoCode))
       return false;
     const key = `${row.geoCode}\0${row.period}`;
     if (seen.has(key))

@@ -698,3 +698,15 @@ test("selected immutable area bypasses reverse geocoding and partitions the cont
   );
   assert.notEqual(discoverContextKey({ ...input, area }), discoverContextKey(input));
 });
+
+test("toggling map layers reuses the structured area context; only model answers key on them", () => {
+  const input = { lng: 14.42, lat: 50.08, zoom: 12, lang: "cs", useCase: "discover" };
+  assert.equal(
+    discoverContextKey({ ...input, activeLayerIds: ["osm-poi"] }),
+    discoverContextKey({ ...input, activeLayerIds: ["osm-poi", "inaturalist", "webcams"] })
+  );
+  assert.notEqual(
+    discoverContextKey({ ...input, allowModelFallback: true, activeLayerIds: ["osm-poi"] }),
+    discoverContextKey({ ...input, allowModelFallback: true, activeLayerIds: ["webcams"] })
+  );
+});

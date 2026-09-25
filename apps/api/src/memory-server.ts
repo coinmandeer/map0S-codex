@@ -1,3 +1,6 @@
+import { memoryChatRequests } from "./services/ai/chatRequests.js";
+import { memoryMapArtifacts } from "./services/ai/mapArtifacts.js";
+import { memoryChatHistory } from "./services/ai/chatHistory.js";
 import { OverviewService } from "./services/ai/overviewService.js";
 import { registerEnvironmentEditionRoutes } from "./routes/environmentEditionRoutes.js";
 import { createThreadSaver } from "./world/savedThreads.js";
@@ -400,6 +403,9 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
     repository: memoryPlanDocumentRepository
   });
   registerAiRoutes(app, {
+    chatRequests: memoryChatRequests(),
+    chatHistory: memoryChatHistory(),
+    mapArtifacts: memoryMapArtifacts(),
     overview: new OverviewService({
       detail: async (input) => {
         const fixture = memoryPoiFixtures().find((row) => row.osmId === input.featureId);
@@ -699,6 +705,13 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
           .split(",")
           .filter((c): c is OsmPoiCategoryId => c in OSM_POI_CATEGORIES);
         return memoryOsmFeatures(bbox, cats);
+      }
+      if (layerId === "weed") {
+        return {
+          type: "FeatureCollection",
+          features: [],
+          notice: "Offline ukázka nenačítá celosvětová data OpenStreetMap."
+        };
       }
       if (layerId === "user-layers") {
         return memoryUserFeatures(bbox, getSessionUser(request.cookies.session)?.id);

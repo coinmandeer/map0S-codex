@@ -14,6 +14,9 @@ const unavailable: MapAiToolHandler = async () => {
 };
 
 const handlers: MapAiToolHandlers = {
+  derive_radius_area: unavailable,
+  get_night_sky: unavailable,
+  resolve_location: unavailable,
   get_current_map_context: unavailable,
   list_available_layers: unavailable,
   query_layer: unavailable,

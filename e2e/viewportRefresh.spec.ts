@@ -23,9 +23,9 @@ test.describe("viewport refresh", () => {
     await expect.poll(() => requested.length, { timeout: 30_000 }).toBeGreaterThan(0);
 
     const initial = requested.length;
-    // A screen edge or so: what looking around a town looks like.
+    // Cross a tile-snapped cache boundary while staying within the automatic refresh distance.
     await page.evaluate(() => {
-      window.__maposMap?.panBy([260, 120], { duration: 0 });
+      window.__maposMap?.panBy([650, 180], { duration: 0 });
     });
     await expect.poll(() => requested.length, { timeout: 20_000 }).toBeGreaterThan(initial);
     await expect(page.getByTestId("search-here")).toHaveCount(0);

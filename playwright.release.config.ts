@@ -10,7 +10,7 @@ const webPort = Number(process.env.MAPOS_E2E_WEB_PORT ?? 5183);
 export default defineConfig({
   ...base,
   testMatch:
-    /(?:smoke|offline-smoke|basemap|discoverBoundaries|performanceMap|czechLayers|search|placeDetail|planning|personal|aiPanel|customPresets|viewportRefresh|game|game-performance|accessibility|authAndOwnership|gpxImport|tableImport|weatherAdaptive)\.spec\.ts/,
+    /(?:smoke|offline-smoke|basemap|discoverBoundaries|performanceMap|czechLayers|search|placeDetail|planning|personal|aiPanel|customPresets|viewportRefresh|game|game-performance|accessibility|authAndOwnership|gpxImport|tableImport|weatherAdaptive|weed)\.spec\.ts/,
   testIgnore: [],
   workers: 1,
   retries: 0,

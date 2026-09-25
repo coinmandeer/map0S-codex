@@ -1,0 +1,18 @@
+.command-search-layer {
+  padding: var(--space-3);
+}
+.command-search-layer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.command-search-layer label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.command-search-layer input {
+  max-width: 55%;
+}

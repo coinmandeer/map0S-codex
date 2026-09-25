@@ -1,5 +1,6 @@
 import { registerInteractivePins, unregisterInteractivePins } from "../map/interactivePins";
 import { ensureDataPinImage, LAYER_GLYPHS } from "../map/pinIcons";
+import { namedPointFilter, PIN_LABEL_LAYOUT } from "../map/pinLabels";
 import type maplibregl from "maplibre-gl";
 import type { Bbox, FeatureCollection, FilterValues, LayerHandle } from "@mapos/layer-sdk";
 import { fetchLayerFeatures } from "../engine/LayerEngine";
@@ -15,6 +16,17 @@ export interface DataLayerSpec {
   /** Show names next to the pins from this zoom. Off by default: for dense layers like species
    *  observations the labels are noise, not information. */
   labelFromZoom?: number;
+  /** Group nearby pins into counted bubbles below street zoom. On by default; a layer whose pin
+   *  size carries the information (earthquake magnitude) turns it off, because a bubble would
+   *  hide exactly that. */
+  cluster?: boolean;
+}
+
+/** Clustering stops at street zoom, where individual places are what people look for. */
+export const DATA_LAYER_CLUSTER_MAX_ZOOM = 14;
+
+export function dataLayerClusters(spec: DataLayerSpec): boolean {
+  return spec.cluster ?? !spec.sizeBy;
 }
 
 /**
@@ -36,14 +48,10 @@ export function createDataLayer(
   const labelId = `pins-${layerId}-label`;
   const clusterId = `pins-${layerId}-cluster`;
   const countId = `pins-${layerId}-count`;
-  const clustered = [
-    "inaturalist",
-    "gbif",
-    "commons-photos",
-    "webcams",
-    "mapillary",
-    "panoramax"
-  ].includes(layerId);
+  // Every point layer clusters unless its pin size is the message. A hand-picked list used to
+  // leave most layers unclustered, which is what turned a city centre with a dozen layers on
+  // into overlapping pins at every zoom.
+  const clustered = dataLayerClusters(spec);
   let opacity = 1;
   let visible = true;
 
@@ -78,7 +86,9 @@ export function createDataLayer(
     map.addSource(sourceId, {
       type: "geojson",
       promoteId: "id",
-      ...(clustered ? { cluster: true, clusterMaxZoom: 14, clusterRadius: 45 } : {}),
+      ...(clustered
+        ? { cluster: true, clusterMaxZoom: DATA_LAYER_CLUSTER_MAX_ZOOM, clusterRadius: 45 }
+        : {}),
       data: { type: "FeatureCollection", features: [] }
     });
 
@@ -127,8 +137,9 @@ export function createDataLayer(
             : ["image", `pin-${layerId}`],
         "icon-size": iconSizeExpression(),
         "icon-anchor": "center",
+        // Drawn always, but labels of every layer keep clear of it.
         "icon-allow-overlap": true,
-        "icon-ignore-placement": true
+        "icon-ignore-placement": false
       },
       paint: { "icon-opacity": 0.92 * opacity }
     });
@@ -139,10 +150,9 @@ export function createDataLayer(
         type: "symbol",
         source: sourceId,
         minzoom: spec.labelFromZoom,
-        ...(clustered
-          ? { filter: ["!", ["has", "point_count"]] as maplibregl.FilterSpecification }
-          : {}),
+        filter: namedPointFilter(clustered),
         layout: {
+          ...PIN_LABEL_LAYOUT,
           "text-field": ["get", "name"],
           "text-size": 11,
           "text-offset": [0, 1],
@@ -154,7 +164,8 @@ export function createDataLayer(
         paint: {
           "text-color": "#1C1917",
           "text-halo-color": "#ffffff",
-          "text-halo-width": 1.4
+          "text-halo-width": 1.4,
+          "text-opacity": opacity
         }
       });
     }
@@ -198,6 +209,7 @@ export function createDataLayer(
       if (map.getLayer(pinLayerId)) {
         map.setPaintProperty(pinLayerId, "icon-opacity", 0.92 * next);
       }
+      if (map.getLayer(labelId)) map.setPaintProperty(labelId, "text-opacity", next);
     },
     detach() {
       unregisterInteractivePins(map, [pinLayerId, labelId]);

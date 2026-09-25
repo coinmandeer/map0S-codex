@@ -3,6 +3,7 @@ import type maplibregl from "maplibre-gl";
 import type { Bbox, FilterValues, FeatureCollection } from "@mapos/layer-sdk";
 import { fetchLayerFeatures } from "../engine/LayerEngine";
 import { ensurePinImages } from "../map/pinIcons";
+import { namedPointFilter, PIN_LABEL_LAYOUT } from "../map/pinLabels";
 
 const iconImageExpr: maplibregl.ExpressionSpecification = [
   "coalesce",
@@ -97,10 +98,11 @@ export function createPinsLayerHandle(
       type: "circle",
       source: sourceId,
       filter: ["has", "point_count"],
+      layout: { visibility: currentVisible ? "visible" : "none" },
       paint: {
         "circle-color": color,
         "circle-radius": ["step", ["get", "point_count"], 16, 8, 19, 25, 22, 100, 24],
-        "circle-opacity": 0.92,
+        "circle-opacity": 0.92 * currentOpacity,
         "circle-stroke-width": 2,
         "circle-stroke-color": "#ffffff"
       }
@@ -111,11 +113,13 @@ export function createPinsLayerHandle(
       source: sourceId,
       filter: ["has", "point_count"],
       layout: {
+        visibility: currentVisible ? "visible" : "none",
         "text-field": "{point_count_abbreviated}",
         "text-size": 13,
-        "text-font": ["Noto Sans Regular"]
+        "text-font": ["Noto Sans Regular"],
+        "text-allow-overlap": true
       },
-      paint: { "text-color": "#ffffff" }
+      paint: { "text-color": "#ffffff", "text-opacity": currentOpacity }
     });
     map.addLayer({
       id: pinLayerId,
@@ -123,20 +127,26 @@ export function createPinsLayerHandle(
       source: sourceId,
       filter: ["!", ["has", "point_count"]],
       layout: {
+        visibility: currentVisible ? "visible" : "none",
         "icon-image": iconImageExpr,
         "icon-size": pinIconSizeExpression(Boolean(options.personal)),
         "icon-anchor": "center",
+        // Every pin is drawn, but it still reserves its space, so labels of this and every other
+        // layer flow around pins instead of printing over them.
         "icon-allow-overlap": true,
-        "icon-ignore-placement": true
-      }
+        "icon-ignore-placement": false
+      },
+      paint: { "icon-opacity": currentOpacity }
     });
     map.addLayer({
       id: pinLabelId,
       type: "symbol",
       source: sourceId,
       minzoom: 13,
-      filter: ["!", ["has", "point_count"]],
+      filter: namedPointFilter(true),
       layout: {
+        ...PIN_LABEL_LAYOUT,
+        visibility: currentVisible ? "visible" : "none",
         "text-field": ["get", "name"],
         "text-size": 11,
         "text-offset": [0, 0.35],
@@ -147,7 +157,8 @@ export function createPinsLayerHandle(
       paint: {
         "text-color": "#1C1917",
         "text-halo-color": "#ffffff",
-        "text-halo-width": 1.4
+        "text-halo-width": 1.4,
+        "text-opacity": currentOpacity
       }
     });
   }
@@ -214,7 +225,10 @@ export function createPinsLayerHandle(
       ensureLayers();
       if (map.getLayer(clusterLayerId))
         map.setPaintProperty(clusterLayerId, "circle-opacity", opacity * 0.92);
+      if (map.getLayer(clusterCountId))
+        map.setPaintProperty(clusterCountId, "text-opacity", opacity);
       if (map.getLayer(pinLayerId)) map.setPaintProperty(pinLayerId, "icon-opacity", opacity);
+      if (map.getLayer(pinLabelId)) map.setPaintProperty(pinLabelId, "text-opacity", opacity);
       if (map.getLayer(lineLayerId))
         map.setPaintProperty(lineLayerId, "line-opacity", opacity * 0.9);
     },

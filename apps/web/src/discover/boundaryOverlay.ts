@@ -4,7 +4,7 @@ import maplibregl from "maplibre-gl";
 import type { AreaSelection } from "@mapos/layer-sdk";
 import type { MapStore } from "../store/mapStore";
 import { API_BASE, apiGet } from "../lib/api";
-import { boundaryLevel, type BoundaryLevel } from "./boundaryLevel";
+import { boundaryLevel, showAreaBoundaries, type BoundaryLevel } from "./boundaryLevel";
 import { cachedTileTemplate } from "../map/tileCache";
 
 /** Two bounded tile slots: keep the complete old view until its replacement is loaded. */
@@ -22,56 +22,12 @@ export function attachBoundaryOverlay(map: maplibregl.Map, store: MapStore): () 
     pending: Slot | null = null,
     retiring: Slot | null = null,
     serial = 0;
-  let fadeTimer: ReturnType<typeof setTimeout> | undefined;
   let template = "",
     revision = "",
     level: BoundaryLevel | undefined,
     disposed = false;
-  const selectedSource = "discover-selected-area";
-  let selectedKey = "",
-    selectedController: AbortController | null = null;
-  let selectedGeometry: GeoJSON.Geometry | null = null;
-  function syncSelected() {
-    const area =
-      store.experienceId !== "global" && map.getZoom() < 13.5 && store.boundariesEnabled
-        ? selected()
-        : null;
-    const key = area ? `${area.revision}:${area.id}` : "";
-    if (key !== selectedKey) {
-      selectedKey = key;
-      selectedController?.abort();
-      selectedGeometry = null;
-      if (area) {
-        const controller = new AbortController();
-        selectedController = controller;
-        void apiGet<AreaSelection & { geometry: GeoJSON.Geometry }>("/v2/discover/area", {
-          signal: controller.signal,
-          query: { areaId: area.id, boundaryRevision: area.revision, geometry: "1" }
-        })
-          .then((result) => {
-            if (!controller.signal.aborted && !disposed) {
-              selectedGeometry = result.geometry;
-              syncSelected();
-            }
-          })
-          .catch(() => {});
-      }
-      if (map.getLayer(selectedSource)) map.removeLayer(selectedSource);
-      if (map.getSource(selectedSource)) map.removeSource(selectedSource);
-    }
-    if (area && selectedGeometry && !map.getSource(selectedSource)) {
-      map.addSource(selectedSource, {
-        type: "geojson",
-        data: { type: "Feature", properties: {}, geometry: selectedGeometry }
-      });
-      map.addLayer({
-        id: selectedSource,
-        type: "line",
-        source: selectedSource,
-        paint: { "line-color": "#2563eb", "line-width": 3, "line-opacity": 0.95 }
-      });
-    }
-  }
+  // Draw only tiled boundaries: a second full-resolution parent outline would disagree
+  // with the simplification of its child tiles. Leaf selection clears outlines entirely.
   let fittingSelection = false;
   let navigationArea: AreaSelection | null = store.areaSelection;
   let observedSelectionId = store.areaSelection?.id ?? null;
@@ -127,15 +83,13 @@ export function attachBoundaryOverlay(map: maplibregl.Map, store: MapStore): () 
   }
   function sync() {
     if (disposed || !map.isStyleLoaded()) return;
-    syncSelected();
     for (const id of ["discover-fill", "discover-line"])
       if (map.getLayer(id) && map.getLayoutProperty(id, "visibility") !== "none")
         map.setLayoutProperty(id, "visibility", "none");
 
     if (
       store.experienceId === "global" ||
-      !store.boundariesEnabled ||
-      map.getZoom() >= 13.5 ||
+      !showAreaBoundaries(store.boundariesEnabled, map.getZoom(), selected()?.level) ||
       store.mode === "game" ||
       (store.mode !== "discover" && !selected())
     ) {
@@ -181,7 +135,6 @@ export function attachBoundaryOverlay(map: maplibregl.Map, store: MapStore): () 
       }
       return;
     }
-    if (fadeTimer) clearTimeout(fadeTimer);
     remove(retiring);
     retiring = null;
     remove(pending);
@@ -261,18 +214,10 @@ export function attachBoundaryOverlay(map: maplibregl.Map, store: MapStore): () 
     remove(retiring);
     retiring = current;
     current = next;
-    if (retiring) {
-      for (const id of [retiring.line, retiring.halo]) map.setPaintProperty(id, "line-opacity", 0);
-      map.setPaintProperty(retiring.fill, "fill-opacity", 0);
-      const old = retiring;
-      fadeTimer = setTimeout(
-        () => {
-          remove(old);
-          if (retiring === old) retiring = null;
-        },
-        store.preferences.flyAnimations ? 150 : 0
-      );
-    }
+    // Different zoom levels have different simplification. Never crossfade two
+    // outlines of the same area: retain the old slot until ready, then replace it.
+    remove(retiring);
+    retiring = null;
     map.setPaintProperty(current.halo, "line-opacity", 0.7);
     paint(current);
   }
@@ -415,13 +360,9 @@ export function attachBoundaryOverlay(map: maplibregl.Map, store: MapStore): () 
   }, 60000);
   return () => {
     disposed = true;
-    if (fadeTimer) clearTimeout(fadeTimer);
     remove(retiring);
     clearInterval(timer);
     controller.abort();
-    selectedController?.abort();
-    if (map.getLayer(selectedSource)) map.removeLayer(selectedSource);
-    if (map.getSource(selectedSource)) map.removeSource(selectedSource);
     off();
     clearHover();
     map.off("mousemove", hover);

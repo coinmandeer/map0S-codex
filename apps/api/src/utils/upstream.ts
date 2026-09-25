@@ -19,7 +19,8 @@ import { isPublicNetworkAddress } from "./publicNetwork.js";
 export class UpstreamError extends Error {
   constructor(
     readonly providerId: string,
-    message: string
+    message: string,
+    readonly status?: number
   ) {
     super(message);
     this.name = "UpstreamError";
@@ -332,7 +333,7 @@ async function fetchDecoded<T>(
   url: string,
   options: CommonFetchOptions & { method?: "GET" | "POST"; body?: string },
   acceptedContentTypes: readonly string[],
-  decode: (bytes: Uint8Array, contentType: string) => T
+  decode: (bytes: Uint8Array, contentType: string, headers: Headers) => T
 ): Promise<T> {
   assertExternalNetworkAllowed();
   const providerId = assertProviderId(options.providerId);
@@ -449,7 +450,11 @@ async function fetchDecoded<T>(
             continue;
           }
           await response.body?.cancel();
-          throw new UpstreamError(providerId, `${providerId} odpověděl ${response.status}`);
+          throw new UpstreamError(
+            providerId,
+            `${providerId} odpověděl ${response.status}`,
+            response.status
+          );
         }
 
         const contentType = response.headers.get("content-type");
@@ -476,7 +481,7 @@ async function fetchDecoded<T>(
             throw new UpstreamError(providerId, "zdroj vrátil nečitelná komprimovaná data");
           }
         }
-        const value = decode(bytes, contentType!);
+        const value = decode(bytes, contentType!, response.headers);
         writeCache(key, value, ttlMs, bytes.byteLength);
         providerCircuitBreaker.success(providerId);
         operationalTelemetry.recordProvider({
@@ -579,16 +584,21 @@ export async function fetchRange(
 export async function fetchBytes(
   url: string,
   options: FetchBytesOptions
-): Promise<{ body: ArrayBuffer; contentType: string }> {
+): Promise<{ body: ArrayBuffer; contentType: string; cacheControl?: string; etag?: string }> {
   return fetchDecoded(
     "bytes",
     url,
     options,
     options.acceptedContentTypes ?? ["application/octet-stream"],
-    (bytes, contentType) => {
+    (bytes, contentType, headers) => {
       const body = new ArrayBuffer(bytes.byteLength);
       new Uint8Array(body).set(bytes);
-      return { body, contentType };
+      return {
+        body,
+        contentType,
+        cacheControl: headers.get("cache-control") ?? undefined,
+        etag: headers.get("etag") ?? undefined
+      };
     }
   );
 }

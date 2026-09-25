@@ -48,6 +48,9 @@ const source = (sourceId: string, label = "Fixture source") => ({
 });
 
 const inputs: Record<MapAiToolName, Record<string, unknown>> = {
+  derive_radius_area: { radiusKm: 10 },
+  get_night_sky: { point: { longitude: 14, latitude: 50 }, at: "2026-09-23T21:00:00Z" },
+  resolve_location: { query: "Málaga" },
   get_current_map_context: {},
   list_available_layers: {},
   query_layer: {
@@ -117,6 +120,25 @@ function fixtureHandlers(onCall: (name: string) => void = () => undefined): MapA
       return structuredClone(output);
     };
   return {
+    derive_radius_area: handler("derive_radius_area", {
+      mapResult: { title: "Okruh" },
+      sources: [source("mapos-geometry")]
+    }),
+    get_night_sky: handler("get_night_sky", {
+      at: "2026-09-23T21:00:00Z",
+      timezone: "Europe/Prague",
+      localTime: "23:00",
+      nightStart: null,
+      nightEnd: null,
+      moonAltitudeDeg: 20,
+      moonIlluminatedFraction: 0.5,
+      cloudCoverPercent: 10,
+      skyBrightness: null,
+      limitations: []
+    }),
+    resolve_location: handler("resolve_location", {
+      locations: [{ name: "Málaga", longitude: -4.42, latitude: 36.72 }]
+    }),
     get_current_map_context: handler("get_current_map_context", {
       center: { longitude: 14.42, latitude: 50.08 },
       zoom: 13,

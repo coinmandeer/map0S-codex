@@ -1,5 +1,12 @@
 /** Application ceilings, NOT proof of unused provider credits. Allocation is operator-verified. */
 export const PRODUCTS = {
+  "mapy-credits": {
+    provider: "mapy",
+    sku: "project-credits",
+    monthly: 225000,
+    daily: null,
+    operations: ["tile", "geocode", "route", "matrix", "elevation"]
+  },
   // Capacity ceilings only. Actual access remains zero until an operator verifies an allocation.
   "ai-overview-tokens": {
     provider: "ollama",

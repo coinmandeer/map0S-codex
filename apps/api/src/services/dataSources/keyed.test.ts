@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Bbox } from "@mapos/layer-sdk";
-import { capabilities } from "../../config.js";
+import { capabilities, config } from "../../config.js";
 import { dataSourceProviders } from "./index.js";
 import { keyedSources } from "./keyed.js";
 
@@ -35,9 +35,14 @@ describe("keyed data sources", () => {
   });
 
   it("never leaks a key value into the capabilities payload", () => {
-    // The browser learns whether a provider is configured, never the secret itself.
+    // Server credentials remain private; the restricted UI Kit browser key is explicit.
     for (const [name, value] of Object.entries(capabilities())) {
       if (name === "cmlProvider") continue;
+      if (name === "googlePlacesPublicKey") {
+        assert.equal(value, config.googlePlacesPublicKey ?? "");
+        if (config.tileKeys.google) assert.notEqual(value, config.tileKeys.google);
+        continue;
+      }
       assert.equal(typeof value, "boolean", `${name} should be a flag, not a value`);
     }
   });

@@ -384,7 +384,12 @@ function populationYear(value: unknown): number | null {
 export function discoverContextKey(input: DiscoverContextInput): string {
   const band = zoomBand(input.zoom);
   const precision = coordinatePrecision(band);
-  const layers = [...new Set(input.activeLayerIds ?? [])].sort().join(",");
+  // Only the model synthesis reads the active layers. The structured context (region, guide,
+  // statistics) is the same whatever is switched on, so toggling a layer must not turn every
+  // cached area into a miss.
+  const layers = input.allowModelFallback
+    ? [...new Set(input.activeLayerIds ?? [])].sort().join(",")
+    : "";
   const catalogueExtent =
     giscoNutsLevelForZoom(input.zoom) !== null && validBbox(input.bbox)
       ? input.bbox.map((coordinate) => coordinate.toFixed(precision)).join(",")

@@ -8,7 +8,7 @@
  */
 
 import type { LayerManifestV2, LegendManifestV2 } from "@mapos/layer-sdk";
-import { apiGet } from "../../lib/api";
+import { API_BASE, apiGet } from "../../lib/api";
 import { safeBrowserErrorFields } from "../../lib/safeError";
 import { allLayerPlugins, getLayerManifestV2, registerLayerV2, unregisterLayer } from "../registry";
 import { createChoroplethLayer, NO_DATA_COLOR, type ChoroplethBreak } from "./choropleth";
@@ -110,7 +110,7 @@ function registeredTableLayerIds(): string[] {
 }
 
 function tileTemplate(detail: UserTableDetail): string {
-  return `/api/v2/tables/${detail.table.id}/tiles/{z}/{x}/{y}.pbf`;
+  return `${API_BASE}/v2/tables/${detail.table.id}/tiles/{z}/{x}/{y}.pbf`;
 }
 
 function registerTableLayer(id: string, detail: UserTableDetail): void {

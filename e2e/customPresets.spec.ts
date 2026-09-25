@@ -12,7 +12,7 @@ test.describe("custom presets", () => {
     // it is meant to restore first.
     await page.evaluate(async () => {
       const { getMapStore } = await import("/src/store/mapStore.ts");
-      getMapStore().activateLayer("vanlife");
+      getMapStore().activateLayer("inaturalist");
     });
 
     await page.getByTestId("layers-btn").click();
@@ -38,7 +38,7 @@ test.describe("custom presets", () => {
     await page.getByLabel("Preset").click();
     await page.getByRole("option", { name: "Vanlife weekend" }).click();
     await expect
-      .poll(() => page.evaluate(() => location.search.includes("vanlife")), { timeout: 20_000 })
+      .poll(() => page.evaluate(() => location.search.includes("inaturalist")), { timeout: 20_000 })
       .toBe(true);
   });
 });

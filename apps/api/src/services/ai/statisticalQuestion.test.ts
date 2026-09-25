@@ -10,6 +10,42 @@ test("Czech poverty question owns its geography and ignores unrelated earlier co
   );
   assert.equal(parseStatisticalQuestion("poverty in Czech Republic")?.country, "CZ");
 });
+
+test("worldwide statistical questions preserve sourced geometry, missing data and units", () => {
+  assert.equal(parseStatisticalQuestion("Internet users in Brazil")?.country, "BR");
+  const geometry = {
+    type: "Polygon",
+    coordinates: [
+      [
+        [0, 0],
+        [2, 0],
+        [2, 2],
+        [0, 0]
+      ]
+    ]
+  };
+  const answer = formatStatisticalAnswer(
+    { themeId: "poverty", country: "CZ", lowest: false },
+    {
+      countryName: "Česko",
+      bbox: [12, 48, 19, 51],
+      dataset: statDataset("eurostat-poverty"),
+      period: "2024",
+      expected: 2,
+      rows: [{ code: "CZ01", name: "Region", value: 0 }],
+      regions: [
+        { code: "CZ01", name: "Region", value: 0, geometry, boundarySource: "gisco" },
+        { code: "CZ02", name: "Bez dat", value: null, geometry, boundarySource: "gisco" }
+      ]
+    }
+  );
+  const artifact = answer.mapResults![0]!;
+  assert.equal(artifact.data.features[0]!.properties.value, 0);
+  assert.equal(artifact.data.features[1]!.properties.value, null);
+  assert.equal(artifact.legend?.unit, "%");
+  assert.equal(artifact.legend?.time, "2024");
+  assert.ok(artifact.sources.some((s) => s.id === "boundary:gisco"));
+});
 test("short follow-ups inherit country, explicit country replaces it, unknown city never borrows it", () => {
   const history = ["kde je nejvetsi chudoba v CR"];
   assert.equal(parseStatisticalQuestion("A nezaměstnanost?", history)?.country, "CZ");

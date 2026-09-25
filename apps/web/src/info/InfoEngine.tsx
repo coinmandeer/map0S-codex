@@ -435,7 +435,6 @@ function UnifiedInfoEngine({
   );
   const info = (
     <div className="info-body detail-curated" data-testid="info-panel-body">
-      {summary}
       {place.description && <p className="detail-description">{place.description}</p>}
       <PracticalPanel place={place} refs={refs} />
       <ProviderFields fields={fields} />
@@ -532,6 +531,7 @@ function UnifiedInfoEngine({
             </Button>
           ))}
       </DetailDisclosure>
+      {summary}
     </div>
   );
   return (

@@ -94,5 +94,8 @@ export function drawGlyphIntoContext(
 }
 
 export function glyphPath(categoryId: string): string {
+  if (categoryId === "weed-dispensary" || categoryId === "weed-both")
+    return MATERIAL_ICON_PATHS.health!;
+  if (categoryId === "weed-shop" || categoryId === "weed-unknown") return MATERIAL_ICON_PATHS.leaf!;
   return MATERIAL_ICON_PATHS[categoryId] ?? MATERIAL_ICON_PATHS.default!;
 }

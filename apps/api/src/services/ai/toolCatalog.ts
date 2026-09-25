@@ -1,3 +1,4 @@
+import { OSM_POI_CATEGORIES } from "@mapos/layer-sdk";
 import type { AiCitation } from "./contracts.js";
 import {
   AiToolRegistry,
@@ -13,6 +14,9 @@ type JsonObject = Record<string, unknown>;
 type JsonSchema = Record<string, unknown>;
 
 export const MAP_AI_TOOL_NAMES = [
+  "derive_radius_area",
+  "resolve_location",
+  "get_night_sky",
   "get_current_map_context",
   "list_available_layers",
   "query_layer",
@@ -174,6 +178,196 @@ const stringArray = (maxItems: number) => ({
 
 const contracts: readonly CatalogContract[] = [
   {
+    name: "derive_radius_area",
+    title: "Počítám oblast podle vzdálenosti",
+    description:
+      "Odvodí oblast ve vzdušné vzdálenosti od ověřeného středu záměru. Použij pouze pro uživatelem požadovaný okruh; není to dojezdová oblast. Souřadnice dodá mapový kontext po resolve_location.",
+    domain: "map",
+    effect: "read",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["radiusKm"],
+      properties: { radiusKm: { type: "number", minimum: 0.1, maximum: 500 } }
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["mapResult", "sources"],
+      properties: {
+        mapResult: { type: "object" },
+        sources: { type: "array", maxItems: 1, items: sourceSchema }
+      }
+    },
+    permissionId: "map.geometry.read",
+    requiresAuthentication: false,
+    requiredPermissions: ["map:read"],
+    dataClasses: ["public"],
+    outputFields: ["mapResult", "sources"],
+    redactInputPaths: [],
+    redactOutputPaths: ["mapResult.data"],
+    timeoutMs: 1000,
+    maxResponseBytes: 20000,
+    quotaCost: 0
+  },
+  {
+    name: "get_night_sky",
+    title: "Počítám podmínky pozorování oblohy",
+    description:
+      "Místní astronomická noc, Měsíc a hodinová oblačnost pro doložené souřadnice a čas. Bez skóre kvality oblohy.",
+    domain: "weather",
+    effect: "read",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["point", "at"],
+      properties: {
+        point: {
+          type: "object",
+          additionalProperties: false,
+          required: ["longitude", "latitude"],
+          properties: { longitude: longitudeSchema, latitude: latitudeSchema }
+        },
+        at: { type: "string", format: "date-time" }
+      }
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "at",
+        "timezone",
+        "localTime",
+        "nightStart",
+        "nightEnd",
+        "moonAltitudeDeg",
+        "moonIlluminatedFraction",
+        "cloudCoverPercent",
+        "skyBrightness",
+        "limitations"
+      ],
+      properties: {
+        sources: { type: "array", maxItems: 5, items: sourceSchema },
+        at: { type: "string" },
+        timezone: { type: "string" },
+        localTime: { type: "string" },
+        nightStart: { type: ["string", "null"] },
+        nightEnd: { type: ["string", "null"] },
+        moonAltitudeDeg: { type: "number", minimum: -90, maximum: 90 },
+        moonIlluminatedFraction: { type: "number", minimum: 0, maximum: 1 },
+        cloudCoverPercent: { type: ["number", "null"], minimum: 0, maximum: 100 },
+        skyBrightness: {
+          anyOf: [
+            { type: "null" },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["value", "unit", "modelYear", "component", "sourceId"],
+              properties: {
+                value: { type: "number", minimum: 0 },
+                unit: { const: "mcd/m²" },
+                modelYear: { const: 2015 },
+                component: { const: "artificial-zenith" },
+                sourceId: { const: "falchi-world-atlas" }
+              }
+            }
+          ]
+        },
+        limitations: { type: "array", maxItems: 10, items: { type: "string", maxLength: 500 } }
+      }
+    },
+    permissionId: "weather.night-sky.read",
+    requiresAuthentication: false,
+    requiredPermissions: ["weather:read"],
+    dataClasses: ["public"],
+    outputFields: [
+      "sources",
+      "at",
+      "timezone",
+      "localTime",
+      "nightStart",
+      "nightEnd",
+      "moonAltitudeDeg",
+      "moonIlluminatedFraction",
+      "cloudCoverPercent",
+      "skyBrightness",
+      "limitations"
+    ],
+    redactInputPaths: ["point"],
+    redactOutputPaths: [],
+    timeoutMs: 10000,
+    maxResponseBytes: 16384,
+    quotaCost: 1
+  },
+
+  {
+    name: "resolve_location",
+    title: "Hledám zadanou oblast",
+    description:
+      "Geokóduje název nebo úplnou adresu, včetně míst nalezených web_search/web_fetch bez existující vrstvy. Pro mapový výsledek nastav asPlace=true; vrátí ověřené kandidáty s ID pro submit_answer/submit_plan. Vyber pouze kandidáta odpovídajícího hledanému místu.",
+    domain: "map",
+    effect: "read",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["query"],
+      properties: {
+        query: { type: "string", minLength: 2, maxLength: 200 },
+        asPlace: { type: "boolean" }
+      }
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["locations"],
+      properties: {
+        places: {
+          type: "array",
+          maxItems: 5,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "layerId", "title", "category", "longitude", "latitude", "sourceId"],
+            properties: {
+              id: identifierSchema,
+              layerId: identifierSchema,
+              title: shortTextSchema,
+              category: shortTextSchema,
+              longitude: longitudeSchema,
+              latitude: latitudeSchema,
+              sourceId: identifierSchema
+            }
+          }
+        },
+        sources: { type: "array", maxItems: 1, items: sourceSchema },
+        locations: {
+          type: "array",
+          maxItems: 5,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["name", "longitude", "latitude"],
+            properties: {
+              name: { type: "string", maxLength: 500 },
+              longitude: longitudeSchema,
+              latitude: latitudeSchema
+            }
+          }
+        }
+      }
+    },
+    permissionId: "map.location.resolve",
+    requiresAuthentication: false,
+    requiredPermissions: ["map:read"],
+    dataClasses: ["public"],
+    outputFields: ["locations"],
+    redactInputPaths: ["query"],
+    redactOutputPaths: ["locations"],
+    timeoutMs: 10000,
+    maxResponseBytes: 16384,
+    quotaCost: 1
+  },
+  {
     name: "get_current_map_context",
     title: "Načítám kontext mapy",
     description: "Vrátí pouze serverem povolený aktuální výřez a aktivní vrstvy.",
@@ -211,18 +405,29 @@ const contracts: readonly CatalogContract[] = [
   {
     name: "list_available_layers",
     title: "Načítám dostupné vrstvy",
-    description: "Vrátí permission-aware metadata vrstev bez jejich surového obsahu.",
+    description:
+      "Hledá v úplném katalogu vrstev a podkladů včetně synonym. Použij query pro záměr, offset pro další stránku (nextOffset). Vrací jen povolené zdroje.",
     domain: "layers",
     effect: "read",
-    inputSchema: { type: "object", additionalProperties: false, properties: {} },
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        query: { type: "string", maxLength: 200 },
+        offset: { type: "integer", minimum: 0, maximum: 10000 },
+        limit: { type: "integer", minimum: 1, maximum: 40 }
+      }
+    },
     outputSchema: {
       type: "object",
       additionalProperties: false,
       required: ["layers"],
       properties: {
+        total: { type: "integer", minimum: 0 },
+        nextOffset: { type: "integer", minimum: 0 },
         layers: {
           type: "array",
-          maxItems: 200,
+          maxItems: 500,
           items: {
             type: "object",
             additionalProperties: false,
@@ -230,7 +435,48 @@ const contracts: readonly CatalogContract[] = [
             properties: {
               layerId: identifierSchema,
               name: { type: "string", minLength: 1, maxLength: 240 },
-              categories: stringArray(20),
+              categories: stringArray(200),
+              kind: { type: "string", enum: ["overlay", "basemap"] },
+              sourceLayerId: identifierSchema,
+              aliases: {
+                type: "array",
+                maxItems: 30,
+                items: { type: "string", minLength: 1, maxLength: 200 }
+              },
+              data: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "providerId",
+                  "description",
+                  "geometry",
+                  "operations",
+                  "time",
+                  "units",
+                  "coverage",
+                  "sourceUrl"
+                ],
+                properties: {
+                  providerId: identifierSchema,
+                  description: { type: "string", maxLength: 1000 },
+                  geometry: { type: "string", enum: ["points", "polygons", "raster"] },
+                  operations: {
+                    type: "array",
+                    maxItems: 3,
+                    items: { type: "string", enum: ["display", "query-features", "query-point"] }
+                  },
+                  time: { type: "string", maxLength: 200 },
+                  units: { type: "string", maxLength: 200 },
+                  coverage: { type: "string", maxLength: 300 },
+                  sourceUrl: { type: "string", maxLength: 2048, pattern: "^https://" }
+                }
+              },
+              facet: identifierSchema,
+              description: { type: "string", maxLength: 1000 },
+              requiresCapability: identifierSchema,
+              availability: { type: "string", enum: ["ready", "unchecked", "unavailable"] },
+              unavailableReason: { type: "string", maxLength: 300 },
+              checkedAt: { type: "string", maxLength: 40 },
               access: {
                 type: "string",
                 enum: ["public", "authenticated", "entitled", "owner", "metadata-only"]
@@ -244,7 +490,7 @@ const contracts: readonly CatalogContract[] = [
     requiresAuthentication: false,
     requiredPermissions: ["layers:read"],
     dataClasses: ["public"],
-    outputFields: ["layers"],
+    outputFields: ["layers", "total", "nextOffset"],
     redactInputPaths: [],
     redactOutputPaths: ["layers"],
     timeoutMs: 2_000,
@@ -254,7 +500,8 @@ const contracts: readonly CatalogContract[] = [
   {
     name: "query_layer",
     title: "Hledám ve vrstvě",
-    description: "Provede omezený dotaz pouze nad vrstvou v aktuální permission projekci.",
+    description:
+      "Provede omezený dotaz nad povolenou vrstvou. Registrovaná prostorová data vrací také jako mapResult s geometrií, zdrojem a případnou číselnou legendou. Pokrytí je omezené limitem, nikoli úplné.",
     domain: "layers",
     effect: "read",
     inputSchema: {
@@ -275,7 +522,9 @@ const contracts: readonly CatalogContract[] = [
           properties: {
             openNow: { type: "boolean" },
             minRating: { type: "number", minimum: 0, maximum: 5 },
-            tags: stringArray(20)
+            tags: stringArray(20),
+            categories: stringArray(30),
+            sources: stringArray(12)
           }
         },
         limit: { type: "integer", minimum: 1, maximum: 50 }
@@ -286,6 +535,7 @@ const contracts: readonly CatalogContract[] = [
       additionalProperties: false,
       required: ["features", "sources"],
       properties: {
+        mapResult: { type: "object" },
         features: {
           type: "array",
           maxItems: 50,
@@ -312,9 +562,9 @@ const contracts: readonly CatalogContract[] = [
     requiredPermissions: ["layers:read"],
     dataClasses: ["public"],
     layerIdPaths: ["layerId"],
-    outputFields: ["features", "sources"],
+    outputFields: ["features", "sources", "mapResult"],
     redactInputPaths: ["bbox", "filters"],
-    redactOutputPaths: ["features"],
+    redactOutputPaths: ["features", "mapResult.data"],
     timeoutMs: 5_000,
     maxResponseBytes: 262_144,
     quotaCost: 2
@@ -331,8 +581,24 @@ const contracts: readonly CatalogContract[] = [
       additionalProperties: false,
       required: ["limit"],
       properties: {
-        query: { type: "string", minLength: 1, maxLength: 240 },
-        categories: stringArray(10),
+        query: {
+          type: "string",
+          minLength: 1,
+          maxLength: 240,
+          description: "Konkrétní název místa. Pro obecný typ použij categories a query vynech."
+        },
+        categories: {
+          type: "array",
+          maxItems: 10,
+          uniqueItems: true,
+          items: {
+            type: "string",
+            enum: Object.entries(OSM_POI_CATEGORIES).flatMap(([id, spec]) => [
+              id,
+              `${spec.group}.${id}`
+            ])
+          }
+        },
         near: pointSchema,
         bbox: {
           type: "array",
@@ -391,7 +657,7 @@ const contracts: readonly CatalogContract[] = [
     outputFields: ["places", "sources"],
     redactInputPaths: ["query", "near", "bbox"],
     redactOutputPaths: ["places"],
-    timeoutMs: 8_000,
+    timeoutMs: 10_000,
     maxResponseBytes: 262_144,
     quotaCost: 2
   },

@@ -1,4 +1,5 @@
 import { STAT_DATASETS, type StatDatasetDescriptor } from "@mapos/adapter-sdk";
+import { isMapResultArtifact, type MapResultDraft } from "@mapos/layer-sdk";
 import { sql } from "../../db/index.js";
 import type { AiChatAnswer } from "./chatService.js";
 
@@ -8,6 +9,10 @@ const normalize = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 const metrics: Array<[string, RegExp]> = [
+  ["electricity-access", /pristup.{0,15}elektr|access to electricity/],
+  ["internet-use", /pouziv.{0,15}internet|internet users|internet use/],
+  ["life-expectancy", /delk.{0,15}zivot|life expectancy/],
+  ["gdp", /\bhdp\b|\bgdp\b/],
   ["poverty", /chudob|poverty|socialni.{0,15}vylouc/],
   ["youth-unemployment", /nezamestnan.{0,15}mlad|youth unemployment/],
   ["unemployment", /nezamestnan|unemployment/],
@@ -35,14 +40,13 @@ const aliases: Record<string, string[]> = {
   IT: ["italie", "italii", "italy"],
   PT: ["portugalsko", "portugalsku", "portugal"]
 };
-const countries =
-  "CZ ES DE SK PL FR AT IT PT BE BG HR CY DK EE FI GR HU IE LT LU LV MT NL RO SE SI NO CH IS GB RS AL ME MK TR".split(
-    " "
-  );
+const countries = Array.from({ length: 26 * 26 }, (_, i) =>
+  String.fromCharCode(65 + Math.floor(i / 26), 65 + (i % 26))
+);
 for (const code of countries)
   for (const lang of ["cs", "en"]) {
     const name = new Intl.DisplayNames([lang], { type: "region" }).of(code);
-    if (name) (aliases[code] ??= []).push(normalize(name));
+    if (name && name !== code) (aliases[code] ??= []).push(normalize(name));
   }
 function countryIn(text: string) {
   const padded = ` ${normalize(text).replace(/[^a-z0-9 ]/g, " ")} `;
@@ -87,6 +91,13 @@ export interface StatisticalData {
   period?: string;
   expected: number;
   rows: Array<{ code: string; name: string; value: number; flag?: string }>;
+  regions?: Array<{
+    code: string;
+    name: string;
+    value: number | null;
+    geometry: unknown;
+    boundarySource: string;
+  }>;
 }
 export function formatStatisticalAnswer(
   question: StatisticalQuestion,
@@ -116,7 +127,53 @@ export function formatStatisticalAnswer(
     if (rows.some((r) => r.flag))
       text += " Některé hodnoty mají zdrojovou poznámku; je uvedena u řádku.";
   }
+  let mapResult: MapResultDraft | undefined;
+  if (descriptor && data.regions?.length && data.period) {
+    const values = data.regions.flatMap((r) => (r.value === null ? [] : [r.value]));
+    const minimum = Math.min(...values),
+      maximum = Math.max(...values);
+    const candidate = {
+      schema: "mapos.map-result",
+      schemaVersion: "1.0.0",
+      id: `statistics-${descriptor.id}-${question.country}`,
+      conversationId: "validation",
+      runId: "validation",
+      revision: 0,
+      title: `${label} · ${data.period} · generalizované hranice`,
+      sources: [
+        { id: sourceId, label: descriptor.attribution, url: descriptor.documentationUrl },
+        ...[...new Set(data.regions.map((r) => r.boundarySource))].map((id) => ({
+          id: `boundary:${id}`,
+          label: `Hranice · ${id}`
+        }))
+      ],
+      style: {
+        palette: minimum < 0 && maximum > 0 ? "diverging" : "blue",
+        opacity: 0.7,
+        minimum,
+        maximum: maximum === minimum ? minimum + 1 : maximum,
+        ...(minimum < 0 && maximum > 0 ? { midpoint: 0 } : {})
+      },
+      legend: {
+        title,
+        unit: descriptor.unit,
+        time: data.period,
+        noDataLabel: "Bez publikované hodnoty"
+      },
+      data: {
+        type: "FeatureCollection",
+        features: data.regions.map((r) => ({
+          type: "Feature",
+          id: r.code,
+          geometry: r.geometry,
+          properties: { title: r.name, sourceId, value: r.value }
+        }))
+      }
+    };
+    if (isMapResultArtifact(candidate)) mapResult = candidate;
+  }
   return {
+    ...(mapResult ? { mapResults: [mapResult] } : {}),
     execution: "deterministic",
     intent: "question",
     text,
@@ -207,11 +264,25 @@ export async function readStatisticalData(
         ORDER BY s.geo_code,g.edition DESC LIMIT 500`;
       const expected =
         await tx`SELECT COUNT(DISTINCT code)::integer AS count FROM geo_units WHERE level=${dataset.geoLevel} AND code LIKE ${codes}`;
+      const regions = await tx`SELECT DISTINCT ON(g.code) g.code,g.name,g.source_id,s.value,
+        ST_AsGeoJSON(ST_SimplifyPreserveTopology(g.geom,0.005),5)::json AS geometry
+        FROM geo_units g LEFT JOIN stat_series s ON s.geo_level=g.level AND s.geo_code=g.code
+        AND s.dataset_id=${dataset.id} AND s.period=${period}
+        AND (s.boundary_edition IS NULL OR s.boundary_edition=g.edition)
+        WHERE g.level=${dataset.geoLevel} AND g.code LIKE ${codes}
+        ORDER BY g.code,(s.value IS NOT NULL) DESC,g.edition DESC LIMIT 500`;
       signal?.throwIfAborted();
       return {
         ...base,
         dataset,
         period,
+        regions: regions.map((r) => ({
+          code: String(r.code),
+          name: String(r.name),
+          value: r.value === null ? null : Number(r.value),
+          geometry: r.geometry,
+          boundarySource: String(r.source_id)
+        })),
         expected: Number(expected[0]?.count ?? 0),
         rows: values.map((r) => ({
           code: String(r.code),

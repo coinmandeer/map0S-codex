@@ -8,7 +8,7 @@ import type {
   LayerPlugin,
   ServerCapabilities
 } from "@mapos/layer-sdk";
-import { assertLayerManifestV2, layerV1ToV2, layerV2ToV1 } from "@mapos/layer-sdk";
+import { assertLayerManifestV2, layerV1ToV2, layerV2ToV1, CATALOG_DATA } from "@mapos/layer-sdk";
 import { LayerRuntimeRegistry } from "@mapos/map-runtime";
 import { legacyLayerModeFor, type AppMode } from "../product/registry";
 
@@ -53,6 +53,11 @@ export interface MapLayerPluginV2 extends Omit<
 const runtimeRegistry = new LayerRuntimeRegistry<MapLayerPlugin>();
 
 function storePlugin(plugin: MapLayerPlugin, manifestV2: LayerManifestV2): void {
+  const dataInfo = CATALOG_DATA[manifestV2.id];
+  if (dataInfo) {
+    manifestV2 = { ...manifestV2, description: dataInfo.description };
+    plugin = { ...plugin, manifest: { ...plugin.manifest, description: dataInfo.description } };
+  }
   if (plugin.areaFilter)
     manifestV2 = {
       ...manifestV2,
@@ -156,6 +161,39 @@ export function layerUnavailableReason(
       ? "Ověřuji konfiguraci zdroje…"
       : `Zdroj není nakonfigurovaný (${required})`;
   return undefined;
+}
+
+/**
+ * The server capability a layer is still missing, once capabilities are known.
+ *
+ * Distinct from `layerUnavailableReason`: this is only "the operator has not configured it"
+ * (a key or a data extract), never "still checking" or "no data here". The catalogue uses it to
+ * move such rows out of the everyday lists into one "needs setup" section.
+ */
+export function layerSetupRequirement(
+  id: string,
+  caps: ServerCapabilities | null,
+  filters?: FilterValues
+): string | undefined {
+  if (caps === null) return undefined;
+  const plugin = getLayerPlugin(id);
+  if (!plugin) return undefined;
+  const sources = Array.isArray(filters?.sources)
+    ? filters.sources
+    : filters?.sources
+      ? [filters.sources]
+      : [];
+  if (
+    id === "game-quests" &&
+    sources.length &&
+    sources.every((source) => source === "opencaching") &&
+    !caps.opencaching
+  )
+    return "opencaching";
+  return (
+    getLayerManifestV2(id)?.requiresServerCapabilities ??
+    (plugin.manifest.requiresCapability ? [plugin.manifest.requiresCapability] : [])
+  ).find((key) => !caps[key]);
 }
 
 /** Layers the server can actually serve. A layer gated behind a key the deployment doesn't hold

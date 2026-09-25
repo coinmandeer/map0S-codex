@@ -18,6 +18,10 @@ import type maplibregl from "maplibre-gl";
  */
 
 export const TERRAIN_SOURCE_ID = "mapos-terrain-dem";
+/** Hillshade reads the same tiles through its own source. MapLibre recommends against sharing
+ *  one raster-dem source between the terrain mesh and hillshade: the mesh wants coarser tiles
+ *  for the camera distance, hillshade wants the tiles for the drawn zoom. */
+export const HILLSHADE_SOURCE_ID = "mapos-hillshade-dem";
 export const HILLSHADE_LAYER_ID = "mapos-hillshade";
 
 /** Tilezen's terrain tiles: bare-earth heights, no key, ODbL/CC-BY depending on the contributing
@@ -31,9 +35,9 @@ function firstSymbolLayerId(map: maplibregl.Map): string | undefined {
   return map.getStyle().layers?.find((layer) => layer.type === "symbol")?.id;
 }
 
-function ensureSource(map: maplibregl.Map): void {
-  if (map.getSource(TERRAIN_SOURCE_ID)) return;
-  map.addSource(TERRAIN_SOURCE_ID, {
+function ensureSource(map: maplibregl.Map, id: string): void {
+  if (map.getSource(id)) return;
+  map.addSource(id, {
     type: "raster-dem",
     tiles: TERRARIUM_TILES,
     tileSize: 256,
@@ -52,18 +56,20 @@ export function applyTerrain3d(map: maplibregl.Map, enabled: boolean): void {
     // keeps a reference to a source that is no longer in the style.
     if (map.getTerrain()) map.setTerrain(null);
     if (map.getLayer(HILLSHADE_LAYER_ID)) map.removeLayer(HILLSHADE_LAYER_ID);
+    if (map.getSource(HILLSHADE_SOURCE_ID)) map.removeSource(HILLSHADE_SOURCE_ID);
     if (map.getSource(TERRAIN_SOURCE_ID)) map.removeSource(TERRAIN_SOURCE_ID);
     return;
   }
 
-  ensureSource(map);
+  ensureSource(map, TERRAIN_SOURCE_ID);
+  ensureSource(map, HILLSHADE_SOURCE_ID);
 
   if (!map.getLayer(HILLSHADE_LAYER_ID)) {
     map.addLayer(
       {
         id: HILLSHADE_LAYER_ID,
         type: "hillshade",
-        source: TERRAIN_SOURCE_ID,
+        source: HILLSHADE_SOURCE_ID,
         paint: {
           "hillshade-exaggeration": 0.45,
           "hillshade-shadow-color": "#4a4235",
@@ -76,4 +82,33 @@ export function applyTerrain3d(map: maplibregl.Map, enabled: boolean): void {
   }
 
   map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: EXAGGERATION });
+}
+
+/** A tilted camera shows the horizon; without a sky it is the style's background colour. */
+export function applySky(map: maplibregl.Map, enabled: boolean, theme: "light" | "dark"): void {
+  if (typeof map.setSky !== "function") return;
+  if (!enabled) {
+    // Runtime accepts no argument as "remove the sky"; the typings only describe setting one.
+    map.setSky(undefined as unknown as Parameters<maplibregl.Map["setSky"]>[0]);
+    return;
+  }
+  map.setSky(
+    theme === "dark"
+      ? {
+          "sky-color": "#0b1020",
+          "horizon-color": "#1e293b",
+          "fog-color": "#111827",
+          "sky-horizon-blend": 0.6,
+          "horizon-fog-blend": 0.6,
+          "fog-ground-blend": 0.8
+        }
+      : {
+          "sky-color": "#9cc9f5",
+          "horizon-color": "#eef4fb",
+          "fog-color": "#eef2f6",
+          "sky-horizon-blend": 0.6,
+          "horizon-fog-blend": 0.6,
+          "fog-ground-blend": 0.85
+        }
+  );
 }

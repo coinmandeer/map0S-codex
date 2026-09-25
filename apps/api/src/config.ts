@@ -197,6 +197,9 @@ export function resolveTrustedProxies(
 }
 
 export const config = {
+  get skyAtlasPath() {
+    return env("MAPOS_SKY_ATLAS_PATH");
+  },
   get corsOrigins() {
     return resolveCorsOrigins(env("MAPOS_CORS_ORIGINS"));
   },
@@ -317,6 +320,8 @@ export const config = {
    */
   get layerKeys(): Record<string, string | undefined> {
     return {
+      golemio: env("GOLEMIO_API_KEY"),
+      europeana: env("EUROPEANA_API_KEY"),
       ocm: env("OPENCHARGEMAP_API_KEY"),
       mapillary: env("MAPILLARY_ACCESS_TOKEN"),
       firms: env("NASA_FIRMS_MAP_KEY"),
@@ -334,6 +339,15 @@ export const config = {
    * background simply isn't offered in the picker. See `docs/basemaps.md` for where to sign up
    * and which of them ask for a credit card.
    */
+  // A hard cap or an explicitly verified, expiring Free Trial permits browser calls.
+  // Trial attestation is invalid if the owner manually upgrades billing to Paid.
+  // Never reuse GOOGLE_MAPS_API_KEY: the browser key must have origin/API restrictions.
+  get googlePlacesPublicKey(): string | undefined {
+    const browserKey = env("GOOGLE_PLACES_BROWSER_KEY");
+    const trialUntil = Date.parse(env("GOOGLE_PLACES_TRIAL_VERIFIED_UNTIL") ?? "");
+    const freeAccess = env("GOOGLE_PLACES_FREE_CAP_VERIFIED") === "1" || trialUntil > Date.now();
+    return freeAccess && browserKey !== env("GOOGLE_MAPS_API_KEY") ? browserKey : undefined;
+  },
   get tileKeys(): Record<string, string | undefined> {
     return {
       google: env("GOOGLE_MAPS_API_KEY"),
@@ -396,7 +410,21 @@ export function advertisedCmlCapability(
 export function capabilities(): ServerCapabilities {
   const commerceProvider = config.commerceProvider;
   return {
+    skyAtlas: Boolean(config.skyAtlasPath && existsSync(config.skyAtlasPath)),
     mapy: Boolean(config.mapyKey),
+    maptilerGeocoding: Boolean(
+      config.tileKeys.maptiler &&
+      (env("MAPOS_PROVIDER_BUDGET_MODE") === "provider" ||
+        env("MAPTILER_FREE_CAP_VERIFIED") === "1")
+    ),
+    googlePlacesUi: Boolean(config.googlePlacesPublicKey),
+    googlePlacesPublicKey: config.googlePlacesPublicKey ?? "",
+    googleSatellite: Boolean(
+      config.tileKeys.google &&
+      process.env.GOOGLE_TILES_ENABLED === "1" &&
+      process.env.GOOGLE_BUDGET_ACCOUNT &&
+      process.env.GOOGLE_SATELLITE_ENABLED === "1"
+    ),
     siwe: config.siweEnabled,
     identitySimulation: config.identitySimulationEnabled,
     ens: Boolean(config.ensRpcUrl),
@@ -426,7 +454,11 @@ export function capabilities(): ServerCapabilities {
     ...Object.fromEntries(
       Object.entries(config.tileKeys).map(([name, value]) => [
         name === "google" ? "googleTiles" : name,
-        Boolean(value)
+        name === "google"
+          ? Boolean(
+              value && process.env.GOOGLE_TILES_ENABLED === "1" && process.env.GOOGLE_BUDGET_ACCOUNT
+            )
+          : Boolean(value)
       ])
     )
   };

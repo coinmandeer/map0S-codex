@@ -2,6 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseStatDataset, statDataset } from "./statDatasets.js";
 import { sliceStatCube } from "./nationalStatistics.js";
+test("World Bank retains global economies and excludes aggregate regions", () => {
+  const result = parseStatDataset(statDataset("worldbank-sp-pop-totl")!, [
+    { pages: 1 },
+    ["CZ", "US", "BR", "IN", "ZA", "AU", "NA", "EU", "1W"].map((id) => ({
+      country: { id, value: id },
+      date: "2024",
+      value: 10
+    }))
+  ]);
+  assert.deepEqual(
+    result.observations.map((r) => r.geoCode),
+    ["CZ", "US", "BR", "IN", "ZA", "AU", "NA"]
+  );
+});
 const cube = {
   id: ["iccs", "geo", "time"],
   size: [2, 1, 2],

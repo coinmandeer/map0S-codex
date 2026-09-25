@@ -154,7 +154,10 @@ test.describe("MapOS V3 smoke", () => {
     await page.getByTestId("layers-search").fill("Motorhome stops");
     await expect(page.getByTestId("places-switch-park4night")).toBeDisabled();
     await expect(page.getByTestId("catalog-places-park4night")).toContainText(
-      /není nakonfigurovaný/
+      /Needs setup|Je potřeba nastavit|není nakonfigurovaný/
+    );
+    await expect(page.getByTestId("catalog-places-park4night")).toContainText(
+      "PARK4NIGHT_ENABLED=1"
     );
   });
 

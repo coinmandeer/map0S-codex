@@ -1,3 +1,4 @@
+import type { PlanDocumentV2 } from "@mapos/layer-sdk";
 import type { LayerManifestV2 } from "@mapos/layer-sdk";
 export interface AiPlace {
   sourceFeatureId?: string;
@@ -57,6 +58,8 @@ export type AiCard =
       type: "layer";
       title: string;
       layerIds: string[];
+      opacityByLayer?: Record<string, number>;
+      time?: string | null;
       filters?: { openNow?: boolean; minRating?: number; tags?: string[] };
     }
   | {
@@ -71,7 +74,27 @@ export type AiCard =
       manifest: LayerManifestV2;
       featureCount: number;
     }
-  | { type: "plan"; title: string; summary: string; stops: AiPlanStop[] }
+  | {
+      type: "plan";
+      draft?: PlanDocumentV2;
+      title: string;
+      summary: string;
+      stops: AiPlanStop[];
+      profile?: "foot" | "bike" | "car";
+      route?: {
+        coordinates: [number, number][];
+        distanceM: number;
+        durationS: number;
+        legs?: {
+          coordinates: [number, number][];
+          distanceM: number;
+          durationS: number;
+          provider: string;
+          profile: string;
+        }[];
+      };
+      routeNotice?: string;
+    }
   | { type: "plan-edit"; title: string; proposalId: string; planId: string; diff: AiPlanDiff };
 
 export interface AiAnswer {
@@ -85,6 +108,21 @@ export interface AiAnswer {
 }
 
 export type AiChatEvent =
+  | {
+      type: "scene_patch";
+      patch: import("@mapos/layer-sdk").MapScenePatch;
+      conversationId: string;
+      runId: string;
+      revision: number;
+    }
+  | {
+      type: "map_artifact";
+      phase?: "preview" | "final";
+      artifactId: string;
+      conversationId: string;
+      revision: number;
+      runId: string;
+    }
   | { type: "conversation"; conversation: { id: string; revision: number } }
   | { type: "intent"; intent: string; execution: AiAnswer["execution"] }
   | { type: "token"; text: string }

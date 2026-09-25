@@ -18,6 +18,7 @@ import {
   type LayerKind
 } from "@mapos/layer-sdk";
 import { getOsmPoiFeatures, getUserLayerFeatures } from "./layerService.js";
+import { getWeedFeatures } from "./weedService.js";
 import { getPark4nightFeatures, parsePark4nightFilters } from "./park4nightService.js";
 import { getFusedPlaces } from "./poiFusionService.js";
 import {
@@ -55,6 +56,18 @@ export interface FeatureProvider {
  * handlers are too easy to forget when a new source is registered. Wrapping the registry makes
  * 100 a hard response ceiling for both legacy and v2 providers, including providers added later.
  */
+/** The legacy (v1) envelope is only read by the first-party map. Its pages are cut from one
+ *  bounded server snapshot, so a larger page costs nothing upstream and saves the browser a chain
+ *  of sequential round trips. Callers that do not ask keep the historic 100-row page; the v2
+ *  public contract keeps its hard 100-row ceiling. */
+export const LEGACY_FEATURE_PAGE_MAX_LIMIT = 500;
+export function normalizeLegacyPageLimit(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (value === undefined || value === null || value === "" || !Number.isFinite(parsed))
+    return normalizeFeatureLimit(undefined);
+  return Math.min(LEGACY_FEATURE_PAGE_MAX_LIMIT, Math.max(1, Math.trunc(parsed)));
+}
+
 export function withFeatureQueryBudget(provider: FeatureProvider): FeatureProvider {
   const legacy = provider.features;
   const v2 = provider.featuresV2;
@@ -63,9 +76,9 @@ export function withFeatureQueryBudget(provider: FeatureProvider): FeatureProvid
     ...(legacy
       ? {
           async features(request: FeatureRequest): Promise<FeatureCollection> {
-            const limit = normalizeFeatureLimit(request.query.limit);
+            const limit = normalizeLegacyPageLimit(request.query.limit);
             const area = await resolveAreaSelection(request.query);
-            if (area && !["osm-poi", "user-layers"].includes(provider.id))
+            if (area && !["osm-poi", "user-layers", "weed"].includes(provider.id))
               throw new Error("Layer does not support area filtering");
             const bbox: Bbox = area
               ? [
@@ -97,6 +110,12 @@ export function withFeatureQueryBudget(provider: FeatureProvider): FeatureProvid
 }
 
 const RAW_FEATURE_PROVIDERS: FeatureProvider[] = [
+  {
+    id: "weed",
+    name: "weed",
+    kind: "pins",
+    features: ({ bbox, query, area }) => getWeedFeatures(bbox, query.types, area)
+  },
   {
     id: "osm-poi",
     name: "OSM POI",

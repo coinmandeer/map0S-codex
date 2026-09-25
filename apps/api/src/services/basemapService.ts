@@ -1,3 +1,6 @@
+import { mapyBudget } from "./providerBudget/mapy.js";
+import { providerBudgets } from "./providerBudget/repository.js";
+import { ProviderBudgetError } from "./providerBudget/policy.js";
 /**
  * Tile proxy for basemap providers that need a key.
  *
@@ -8,7 +11,7 @@
  */
 
 import { config } from "../config.js";
-import { fetchBytes, fetchJson } from "../utils/upstream.js";
+import { fetchBytes, fetchJson, UpstreamError } from "../utils/upstream.js";
 
 export class TileProviderUnavailableError extends Error {
   constructor(readonly provider: string) {
@@ -39,18 +42,34 @@ interface TileProvider {
 /** Google hands out a session token that covers many tiles and lives for hours; asking for one
  *  per tile would be both slow and a quota bonfire. Cached per map type, refreshed early. */
 const googleSessions = new Map<string, { token: string; expiresAt: number }>();
+const googleSessionRequests = new Map<string, Promise<string>>();
 
 async function googleSession(mapType: string, key: string): Promise<string> {
   const cached = googleSessions.get(mapType);
   if (cached && cached.expiresAt > Date.now()) return cached.token;
-
+  const pending = googleSessionRequests.get(mapType);
+  if (pending) return pending;
+  const request = createGoogleSession(mapType, key);
+  googleSessionRequests.set(mapType, request);
+  try {
+    return await request;
+  } finally {
+    if (googleSessionRequests.get(mapType) === request) googleSessionRequests.delete(mapType);
+  }
+}
+async function createGoogleSession(mapType: string, key: string): Promise<string> {
   const data = await fetchJson<{ session?: string; expiry?: string }>(
     `https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(key)}`,
     {
       providerId: "basemap-google-session",
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mapType, language: "cs-CZ", region: "CZ" }),
+      body: JSON.stringify({
+        mapType,
+        language: "cs-CZ",
+        region: "CZ",
+        ...(mapType === "terrain" ? { layerTypes: ["layerRoadmap"] } : {})
+      }),
       ttlMs: 0,
       timeoutMs: 12_000,
       maxResponseBytes: 256 * 1024
@@ -166,6 +185,8 @@ export function providerCapabilities(): Record<string, string> {
 export interface TileResponse {
   body: ArrayBuffer;
   contentType: string;
+  cacheControl?: string;
+  etag?: string;
 }
 
 export async function fetchBasemapTile(
@@ -180,17 +201,98 @@ export async function fetchBasemapTile(
   const key = provider.key();
   if (!key) throw new TileProviderUnavailableError(providerId);
 
-  return fetchBytes(await provider.url(req, key), {
-    providerId: `basemap-${provider.id}`,
-    headers: provider.headers?.(key),
-    ttlMs: 0,
-    timeoutMs: 12_000,
-    maxResponseBytes: 4 * 1024 * 1024,
-    acceptedContentTypes: ["image/*", "application/octet-stream"]
-  });
+  const account = process.env.GOOGLE_BUDGET_ACCOUNT;
+  if (providerId === "google") {
+    if (process.env.GOOGLE_TILES_ENABLED !== "1" || !account)
+      throw new ProviderBudgetError("budget-disabled");
+    if (req.mapset === "satellite" && process.env.GOOGLE_SATELLITE_ENABLED !== "1")
+      throw new TileProviderUnavailableError("google/satellite");
+  }
+  const url = await provider.url(req, key);
+  const requestTile = (target: string) =>
+    fetchBytes(target, {
+      providerId: `basemap-${provider.id}`,
+      ...(providerId === "google"
+        ? {
+            retries: 0,
+            budget: {
+              scope: `google-tiles:${account}`,
+              reserve: (signal: AbortSignal) =>
+                providerBudgets.reserve(
+                  { product: "google-tiles", account: account!, operation: "tile" },
+                  signal
+                )
+            }
+          }
+        : {}),
+      ...(providerId === "mapy" ? { budget: mapyBudget("tile") } : {}),
+      headers: provider.headers?.(key),
+      ttlMs: 0,
+      timeoutMs: 12_000,
+      maxResponseBytes: 4 * 1024 * 1024,
+      acceptedContentTypes: ["image/*", "application/octet-stream"]
+    });
+  try {
+    return await requestTile(url);
+  } catch (error) {
+    // An expired/revoked session is reported as INVALID_ARGUMENT (400). Try one new
+    // session, counting the second tile request too; never retry billing/auth failures.
+    if (providerId !== "google" || !(error instanceof UpstreamError) || error.status !== 400)
+      throw error;
+    const failedToken = new URL(url).searchParams.get("session");
+    if (googleSessions.get(req.mapset)?.token === failedToken) googleSessions.delete(req.mapset);
+    return requestTile(await provider.url(req, key));
+  }
 }
 
 /** Test seam: the Google session cache is module state. */
 export function __resetTileSessions(): void {
   googleSessions.clear();
+  googleSessionRequests.clear();
+}
+
+export async function googleViewport(
+  mapset: string,
+  bbox: [number, number, number, number],
+  zoom: number
+) {
+  if (
+    !["roadmap", "terrain", "satellite"].includes(mapset) ||
+    !config.tileKeys.google ||
+    process.env.GOOGLE_TILES_ENABLED !== "1" ||
+    !process.env.GOOGLE_BUDGET_ACCOUNT
+  )
+    throw new TileProviderUnavailableError("google");
+  if (mapset === "satellite" && process.env.GOOGLE_SATELLITE_ENABLED !== "1")
+    throw new TileProviderUnavailableError("google/satellite");
+  const token = await googleSession(mapset, config.tileKeys.google);
+  const [west, south, east, north] = bbox;
+  const params = new URLSearchParams({
+    session: token,
+    key: config.tileKeys.google,
+    zoom: String(zoom),
+    west: String(west),
+    south: String(south),
+    east: String(east),
+    north: String(north)
+  });
+  const request = () =>
+    fetchJson<{ copyright?: string; maxZoomRects?: unknown[] }>(
+      `https://tile.googleapis.com/tile/v1/viewport?${params}`,
+      {
+        providerId: "google-viewport",
+        retries: 0,
+        ttlMs: 0,
+        timeoutMs: 8000,
+        maxResponseBytes: 128 * 1024
+      }
+    );
+  try {
+    return await request();
+  } catch (error) {
+    if (!(error instanceof UpstreamError) || error.status !== 400) throw error;
+    if (googleSessions.get(mapset)?.token === token) googleSessions.delete(mapset);
+    params.set("session", await googleSession(mapset, config.tileKeys.google));
+    return request();
+  }
 }

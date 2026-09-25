@@ -28,6 +28,7 @@ services:
     environment:
       MAPOS_GOTCHI_CACHE_DIR: /data/gotchi
       MAPOS_BOUNDARY_CACHE_DIR: /data/boundaries
+      MAPOS_SKY_ATLAS_PATH: ${MAPOS_SKY_ATLAS_PATH:-}
       NODE_ENV: production
       PORT: 4033
       DATABASE_URL: postgres://mapos:${POSTGRES_PASSWORD}@postgres:5432/mapos
@@ -43,6 +44,7 @@ services:
       # A provider key never enables outbound model calls implicitly.
       MAPOS_AI_OVERVIEW_V2: ${MAPOS_AI_OVERVIEW_V2:-1}
       MAPOS_AI_BUDGET_MODE: ${MAPOS_AI_BUDGET_MODE:-allocation}
+      MAPOS_PROVIDER_BUDGET_MODE: ${MAPOS_PROVIDER_BUDGET_MODE:-allocation}
       MAPOS_AI_BUDGET_ACCOUNT: ${MAPOS_AI_BUDGET_ACCOUNT:-}
       MAPOS_AI_GATEWAY_ENABLED: ${MAPOS_AI_GATEWAY_ENABLED:-}
       # The exact public origin is bound into every SIWE message. Signature verification is local
@@ -57,6 +59,25 @@ services:
       MAPOS_RATE_LIMIT_SECRET: ${MAPOS_RATE_LIMIT_SECRET:?Set MAPOS_RATE_LIMIT_SECRET}
       # Weather tiles degrade to the keyless forecast/grid paths when this optional key is absent.
       OWM_API_KEY: ${OWM_API_KEY:-}
+      GOOGLE_PLACES_BROWSER_KEY: ${GOOGLE_PLACES_BROWSER_KEY:-}
+      GOOGLE_PLACES_FREE_CAP_VERIFIED: ${GOOGLE_PLACES_FREE_CAP_VERIFIED:-0}
+      GOOGLE_PLACES_TRIAL_VERIFIED_UNTIL: ${GOOGLE_PLACES_TRIAL_VERIFIED_UNTIL:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      GOOGLE_TILES_ENABLED: ${GOOGLE_TILES_ENABLED:-}
+      GOOGLE_BUDGET_ACCOUNT: ${GOOGLE_BUDGET_ACCOUNT:-}
+      GOOGLE_SATELLITE_ENABLED: ${GOOGLE_SATELLITE_ENABLED:-}
+      OPENCHARGEMAP_API_KEY: ${OPENCHARGEMAP_API_KEY:-}
+      NASA_FIRMS_MAP_KEY: ${NASA_FIRMS_MAP_KEY:-}
+      OPENAQ_API_KEY: ${OPENAQ_API_KEY:-}
+      GOLEMIO_API_KEY: ${GOLEMIO_API_KEY:-}
+      EUROPEANA_API_KEY: ${EUROPEANA_API_KEY:-}
+      EBIRD_API_TOKEN: ${EBIRD_API_TOKEN:-}
+      TICKETMASTER_API_KEY: ${TICKETMASTER_API_KEY:-}
+      OKAPI_KEY_DE: ${OKAPI_KEY_DE:-}
+      OKAPI_KEY_PL: ${OKAPI_KEY_PL:-}
+      OKAPI_KEY_US: ${OKAPI_KEY_US:-}
+      OKAPI_KEY_UK: ${OKAPI_KEY_UK:-}
+      MAPY_BUDGET_ACCOUNT: ${MAPY_BUDGET_ACCOUNT:-}
       FSQ_API_KEY: ${FSQ_API_KEY:-}
       FSQ_PLACES_ENABLED: ${FSQ_PLACES_ENABLED:-}
       FSQ_BUDGET_ACCOUNT: ${FSQ_BUDGET_ACCOUNT:-}
@@ -65,6 +86,7 @@ services:
       MAPY_API_KEY: ${MAPY_API_KEY:-}
       # MapTiler is exposed by GET /config as a browser key. Restrict the production key to the
       # public mapOS origin in MapTiler Cloud; map content is requested directly by end clients.
+      MAPTILER_FREE_CAP_VERIFIED: ${MAPTILER_FREE_CAP_VERIFIED:-0}
       MAPTILER_API_KEY: ${MAPTILER_API_KEY:-}
       # Live ships worldwide. Without it the vessel layer covers Finnish waters (keyless).
       AISSTREAM_API_KEY: ${AISSTREAM_API_KEY:-}
@@ -98,6 +120,7 @@ services:
       - mapos-v3-radar:/data/radar
       - mapos-v3-gotchi:/data/gotchi
       - mapos-v3-boundaries:/data/boundaries
+      - ${MAPOS_SKY_ATLAS_DIR:-mapos-v3-sky-atlas}:/data/sky-atlas:ro
     ports:
       - "127.0.0.1:${MAPOS_API_PORT:-4033}:4033"
     healthcheck:
@@ -145,3 +168,4 @@ volumes:
   mapos-v3-radar:
   mapos-v3-gotchi:
   mapos-v3-boundaries:
+  mapos-v3-sky-atlas:

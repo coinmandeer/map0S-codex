@@ -49,7 +49,7 @@ export function aiCategoryToolIds(): readonly string[] {
  *  (§30.4 point 4). Matched on whole words to keep "barva" out of the bars. */
 const CATEGORY_KEYWORDS: readonly (readonly [OsmPoiCategoryId, readonly string[]])[] = [
   ["bar", ["bar", "bary", "hospoda", "hospody", "pub", "pivo"]],
-  ["cafe", ["kavárna", "kavárny", "cafe", "café", "káva"]],
+  ["cafe", ["kavárna", "kavárny", "kavárnu", "kavárně", "cafe", "café", "káva", "kávu", "coffee"]],
   ["restaurant", ["restaurace", "restaurant", "jídlo", "oběd", "večeře"]],
   ["brewery", ["pivovar", "pivovary", "brewery"]],
   ["camp_site", ["kemp", "kempy", "kempu", "kempem", "camping", "campsite", "tábořiště"]],
@@ -62,7 +62,7 @@ const CATEGORY_KEYWORDS: readonly (readonly [OsmPoiCategoryId, readonly string[]
   ["parking", ["parkoviště", "parkování", "parking", "zaparkovat"]],
   ["fuel", ["benzín", "benzínka", "čerpací", "fuel", "nafta"]],
   ["charging", ["nabíječka", "nabíjení", "charger", "charging"]],
-  ["viewpoint", ["vyhlídka", "vyhlídky", "výhled", "viewpoint"]],
+  ["viewpoint", ["vyhlídka", "vyhlídky", "vyhlídku", "výhled", "viewpoint"]],
   ["waterfall", ["vodopád", "vodopády", "waterfall"]],
   ["lake", ["jezero", "jezera", "přehrada", "rybník", "lake"]],
   ["peak", ["vrchol", "vrcholy", "kopec", "hora", "peak"]],
@@ -81,13 +81,19 @@ const CATEGORY_KEYWORDS: readonly (readonly [OsmPoiCategoryId, readonly string[]
 export function inferAiCategories(prompt: string): readonly string[] {
   const words = new Set(
     prompt
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
       .toLocaleLowerCase("cs-CZ")
       .split(/[^\p{L}\p{N}]+/u)
       .filter(Boolean)
   );
   const matched: string[] = [];
   for (const [category, keywords] of CATEGORY_KEYWORDS) {
-    if (keywords.some((keyword) => words.has(keyword))) {
+    if (
+      keywords.some((keyword) =>
+        words.has(keyword.normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+      )
+    ) {
       matched.push(TOOL_ID_BY_CATEGORY.get(category)!);
     }
   }
@@ -226,7 +232,11 @@ function toOutput(
   const reference = query.near;
   const radius = query.radiusMeters;
   const places = records
-    .filter((record) => matchesQuery(record, query.query) && matchesFilters(record, query.filters))
+    .filter(
+      (record) =>
+        (record.source.providerId === "mapy" || matchesQuery(record, query.query)) &&
+        matchesFilters(record, query.filters)
+    )
     .map((record) => {
       const distanceMeters = reference ? deterministicDistanceMeters(reference, record) : undefined;
       return {
@@ -268,27 +278,62 @@ function toOutput(
 
 /** Production: the fusion pipeline, one bbox request per search. */
 export function createFusedPlaceSearchSource(
-  readPlaces: FusedPlacesSearchReader
+  readPlaces: FusedPlacesSearchReader,
+  fallback?: (
+    query: AiPlaceSearchQuery,
+    bbox: Bbox,
+    categories: OsmPoiCategoryId[],
+    signal: AbortSignal
+  ) => Promise<AiNearestPoiRecord[]>
 ): AiPlaceSearchSource {
   return {
     async search(query, context) {
       context.signal.throwIfAborted();
       const categories = resolveOsmCategories(query.categories ?? []);
-      if (!categories.length) return { places: [], sources: [] };
+      if (!categories.length && (!fallback || !query.query)) return { places: [], sources: [] };
       const bbox =
         query.bbox ??
         (query.near
           ? bboxAround(query.near.longitude, query.near.latitude, query.radiusMeters ?? 10_000)
           : null);
       if (!bbox) return { places: [], sources: [] };
-      const response = await readPlaces({
-        bbox,
-        categories,
-        sources: ["osm"],
-        ...(query.area ? { area: query.area } : {})
-      });
+      const read = () =>
+        readPlaces({
+          bbox,
+          categories,
+          sources: ["osm"],
+          ...(query.area ? { area: query.area } : {})
+        });
+      let response = categories.length ? await read() : { places: [], query: undefined };
       context.signal.throwIfAborted();
       const records: AiNearestPoiRecord[] = [];
+      // Map view reads intentionally return immediately while OSM cells load. An AI turn
+      // needs an actual result: use bounded, source-attributed name search for cold cells.
+      if (fallback && !query.area && (!response.places.length || query.query)) {
+        try {
+          records.push(...(await fallback(query, bbox, categories, context.signal)));
+        } catch {
+          context.signal.throwIfAborted();
+        }
+      }
+      if (!records.length && !response.places.length && response.query?.retryAfterMs) {
+        const deadline = Date.now() + 3000;
+        do {
+          await new Promise<void>((resolve, reject) => {
+            const aborted = () => {
+              clearTimeout(timer);
+              reject(context.signal.reason);
+            };
+            const timer = setTimeout(() => {
+              context.signal.removeEventListener("abort", aborted);
+              resolve();
+            }, 750);
+            context.signal.addEventListener("abort", aborted, { once: true });
+          });
+          context.signal.throwIfAborted();
+          response = await read();
+        } while (!response.places.length && response.query?.retryAfterMs && Date.now() < deadline);
+      }
       for (const place of response.places) {
         const category = resolveOsmCategories([place.category]).at(0) ?? categories[0]!;
         const record = fusedRecord(place, category);

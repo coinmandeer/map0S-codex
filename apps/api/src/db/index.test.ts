@@ -66,7 +66,8 @@ test("versioned runner keeps the explicit baseline and ordered additive migratio
       ["0022", "world_lookup_indexes"],
       ["0023", "provider_budgets"],
       ["0024", "ai_overview_history"],
-      ["0025", "official_geo_correspondence"]
+      ["0025", "official_geo_correspondence"],
+      ["0026", "ai_chat_history"]
     ]
   );
   assert.equal(
@@ -156,7 +157,8 @@ test("configured initDb path delegates every configured version to the ledger ru
     "0022",
     "0023",
     "0024",
-    "0025"
+    "0025",
+    "0026"
   ]);
   assert.ok(statements.some((statement) => statement.includes("pg_advisory_lock")));
   assert.ok(statements.some((statement) => statement.includes("pg_advisory_unlock")));

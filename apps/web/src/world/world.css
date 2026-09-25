@@ -456,16 +456,6 @@
   text-align: left;
   color: #8050cf;
 }
-.world-map-beacon {
-  background: #8150df;
-  color: #fff;
-  border: 3px solid #fff;
-  border-radius: 12px;
-  padding: 7px 10px;
-  font: 700 12px system-ui;
-  cursor: pointer;
-  box-shadow: 0 3px 15px #7d4fd54a;
-}
 .world-panel {
   --accent: #8150df;
 }

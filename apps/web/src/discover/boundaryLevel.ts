@@ -2,6 +2,15 @@ export type BoundaryLevel = "country" | "adm1" | "adm2" | "lau";
 const LEVELS: readonly BoundaryLevel[] = ["country", "adm1", "adm2", "lau"];
 const THRESHOLDS = [4, 7, 10];
 
+/** A selected municipality is the last drill-down step; its outline would cover the detailed map. */
+export function showAreaBoundaries(
+  enabled: boolean,
+  zoom: number,
+  selectedLevel?: BoundaryLevel | null
+): boolean {
+  return enabled && zoom < 13.5 && selectedLevel !== "lau";
+}
+
 /** Administrative levels only. NUTS is a separate statistical hierarchy, never a fallback
  * advertised as a county/city. Hysteresis keeps fractional wheel zooms from thrashing sources. */
 export function boundaryLevel(zoom: number, previous?: BoundaryLevel): BoundaryLevel {

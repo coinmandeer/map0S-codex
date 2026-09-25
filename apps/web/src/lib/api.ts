@@ -57,14 +57,27 @@ async function parseError(res: Response): Promise<string> {
   return data?.message ?? `${res.status} ${res.statusText}`;
 }
 
-export async function apiGetWithMetadata<T>(
-  path: string,
-  options: ApiRequestOptions = {}
+interface SharedGet {
+  promise: Promise<ApiResponseWithMetadata<unknown>>;
+  controller: AbortController;
+  consumers: number;
+  settled: boolean;
+}
+
+/** Identical GETs issued while one is still in flight share its network request. Two panels
+ *  asking for the same theme list or the same place at startup used to cost two round trips. */
+const inflightGets = new Map<string, SharedGet>();
+
+function abortError(): Error {
+  return new DOMException("The operation was aborted.", "AbortError");
+}
+
+async function fetchGet<T>(
+  url: string,
+  credentials: RequestCredentials,
+  signal: AbortSignal
 ): Promise<ApiResponseWithMetadata<T>> {
-  const res = await fetch(`${API_BASE}${path}${buildQuery(options.query)}`, {
-    signal: options.signal,
-    credentials: options.auth ? "include" : "same-origin"
-  });
+  const res = await fetch(url, { signal, credentials });
   const requestId = responseRequestId(res);
   if (!res.ok) throw new ApiError(res.status, await parseError(res), requestId);
   return {
@@ -72,6 +85,61 @@ export async function apiGetWithMetadata<T>(
     requestId,
     cacheControl: res.headers.get("cache-control")
   };
+}
+
+export async function apiGetWithMetadata<T>(
+  path: string,
+  options: ApiRequestOptions = {}
+): Promise<ApiResponseWithMetadata<T>> {
+  const url = `${API_BASE}${path}${buildQuery(options.query)}`;
+  const credentials: RequestCredentials = options.auth ? "include" : "same-origin";
+  const key = `${credentials} ${url}`;
+  options.signal?.throwIfAborted();
+  let shared = inflightGets.get(key);
+  const joined = Boolean(shared);
+  if (!shared) {
+    const controller = new AbortController();
+    const entry: SharedGet = {
+      controller,
+      consumers: 0,
+      settled: false,
+      promise: fetchGet<unknown>(url, credentials, controller.signal).finally(() => {
+        entry.settled = true;
+        if (inflightGets.get(key) === entry) inflightGets.delete(key);
+      })
+    };
+    shared = entry;
+    inflightGets.set(key, entry);
+  }
+  const entry = shared;
+  entry.consumers++;
+  // Each caller can still cancel on its own; the shared request is aborted only once nobody is
+  // waiting for it any more.
+  const release = () => {
+    entry.consumers--;
+    if (entry.consumers <= 0 && !entry.settled) {
+      entry.controller.abort();
+      if (inflightGets.get(key) === entry) inflightGets.delete(key);
+    }
+  };
+  let onAbort: (() => void) | undefined;
+  const cancelled = options.signal
+    ? new Promise<never>((_, reject) => {
+        onAbort = () => reject(abortError());
+        options.signal!.addEventListener("abort", onAbort, { once: true });
+      })
+    : null;
+  try {
+    const result = (await (cancelled
+      ? Promise.race([entry.promise, cancelled])
+      : entry.promise)) as ApiResponseWithMetadata<T>;
+    // A caller that joined gets its own copy, so one consumer mutating the payload cannot change
+    // what another one rendered.
+    return joined ? { ...result, data: structuredClone(result.data) } : result;
+  } finally {
+    if (onAbort) options.signal?.removeEventListener("abort", onAbort);
+    release();
+  }
 }
 
 export async function apiGet<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {

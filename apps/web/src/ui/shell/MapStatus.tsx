@@ -11,6 +11,7 @@ import { SearchHereButton } from "../SearchHereButton";
 import { emit } from "../../lib/events";
 import { experienceRegistry, experienceById } from "../../product/registry";
 import { Icon } from "../kit";
+import { st } from "../../statistics/labels";
 import "./mapStatus.css";
 
 export function MapStatus({ compact = false }: { compact?: boolean }) {
@@ -30,10 +31,14 @@ export function MapStatus({ compact = false }: { compact?: boolean }) {
     ["queued", "loading", "rendering"].includes(layerActivity.get(id)?.phase ?? "off")
   );
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
-  const failures = ids.filter((id) =>
-    ["error", "partial"].includes(layerActivity.get(id)?.phase ?? "")
-  );
+  // Only real failures raise the alert. "Partial" is the normal state of a progressive source
+  // that is still filling in (or a capped answer) and is already explained on the layer's row;
+  // counting it made every busy map open with "4 layers failed to load".
+  const failures = ids.filter((id) => layerActivity.get(id)?.phase === "error");
+
   const noticesToShow = failures.filter((id) => !dismissed.has(id));
+  const noticeLabel = noticeNames(noticesToShow);
+
   useEffect(() => {
     setDismissed((previous) => {
       const next = new Set(
@@ -77,9 +82,15 @@ export function MapStatus({ compact = false }: { compact?: boolean }) {
         <section className="map-status-popover" role="alert" aria-label="Problém s načítáním">
           <strong>
             {noticesToShow.length === 1
-              ? `${getLayerPlugin(noticesToShow[0]!)?.manifest.name ?? noticesToShow[0]}: data nejsou úplná nebo se nepodařila načíst`
-              : `${noticesToShow.length} vrstev se nepodařilo úplně načíst`}
+              ? st(
+                  `${noticeLabel}: data se nepodařilo načíst`,
+                  `${noticeLabel}: the data could not be loaded`
+                )
+              : st(`Nepodařilo se načíst: ${noticeLabel}`, `Could not load: ${noticeLabel}`)}
           </strong>
+          {noticesToShow.length === 1 && layerActivity.get(noticesToShow[0]!)?.message ? (
+            <small>{layerActivity.get(noticesToShow[0]!)!.message}</small>
+          ) : null}
           <div className="ai-turn-card-actions">
             <button
               className="kit-button"
@@ -87,7 +98,7 @@ export function MapStatus({ compact = false }: { compact?: boolean }) {
                 for (const id of noticesToShow) emit("refresh-layer", { id });
               }}
             >
-              Opakovat
+              {st("Opakovat", "Retry")}
             </button>
             <button
               className="kit-button"
@@ -95,11 +106,11 @@ export function MapStatus({ compact = false }: { compact?: boolean }) {
                 for (const id of noticesToShow) getMapStore().toggleLayer(id);
               }}
             >
-              Vypnout
+              {st("Vypnout", "Turn off")}
             </button>
             <button
               className="kit-button"
-              aria-label="Zavřít oznámení"
+              aria-label={st("Zavřít oznámení", "Dismiss")}
               onClick={() => setDismissed(new Set([...dismissed, ...noticesToShow]))}
             >
               <Icon name="close" size={18} />
@@ -146,6 +157,14 @@ export function MapStatus({ compact = false }: { compact?: boolean }) {
       )}
     </div>
   );
+}
+
+/** Layer names for the alert: up to three, then "+ N more". */
+function noticeNames(ids: string[]): string {
+  const names = ids.map((id) => getLayerPlugin(id)?.manifest.name ?? id);
+  return names.length > 3
+    ? `${names.slice(0, 3).join(", ")} ${st(`a ${names.length - 3} další`, `and ${names.length - 3} more`)}`
+    : names.join(", ");
 }
 
 function ActivityRow({ id, zoom }: { id: string; zoom: number }) {

@@ -1,0 +1,33 @@
+.google-map-attribution {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: min(90vw, 540px);
+  padding: 10px 10px 5px;
+  background: white;
+  color: #333;
+  font:
+    12px Arial,
+    sans-serif;
+}
+.google-map-attribution a {
+  font-size: 16px;
+  font-weight: 500;
+  color: #333;
+  text-decoration: none;
+}
+
+.map-artifact-legend {
+  position: absolute;
+  right: 12px;
+  bottom: 74px;
+  max-width: 260px;
+  max-height: 30vh;
+  overflow: auto;
+  padding: 8px;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 8px;
+  font-size: 12px;
+  z-index: 2;
+}

@@ -17,6 +17,33 @@ test("disabled products, invalid operations and invalid units cannot reserve", (
   }
 });
 
+test("explicit provider-managed integrations do not wait for local allocation or a database", async () => {
+  const db = (() => {
+    throw new Error("Database must not be contacted");
+  }) as unknown as postgres.Sql;
+  const repository = createProviderBudgetRepository(
+    db,
+    () => false,
+    () => true
+  );
+  for (const request of [
+    { product: "mapy-credits" as const, account: "", operation: "route", units: 4 },
+    { product: "foursquare-pro" as const, account: "", operation: "detail" }
+  ]) {
+    assert.equal(await repository.available(request), true);
+    assert.match(await repository.reserve(request), /^provider-managed:/);
+    await assert.rejects(repository.reserve(request, AbortSignal.abort()));
+  }
+  // Google must fail closed even when other providers enforce their own limits.
+  const google = { product: "google-tiles" as const, account: "mapos", operation: "tile" };
+  assert.equal(await repository.available(google), false);
+  await assert.rejects(repository.reserve(google), ProviderBudgetError);
+  await assert.rejects(
+    repository.reserve({ product: "google-photos", account: "", operation: "photo" }),
+    ProviderBudgetError
+  );
+});
+
 test(
   "PostgreSQL serializes budgets across connections, persists usage, and fails closed",
   { skip: !process.env.MAPOS_BUDGET_TEST_DATABASE_URL },

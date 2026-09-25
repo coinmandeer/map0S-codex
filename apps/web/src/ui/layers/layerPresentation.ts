@@ -10,6 +10,7 @@ import type { IconName } from "../kit";
  */
 const LAYER_ICONS: Record<string, IconName> = {
   "osm-poi": "place",
+  weed: "storefront",
   "user-layers": "edit",
   "my-saved-places": "bookmark",
   weather: "rainy",
@@ -104,6 +105,7 @@ const POI_CATEGORY_ICONS: Record<OsmPoiCategoryId, IconName> = {
   restaurant: "restaurant",
   brewery: "sports_bar",
   shop: "storefront",
+  cannabis: "storefront",
   parking: "local_parking",
   fuel: "local_gas_station",
   charging: "ev_station",

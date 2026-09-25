@@ -9,6 +9,7 @@ import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { useShellStoreSnapshot } from "../store/useShellStoreSnapshot";
 import type { Fix } from "../lib/geolocation";
 import { CommandSearch } from "./CommandSearch";
+import { AreaControls } from "../discover/AreaControls";
 import { LAYER_MODES } from "./modes";
 import { useIsMobile } from "./useIsMobile";
 import { BrandLogo } from "./BrandLogo";
@@ -169,6 +170,7 @@ export function ModeBar({
         </div>
 
         <CommandSearch onFlyToMe={onFlyToMe} mode={mode} />
+        <AreaControls />
 
         {!mobile && (
           <nav className="mode-tabs" aria-label="Režim mapy">

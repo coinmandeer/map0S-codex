@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { allLayerPlugins, getLayerPlugin } from "../../layers";
-import { inCzechBounds } from "../../layers/plugins/czechSources";
 import { on } from "../../lib/events";
 import { getShellStore } from "../../store/shellStore";
 import { useMapStoreSnapshot } from "../../store/useMapStoreSnapshot";
@@ -37,12 +36,7 @@ export function QuickLayers() {
   const selected = favorites
     .map((id) => catalog.find((item) => item.id === id))
     .filter((item): item is CatalogItem => Boolean(item));
-  const defaults = inCzechBounds(view.lng, view.lat)
-    ? ["cz-cadastre", "cz-networks", "cz-flood-q100"]
-    : [];
-  const items = (
-    selected.length ? selected : defaults.map((id) => catalog.find((item) => item.id === id)!)
-  ).slice(0, 3);
+  const items = selected.slice(0, 3);
   if (!items.length) return null;
   const shortNames: Record<string, [string, string]> = {
     "cz-cadastre": ["Katastr", "Cadastre"],

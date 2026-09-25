@@ -77,6 +77,12 @@ test("Discover renders more than sixteen local regions and hover never loads gui
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/?mode=discover&lng=13.5&lat=49.5&z=7");
+  await page.waitForFunction(() => Boolean(window.__maposMap?.isStyleLoaded()));
+  await page.evaluate(async () => {
+    const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
+    getMapStore().setExperience("default");
+    getMapStore().setBoundariesEnabled(true);
+  });
   await expect
     .poll(
       () =>
@@ -193,8 +199,10 @@ test("Discover renders more than sixteen local regions and hover never loads gui
   await expect.poll(() => areaRequests.length).toBeGreaterThan(0);
   expect(new URL(areaRequests.at(-1)!).searchParams.get("boundaryRevision")).toBe("b".repeat(64));
   await page.screenshot({ path: "output/playwright/discover-area-selected.png" });
-  await page.getByRole("button", { name: "Borders", exact: true }).click();
-  await page.getByRole("button", { name: "Zrušit výběr oblasti", exact: true }).click();
+  const borders = page.getByTestId("borders-toggle");
+  await expect(borders).toHaveAttribute("aria-pressed", "true");
+  await borders.click();
+  await expect(borders).toHaveAttribute("aria-pressed", "false");
   await expect
     .poll(() =>
       page.evaluate(async () => {
@@ -205,6 +213,7 @@ test("Discover renders more than sixteen local regions and hover never loads gui
     .toBeNull();
   await page.keyboard.press("Escape");
   await page.screenshot({ path: "output/playwright/discover-boundaries.png" });
+  await borders.click();
   await page.setViewportSize({ width: 390, height: 844 });
   const close = page.getByRole("button", { name: "Close", exact: true });
   if (await close.isVisible()) await close.click();
@@ -239,8 +248,103 @@ test("Discover renders more than sixteen local regions and hover never loads gui
     .toBe("Region 12");
   await page.getByTestId("hamburger-btn").click();
   await expect(page.getByText("Region 12", { exact: true })).toBeVisible();
-  const rect = await page.getByRole("region", { name: "Borders" }).boundingBox();
+  const rect = await page.getByTestId("command-center").getByTestId("borders-toggle").boundingBox();
   expect(rect!.x).toBeGreaterThanOrEqual(0);
   expect(rect!.x + rect!.width).toBeLessThanOrEqual(390);
   await page.screenshot({ path: "output/playwright/discover-area-mobile.png" });
+});
+
+test("clicking the smallest area zooms in and clears every boundary outline", async ({ page }) => {
+  const revision = "c".repeat(64);
+  const feature = {
+    type: "Feature" as const,
+    properties: {
+      id: JSON.stringify(["fixture", "CZ", "lau", "CZ-TEST"]),
+      source: "fixture",
+      country: "CZ",
+      west: 13.49,
+      south: 49.49,
+      east: 13.51,
+      north: 49.51,
+      code: "CZ-TEST",
+      name: "Testovací obec",
+      level: "lau",
+      lng: 13.5,
+      lat: 49.5
+    },
+    geometry: {
+      type: "Polygon" as const,
+      coordinates: [
+        [
+          [13.49, 49.49],
+          [13.51, 49.49],
+          [13.51, 49.51],
+          [13.49, 49.51],
+          [13.49, 49.49]
+        ]
+      ]
+    }
+  };
+  const index = geojsonvt(
+    { type: "FeatureCollection", features: [feature] },
+    { maxZoom: 14, tolerance: 0 }
+  );
+  await page.route("**/v2/discover/context**", (route) =>
+    route.fulfill({ status: 503, json: { message: "guide unavailable" } })
+  );
+  await page.route("**/v2/discover/boundaries", (route) =>
+    route.fulfill({
+      json: {
+        ready: true,
+        revision,
+        tileTemplate: `/v2/discover/boundaries/${revision}/{level}/{z}/{x}/{y}.mvt`,
+        coverage: [{ country: "CZ", level: "lau", count: 1 }]
+      }
+    })
+  );
+  await page.route("**/v2/discover/boundaries/**/*.mvt", (route) => {
+    const match = /\/(\d+)\/(\d+)\/(\d+)\.mvt/.exec(route.request().url())!;
+    const tile = index.getTile(Number(match[1]), Number(match[2]), Number(match[3]));
+    return route.fulfill({
+      contentType: "application/vnd.mapbox-vector-tile",
+      body: tile ? Buffer.from(vtpbf.fromGeojsonVt({ boundaries: tile })) : Buffer.alloc(0)
+    });
+  });
+  await page.goto("/?mode=discover&lng=13.5&lat=49.5&z=11");
+  await page.waitForFunction(() => Boolean(window.__maposMap?.isStyleLoaded()));
+  await page.evaluate(async () => {
+    const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
+    getMapStore().setExperience("default");
+    getMapStore().setBoundariesEnabled(true);
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window
+          .__maposMap!.getStyle()
+          .layers.some((layer) => /^discover-boundary-\d+-fill$/.test(layer.id))
+      )
+    )
+    .toBe(true);
+  const point = await page.evaluate(() => window.__maposMap!.project([13.5, 49.5]));
+  await page.mouse.click(point.x, point.y);
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const { getMapStore } = await import(/* @vite-ignore */ "/src/store/mapStore.ts");
+        return getMapStore().areaSelection?.level;
+      })
+    )
+    .toBe("lau");
+  await expect.poll(() => page.evaluate(() => window.__maposMap!.getZoom())).toBeGreaterThan(11);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window
+          .__maposMap!.getStyle()
+          .layers.some((layer) => /^discover-boundary-\d+-fill$/.test(layer.id))
+      )
+    )
+    .toBe(false);
+  await expect(page.getByTestId("borders-toggle")).toHaveAttribute("aria-pressed", "true");
 });

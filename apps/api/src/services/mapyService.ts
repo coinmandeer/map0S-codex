@@ -1,3 +1,4 @@
+import { mapyBudget } from "./providerBudget/mapy.js";
 /** Thin server-side proxy for api.mapy.com.
  *
  *  Everything Mapy-shaped goes through here for one reason: MAPY_API_KEY must never reach the
@@ -37,7 +38,8 @@ function keyOrThrow(): string {
 
 async function mapyJson<T>(
   path: string,
-  params: Record<string, string | number | undefined>
+  params: Record<string, string | number | undefined>,
+  signal?: AbortSignal
 ): Promise<T> {
   const url = new URL(`${BASE}${path}`);
   url.searchParams.set("apikey", keyOrThrow());
@@ -45,7 +47,17 @@ async function mapyJson<T>(
     if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
   }
   return fetchJson<T>(url.toString(), {
+    signal,
     providerId: "mapy-api",
+    budget: mapyBudget(
+      path.includes("matrix")
+        ? "matrix"
+        : path.includes("routing")
+          ? "route"
+          : path.includes("elevation")
+            ? "elevation"
+            : "geocode"
+    ),
     ttlMs: 5 * 60_000,
     timeoutMs: 12_000,
     maxResponseBytes: 4 * 1024 * 1024
@@ -64,6 +76,7 @@ export async function fetchMapyTile(
   const url = `${BASE}/v1/maptiles/${mapset}/256${suffix}/${z}/${x}/${y}?apikey=${encodeURIComponent(keyOrThrow())}`;
   return fetchBytes(url, {
     providerId: "mapy-tiles",
+    budget: mapyBudget("tile"),
     // Browser/CDN cache headers own tile retention; keeping binary tiles in the JSON LRU would
     // waste API heap while providing no additional network saving.
     ttlMs: 0,
@@ -109,9 +122,10 @@ function normalizeItems(data: MapyItemsResponse): MapyGeocodeItem[] {
 export async function mapyGeocode(
   query: string,
   lang = "cs",
-  limit = 8
+  limit = 8,
+  signal?: AbortSignal
 ): Promise<MapyGeocodeItem[]> {
-  const data = await mapyJson<MapyItemsResponse>("/v1/geocode", { query, lang, limit });
+  const data = await mapyJson<MapyItemsResponse>("/v1/geocode", { query, lang, limit }, signal);
   return normalizeItems(data);
 }
 
@@ -123,14 +137,15 @@ export async function mapySuggest(opts: {
   lang?: string;
   limit?: number;
   bbox?: Bbox;
-  type?: "poi" | "regional" | "regional.address";
+  type?: "poi" | "regional" | "regional.address" | "all";
   preferNear?: [number, number];
+  signal?: AbortSignal;
 }): Promise<MapyGeocodeItem[]> {
   const params: Record<string, string | number | undefined> = {
     query: opts.query,
     lang: opts.lang ?? "cs",
     limit: Math.min(opts.limit ?? 15, 15),
-    type: opts.type ?? "poi"
+    type: opts.type === "all" ? undefined : (opts.type ?? "poi")
   };
   if (opts.bbox) {
     const [w, s, e, n] = opts.bbox;
@@ -139,7 +154,7 @@ export async function mapySuggest(opts: {
   if (opts.preferNear) {
     params.preferNear = `${opts.preferNear[0]},${opts.preferNear[1]}`;
   }
-  const data = await mapyJson<MapyItemsResponse>("/v1/suggest", params);
+  const data = await mapyJson<MapyItemsResponse>("/v1/suggest", params, opts.signal);
   return normalizeItems(data);
 }
 
@@ -176,6 +191,7 @@ export async function mapyRoute(opts: {
   waypoints: [number, number][];
   profile: MapyRouteProfile;
   avoidToll?: boolean;
+  signal?: AbortSignal;
 }): Promise<MapyRoute> {
   const [start, ...rest] = opts.waypoints;
   const end = rest.pop();
@@ -190,11 +206,33 @@ export async function mapyRoute(opts: {
   };
   if (rest.length) params.waypoints = rest.map((w) => `${w[0]},${w[1]}`).join(";");
 
-  const data = await mapyJson<MapyRoutePayload>("/v1/routing/route", params);
-  return normalizeMapyRoute(data);
+  const data = await mapyJson<MapyRoutePayload>("/v1/routing/route", params, opts.signal);
+  const route = normalizeMapyRoute(data);
+  assertRouteAccess(data.routePoints, opts.profile);
+  return route;
 }
 
+export class RouteAccessError extends Error {
+  readonly name = "RouteAccessError";
+}
+export function assertRouteAccess(
+  points: MapyRoutePayload["routePoints"],
+  profile: MapyRouteProfile
+) {
+  for (const [i, point] of (points ?? []).entries()) {
+    if (!point.restricted) continue;
+    if (point.restrictionType === "PEDESTRIAN_ZONE" && profile.startsWith("foot_")) continue;
+    const reason =
+      point.restrictionType === "CLOSURE"
+        ? "uzavírka"
+        : point.restrictionType === "NO_ENTRY"
+          ? "zákaz vstupu nebo vjezdu"
+          : "omezený přístup";
+    throw new RouteAccessError(`Zastávka ${i + 1}: ${reason}. Zvolte dostupný přístupový bod.`);
+  }
+}
 export interface MapyRoutePayload {
+  routePoints?: { restricted?: boolean; restrictionType?: string }[];
   length?: number;
   duration?: number;
   geometry?: {
@@ -235,10 +273,52 @@ export function normalizeMapyRoute(data: MapyRoutePayload): MapyRoute {
 }
 
 /** Elevation for a list of positions — used for route profiles and peak enrichment. */
-export async function mapyElevation(positions: [number, number][]): Promise<(number | null)[]> {
+export async function mapyElevation(
+  positions: [number, number][],
+  signal?: AbortSignal
+): Promise<(number | null)[]> {
   if (!positions.length) return [];
-  const data = await mapyJson<{ items?: { elevation?: number }[] }>("/v1/elevation", {
-    positions: positions.map((p) => `${p[0]},${p[1]}`).join(";")
-  });
+  const data = await mapyJson<{ items?: { elevation?: number }[] }>(
+    "/v1/elevation",
+    {
+      positions: positions.map((p) => `${p[0]},${p[1]}`).join(";")
+    },
+    signal
+  );
   return positions.map((_, i) => data.items?.[i]?.elevation ?? null);
+}
+
+/** A bounded 10×10 matrix shares the same project credits as tiles and search. */
+export async function mapyRouteMatrix(
+  points: readonly [number, number][],
+  profile: MapyRouteProfile,
+  signal?: AbortSignal
+): Promise<number[][]> {
+  if (
+    points.length < 2 ||
+    points.length > 10 ||
+    !points.every(
+      (p) =>
+        p.length === 2 && p.every(Number.isFinite) && Math.abs(p[0]) <= 180 && Math.abs(p[1]) <= 90
+    )
+  )
+    throw new Error("Invalid matrix points");
+  const data = await mapyJson<{ matrix?: { length: number; duration: number }[][] }>(
+    "/v1/routing/matrix-m",
+    { starts: points.map((p) => p.join(",")).join(";"), routeType: profile },
+    signal
+  );
+  if (
+    !Array.isArray(data.matrix) ||
+    data.matrix.length !== points.length ||
+    !data.matrix.every((row) => Array.isArray(row) && row.length === points.length)
+  )
+    throw new Error("Invalid routing matrix");
+  return data.matrix.map((row) =>
+    row.map((cell) =>
+      Number.isFinite(cell?.duration) && cell.duration >= 0 && cell.length >= 0
+        ? cell.duration
+        : Infinity
+    )
+  );
 }

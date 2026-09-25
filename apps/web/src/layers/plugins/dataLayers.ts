@@ -1,3 +1,4 @@
+import { GOLEMIO_LAYERS } from "@mapos/layer-sdk";
 import { registerLayer, registerLayerV2, type MapLayerPlugin } from "../registry";
 import { createDataLayer, type DataLayerSpec } from "../dataLayer";
 import type {
@@ -568,6 +569,23 @@ dataPlugin({
   // visit to a city can come back empty until the right operator has been seen once.
   experimental: true,
   spec: { color: "#22c55e", labelFromZoom: 14 },
+  minQueryZoom: 9,
+  detail: {
+    fieldOrder: [
+      "operator",
+      "vehiclesAvailable",
+      "docksAvailable",
+      "availabilityStatus",
+      "reportedAt",
+      "renting",
+      "returning",
+      "capacity",
+      "attribution",
+      "license",
+      "licenseUrl",
+      "sourceUrl"
+    ]
+  },
   attribution: [
     {
       label: "GBFS operátoři",
@@ -699,6 +717,103 @@ dataPlugin({
       label: "MeshCore Analyzer",
       url: "https://analyzer.meshcore.cz/",
       license: "community data"
+    }
+  ]
+});
+
+for (const [id, , name] of GOLEMIO_LAYERS)
+  dataPlugin({
+    id,
+    name,
+    icon: "📍",
+    description: `${name} · Golemio. Pokrytí Praha a okolí, datum aktualizace u objektů.`,
+    category: "community",
+    minQueryZoom: 10,
+    requiresCapability: "golemio",
+    spec: { color: "#0d9488", labelFromZoom: 14 },
+    detail: {
+      fieldOrder: [
+        "address",
+        "district",
+        "description",
+        "openingHours",
+        "updatedAt",
+        "dataScope",
+        "sourceUrl"
+      ]
+    },
+    attribution: [
+      {
+        label: "Golemio / Operátor ICT a poskytovatel datasetu",
+        url: "https://api.golemio.cz/docs/openapi/",
+        license: "Golemio Open Data — podmínky jednotlivých datasetů"
+      }
+    ]
+  });
+
+dataPlugin({
+  id: "makerspaces",
+  name: "Hackerspaces a makerspaces",
+  icon: "🛠️",
+  category: "community",
+  description:
+    "Dobrovolný adresář SpaceAPI; podmínky vstupu podle provozovatele, nejde o úplnou mapu coworkingů.",
+  spec: { color: "#7c3aed", labelFromZoom: 12 },
+  detail: {
+    fieldOrder: ["address", "availability", "reportedAt", "description", "website", "sourceUrl"]
+  },
+  attribution: [
+    {
+      label: "SpaceAPI a provozovatelé prostorů",
+      url: "https://spaceapi.io/",
+      license: "Veřejné údaje poskytované provozovateli prostřednictvím SpaceAPI"
+    }
+  ]
+});
+
+dataPlugin({
+  id: "btcmap",
+  name: "Bitcoin místa · BTC Map",
+  icon: "₿",
+  category: "community",
+  minQueryZoom: 9,
+  description: "Komunitní mapa přijímání bitcoinu; datum ověření v detailu místa.",
+  spec: { color: "#f7931a", labelFromZoom: 13 },
+  detail: {
+    fieldOrder: [
+      "address",
+      "openingHours",
+      "verifiedAt",
+      "updatedAt",
+      "website",
+      "description",
+      "sourceUrl"
+    ]
+  },
+  attribution: [
+    {
+      label: "BTC Map / OpenStreetMap contributors",
+      url: "https://btcmap.org/",
+      license: "ODbL (OpenStreetMap data)"
+    }
+  ]
+});
+dataPlugin({
+  id: "europeana",
+  name: "Kulturní záznamy · Europeana",
+  icon: "🏛️",
+  category: "community",
+  minQueryZoom: 9,
+  requiresCapability: "europeana",
+  description:
+    "Experimentální výběr kulturních záznamů s jednoznačnou polohou; nejde o úplný seznam památek.",
+  spec: { color: "#9d174d", labelFromZoom: 13 },
+  detail: { fieldOrder: ["year", "dataProvider", "description", "objectRights", "sourceUrl"] },
+  attribution: [
+    {
+      label: "Europeana a poskytovatelé sbírek",
+      url: "https://www.europeana.eu/",
+      license: "CC0 (metadata); digitální objekty podle vlastních práv"
     }
   ]
 });

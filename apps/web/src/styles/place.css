@@ -475,3 +475,40 @@
     max-height: 65dvh;
   }
 }
+
+@layer components {
+  .ai-session-menu {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .ai-session-menu > summary {
+    cursor: pointer;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ai-session-controls {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 30;
+    width: min(280px, 65vw);
+    max-height: 65dvh;
+    overflow-y: auto;
+    padding: var(--space-3);
+    background: var(--surface-elevated);
+    box-shadow: var(--shadow-md);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+  .ai-session-controls select {
+    width: 100%;
+    min-width: 0;
+  }
+}

@@ -73,6 +73,14 @@ export function resolveLocationIntent(
     )
   )
     return { kind: "ai", input, query };
+  // Plan requests must win over POI/address words embedded in the request.
+  if (
+    /\b(vylet|vylety|naplanuj|doporuc|navrhni|pozorovat|hike|itinerary|plan a|recommend|suggest)\b/.test(
+      plain
+    ) ||
+    /^(pridej|odeber|zmen|uprav|add|remove|change)\b/.test(plain)
+  )
+    return { kind: "ai", input, query };
   if (ADDRESS.test(query)) return { kind: "address", input, query };
   if (LOCALITY_PREFIX.test(query)) {
     return { kind: "locality", input, query: query.replace(LOCALITY_PREFIX, "") };

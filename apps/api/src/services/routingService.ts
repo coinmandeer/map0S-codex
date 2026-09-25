@@ -3,6 +3,7 @@ import { config } from "../config.js";
 import { ClientError, safeErrorLogFields } from "../utils/clientError.js";
 import { fetchJson } from "../utils/upstream.js";
 import {
+  RouteAccessError,
   isMapyRouteProfile,
   mapyElevation,
   mapyRoute,
@@ -37,6 +38,7 @@ const MAPY_TO_OSRM: Record<MapyRouteProfile, RouteProfile> = {
 };
 
 export interface RouteResult {
+  legs?: Omit<RouteResult, "legs">[];
   coordinates: [number, number][];
   distanceM: number;
   durationS: number;
@@ -59,7 +61,8 @@ async function osrmRoutes(
   to: string,
   profile: RouteProfile,
   waypoints: string[] = [],
-  alternatives = 1
+  alternatives = 1,
+  signal?: AbortSignal
 ): Promise<RouteResult[]> {
   const osrmProfile = PROFILE_MAP[profile] ?? "foot";
   const points = [from, ...waypoints, to].join(";");
@@ -74,6 +77,7 @@ async function osrmRoutes(
       geometry: { coordinates: [number, number][] };
     }>;
   }>(url, {
+    signal,
     providerId: "routing-osrm",
     ttlMs: 5 * 60_000,
     timeoutMs: 10_000,
@@ -92,19 +96,21 @@ async function osrmRoutes(
 /** Samples the route at ~20 evenly spaced points — enough for a profile chart, far below the
  *  elevation endpoint's cost of one call per point at full geometry resolution. */
 async function sampleElevation(
-  coordinates: [number, number][]
+  coordinates: [number, number][],
+  signal?: AbortSignal
 ): Promise<(number | null)[] | undefined> {
   if (coordinates.length < 2) return undefined;
   const step = Math.max(1, Math.floor(coordinates.length / 20));
   const sampled = coordinates.filter((_, i) => i % step === 0);
   try {
-    return await mapyElevation(sampled);
+    return await mapyElevation(sampled, signal);
   } catch {
     return undefined;
   }
 }
 
 export interface FetchRouteOptions {
+  signal?: AbortSignal;
   provider?: DataProvider;
   waypoints?: string[];
   avoidToll?: boolean;
@@ -118,6 +124,7 @@ export async function fetchRouteAlternatives(
   profile: RouteProfile | MapyRouteProfile = "foot",
   options: FetchRouteOptions = {}
 ): Promise<RouteResult[]> {
+  options.signal?.throwIfAborted();
   const wantsMapy = options.provider === "mapy" && Boolean(config.mapyKey);
 
   if (wantsMapy) {
@@ -137,6 +144,7 @@ export async function fetchRouteAlternatives(
       const route = await mapyRoute({
         waypoints,
         profile: mapyProfile,
+        signal: options.signal,
         avoidToll: options.avoidToll
       });
       const coordinates = route.geometry.coordinates;
@@ -147,10 +155,12 @@ export async function fetchRouteAlternatives(
           durationS: route.duration,
           provider: "mapy",
           profile: mapyProfile,
-          elevation: await sampleElevation(coordinates)
+          elevation: await sampleElevation(coordinates, options.signal)
         }
       ];
     } catch (err) {
+      options.signal?.throwIfAborted();
+      if (err instanceof RouteAccessError) throw err;
       // A dead upstream or an exhausted quota must not break route planning outright.
       console.warn("Mapy routing failed; using OSRM fallback", safeErrorLogFields(err));
     }
@@ -159,7 +169,14 @@ export async function fetchRouteAlternatives(
   const osrmProfile: RouteProfile = isMapyRouteProfile(profile)
     ? MAPY_TO_OSRM[profile]
     : (profile as RouteProfile);
-  return osrmRoutes(from, to, osrmProfile, options.waypoints, options.alternatives ?? 1);
+  return osrmRoutes(
+    from,
+    to,
+    osrmProfile,
+    options.waypoints,
+    options.alternatives ?? 1,
+    options.signal
+  );
 }
 
 export async function fetchRoute(

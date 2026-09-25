@@ -75,13 +75,9 @@ export const useStatistics = () =>
 export const statisticsSnapshot = () => state;
 function persist() {
   const url = new URL(window.location.href);
-  if (state.activeId) url.searchParams.set("stat", state.activeId);
-  else url.searchParams.delete("stat");
-  url.searchParams.set("statPaused", String(suspended));
-  const id = state.activeId;
-  url.searchParams.set("statPeriod", id ? (state.periods[id] ?? "latest") : "latest");
-  url.searchParams.set("statExclude", id ? (state.excluded[id] ?? []).join(",") : "");
-  url.searchParams.set("statRegions", JSON.stringify(state.regions));
+  // Explicit share links are consumed; ordinary use does not restore overlays after refresh.
+  for (const key of ["stat", "statPaused", "statPeriod", "statExclude", "statRegions"])
+    url.searchParams.delete(key);
   window.history.replaceState(window.history.state, "", url);
 }
 export function showStatistics(open = true) {
@@ -111,13 +107,22 @@ export async function activateStatistic(
   id: string,
   period = state.periods[id] ?? "latest",
   excluded = state.excluded[id] ?? [],
-  options: { reveal?: boolean; fitCoverage?: boolean } = {}
+  options: {
+    reveal?: boolean;
+    fitCoverage?: boolean;
+    signal?: AbortSignal;
+    onApplied?: () => void;
+  } = {}
 ) {
+  if (options.signal?.aborted) return;
   suspended = false;
   const token = ++request;
   activationController?.abort();
   activationController = new AbortController();
-  const signal = activationController.signal;
+  const controller = activationController;
+  const signal = controller.signal;
+  const abort = () => controller.abort();
+  options.signal?.addEventListener("abort", abort, { once: true });
   update({
     activeId: id,
     open: options.reveal === true ? true : state.open,
@@ -134,7 +139,7 @@ export async function activateStatistic(
         getMapStore().toggleLayer(key);
     }
     const detail = await fetchThemeDetail(id, { period, excluded, signal, zoom: resolutionZoom });
-    if (token !== request) return;
+    if (token !== request || signal.aborted) return;
     const details = { ...state.details, [id]: detail };
     syncThemeLayers(Object.values(details));
     update({ details });
@@ -149,8 +154,9 @@ export async function activateStatistic(
         excluded: excluded.join(",")
       });
     }
-    if (token !== request) return;
+    if (token !== request || signal.aborted) return;
     update({ loading: false });
+    options.onApplied?.();
     const b = detail.coverageBbox;
     if (
       options.fitCoverage !== false &&
@@ -167,6 +173,8 @@ export async function activateStatistic(
         loading: false,
         error: error instanceof Error ? error.message : "Data unavailable"
       });
+  } finally {
+    options.signal?.removeEventListener("abort", abort);
   }
 }
 export function deactivateStatistic() {
@@ -233,6 +241,7 @@ export function attachStatisticsRuntime() {
   } catch {
     /* Invalid shared state is ignored. */
   }
+  persist();
   void fetchThemeSummaries()
     .then(async (catalog) => {
       if (disposed) return;

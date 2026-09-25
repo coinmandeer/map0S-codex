@@ -45,6 +45,64 @@ const DEFAULT_REFRESH_DEBOUNCE_MS = 300;
 /** Most of a screen, or a doubling of the span: past this, the previous answer was for a
  *  different place, and an expensive layer waits to be asked. */
 const PIN_CONFIRM_DRIFT = 0.6;
+/** Progressive sources answer "partial, ask again in N ms". Asking again re-reads every page, so
+ *  the polling backs off instead of hammering the same viewport eight times at a fixed rate. */
+const MAX_PROGRESSIVE_RETRIES = 6;
+const MAX_PROGRESSIVE_RETRY_MS = 15_000;
+/** Pages a first-party map request asks for. The server keeps a bounded snapshot of the whole
+ *  answer, so fewer, larger pages mean fewer sequential round trips for the same data. */
+const LEGACY_PAGE_LIMIT = 500;
+const WEB_MERCATOR_MAX_LAT = 85.0511287798066;
+
+/** Response sizes are known from the raw body; the cache reads them from here instead of
+ *  serialising the decoded collection a second time. */
+const responseBytes = new WeakMap<FeatureCollection, number>();
+
+function tileX(lng: number, z: number): number {
+  return ((lng + 180) / 360) * 2 ** z;
+}
+function tileY(lat: number, z: number): number {
+  const rad =
+    (Math.max(-WEB_MERCATOR_MAX_LAT, Math.min(WEB_MERCATOR_MAX_LAT, lat)) * Math.PI) / 180;
+  return ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * 2 ** z;
+}
+function tileLng(x: number, z: number): number {
+  return (x / 2 ** z) * 360 - 180;
+}
+function tileLat(y: number, z: number): number {
+  const n = Math.PI - (2 * Math.PI * y) / 2 ** z;
+  return (180 / Math.PI) * Math.atan(Math.sinh(n));
+}
+
+/**
+ * Grows a viewport outward to whole web-mercator tiles at the current integer zoom.
+ *
+ * A raw `getBounds()` changes with every sub-pixel pan, which made each request a unique URL: the
+ * browser cache, the engine cache, the server's paging snapshot and the provider cache all missed.
+ * Snapped edges are identical for everyone looking at the same area at the same zoom, and the
+ * margin (at most one tile per side) means short pans stay inside what was already fetched, so
+ * pins no longer stop at a hard rectangle after a small move or a window resize.
+ */
+export function snapBboxToTileGrid(bbox: Bbox, zoom: number): Bbox {
+  const z = Math.max(0, Math.min(18, Math.floor(Number.isFinite(zoom) ? zoom : 0)));
+  const west = Math.max(-180, Math.min(180, bbox[0]));
+  const east = Math.max(-180, Math.min(180, bbox[2]));
+  const south = Math.max(-WEB_MERCATOR_MAX_LAT, Math.min(WEB_MERCATOR_MAX_LAT, bbox[1]));
+  const north = Math.max(-WEB_MERCATOR_MAX_LAT, Math.min(WEB_MERCATOR_MAX_LAT, bbox[3]));
+  if (!(west < east) || !(south < north)) return bbox;
+  const limit = 2 ** z;
+  const x0 = Math.max(0, Math.floor(tileX(west, z)));
+  const x1 = Math.min(limit, Math.ceil(tileX(east, z)));
+  const y0 = Math.max(0, Math.floor(tileY(north, z)));
+  const y1 = Math.min(limit, Math.ceil(tileY(south, z)));
+  const round = (value: number) => Math.round(value * 1e6) / 1e6;
+  return [
+    round(tileLng(x0, z)),
+    round(tileLat(y1, z)),
+    round(tileLng(x1, z)),
+    round(tileLat(y0, z))
+  ];
+}
 
 export async function runBounded(jobs: Array<() => Promise<void>>, limit: number): Promise<void> {
   const workerCount = Math.max(1, Math.min(Math.trunc(limit) || 1, jobs.length));
@@ -59,7 +117,7 @@ export async function runBounded(jobs: Array<() => Promise<void>>, limit: number
   );
 }
 
-/** Small client-side response cache keyed by layer + rounded bbox + filters, so panning back
+/** Small client-side response cache keyed by layer + tile-snapped bbox + filters, so panning back
  * to a recently-seen area (or reapplying the same filter) renders instantly while the network
  * request revalidates in the background. */
 class FeatureCache {
@@ -101,7 +159,7 @@ class FeatureCache {
     this.store.delete(key);
     // Feature properties are the dominant part of the browser heap.  A byte budget complements
     // the entry cap so one unusually rich response cannot evict only a handful of tiny entries.
-    const bytes = Math.max(128, JSON.stringify(data).length * 2);
+    const bytes = Math.max(128, responseBytes.get(data) ?? estimateBytes(data));
     if (ttl <= 0) return;
     this.store.set(key, { data, ts: Date.now(), bytes, ttl });
     this.bytes += bytes;
@@ -145,7 +203,10 @@ export class LayerEngine {
     {
       key?: string;
       filterKey?: string;
+      /** The area the accepted answer covers (tile-snapped for viewport pin layers). */
       bbox?: Bbox;
+      /** The viewport that asked for it; drift is measured against this, not the margin. */
+      viewport?: Bbox;
       acceptedAt?: number;
       ttl?: number;
       status: "idle" | "loading" | "ready" | "partial" | "error" | "pending";
@@ -231,7 +292,19 @@ export class LayerEngine {
       !layerId.startsWith("live-") &&
       manifest?.queryPolicy.strategy === "manual" &&
       (managed.plugin.kind === "custom-gl" || manifest?.source.type === "inline");
-    const queryBbox: Bbox = global || manual || tiled ? [-180, -90, 180, 90] : bbox;
+    // Viewport pin layers ask for whole tiles; rasters, weather grids and live feeds keep the
+    // exact viewport they draw into.
+    const zoom = this.store.view?.zoom;
+    const snapped =
+      Number.isFinite(zoom) &&
+      !global &&
+      !manual &&
+      !tiled &&
+      managed.plugin.kind === "pins" &&
+      !isWeatherLayerId(layerId) &&
+      !layerId.startsWith("live-");
+    const requestBbox: Bbox = snapped ? snapBboxToTileGrid(bbox, zoom!) : bbox;
+    const queryBbox: Bbox = global || manual || tiled ? [-180, -90, 180, 90] : requestBbox;
     let revision = this.pluginRevisions.get(managed.plugin);
     if (revision === undefined) {
       revision = ++this.nextPluginRevision;
@@ -244,6 +317,7 @@ export class LayerEngine {
       global,
       tiled,
       manual,
+      requestBbox,
       ttl: (manifest?.queryPolicy.cacheTtlSeconds ?? 600) * 1000
     };
   }
@@ -396,7 +470,7 @@ export class LayerEngine {
         layerActivity.state(id, "zoom");
         this.store.setLayerNotice(
           id,
-          `Přibližte mapu alespoň na úroveň ${managed.plugin.minQueryZoom}.`
+          t("layers.zoomRequired", { zoom: managed.plugin.minQueryZoom })
         );
         continue;
       }
@@ -421,7 +495,7 @@ export class LayerEngine {
         state?.bbox &&
         viewportCostOf(managed.plugin) === "expensive" &&
         !query.global &&
-        viewportDrift(state.bbox, bbox) > PIN_CONFIRM_DRIFT
+        viewportDrift(state.viewport ?? state.bbox, bbox) > PIN_CONFIRM_DRIFT
       ) {
         state.status = "pending";
         layerActivity.state(id, "pending");
@@ -505,7 +579,7 @@ export class LayerEngine {
       const data =
         !force && cached
           ? cached
-          : await managed.handle.update(bbox, query.filters, controller.signal);
+          : await managed.handle.update(query.requestBbox, query.filters, controller.signal);
       if (!current()) return;
       if (data) {
         if (data.query?.status !== "unavailable") {
@@ -522,9 +596,9 @@ export class LayerEngine {
             (unavailable
               ? t("layers.loadFailed")
               : incomplete && data.query?.retryAfterMs
-                ? "Další výsledky se načítají…"
+                ? t("layers.moreLoading")
                 : incomplete
-                  ? "Výsledky jsou částečné. Přibliž mapu nebo obnov tuto oblast."
+                  ? t("layers.partialResults")
                   : undefined)
         );
       }
@@ -537,7 +611,8 @@ export class LayerEngine {
       this.states.set(id, {
         key: query.key,
         filterKey: query.filterKey,
-        bbox: data?.query?.bbox ?? bbox,
+        bbox: data?.query?.bbox ?? query.requestBbox,
+        viewport: bbox,
         acceptedAt: Date.now(),
         ttl: data?.query?.cacheTtlMs ?? query.ttl,
         status
@@ -598,7 +673,7 @@ export class LayerEngine {
         this.retryCounts.set(query.key, count);
         while (this.retryCounts.size > 100)
           this.retryCounts.delete(this.retryCounts.keys().next().value!);
-        if (count <= 8) {
+        if (count <= MAX_PROGRESSIVE_RETRIES) {
           this.retries.set(
             id,
             setTimeout(
@@ -612,7 +687,7 @@ export class LayerEngine {
                 )
                   this.refreshLayer(id, this.lastBbox);
               },
-              Math.max(1000, Math.min(data.query.retryAfterMs, 15000))
+              progressiveRetryDelay(data.query.retryAfterMs, count)
             )
           );
         }
@@ -633,7 +708,7 @@ export class LayerEngine {
         this.store.setLayerNotice(
           id,
           error instanceof ApiError && error.status === 409 && query.filters.areaId
-            ? "Oblast není dostupná. Obnovte výběr oblasti nebo jej zrušte."
+            ? t("layers.areaUnavailable")
             : t("layers.loadFailed")
         );
         this.tasks.fail(task.id, {
@@ -763,6 +838,18 @@ function stableKey(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** 1×, 1.5×, 2.25×… the server's hint, never under a second nor over fifteen. */
+export function progressiveRetryDelay(retryAfterMs: number, attempt: number): number {
+  const base = Math.max(1000, Number.isFinite(retryAfterMs) ? retryAfterMs : 2000);
+  return Math.min(MAX_PROGRESSIVE_RETRY_MS, Math.round(base * 1.5 ** Math.max(0, attempt - 1)));
+}
+
+function estimateBytes(data: FeatureCollection): number {
+  // Only reached for collections that did not come through `fetchLayerFeatures` (tile layers,
+  // inline answers): a cheap per-feature estimate is enough for an eviction budget.
+  return 256 + data.features.length * 512;
+}
+
 function containsBbox(a: Bbox, b: Bbox): boolean {
   return a[0] <= b[0] && a[1] <= b[1] && a[2] >= b[2] && a[3] >= b[3];
 }
@@ -781,7 +868,7 @@ export async function fetchLayerFeatures(
       Object.entries(filters).map(([k, v]) => [k, Array.isArray(v) ? v.join(",") : String(v)])
     )
   });
-  if (contractVersion === 2) params.set("limit", "100");
+  params.set("limit", contractVersion === 2 ? "100" : String(LEGACY_PAGE_LIMIT));
   const path =
     contractVersion === 2 ? `/v2/layers/${layerId}/features` : `/layers/${layerId}/features`;
   const res = await fetch(`${apiBase}${path}?${params}`, { signal });
@@ -847,5 +934,7 @@ export async function fetchLayerFeatures(
       break;
     }
   }
-  return { ...first, features, query: page.query };
+  const result = { ...first, features, query: page.query };
+  responseBytes.set(result, bytes);
+  return result;
 }

@@ -5,8 +5,8 @@ záznamy; jejich nezaškrtnuté úkoly nejsou automaticky seznamem chyb současn
 
 ## Stav vydání
 
-**Lokálně ověřený stabilizační kandidát, dosud nenasazený.** Veřejné `/api/health` a `/release.json`
-na mapos2 dne 23. září shodně vrátily `20260921-mapos2-layers-r2`. Zápis auditu
+**Nasazeno a veřejně ověřeno 23. září 2026.** Web a API na mapos2 shodně hlásí
+`20260923-stabilization-candidate`; web, API a PostgreSQL jsou zdravé. Zápis auditu
 z 20. září o tehdy neprovedeném nasazení proto nepopisuje dnešní produkci.
 Veřejné kontroly bezpečnostních hlaviček, CORS a ochrany účtu/operations prošly.
 
@@ -34,7 +34,7 @@ kontrolu typů, všech webových testů a produkčního sestavení.
 | Lint, formátování, kontrakty                      | Hotové                       | Lint bez chyb/varování, formát, manifest, 9 CLI testů, kontrakt vrstvy a 2 kontroly identity vydání.                            |
 | Architektura, CSS, tajné údaje                    | Hotové                       | Hranice modulů, tokeny a kontrola zdrojů i vytvořených artefaktů prošly.                                                        |
 | Zabalení pro nasazení                             | Hotová místní zkouška        | Dry run bez sítě; záměrně neplatný cíl `unconfigured.invalid:/unconfigured/mapos2`, žádná domněnka o skutečné instalaci.        |
-| Databáze, Docker a nasazení kandidáta             | Neověřené                    | Vyžaduje PostgreSQL/PostGIS, skutečnou obnovu zálohy, Docker sestavení a SSH cíl s cestou instalace.                            |
+| Databáze, Docker a nasazení kandidáta             | Hotové a ověřené             | Obě image sestaveny na VPS; záloha 223 159 537 B, restore drill, opakované migrace, kompatibilita starého API, veřejné smoke.   |
 | Další české pokrytí a slabší telefony             | Později / známé omezení      | Reálná geografická kontrola každé podvrstvy a přípojek; měření na fyzickém slabším telefonu. Offline fixtures toto neprokazují. |
 | Detail parcely, nové územní plány, FPS, ekonomika | Později                      | Mimo rozsah stabilizace.                                                                                                        |
 
@@ -55,8 +55,9 @@ kontrolu typů, všech webových testů a produkčního sestavení.
 - Mapa: 6 a 12 vrstev, 50 posunů, 30 přepnutí a 10 změn podkladu. Počty zdrojů, vrstev a posluchačů beze změny; růst hlavní JS paměti přibližně 11,4 a 13,4 MiB, pod příslušným limitem. GPU a paměť workerů se tímto neměří.
 - Hra: pět minut pohybu a přepínání, jeden hráč a vykreslovací cyklus, paměť v limitu, uvolnění scény po odchodu. Bez konzolových chyb.
 - Produkční sestavení upozorňuje na velké JS balíky nad 500 kB. Rozsáhlá změna dělení aplikace je odložená; měření na slabém fyzickém telefonu nebylo provedeno.
-- Živé placené poskytovatele, zeměpisné pokrytí všech vrstev, Docker image, skutečnou databázovou obnovu a provozní návrat nelze vydávat za ověřené offline testy.
-- Produkce mapos2 stále běží na `20260921-mapos2-layers-r2`. Kandidát nebyl odeslán ani aktivován. K dokončení jsou potřeba SSH cíl a adresář instalace, poté postup níže.
+- VPS má omezené zdroje: během sestavení API se dostupná paměť a swap téměř vyčerpaly, disk po nasazení hlásil přibližně 98 % využití. Sestavení nakonec uspělo; další nasazení vyžaduje nejdříve obnovit diskovou rezervu a neprovádět neověřený úklid dat.
+- Veřejný produkční build nadále hlásí JS chunky nad 500 kB; rozdělení aplikace a měření na slabém fyzickém telefonu jsou odložené.
+- Živé placené poskytovatele a úplné zeměpisné pokrytí všech vrstev nelze vydávat za ověřené lokální testy.
 
 ## Co patří do revize
 
@@ -89,18 +90,24 @@ Nedostupné provozní kontroly se nesmějí vykázat jako úspěšné.
 
 ## Nasazení a návrat
 
-Potřebné údaje: `DEPLOY_HOST` a explicitní `DEPLOY_REMOTE_DIR` ověřené instalace
-mapos2. Nepřebírat adresář původního mapos podle výchozí hodnoty skriptu.
-Nejprve spustit dry run `scripts/deploy-vps.sh <jedinečný-release>`; teprve po
-ověření cíle použít `DRY_RUN=0`. Skript obnoví zálohu v dočasné databázi, ověří
-migrace a kompatibilitu předchozího image a aktivuje kandidáta.
+Ověřený cíl nasazení je `/opt/ps3000/apps/mapos2` na mapos2 VPS. Vydání
+`20260923-stabilization-candidate` pochází z revize `52ceaf5e1bdfa73ad8e10d39fd2eb90a107ba526`
+(tag `stabilization-20260923-candidate`). Produkční záloha je uložena v
+`/opt/ps3000/apps/mapos2/backups/20260923-stabilization-candidate/mapos.dump`
+(223 159 537 bajtů, SHA-256
+`96f28069c23a3f1c0c17b75e2da904f986b967741e09173cb1cb93541ca41b2f`). Obnova
+do dočasné databáze, zápis/čtení dat, opakované migrace a rollback kompatibilita
+předchozího API prošly před aktivací.
 
 Nově se uvnitř rollback bloku kontroluje shoda očekávaného release s API a webem
 na loopbacku i veřejné doméně. Chyba vrací předchozí symlink a image; databázové
 migrace se neopravují přepisem historie ani mazáním nových sloupců.
 Závěrečné veřejné ověření:
 `bash scripts/smoke-vps-public.sh https://mapos2.promptstudio3000.com <release>`.
+Veřejný smoke pro toto vydání potvrdil shodu web/API release ID, health,
+bezpečnostní hlavičky, CSP, blokované cizí CORS, neautorizované mazání účtu a
+ochranu operations endpointu.
 
 Docker instaluje přes `npm ci` z povinného `package-lock.json`; nedochází k tichému
-přegenerování závislostí při sestavení. Skutečný Docker build zůstává provozním
-ověřením před aktivací.
+přegenerování závislostí při sestavení. Obě produkční Docker image byly pro toto
+vydání úspěšně sestaveny na cílovém VPS.

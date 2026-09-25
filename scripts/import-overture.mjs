@@ -20,7 +20,7 @@
  * `--bbox` is west,south,east,north. Run once per theme.
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, rmSync, statSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,11 +28,28 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "..");
 
 const RELEASE = process.env.OVERTURE_RELEASE ?? "2026-08-19.0";
+if (!/^\d{4}-\d{2}-\d{2}\.\d+$/.test(RELEASE)) throw new Error("Invalid pinned Overture release");
 const S3 = `s3://overturemaps-us-west-2/release/${RELEASE}`;
 
+const argumentsByName = new Map();
+const allowedArguments = new Set(["theme", "bbox", "out", "max-features", "max-zoom", "dry-run"]);
+for (let i = 2; i < process.argv.length; i++) {
+  const match = /^--([^=]+)(?:=(.*))?$/.exec(process.argv[i]);
+  if (!match || !allowedArguments.has(match[1]))
+    throw new Error(`Unknown argument: ${process.argv[i]}`);
+  const name = match[1];
+  if (argumentsByName.has(name)) throw new Error(`Duplicate --${name}`);
+  if (name === "dry-run") {
+    if (match[2] !== undefined) throw new Error("--dry-run does not take a value");
+    argumentsByName.set(name, true);
+  } else {
+    const value = match[2] ?? process.argv[++i];
+    if (!value || value.startsWith("--")) throw new Error(`Missing --${name} value`);
+    argumentsByName.set(name, value);
+  }
+}
 function arg(name, fallback = null) {
-  const index = process.argv.indexOf(`--${name}`);
-  return index >= 0 ? process.argv[index + 1] : fallback;
+  return argumentsByName.get(name) ?? fallback;
 }
 
 const theme = arg("theme", "places");
@@ -47,6 +64,15 @@ if (values.length !== 4 || !values.every(Number.isFinite)) {
   process.exit(1);
 }
 const [west, south, east, north] = values;
+if (west < -180 || east > 180 || south < -90 || north > 90 || west >= east || south >= north)
+  throw new Error("Invalid geographic extent");
+if (!Number.isSafeInteger(maxFeatures) || maxFeatures < 1 || maxFeatures > 200000)
+  throw new Error("--max-features must be between 1 and 200000");
+if (!Number.isSafeInteger(maxZoom) || maxZoom < 0 || maxZoom > 16)
+  throw new Error("--max-zoom must be between 0 and 16");
+if ((east - west) * (north - south) > 25)
+  throw new Error("Choose a regional extract of at most 25 square degrees");
+const sqlString = (value) => "'" + value.replaceAll("'", "''") + "'";
 
 const SOURCES = {
   places: {
@@ -81,7 +107,6 @@ if (!source) {
   process.exit(1);
 }
 
-mkdirSync(dirname(out), { recursive: true });
 // Intermediates are dot-files beside the archive and are removed afterwards either way.
 const geojsonPath = resolve(dirname(out), `.${theme}.geojson`);
 const pmtilesTmp = resolve(dirname(out), `.${theme}.tmp.pmtiles`);
@@ -92,6 +117,9 @@ INSTALL spatial; LOAD spatial;
 INSTALL httpfs; LOAD httpfs;
 SET s3_region='us-west-2';
 SET http_timeout=300000;
+SET memory_limit='1GB';
+SET threads=2;
+SET max_temp_directory_size='1GB';
 -- Coordinates are lon/lat throughout; pinning the axis order stops the GDAL driver from
 -- interpreting EPSG:4326 as lat/lon and writing swapped geometry.
 SET geometry_always_xy = true;
@@ -99,17 +127,28 @@ SET geometry_always_xy = true;
 COPY (
   SELECT
     ${source.select},
-    ST_Point(
-      bbox.xmin + (bbox.xmax - bbox.xmin) / 2,
-      bbox.ymin + (bbox.ymax - bbox.ymin) / 2
-    ) AS geom
-  FROM read_parquet('${source.parquet}', hive_partitioning=1)
-  WHERE bbox.xmin >= ${west} AND bbox.xmax <= ${east}
-    AND bbox.ymin >= ${south} AND bbox.ymax <= ${north}
+    CAST(sources AS JSON) AS source_provenance,
+    '${RELEASE}' AS source_release,
+    geometry AS geom
+  FROM read_parquet(${sqlString(source.parquet)}, hive_partitioning=1)
+  WHERE bbox.xmin <= ${east} AND bbox.xmax >= ${west}
+    AND bbox.ymin <= ${north} AND bbox.ymax >= ${south}
+    AND ST_Intersects(geometry, ST_MakeEnvelope(${west},${south},${east},${north}))
   LIMIT ${maxFeatures}
-) TO '${geojsonPath}' WITH (FORMAT GDAL, DRIVER 'GeoJSON');
+) TO ${sqlString(geojsonPath)} WITH (FORMAT GDAL, DRIVER 'GeoJSON');
 `;
 
+if (argumentsByName.has("dry-run")) {
+  console.log(
+    JSON.stringify(
+      { release: RELEASE, theme, bbox: values, maxFeatures, maxZoom, out, sql: exportSql },
+      null,
+      2
+    )
+  );
+  process.exit(0);
+}
+mkdirSync(dirname(out), { recursive: true });
 console.log(`Importing Overture "${theme}" for bbox ${bbox}`);
 console.log(`  release ${RELEASE}, cap ${maxFeatures} features -> ${out}`);
 
@@ -152,8 +191,25 @@ try {
 
   // Move into place only once the archive exists, so a failed run never leaves a half-written
   // archive where the server would serve it.
-  rmSync(out, { force: true });
-  spawnSync("mv", [pmtilesTmp, out], { stdio: "inherit" });
+  renameSync(pmtilesTmp, out);
+  writeFileSync(
+    `${out}.json`,
+    JSON.stringify(
+      {
+        release: RELEASE,
+        theme,
+        bbox: values,
+        featureCap: maxFeatures,
+        complete: false,
+        note: "Bounded extract; feature cap and tile simplification may omit objects.",
+        geometry: "Original source geometry retained; boundary-crossing features included.",
+        generatedAt: new Date().toISOString(),
+        source: "https://docs.overturemaps.org/attribution/"
+      },
+      null,
+      2
+    ) + "\n"
+  );
 
   const size = statSync(out).size;
   console.log(`\nDone: ${out} (${(size / 1024 / 1024).toFixed(2)} MB)`);

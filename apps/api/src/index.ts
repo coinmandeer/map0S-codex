@@ -1,3 +1,8 @@
+import { postgresChatRequests } from "./services/ai/chatRequests.js";
+import { postgresMapArtifacts } from "./services/ai/mapArtifacts.js";
+import { providerBudgets } from "./services/providerBudget/repository.js";
+import { PUBLIC_AI_CATALOG_IDS } from "./services/ai/chatComposition.js";
+import { postgresChatHistory } from "./services/ai/chatHistory.js";
 import { OverviewService } from "./services/ai/overviewService.js";
 import { sourcePlaceDetail } from "./services/ai/sourceDetail.js";
 import {
@@ -64,7 +69,7 @@ import {
   unfollow,
   upsertReview
 } from "./services/socialService.js";
-import { mapyGeocode } from "./services/mapyService.js";
+import { mapyGeocode, mapySuggest } from "./services/mapyService.js";
 import {
   presentMapyGeocodeResult,
   presentNominatimGeocodeResult,
@@ -316,10 +321,28 @@ export async function buildApp(options: BuildAppOptions = {}) {
   app.get("/config", async () => {
     const base = capabilities();
     const mapy = await getMapyReadiness();
+    const [mapyBudgetReady, googleBudgetReady] = await Promise.all([
+      base.mapy
+        ? providerBudgets.available({
+            product: "mapy-credits",
+            account: process.env.MAPY_BUDGET_ACCOUNT ?? "",
+            operation: "tile"
+          })
+        : false,
+      base.googleTiles
+        ? providerBudgets.available({
+            product: "google-tiles",
+            account: process.env.GOOGLE_BUDGET_ACCOUNT ?? "",
+            operation: "tile"
+          })
+        : false
+    ]);
     return {
       capabilities: {
         ...base,
-        mapy: base.mapy && mapy.status === "ready",
+        mapy: base.mapy && mapy.status === "ready" && mapyBudgetReady,
+        googleTiles: base.googleTiles && googleBudgetReady,
+        googleSatellite: base.googleSatellite && googleBudgetReady,
         // MapTiler browser keys are intentionally public and should be restricted to the
         // deployment origin in MapTiler Cloud. Keeping the value next to the capability lets
         // direct tile/weather requests obey MapTiler's end-client requirement.
@@ -384,13 +407,16 @@ export async function buildApp(options: BuildAppOptions = {}) {
     area: (areaId, boundaryRevision) => resolveAreaSelection({ areaId, boundaryRevision })
   });
   registerAiRoutes(app, {
+    chatRequests: postgresChatRequests,
+    chatHistory: postgresChatHistory,
+    mapArtifacts: postgresMapArtifacts,
     overview: overviewService,
     overviewSnapshots: postgresOverviewSnapshots,
     resolveArea: resolveAreaSelection,
     orchestrator: aiRuntime.orchestrator,
     planProposals,
     resolveUserId: async (request) => (await getSessionUser(getSessionId(request)))?.id ?? null,
-    allowedLayerIds: new Set(["osm-poi", "vanlife", "park4night", "events", "satellites"]),
+    allowedLayerIds: PUBLIC_AI_CATALOG_IDS,
     chatTurn: createAiChatTurnFactory({
       persistence: postgresConversationPersistence,
       overview: overviewService,
@@ -543,6 +569,8 @@ export async function buildApp(options: BuildAppOptions = {}) {
       tag?: string;
       country?: string;
       sources?: string;
+      limit?: string;
+      cursor?: string;
     };
   }>("/layers/:layerId/features", async (request, reply) => {
     try {
@@ -1526,7 +1554,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     return { url };
   });
 
-  app.get<{ Querystring: { q?: string; provider?: string } }>(
+  app.get<{ Querystring: { q?: string; provider?: string; autocomplete?: string } }>(
     "/geocode",
     async (request, reply) => {
       const q = (request.query.q ?? "").trim();
@@ -1536,7 +1564,10 @@ export async function buildApp(options: BuildAppOptions = {}) {
       // fallback whenever Mapy is unavailable, so search never goes dead.
       if (request.query.provider !== "osm" && capabilities().mapy) {
         try {
-          const items = await mapyGeocode(q, "cs", 5);
+          const items =
+            request.query.autocomplete === "true"
+              ? await mapySuggest({ query: q, limit: 5, type: "all" })
+              : await mapyGeocode(q, "cs", 5);
           if (items.length) {
             return {
               results: items.map(presentMapyGeocodeResult)
@@ -1547,6 +1578,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
         }
       }
 
+      if (request.query.autocomplete === "true") return { results: [] };
       try {
         const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${encodeURIComponent(q)}`;
         const data = await fetchJson<NominatimGeocodeItem[]>(url, {

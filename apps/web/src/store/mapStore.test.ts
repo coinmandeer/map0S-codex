@@ -375,7 +375,11 @@ test("temporary answers replace each other, preserve original layers and resolve
   });
   assert.equal(store.selectedPin?.layerId, "osm-poi");
   assert.equal(store.selectedPin?.feature.properties.id, "123");
-  assert.ok(window.location.search.includes("ai-answer-"));
+  assert.equal(
+    window.location.search.includes("ai-answer-"),
+    false,
+    "transient answers never persist in the URL"
+  );
   store.hideAnswerResults();
   assert.deepEqual(Object.keys(store.activeLayers).sort(), before);
   assert.equal(
@@ -413,4 +417,50 @@ test("activating a route network commits requested filters in the same state cha
   assert.deepEqual(store.activeLayers["waymarked-trails"]?.filters, { activity: ["cycling"] });
   assert(notifications.every((filters) => JSON.stringify(filters) === '{"activity":["cycling"]}'));
   off();
+});
+
+test("the retired camping layer turns on its categories in the POI layer, never a duplicate", async () => {
+  installBrowserStub();
+  const { MapStore } = await import("./mapStore");
+  const store = new MapStore();
+  if (store.activeLayers["osm-poi"]?.visible) store.toggleLayer("osm-poi");
+  store.activateLayer("vanlife");
+  assert.equal(store.activeLayers.vanlife, undefined);
+  assert.equal(store.activeLayers["osm-poi"]?.visible, true);
+  const categories = store.activeLayers["osm-poi"]?.filters.categories as string[];
+  for (const category of ["camp_site", "caravan_site", "dump_station"])
+    assert.ok(categories.includes(category), category);
+});
+
+test("a saved stack or preset carrying the retired id restores as the POI layer", async () => {
+  installBrowserStub();
+  const { MapStore } = await import("./mapStore");
+  const store = new MapStore();
+  const appearance = store.captureAppearance();
+  store.restoreAppearance({
+    ...appearance,
+    layers: {
+      vanlife: { visible: true, selected: true, opacity: 1, filters: { categories: ["camp_site"] } }
+    }
+  });
+  assert.deepEqual(Object.keys(store.activeLayers), ["osm-poi"]);
+  assert.deepEqual(store.activeLayers["osm-poi"]?.filters.categories, ["camp_site"]);
+});
+
+test("refresh clears 3D and persisted world overlays while retaining basemap and saved preferences", async () => {
+  const { MapStore } = await import("./mapStore.js");
+  const keys = new Map<string, string>();
+  for (const key of ["mapos:buildings-3d", "mapos:terrain-3d", "mapos:experience"])
+    keys.set(key, window.localStorage.getItem(key) ?? "");
+  window.localStorage.setItem("mapos:buildings-3d", "1");
+  window.localStorage.setItem("mapos:terrain-3d", "1");
+  window.localStorage.setItem("mapos:experience", "aavegotchi");
+  const next = new MapStore();
+  assert.equal(next.state.buildings3d, false);
+  assert.equal(next.state.terrain3d, false);
+  assert.equal(next.state.experienceId, "default");
+  for (const [key, value] of keys) {
+    if (value) window.localStorage.setItem(key, value);
+    else window.localStorage.removeItem(key);
+  }
 });

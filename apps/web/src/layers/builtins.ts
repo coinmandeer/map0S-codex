@@ -1,10 +1,14 @@
-import { OSM_POI_CATEGORIES, VANLIFE_CATEGORIES } from "@mapos/layer-sdk";
+import "./plugins/planningEnvironmentLayers";
+import "./plugins/gdacsLayer";
+import { OSM_POI_CATEGORIES } from "@mapos/layer-sdk";
 import { registerLayer } from "./registry";
 import "./plugins/tileLayers";
 import "./plugins/czechLayers";
 import "./plugins/snowCoverLayer";
 import "./plugins/roadsLayer";
 import "./plugins/landCoverLayer";
+import "./plugins/worldCoverLayer";
+import "./plugins/globalEnvironmentLayers";
 import "./plugins/overtureLayers";
 import "./plugins/streetObjectsLayer";
 import "./plugins/liveTraffic";
@@ -15,6 +19,9 @@ import "./plugins/infrastructureLayer";
 import "./plugins/protectedAreasLayer";
 import "./plugins/europeEnvironmentLayers";
 import "./plugins/skyLayers";
+import "./plugins/auroraLayer";
+import "./plugins/skyAtlasLayer";
+import "./plugins/soilGridsLayer";
 import "./savedPlacesLayer";
 import { createPinsLayerHandle } from "./pinsLayer";
 import { createWeatherLayerHandle } from "./weatherLayer";
@@ -60,7 +67,9 @@ registerLayer({
       id: "categories",
       label: "Kategorie",
       kind: "multi-select",
-      options: Object.entries(OSM_POI_CATEGORIES).map(([id, c]) => ({ id, label: c.label })),
+      options: Object.entries(OSM_POI_CATEGORIES)
+        .filter(([id]) => id !== "cannabis")
+        .map(([id, c]) => ({ id, label: c.label })),
       default: ["castle", "viewpoint", "parking"]
     }
   ],
@@ -68,6 +77,51 @@ registerLayer({
   // enabled set belongs in the filters that form the cache key.
   deriveFilters: (filters, ctx) => ({ ...filters, sources: ctx.enabledPoiSources }),
   reportsSourceStatus: true,
+  create: (ctx) => createPinsLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId, ctx.color),
+  attribution: [OSM_ATTRIBUTION]
+});
+
+registerLayer({
+  minQueryZoom: 8,
+  areaFilter: "geometry",
+  kind: "pins",
+  manifest: {
+    id: "weed",
+    name: "weed",
+    icon: "🌿",
+    color: "#16a34a",
+    description:
+      "Cannabis prodejny a léčebné výdejny z OpenStreetMap. Typ prodeje je uveden jen tam, kde ho OSM zná; nejde o ověření licence.",
+    category: "travel",
+    modes: ["discover"],
+    uiGroup: "places",
+    experienceIds: ["default", "aavegotchi"]
+  },
+  filters: [
+    {
+      id: "types",
+      label: "Typ prodeje",
+      kind: "multi-select",
+      options: [
+        { id: "dispensary", label: "Léčebná výdejna" },
+        { id: "shop", label: "Rekreační prodejna" },
+        { id: "both", label: "Léčebná i rekreační" },
+        { id: "unknown", label: "Typ neuveden" }
+      ],
+      default: ["dispensary", "shop", "both", "unknown"]
+    }
+  ],
+  defaultFilters: { types: ["dispensary", "shop", "both", "unknown"] },
+  legend: {
+    type: "categorical",
+    title: "Typ prodeje podle OSM",
+    items: [
+      { label: "Léčebná výdejna", color: "#0f766e" },
+      { label: "Rekreační prodejna", color: "#16a34a" },
+      { label: "Léčebná i rekreační", color: "#7c3aed" },
+      { label: "Typ neuveden", color: "#64748b" }
+    ]
+  },
   create: (ctx) => createPinsLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId, ctx.color),
   attribution: [OSM_ATTRIBUTION]
 });
@@ -342,7 +396,7 @@ registerLayer({
     category: "travel",
     experimental: true,
     // Prototype policy keeps rights metadata advisory. Availability is controlled only by the
-    // explicit server capability; the OSM vanlife layer below remains the keyless fallback.
+    // explicit server capability; the OSM camping categories of `osm-poi` are the keyless fallback.
     requiresCapability: "park4night"
   },
   // The upstream record already carries the category, the rating and five amenity flags, and
@@ -396,32 +450,5 @@ registerLayer({
   ]
 });
 
-registerLayer({
-  kind: "pins",
-  manifest: {
-    id: "vanlife",
-    name: "Karavany a kempy",
-    icon: "🚐",
-    color: "#0EA5A4",
-    description: "Kempy, stání pro obytná auta, výlevky a pitná voda z OpenStreetMap",
-    category: "travel",
-    modes: ["planning"],
-    uiGroup: "travel",
-    experienceIds: ["default", "aavegotchi"]
-  },
-  filters: [
-    {
-      id: "categories",
-      label: "Kategorie",
-      kind: "multi-select",
-      options: VANLIFE_CATEGORIES.map((id) => ({ id, label: OSM_POI_CATEGORIES[id].label })),
-      default: [...VANLIFE_CATEGORIES]
-    }
-  ],
-  // This is a thematic OSM layer, not a second copy of the whole fused catalogue. Keeping it
-  // OSM-only also keeps its attribution accurate and prevents community pins from being drawn
-  // again underneath the main POI layer.
-  deriveFilters: (filters) => ({ ...filters, sources: ["osm"] }),
-  create: (ctx) => createPinsLayerHandle(ctx.map, ctx.apiBaseUrl, ctx.layerId, ctx.color),
-  attribution: [OSM_ATTRIBUTION]
-});
+// `vanlife` was retired: it re-queried the camping categories `osm-poi` already offers, so both
+// on drew every campsite twice. Old links fold into `osm-poi` (see store/layerAliases.ts).

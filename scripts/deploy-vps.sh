@@ -14,7 +14,7 @@ MAPOS_PROJECT_DIR="$(cd "${MAPOS_SCRIPT_DIR}/.." && pwd)"
 MAPOS_TAG="${1:-$(date -u +%Y%m%dT%H%M%SZ)-mapos-v3}"
 MAPOS_HOST="${DEPLOY_HOST:-}"
 MAPOS_REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/ps3000/apps/mapos-v3}"
-MAPOS_PUBLIC_HOST="${DEPLOY_PUBLIC_HOST:-mapos2.promptstudio3000.com}"
+MAPOS_PUBLIC_HOST="${DEPLOY_PUBLIC_HOST:-mapos.promptstudio3000.com}"
 MAPOS_DRY_RUN="${DRY_RUN:-1}"
 MAPOS_USE_SUDO="${DEPLOY_SUDO:-0}"
 MAPOS_REMOTE_SHELL=(bash)
@@ -46,7 +46,7 @@ cleanup_local() {
 }
 trap cleanup_local EXIT
 
-[[ "${MAPOS_DRY_RUN}" != "0" || -n "${DEPLOY_REMOTE_DIR:-}" ]] || fail "DEPLOY_REMOTE_DIR must explicitly identify the mapos2 installation."
+[[ "${MAPOS_DRY_RUN}" != "0" || -n "${DEPLOY_REMOTE_DIR:-}" ]] || fail "DEPLOY_REMOTE_DIR must explicitly identify the active installation."
 [[ -n "${MAPOS_HOST}" ]] || fail "DEPLOY_HOST is required (for example user@your-server)."
 [[ "${MAPOS_HOST}" != *[[:space:]]* ]] || fail "DEPLOY_HOST must not contain whitespace."
 [[ "${MAPOS_DRY_RUN}" == "0" || "${MAPOS_DRY_RUN}" == "1" ]] || fail "DRY_RUN must be 0 or 1."

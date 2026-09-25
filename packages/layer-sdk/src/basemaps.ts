@@ -472,7 +472,7 @@ export const BASEMAPS: BasemapDefinition[] = [
     hint: "Google satelitní podklad bez popisků",
     kind: "raster",
     proxy: { provider: "google", mapset: "satellite" },
-    requiresCapability: "googleTiles",
+    requiresCapability: "googleSatellite",
     maxzoom: 22,
     imagery: true,
     attribution: [

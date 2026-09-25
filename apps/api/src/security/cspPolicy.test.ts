@@ -26,7 +26,11 @@ test("production CSP stays synchronized with the embed allowlist and reporting e
   assert.ok(match, "production Content-Security-Policy header not found");
   const policy = directives(match[1]!);
 
-  assert.deepEqual(policy.get("script-src"), ["'self'"]);
+  assert.deepEqual(policy.get("script-src"), [
+    "'self'",
+    "https://maps.googleapis.com",
+    "https://maps.gstatic.com"
+  ]);
   assert.deepEqual(policy.get("object-src"), ["'none'"]);
   assert.deepEqual(policy.get("report-uri"), [CSP_REPORT_PUBLIC_PATH]);
   assert.deepEqual(

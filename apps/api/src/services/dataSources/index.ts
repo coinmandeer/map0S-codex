@@ -1,3 +1,11 @@
+import { btcmap } from "./btcmap.js";
+import { europeana } from "./europeana.js";
+import { makerspaces } from "./spaces.js";
+import { golemioSources } from "./golemio.js";
+import { planningEnvironmentSources } from "./planningEnvironment.js";
+import { gdacs } from "./gdacs.js";
+import { skyAtlas } from "./skyAtlas.js";
+import { aurora } from "./aurora.js";
 import type { FeatureProvider } from "../featureProviders.js";
 import { UpstreamError } from "../../utils/upstream.js";
 import { featureQueryResult, featureV1ToV2 } from "@mapos/layer-sdk";
@@ -10,6 +18,14 @@ import { meshcore } from "./mesh.js";
 import { featureCollection, sourceResult, type DataSource } from "./types.js";
 
 const SOURCES: DataSource[] = [
+  ...golemioSources,
+  makerspaces,
+  btcmap,
+  europeana,
+  ...planningEnvironmentSources,
+  gdacs,
+  aurora,
+  skyAtlas,
   ...natureSources,
   ...communitySources,
   ...mobilitySources,

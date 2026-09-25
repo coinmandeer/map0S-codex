@@ -16,6 +16,7 @@ import { dirname, resolve } from "node:path";
 
 export type AiPromptId =
   | "ai-chat-turn.v1"
+  | "ai-chat-turn.v2"
   | "guide-synthesis.v1"
   | "poi-brief.v1"
   | "plan-discussion.v1"
@@ -24,6 +25,7 @@ export type AiPromptId =
 
 export const AI_PROMPT_IDS: readonly AiPromptId[] = [
   "ai-chat-turn.v1",
+  "ai-chat-turn.v2",
   "guide-synthesis.v1",
   "poi-brief.v1",
   "plan-discussion.v1",

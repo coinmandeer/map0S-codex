@@ -149,14 +149,8 @@ describe("layer registry", () => {
       { country: "CZ" }
     );
 
-    const vanlife = getLayerPlugin("vanlife")!;
-    assert.deepEqual(
-      vanlife.deriveFilters!(
-        { categories: ["camp_site"] },
-        { activeTag: null, countryCode: "CZ", enabledPoiSources: ["osm", "user", "mapy"] }
-      ),
-      { categories: ["camp_site"], sources: ["osm"] }
-    );
+    // The camping duplicate of the POI layer is retired; its categories live in `osm-poi`.
+    assert.equal(getLayerPlugin("vanlife"), undefined);
   });
 
   it("every registered layer carries the fields the shell reads", () => {

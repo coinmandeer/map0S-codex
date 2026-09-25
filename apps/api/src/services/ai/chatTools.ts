@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { bboxAround } from "./placeSearch.js";
+import { deriveRadiusArea } from "./derivedArea.js";
+import { catalogSearchScore } from "@mapos/layer-sdk";
 import type { AreaSelection } from "@mapos/layer-sdk";
 /**
  * The tool handlers behind the assistant (§30.3 "reálné handlery").
@@ -22,6 +26,16 @@ import { nearestPoiSourceFromSearch, type AiPlaceSearchSource } from "./placeSea
 import type { AiToolExecutionContext, AiToolRegistry, AiToolTrace } from "./toolRegistry.js";
 
 export interface AiChatLayerDescriptor {
+  data?: import("@mapos/layer-sdk").CatalogDataInfo;
+  availability?: "ready" | "unchecked" | "unavailable";
+  unavailableReason?: string;
+  checkedAt?: string;
+  kind?: "overlay" | "basemap";
+  sourceLayerId?: string;
+  aliases?: readonly string[];
+  facet?: string;
+  description?: string;
+  requiresCapability?: string;
   layerId: string;
   name: string;
   categories: readonly string[];
@@ -48,19 +62,41 @@ export interface AiChatCitation {
 /** Everything the assistant can be given access to. Optional members are optional on purpose:
  *  the offline server composes a subset and the model is told only about that subset. */
 export interface AiChatToolProviders {
+  nightSky?: (
+    lng: number,
+    lat: number,
+    at: string,
+    signal?: AbortSignal
+  ) => Promise<import("../nightSkyService.js").NightSkyConditions>;
+  routeMatrix?: import("./chatService.js").AiChatServiceOptions["routeMatrix"];
+  routePlan?: import("./chatService.js").AiChatServiceOptions["routePlan"];
+  resolveLocation?: (
+    query: string,
+    signal?: AbortSignal
+  ) => Promise<{ name: string; longitude: number; latitude: number }[]>;
   statisticalAnswer?: import("./chatService.js").AiChatServiceOptions["statistics"];
   placeSearch: AiPlaceSearchSource;
-  layers(): readonly AiChatLayerDescriptor[];
+  layers(): readonly AiChatLayerDescriptor[] | Promise<readonly AiChatLayerDescriptor[]>;
   queryLayer?(
     input: {
       layerId: string;
       area?: AreaSelection | null;
       bbox: Bbox;
-      filters?: { openNow?: boolean; minRating?: number; tags?: readonly string[] };
+      filters?: {
+        openNow?: boolean;
+        minRating?: number;
+        tags?: readonly string[];
+        categories?: readonly string[];
+        sources?: readonly string[];
+      };
       limit: number;
     },
     context: AiToolExecutionContext
-  ): Promise<{ features: AiChatSourcedFeature[]; sources: AiChatCitation[] }>;
+  ): Promise<{
+    features: AiChatSourcedFeature[];
+    sources: AiChatCitation[];
+    mapResult?: import("@mapos/layer-sdk").MapResultDraft;
+  }>;
   featureDetail?(
     input: { layerId: string; featureId: string; fields: readonly string[] },
     context: AiToolExecutionContext
@@ -183,6 +219,7 @@ export function createChatToolRegistry(options: {
       }
     : baseProviders;
   const available = new Set<string>([
+    "derive_radius_area",
     "get_current_map_context",
     "list_available_layers",
     "search_places",
@@ -190,27 +227,128 @@ export function createChatToolRegistry(options: {
   ]);
 
   const handlers: MapAiToolHandlers = {
+    derive_radius_area: async (input) => ({
+      mapResult: deriveRadiusArea(
+        mapContext.center.longitude,
+        mapContext.center.latitude,
+        Number(input.radiusKm)
+      ),
+      sources: [
+        { sourceId: "mapos-geometry", label: "mapOS · odvozená oblast podle vzdušné vzdálenosti" }
+      ]
+    }),
+    get_night_sky: providers.nightSky
+      ? async (input, context) => {
+          const point = input.point as { longitude: number; latitude: number };
+          return providers.nightSky!(
+            point.longitude,
+            point.latitude,
+            String(input.at),
+            context.signal
+          );
+        }
+      : notComposed,
+    resolve_location: providers.resolveLocation
+      ? async (input, context) => {
+          const locations = await providers.resolveLocation!(String(input.query), context.signal);
+          const first = locations[0];
+          if (
+            input.asPlace !== true &&
+            first &&
+            Number.isFinite(first.longitude) &&
+            Number.isFinite(first.latitude) &&
+            Math.abs(first.longitude) <= 180 &&
+            Math.abs(first.latitude) <= 90
+          ) {
+            mapContext.center = { longitude: first.longitude, latitude: first.latitude };
+            mapContext.bbox = bboxAround(first.longitude, first.latitude, 15000);
+            mapContext.area = null;
+          }
+          if (input.asPlace !== true) return { locations };
+          const places = locations
+            .filter(
+              (p) =>
+                Number.isFinite(p.longitude) &&
+                Number.isFinite(p.latitude) &&
+                Math.abs(p.longitude) <= 180 &&
+                Math.abs(p.latitude) <= 90
+            )
+            .slice(0, 5)
+            .map((p) => ({
+              id: `geocode:${createHash("sha256")
+                .update(JSON.stringify([p.name, p.longitude, p.latitude]))
+                .digest("hex")
+                .slice(0, 24)}`,
+              layerId: "osm-poi",
+              title: p.name.slice(0, 500),
+              category: "geocoded-place",
+              longitude: p.longitude,
+              latitude: p.latitude,
+              sourceId: "mapos-geocoder"
+            }));
+          return {
+            locations,
+            places,
+            sources: [
+              {
+                sourceId: "mapos-geocoder",
+                label:
+                  "Ověřená poloha z geokódování adresy / názvu; tematické tvrzení ověřte v citovaných zdrojích"
+              }
+            ]
+          };
+        }
+      : notComposed,
     get_current_map_context: async () => ({
       center: { ...mapContext.center },
       ...(mapContext.bbox ? { bbox: mapContext.bbox } : {}),
       zoom: mapContext.zoom,
       activeLayerIds: [...mapContext.activeLayerIds]
     }),
-    list_available_layers: async () => ({
-      layers: providers.layers().map((layer) => ({
-        layerId: layer.layerId,
-        name: layer.name,
-        categories: [...layer.categories],
-        access: layer.access
-      }))
-    }),
+    list_available_layers: async (input, context) => {
+      const query = typeof input.query === "string" ? input.query : "";
+      const offset = Number(input.offset ?? 0);
+      const limit = Number(input.limit ?? 20);
+      const matches = (await providers.layers())
+        .filter((layer) => context.projection.allowedLayerIds.has(layer.layerId))
+        .map((layer) => ({
+          layer,
+          score: query
+            ? catalogSearchScore(
+                query,
+                [layer.name, layer.layerId],
+                [...(layer.aliases ?? []), ...layer.categories]
+              )
+            : 1
+        }))
+        .filter((entry) => entry.score > 0)
+        .sort((a, b) => b.score - a.score);
+      return {
+        layers: matches
+          .slice(offset, offset + limit)
+          .map(({ layer }) => ({ ...layer, categories: [...layer.categories] })),
+        total: matches.length,
+        ...(offset + limit < matches.length ? { nextOffset: offset + limit } : {})
+      };
+    },
     search_places: async (input, context) =>
       providers.placeSearch.search(
         {
           ...(typeof input.query === "string" ? { query: input.query } : {}),
           ...(Array.isArray(input.categories) ? { categories: input.categories as string[] } : {}),
-          ...(input.near ? { near: input.near as { longitude: number; latitude: number } } : {}),
-          ...(Array.isArray(input.bbox) ? { bbox: input.bbox as Bbox } : {}),
+          near: input.near
+            ? (input.near as { longitude: number; latitude: number })
+            : Array.isArray(input.bbox)
+              ? {
+                  longitude: (Number(input.bbox[0]) + Number(input.bbox[2])) / 2,
+                  latitude: (Number(input.bbox[1]) + Number(input.bbox[3])) / 2
+                }
+              : mapContext.center,
+          ...(Array.isArray(input.bbox)
+            ? { bbox: input.bbox as Bbox }
+            : !input.near && mapContext.bbox
+              ? { bbox: mapContext.bbox }
+              : {}),
           ...(typeof input.radiusMeters === "number" ? { radiusMeters: input.radiusMeters } : {}),
           ...(input.filters ? { filters: asObject(input.filters) } : {}),
           limit: Number(input.limit)
@@ -326,9 +464,11 @@ export function createChatToolRegistry(options: {
     create_plan_draft: notComposed
   };
 
+  if (providers.nightSky) available.add("get_night_sky");
   if (providers.queryLayer) available.add("query_layer");
   if (providers.featureDetail) available.add("get_feature_detail");
   if (providers.savedPlaces) available.add("query_saved_places");
+  if (providers.resolveLocation) available.add("resolve_location");
   if (providers.route) available.add("route_segment");
   if (providers.weather) available.add("get_weather");
   if (providers.events) available.add("search_events");

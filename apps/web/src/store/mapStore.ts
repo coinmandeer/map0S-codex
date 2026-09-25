@@ -37,9 +37,10 @@ import {
   type AppModeInput,
   type AppModeResolution
 } from "../product/registry";
-import { readLayerSessionState, writeLayerSessionState } from "./layerSessionState";
+import { writeLayerSessionState } from "./layerSessionState";
+import { foldRetiredLayers, retiredFacetValues, retiredLayerAlias } from "./layerAliases";
 import { MAP_PRESETS } from "../product/presets";
-import { clearPresetBaseline, readPresetBaseline, writePresetBaseline } from "./presetBaseline";
+import { clearPresetBaseline, writePresetBaseline } from "./presetBaseline";
 import {
   loadUserPreferences,
   persistUserPreferences,
@@ -206,11 +207,6 @@ const ACTIVE_GAMES_KEY = "mapos:active-games";
 const ACTIVE_PLAN_KEY = "mapos:active-plan";
 const ACTIVE_PLAN_DOCUMENT_KEY = "mapos:active-plan-v2";
 
-function loadExperience(): ExperienceId {
-  if (typeof window === "undefined") return "default";
-  return window.localStorage.getItem(EXPERIENCE_KEY) === "aavegotchi" ? "aavegotchi" : "default";
-}
-
 function loadActiveGames(): string[] {
   if (typeof window === "undefined") return ["aavegotchi"];
   try {
@@ -277,11 +273,6 @@ function loadPoiSources(): Record<string, boolean> {
 function loadCountryCode(): string {
   if (typeof window === "undefined") return "CZ";
   return window.localStorage.getItem(COUNTRY_STORAGE_KEY) ?? "CZ";
-}
-
-function loadActiveTag(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TAG_STORAGE_KEY);
 }
 
 function loadGameTracking(): GameTrackingMode {
@@ -437,6 +428,13 @@ export const TOAST_MS = 4000;
 export class MapStore {
   private listeners = new Set<Listener>();
   private answerLayerId: string | null = null;
+  private worldLayers = new Map<string, string>();
+  private worldStorage = {
+    getItem: (key: string) => this.worldLayers.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      this.worldLayers.set(key, value);
+    }
+  };
   private worldAreas = new Map<string, AreaSelection | null>();
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   state: MapState;
@@ -445,17 +443,34 @@ export class MapStore {
     const { view, layers, modeResolution, preset } = parseUrlState();
     const { mode } = modeResolution;
     const activeLayers: MapState["activeLayers"] = {};
-    const layerSession = readLayerSessionState(
-      typeof window === "undefined" ? null : window.sessionStorage
-    );
+    // A shared URL is an explicit initial view, never a persistence mechanism.
+    const reloading =
+      typeof performance !== "undefined" &&
+      (performance.getEntriesByType?.("navigation")[0] as PerformanceNavigationTiming | undefined)
+        ?.type === "reload";
+    if (typeof window !== "undefined") {
+      try {
+        for (const key of ["mapos:layer-session-v1", "mapos:layer-session-v2"])
+          window.sessionStorage.removeItem(key);
+      } catch {
+        /* Session storage may be unavailable independently of local storage. */
+      }
+      try {
+        for (const key of [CATS_STORAGE_KEY, LAST_PRESET_KEY, TAG_STORAGE_KEY])
+          window.localStorage.removeItem(key);
+        clearPresetBaseline(window.localStorage);
+      } catch {
+        /* A clean start also works with storage disabled. */
+      }
+    }
     const legacyActivePlan: TripPlan | null = null;
     const activePlanDocument: PlanDocumentV2 | null = null;
     const preferences = loadUserPreferences(
       typeof window === "undefined" ? null : window.localStorage,
       typeof window === "undefined" ? null : window.localStorage.getItem(THEME_STORAGE_KEY)
     );
-    for (const id of layers.length ? layers : Object.keys(layerSession)) {
-      activeLayers[id] = layerSession[id] ?? { visible: true, opacity: 1, filters: {} };
+    for (const id of reloading ? [] : layers) {
+      activeLayers[id] = initialLayerState(id);
     }
     this.state = {
       view,
@@ -466,7 +481,7 @@ export class MapStore {
       // the snap §21.2 gives it. Leaving it closed on load was why `?mode=planning` showed a
       // bare handle under the top bar on mobile (§29.2/4).
       sidebarOpen: true,
-      activePresetId: loadLastPresetId(),
+      activePresetId: null,
       session: null,
       editMode: false,
       editLayerId: null,
@@ -481,14 +496,14 @@ export class MapStore {
       visibleFeatures: {},
       theme: resolveThemePreference(preferences.theme, prefersDarkScheme()),
       preferences,
-      experienceId: loadExperience(),
+      experienceId: "default",
       temporal: initialTemporalState(),
       areaSelection: null,
       boundariesEnabled: true,
       boundaryLevel: "auto",
       searchHerePending: false,
       countryCode: loadCountryCode(),
-      activeTag: loadActiveTag(),
+      activeTag: null,
       gameSuspendedLayers: [],
       gameTrackingMode: loadGameTracking(),
       gameCameraMode: loadGameCamera(),
@@ -499,8 +514,8 @@ export class MapStore {
       dataProvider: loadDataProvider(),
       basemapId: loadBasemapId(),
       basemapLabels: loadFlag(BASEMAP_LABELS_KEY, true),
-      buildings3d: loadFlag(BUILDINGS_3D_KEY, false),
-      terrain3d: loadFlag(TERRAIN_3D_KEY, false),
+      buildings3d: false,
+      terrain3d: false,
       poiSources: loadPoiSources(),
       sourceStatus: {},
       capabilities: null
@@ -522,39 +537,24 @@ export class MapStore {
       this.state.basemapId = this.state.theme === "dark" ? "carto-dark" : "carto-positron";
       this.state.sidebarOpen = false;
     }
-    // Activate the mode's primary layer on first load when URL didn't list any layers.
-    const primary = primaryLayerForAppMode(mode);
-    if (!this.state.activeLayers[primary]?.visible) {
-      this.state.activeLayers[primary] = initialStateFor(primary);
-    } else if (primary === "osm-poi" && !this.state.activeLayers["osm-poi"]!.filters?.categories) {
-      this.state.activeLayers["osm-poi"]!.filters = { categories: loadSavedCategories() };
-    }
-    if (modeResolution.activateLayerId) {
+    // Only an explicit initial mode link activates its required layer.
+    if (!reloading && modeResolution.activateLayerId) {
       this.ensureLayerActive(modeResolution.activateLayerId);
     }
-    // Restore the baseline a chosen preset was applied from, so a reload does not lose the
-    // ability to recognise that config again (and to show "Custom" once it drifts).
-    const storedBaseline = readPresetBaseline(
-      typeof window === "undefined" ? null : window.localStorage
-    );
-    if (storedBaseline) {
-      this.presetBaseline = storedBaseline;
-      this.state.activePresetId = storedBaseline.id;
-    }
-    // A deep link may carry its own preset; it wins over the last used one, same as the layers
-    // parameter already wins over the session snapshot.
-    const requestedPreset = preset ? MAP_PRESETS.find((p) => p.id === preset) : undefined;
-    if (requestedPreset && requestedPreset.id !== this.state.activePresetId) {
-      this.applyPreset(requestedPreset);
-    }
+    const requestedPreset =
+      !reloading && preset ? MAP_PRESETS.find((p) => p.id === preset) : undefined;
+    if (requestedPreset) this.applyPreset(requestedPreset);
     this.migrateStructuralOverlays();
     this.persistLayerSession();
-    if (modeResolution.rewriteUrl && typeof window !== "undefined") {
+    if (typeof window !== "undefined") {
       this.syncToUrl();
     }
   }
 
   private migrateStructuralOverlays() {
+    // Retired duplicate layers (see layerAliases) come back from URLs and saved sessions as their
+    // canonical layer, never as a second copy of the same pins.
+    this.state.activeLayers = foldRetiredLayers(this.state.activeLayers, initialStateFor);
     if (!this.state.activeLayers.opentopomap) return;
     delete this.state.activeLayers.opentopomap;
     if (typeof window === "undefined") return;
@@ -936,6 +936,25 @@ export class MapStore {
       this.patch({ viewportBbox: bbox });
   }
   toggleLayer(layerId: string, filters?: FilterValues) {
+    const alias = retiredLayerAlias(layerId);
+    if (alias) {
+      // A retired id switches on its facet values in the layer that now draws them.
+      const target = this.state.activeLayers[alias.layer];
+      const own = Array.isArray(target?.filters[alias.facet])
+        ? (target!.filters[alias.facet] as string[])
+        : [];
+      const wanted = retiredFacetValues(
+        filters ? { visible: true, opacity: 1, filters } : undefined,
+        alias
+      );
+      const next = {
+        ...(target?.filters ?? initialStateFor(alias.layer).filters),
+        [alias.facet]: [...new Set([...(target?.visible ? own : []), ...wanted])]
+      };
+      if (target?.visible) this.setLayerFilters(alias.layer, next);
+      else this.toggleLayer(alias.layer, next);
+      return;
+    }
     const current = this.state.activeLayers[layerId];
     if (current?.visible) {
       this.state.activeLayers = {
@@ -1034,11 +1053,7 @@ export class MapStore {
           ])
         )
       : sessionLayers;
-    writeWorldLayers(
-      typeof window === "undefined" ? null : window.localStorage,
-      this.state.experienceId,
-      persistable
-    );
+    writeWorldLayers(this.worldStorage, this.state.experienceId, persistable);
     writeLayerSessionState(
       typeof window === "undefined" ? null : window.sessionStorage,
       persistable
@@ -1146,7 +1161,7 @@ export class MapStore {
     if (id === this.state.experienceId) return;
     this.hideAnswerResults();
     this.persistLayerSession();
-    const saved = readWorldLayers(window.localStorage, id);
+    const saved = readWorldLayers(this.worldStorage, id);
     const personal = this.state.activeLayers["user-layers"];
     const manifest = experienceById(id);
     this.worldAreas.set(this.state.experienceId, this.state.areaSelection);
@@ -1354,7 +1369,7 @@ export class MapStore {
   }
 
   restoreAppearance(value: MapAppearance) {
-    this.state.activeLayers = structuredClone(value.layers);
+    this.state.activeLayers = foldRetiredLayers(structuredClone(value.layers), initialStateFor);
     this.setBasemap(value.basemapId);
     this.setBasemapLabels(value.basemapLabels);
     this.setBuildings3d(value.buildings3d);
@@ -1606,12 +1621,7 @@ export class MapStore {
     params.set("lng", this.state.view.lng.toFixed(5));
     params.set("lat", this.state.view.lat.toFixed(5));
     params.set("z", this.state.view.zoom.toFixed(1));
-    params.set("mode", this.state.mode);
-    if (this.state.activePresetId) params.set("preset", this.state.activePresetId);
-    const active = Object.entries(this.state.activeLayers)
-      .filter(([, s]) => s.visible)
-      .map(([id]) => id);
-    if (active.length) params.set("layers", active.join(","));
+    // Explicit sharing builds its own URL. Ordinary navigation persists camera only.
     // Shell/browser-back keeps a small same-document sentinel in history.state. Replacing the
     // URL on every map move must preserve it, otherwise the first pan silently breaks Back.
     window.history.replaceState(

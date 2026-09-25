@@ -1,3 +1,4 @@
+import { API_BASE } from "../lib/api";
 import { useEffect, useRef, useState } from "react";
 import { fetchThemeUnit, type ThemeUnitDetail } from "../layers/themes/themeCatalog";
 import { formatValue } from "../layers/themes/themeLayers";
@@ -281,7 +282,7 @@ export function StatisticsExplorer() {
                       "Country boundaries: Natural Earth. Municipal boundaries: the published GISCO LAU 2024 edition. Missing local observations are not estimated from country averages."
                     )}
               </p>
-              <a href="/api/v2/themes/operations" target="_blank" rel="noreferrer">
+              <a href={`${API_BASE}/v2/themes/operations`} target="_blank" rel="noreferrer">
                 {st("Provozní záznam všech zdrojů", "All source import records")}
               </a>
               {detail?.sources.map((source) => (

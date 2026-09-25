@@ -81,7 +81,7 @@ export const MAP_PRESETS: MapPreset[] = [
     description: "Kempy, služby a otevřená vanlife místa",
     icon: "🚐",
     symbol: "airport_shuttle",
-    layers: ["osm-poi", "vanlife", "refuge-restrooms"],
+    layers: ["osm-poi", "refuge-restrooms"],
     categories: [
       "camp_site",
       "caravan_site",
@@ -94,15 +94,7 @@ export const MAP_PRESETS: MapPreset[] = [
       "dump_station",
       "parking"
     ],
-    available: [
-      "osm-poi",
-      "vanlife",
-      "refuge-restrooms",
-      "park4night",
-      "openrailwaymap",
-      "roads",
-      "weather"
-    ]
+    available: ["osm-poi", "refuge-restrooms", "park4night", "openrailwaymap", "roads", "weather"]
   },
   {
     id: "sport",

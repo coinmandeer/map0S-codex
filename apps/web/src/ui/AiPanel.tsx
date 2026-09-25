@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { applyLayerSelectionCard, captureWorkspace, undoWorkspace } from "./ai/mapScene";
+import { artifactSnapshot, subscribeArtifacts, setArtifacts } from "./ai/artifactState";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { planV1ToV2, type PlanDocumentV2, type TripPlan } from "@mapos/layer-sdk";
-import { ApiError, apiPost } from "../lib/api";
+import { ApiError, apiPost, apiSend } from "../lib/api";
 import { emit, on } from "../lib/events";
 import { getLayerManifestV2 } from "../layers";
-import { answerResultManifest, answerBounds, AI_RESULT_PREFIX } from "../layers/aiMapResults";
+import { answerBounds, AI_RESULT_PREFIX } from "../layers/aiMapResults";
 import { saveInlineLayerAsUserLayer } from "../layers/saveInlineLayer";
 import { formatDistance } from "../lib/units";
 import { t } from "../i18n";
@@ -24,7 +26,7 @@ import {
   TextArea
 } from "./kit";
 
-import type { AiPlace, AiCitation, AiCard, AiPlanDiff } from "./ai/chatTypes";
+import type { AiPlace, AiCard, AiPlanDiff } from "./ai/chatTypes";
 import { runChatTurn } from "./ai/runChatTurn";
 import { showStatisticAnswer } from "./ai/statisticAnswer";
 import { chatSession, useChatField } from "./ai/chatSession";
@@ -51,11 +53,15 @@ function planDiffSummary(diff: AiPlanDiff): string {
 /** The map-wide assistant (§4.13, §30.6).
  *
  *  One thread over the map. A question is streamed to `/v2/ai/chat` together with a projection of
- *  the current view; what comes back is text plus cards, and a card is a proposal with one primary
- *  action — the assistant never changes the map by itself. While an answer is being prepared the
+ *  the current view; verified answers update the map automatically with a reversible scene.
+ *  Saving a plan remains an explicit action. While an answer is being prepared the
  *  tool the server is running is named, because "thinking…" tells nobody anything.
  */
 export function AiPanel() {
+  const [includeArchived] = useChatField("includeArchived");
+  const [archived] = useChatField("archived");
+  const artifacts = useSyncExternalStore(subscribeArtifacts, artifactSnapshot);
+  const [nextHistoryCursor] = useChatField("nextHistoryCursor");
   const store = getMapStore();
   const shell = getShellStore();
   const leftContext = useShellStoreSnapshot((state) => state.leftContext);
@@ -82,10 +88,17 @@ export function AiPanel() {
   const [prompt, setPrompt] = useChatField("prompt");
   const [turns] = useChatField("turns");
   const [busy] = useChatField("busy");
+  const [sessions] = useChatField("sessions");
+  const [conversationId] = useChatField("conversationId");
+  const [historyError] = useChatField("historyError");
+  useEffect(() => {
+    void chatSession.refreshHistory();
+  }, []);
   const [privacyAck, setPrivacyAck] = useState(
     () =>
       typeof window !== "undefined" && window.localStorage.getItem(PRIVACY_DISMISSED_KEY) === "1"
   );
+  const [savingPlan, setSavingPlan] = useState(false);
   const [savingLayer, setSavingLayer] = useState<string | null>(null);
   const [savedLayers, setSavedLayers] = useState<Record<string, boolean>>({});
   const [proposals, setProposals] = useState<
@@ -144,50 +157,13 @@ export function AiPanel() {
     const bbox = answerBounds(points);
     if (bbox) emit("fit-bounds", { bbox });
   };
-  const showOnMap = (card: Extract<AiCard, { type: "places" }>, sources: AiCitation[]) => {
-    store.showAnswerResults(answerResultManifest(card.title, card.places, sources));
-  };
-
-  /** "Zapni mi vrstvy pro…" (§4.13). `set_layer_selection_draft` is a draft on purpose: the
-   *  model names the layers, the user is the one who switches them on. */
   const applyLayerSelection = (card: Extract<AiCard, { type: "layer" }>) => {
-    const missing = card.layerIds.filter((layerId) => !activeLayers[layerId]?.visible);
-    for (const layerId of missing) store.toggleLayer(layerId);
-    for (const layerId of card.layerIds) {
-      const manifest = getLayerManifestV2(layerId);
-      const allowed = Object.fromEntries(
-        Object.entries(card.filters ?? {}).filter(([key, value]) => {
-          const facet = manifest?.filters?.find((f) => f.id === key);
-          if (!facet) return false;
-          if (facet.kind === "toggle") return typeof value === "boolean";
-          if (facet.kind === "range" || facet.kind === "distance")
-            return (
-              typeof value === "number" &&
-              Number.isFinite(value) &&
-              value >= (facet.min ?? -Infinity) &&
-              value <= (facet.max ?? Infinity)
-            );
-          if (facet.kind === "multi-select")
-            return (
-              Array.isArray(value) &&
-              value.every((v) => facet.options?.some((option) => option.id === v))
-            );
-          return false;
-        })
-      );
-      if (Object.keys(allowed).length)
-        store.setLayerFilters(layerId, { ...store.activeLayers[layerId]?.filters, ...allowed });
-    }
-    store.showToast(`Zapnuto: ${missing.map(layerSelectionName).join(", ")}`, {
-      action: {
-        label: "Vrátit",
-        onSelect: () => missing.forEach((layerId) => store.toggleLayer(layerId))
-      }
+    const before = captureWorkspace();
+    applyLayerSelectionCard(card);
+    const applied = captureWorkspace();
+    store.showToast(card.title, {
+      action: { label: "Vrátit", onSelect: () => undoWorkspace(before, applied) }
     });
-  };
-
-  const showLayerDraft = (card: Extract<AiCard, { type: "layer-draft" }>) => {
-    store.showAnswerResults(card.manifest);
   };
 
   /** Saving turns the session layer into a personal one, provenance and all (§30.7). */
@@ -212,8 +188,64 @@ export function AiPanel() {
     }
   };
 
+  const savePlanDraft = async () => {
+    const draft = store.activePlanDocument;
+    if (!draft || draft.stops.length < 2 || savingPlan) return;
+    setSavingPlan(true);
+    try {
+      const savedId =
+        typeof draft.metadata?.aiSavedPlanId === "string" ? draft.metadata.aiSavedPlanId : null;
+      const savedRevision =
+        typeof draft.metadata?.aiSavedPlanRevision === "number"
+          ? draft.metadata.aiSavedPlanRevision
+          : null;
+      const copy = { ...structuredClone(draft), id: savedId ?? `plan-${crypto.randomUUID()}` };
+      const result =
+        savedId && savedRevision !== null
+          ? await apiSend<{ plan: PlanDocumentV2 }>(
+              "PATCH",
+              `/v2/plans/${encodeURIComponent(savedId)}`,
+              { plan: copy, expectedRevision: savedRevision },
+              { auth: true }
+            )
+          : await apiPost<{ plan: PlanDocumentV2 }>("/v2/plans", { plan: copy }, { auth: true });
+      if (
+        store.activePlanDocument?.id === draft.id &&
+        store.activePlanDocument.revision === draft.revision
+      ) {
+        store.setActivePlanDocument({
+          ...draft,
+          metadata: {
+            ...draft.metadata,
+            aiSavedPlanId: result.plan.id,
+            aiSavedPlanRevision: result.plan.revision
+          }
+        });
+        await chatSession
+          .saveWorkspace()
+          .catch(() =>
+            store.showToast("Plán je uložený; mapový pohled konverzace se nepodařilo aktualizovat.")
+          );
+      }
+      store.showToast(`Plán „${draft.name}“ je uložený.`);
+    } catch (cause) {
+      store.showToast(
+        cause instanceof ApiError && cause.status === 409
+          ? "Uložený plán se mezitím změnil. Otevřete jeho aktuální verzi v Plánování."
+          : "Plán se nepodařilo uložit."
+      );
+    } finally {
+      setSavingPlan(false);
+    }
+  };
+
   /** The plan card opens a draft in Plánování; nothing is saved until the user saves it there. */
   const openPlanDraft = (card: Extract<AiCard, { type: "plan" }>) => {
+    if (card.draft || store.activePlanDocument?.name === card.title) {
+      if (card.draft) store.setActivePlanDocument(card.draft);
+      shell.setMode("planning");
+      return;
+    }
     const now = new Date();
     const departure = new Date(now.getTime() + 15 * 60_000);
     departure.setSeconds(0, 0);
@@ -229,7 +261,7 @@ export function AiPanel() {
         lat: stop.latitude,
         dwellMinutes: 45
       })),
-      vehicle: { profile: "car" },
+      vehicle: { profile: card.profile ?? "foot" },
       visibility: "private"
     };
     const document: PlanDocumentV2 = planV1ToV2(draft, { now: now.toISOString() });
@@ -291,18 +323,127 @@ export function AiPanel() {
         leftContext.type === "ai" && leftContext.prompt ? () => shell.closeLeftContext() : undefined
       }
       headerExtra={
-        turns.length > 0 ? (
-          <IconButton
-            icon="forum"
-            label="Nové vlákno"
-            size="sm"
-            testId="ai-panel-clear"
-            onClick={() => {
-              chatSession.clear();
-              chatSession.askedSeed = seedKey;
-            }}
-          />
-        ) : undefined
+        <details className="ai-session-menu">
+          <summary
+            title={sessions.find((s) => s.id === conversationId)?.title ?? "Nová konverzace"}
+          >
+            {sessions.find((s) => s.id === conversationId)?.title ?? "Nová konverzace"}
+          </summary>
+          <div className="ai-session-controls">
+            <select
+              aria-label="Historie konverzací"
+              value={conversationId ?? ""}
+              onChange={(e) => {
+                if (e.target.value) void chatSession.openConversation(e.target.value);
+                else chatSession.clear();
+              }}
+            >
+              <option value="">Nová konverzace</option>
+              {sessions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.archived ? "Archiv · " : ""}
+                  {s.title} · {new Date(s.updatedAt).toLocaleDateString()}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="text"
+              size="sm"
+              onClick={() => {
+                chatSession.set("includeArchived", !includeArchived);
+                void chatSession.refreshHistory();
+              }}
+            >
+              {includeArchived ? "Skrýt archiv" : "Zobrazit archiv"}
+            </Button>
+            {conversationId && (
+              <>
+                <Button
+                  variant="text"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    const name = window.prompt(
+                      "Název konverzace",
+                      sessions.find((s) => s.id === conversationId)?.title ?? ""
+                    );
+                    if (name) void chatSession.renameConversation(name);
+                  }}
+                >
+                  Přejmenovat
+                </Button>
+                <Button
+                  variant="text"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void chatSession.archiveConversation(!archived)}
+                >
+                  {archived ? "Obnovit z archivu" : "Archivovat"}
+                </Button>
+                <Button
+                  variant="text"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Smazat tuto konverzaci a její mapové výsledky? Samostatně uložené plány zůstanou zachované."
+                      )
+                    )
+                      void chatSession.deleteConversation();
+                  }}
+                >
+                  Smazat konverzaci
+                </Button>
+              </>
+            )}
+            {nextHistoryCursor && (
+              <Button
+                variant="text"
+                size="sm"
+                onClick={() => void chatSession.refreshHistory(true)}
+              >
+                Starší konverzace
+              </Button>
+            )}
+            {historyError && <small role="status">{historyError}</small>}
+            {store.activePlanDocument && (
+              <Button
+                variant="tonal"
+                disabled={savingPlan || busy}
+                onClick={() => void savePlanDraft()}
+              >
+                Uložit plán
+              </Button>
+            )}
+            {chatSession.undoMap && (
+              <Button
+                variant="tonal"
+                onClick={() => {
+                  chatSession.undoMap?.();
+                  chatSession.undoMap = null;
+                  void chatSession
+                    .saveWorkspace()
+                    .catch(() => store.showToast("Mapový pohled se nepodařilo uložit."));
+                }}
+              >
+                Vrátit změnu mapy
+              </Button>
+            )}
+            {turns.length > 0 ? (
+              <IconButton
+                icon="forum"
+                label="Nové vlákno"
+                size="sm"
+                testId="ai-panel-clear"
+                onClick={() => {
+                  chatSession.clear();
+                  chatSession.askedSeed = seedKey;
+                }}
+              />
+            ) : null}
+          </div>
+        </details>
       }
       footer={
         <form
@@ -312,6 +453,11 @@ export function AiPanel() {
             void ask(prompt);
           }}
         >
+          {!busy && turns.at(-1)?.error && (
+            <Button variant="tonal" onClick={() => void ask(turns.at(-1)!.question)}>
+              Zkusit znovu
+            </Button>
+          )}
           {turns.at(-1)?.followUps.length && !busy ? (
             <div className="ai-panel-followups">
               {turns.at(-1)!.followUps.map((suggestion) => (
@@ -357,15 +503,19 @@ export function AiPanel() {
         </form>
       }
     >
-      {Object.keys(activeLayers).some(
-        (id) => id.startsWith(AI_RESULT_PREFIX) && activeLayers[id]?.visible
-      ) && (
+      {(artifacts.length > 0 ||
+        Object.keys(activeLayers).some(
+          (id) => id.startsWith(AI_RESULT_PREFIX) && activeLayers[id]?.visible
+        )) && (
         <Button
           variant="text"
           size="sm"
           icon="close"
           testId="ai-results-hide"
-          onClick={() => store.hideAnswerResults()}
+          onClick={() => {
+            store.hideAnswerResults();
+            setArtifacts([]);
+          }}
         >
           Skrýt výsledky AI
         </Button>
@@ -514,16 +664,7 @@ export function AiPanel() {
                           </div>
                         ))}
                       </div>
-                      <Button
-                        variant="tonal"
-                        size="sm"
-                        icon="map"
-                        testId="ai-card-places-show"
-                        disabled={!turn.sources.length}
-                        onClick={() => showOnMap(card, turn.sources)}
-                      >
-                        Zobrazit v mapě
-                      </Button>
+
                       <Button
                         variant="text"
                         size="sm"
@@ -623,15 +764,6 @@ export function AiPanel() {
                       </p>
                       <div className="ai-turn-card-actions">
                         <Button
-                          variant="tonal"
-                          size="sm"
-                          icon="layers"
-                          testId="ai-card-layer-draft-show"
-                          onClick={() => showLayerDraft(card)}
-                        >
-                          Zobrazit v mapě
-                        </Button>
-                        <Button
                           variant="text"
                           size="sm"
                           onClick={() =>
@@ -661,6 +793,14 @@ export function AiPanel() {
                       data-testid="ai-card-plan"
                     >
                       <p className="ai-turn-card-head">{card.title}</p>
+                      <p>{card.summary}</p>
+                      {card.route && (
+                        <p>
+                          {formatDistance(card.route.distanceM, store.preferences.units)} ·{" "}
+                          {Math.round(card.route.durationS / 60)} min na cestě
+                        </p>
+                      )}
+                      {card.routeNotice && <p role="status">{card.routeNotice}</p>}
                       <ol className="ai-turn-plan">
                         {card.stops.map((stop, position) => (
                           <li key={`${stop.title}-${position}`}>

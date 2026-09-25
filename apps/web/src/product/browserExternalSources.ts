@@ -138,8 +138,8 @@ const OVERTURE_RIGHTS = source({
 export const WINDY_RIGHTS = source({
   id: "windy",
   label: "Windy.com",
-  hosts: ["embed.windy.com"],
-  uses: ["embed"],
+  hosts: ["embed.windy.com", "api.windy.com"],
+  uses: ["embed", "outbound-link"],
   attribution: "Windy.com",
   terms: "Windy API and embed terms",
   evidenceUrl: "https://api.windy.com/"
@@ -158,8 +158,14 @@ export const FOURSQUARE_RIGHTS = source({
 export const GOOGLE_MAPS_RIGHTS = source({
   id: "google-maps",
   label: "Google Maps",
-  hosts: ["www.google.com", "developers.google.com"],
-  uses: ["outbound-link", "tile"],
+  hosts: [
+    "www.google.com",
+    "maps.google.com",
+    "developers.google.com",
+    "maps.googleapis.com",
+    "maps.gstatic.com"
+  ],
+  uses: ["outbound-link", "tile", "api", "media"],
   attribution: "Google Maps",
   terms: "Google Maps terms",
   evidenceUrl: "https://maps.google.com/help/terms_maps/"
@@ -507,6 +513,116 @@ const MOBILITYDATA_GITHUB_RIGHTS = source({
 
 /** Complete advisory inventory for literal external hosts shipped in browser source. */
 export const BROWSER_EXTERNAL_SOURCE_RIGHTS: readonly ExternalSourceRights[] = [
+  source({
+    id: "golemio",
+    label: "Golemio",
+    hosts: ["api.golemio.cz"],
+    uses: ["outbound-link"],
+    attribution: "Golemio / Operátor ICT a poskytovatel datasetu",
+    terms: "Golemio Open Data; dataset-specific attribution and terms",
+    evidenceUrl: "https://api.golemio.cz/docs/openapi/"
+  }),
+  source({
+    id: "spaceapi",
+    label: "SpaceAPI",
+    hosts: ["spaceapi.io"],
+    uses: ["outbound-link"],
+    attribution: "SpaceAPI and space operators",
+    terms: "Public operator-provided SpaceAPI data; individual space access conditions",
+    evidenceUrl: "https://spaceapi.io/docs/"
+  }),
+  source({
+    id: "btcmap",
+    label: "BTC Map",
+    hosts: ["btcmap.org"],
+    uses: ["outbound-link"],
+    attribution: "BTC Map / OpenStreetMap contributors",
+    terms: "ODbL-1.0 for OpenStreetMap data; BTC Map API usage documentation",
+    evidenceUrl: "https://github.com/teambtcmap/btcmap-api/blob/master/docs/rest/v4/places.md"
+  }),
+  source({
+    id: "europeana",
+    label: "Europeana",
+    hosts: ["www.europeana.eu"],
+    uses: ["outbound-link"],
+    attribution: "Europeana and collection providers",
+    terms: "CC0 metadata; digital object rights supplied separately; Europeana API access policy",
+    evidenceUrl: "https://www.europeana.eu/en/rights/terms-of-use"
+  }),
+  source({
+    id: "nasa-power",
+    label: "NASA POWER",
+    hosts: ["power.larc.nasa.gov"],
+    uses: ["outbound-link"],
+    attribution: "NASA POWER · CERES / MERRA-2",
+    terms: "NASA open data; acknowledgment requested",
+    evidenceUrl: "https://power.larc.nasa.gov/docs/faqs/"
+  }),
+  source({
+    id: "gdacs",
+    label: "GDACS",
+    hosts: ["www.gdacs.org"],
+    uses: ["outbound-link"],
+    attribution: "GDACS · European Commission / UN",
+    terms: "GDACS Terms of Use / European Commission copyright policy",
+    evidenceUrl: "https://www.gdacs.org/About/termofuse.aspx"
+  }),
+  source({
+    id: "noaa-swpc",
+    label: "NOAA SWPC",
+    hosts: ["www.spaceweather.gov", "www.swpc.noaa.gov"],
+    uses: ["outbound-link"],
+    attribution: "NOAA SWPC · OVATION",
+    terms: "United States public domain",
+    evidenceUrl: "https://www.weather.gov/disclaimer"
+  }),
+  source({
+    id: "jrc-surface-water",
+    label: "EC JRC Global Surface Water",
+    hosts: ["storage.googleapis.com", "global-surface-water.appspot.com"],
+    uses: ["tile", "outbound-link"],
+    attribution: "Source: EC JRC/Google · Pekel et al. (2016)",
+    terms: "Copernicus open data, acknowledgment required",
+    evidenceUrl: "https://global-surface-water.appspot.com/download"
+  }),
+  source({
+    id: "doi-resolver",
+    label: "DOI source references",
+    hosts: ["doi.org"],
+    uses: ["outbound-link"],
+    attribution: "Original dataset and publication authors",
+    terms: "Outbound citations; the linked dataset's own licence applies",
+    evidenceUrl:
+      "https://www.doi.org/the-identifier/resources/factsheets/doi-system-and-the-internet/"
+  }),
+  source({
+    id: "soilgrids",
+    label: "ISRIC SoilGrids 2.0",
+    hosts: ["maps.isric.org", "docs.isric.org"],
+    uses: ["tile", "media", "outbound-link"],
+    attribution: "ISRIC · Poggio et al. (2021)",
+    terms: "CC BY 4.0",
+    evidenceUrl: "https://docs.isric.org/globaldata/soilgrids/SoilGrids_faqs_02.html"
+  }),
+  source({
+    id: "gebco",
+    label: "GEBCO 2026",
+    hosts: ["wms.gebco.net", "www.gebco.net"],
+    uses: ["tile", "media", "outbound-link"],
+    attribution: "GEBCO Bathymetric Compilation Group 2026 · NERC EDS BODC NOC",
+    terms: "Public domain, attribution required; not for marine navigation",
+    evidenceUrl: "https://www.gebco.net/data-products-gridded-bathymetry-data/gebco2026-grid"
+  }),
+  source({
+    id: "esa-worldcover",
+    label: "ESA WorldCover / Terrascope",
+    hosts: ["wmts.terrascope.be", "esa-worldcover.org"],
+    uses: ["tile", "outbound-link"],
+    attribution:
+      "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium",
+    terms: "Creative Commons Attribution 4.0 International",
+    evidenceUrl: "https://esa-worldcover.org/en/data-access"
+  }),
   source({
     id: "cuzk-public",
     label: "ČÚZK / Zeměměřický úřad / DMVS",

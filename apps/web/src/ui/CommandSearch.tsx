@@ -1,8 +1,8 @@
+import { maptilerGeocode } from "../search/maptilerGeocoding";
+import { normalizeCatalogText } from "@mapos/layer-sdk";
+import { SearchLayers } from "./layers/SearchLayers";
 import { chatSession, useChatField } from "./ai/chatSession";
-import { runChatTurn } from "./ai/runChatTurn";
-import { showStatisticAnswer } from "./ai/statisticAnswer";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createAdjacentPlanSegments, planRoutePolicyHash } from "@mapos/layer-sdk";
 import type { AppMode, AppModeInput } from "../product/registry";
 import {
   buildEmptySuggestions,
@@ -20,8 +20,6 @@ import { useMapStoreSnapshot } from "../store/useMapStoreSnapshot";
 import { API_BASE } from "../lib/api";
 import { emit } from "../lib/events";
 import { geolocation, type Fix } from "../lib/geolocation";
-import { formatDistance } from "../lib/units";
-import { createBlankPlanDocument } from "../planning/planDraft";
 import { t } from "../i18n";
 import { LAYER_MODES } from "./modes";
 import { Icon } from "./kit";
@@ -48,63 +46,6 @@ interface TagHit {
 interface SearchResponse {
   hits: GeoHit[];
   tagHits: TagHit[];
-}
-
-interface AiSearchResult {
-  id: string;
-  layerId: string;
-  title: string;
-  longitude: number;
-  latitude: number;
-  distanceMeters: number;
-  source: { sourceId: string; label: string; url?: string };
-}
-
-interface AiSearchAnswer {
-  status: "succeeded";
-  answer: { text: string; results: AiSearchResult[] };
-}
-
-/** The one frame of `/v2/ai/chat` this popover needs; the panel reads the whole stream. */
-interface AiChatAnswerEvent {
-  type: "done";
-  conversation: { id: string; revision: number };
-  answer: {
-    text: string;
-    cards: {
-      type: string;
-      places?: {
-        id: string;
-        layerId: string;
-        title: string;
-        longitude: number;
-        latitude: number;
-        distanceMeters?: number;
-        sourceId: string;
-      }[];
-    }[];
-    sources: { sourceId: string; label: string; url?: string }[];
-  };
-}
-
-function searchAnswerFromChat(answer: AiChatAnswerEvent["answer"]): AiSearchAnswer {
-  const labels = new Map(answer.sources.map((source) => [source.sourceId, source]));
-  const places = answer.cards.find((card) => card.type === "places")?.places ?? [];
-  return {
-    status: "succeeded",
-    answer: {
-      text: answer.text,
-      results: places.slice(0, 4).map((place) => ({
-        id: place.id,
-        layerId: place.layerId,
-        title: place.title,
-        longitude: place.longitude,
-        latitude: place.latitude,
-        distanceMeters: place.distanceMeters ?? 0,
-        source: labels.get(place.sourceId) ?? { sourceId: place.sourceId, label: place.sourceId }
-      }))
-    }
-  };
 }
 
 function geocodeTypeLabel(value: string | undefined): string {
@@ -179,8 +120,8 @@ export function CommandSearch({
   const activeTag = useMapStoreSnapshot((state) => state.activeTag);
   const view = useMapStoreSnapshot((state) => state.view);
   const aiEnabled = useMapStoreSnapshot((state) => state.preferences.aiEnabled);
-  const units = useMapStoreSnapshot((state) => state.preferences.units);
   const requestRunner = useRef(new LatestRequestRunner<SearchResponse>());
+  const searchDebounce = useRef<number | undefined>(undefined);
   const menuRef = useRef<HTMLDivElement>(null);
   const repository = useMemo(
     () =>
@@ -196,15 +137,13 @@ export function CommandSearch({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [retrySearch, setRetrySearch] = useState(0);
   const [focused, setFocused] = useState(false);
+  const searchRootRef = useRef<HTMLDivElement>(null);
   const [, setRecentRevision] = useState(0);
-  const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
   const [aiBusy] = useChatField("busy");
-  const [aiTurns] = useChatField("turns");
-  const aiTurn = aiTurns.at(-1);
-  const aiError = aiTurn?.error;
-  const aiAnswer = aiTurn ? searchAnswerFromChat(aiTurn) : null;
-  const [aiSelection, setAiSelection] = useState<AiSearchResult | null>(null);
-  const [aiPlanPreviewed, setAiPlanPreviewed] = useState(false);
+  const [aiSessions] = useChatField("sessions");
+  useEffect(() => {
+    if (focused) void chatSession.refreshHistory();
+  }, [focused]);
   const [locating, setLocating] = useState(false);
   const [justLocated, setJustLocated] = useState(false);
   const [permission, setPermission] = useState<PermissionState | "unknown">("unknown");
@@ -255,19 +194,16 @@ export function CommandSearch({
 
   useEffect(() => {
     const runner = requestRunner.current;
-    setAiSelection(null);
-    setAiPlanPreviewed(false);
     setSearchSettled(false);
     setSearchError(null);
     setHits([]);
     setTagHits([]);
     const networkIntent =
-      !aiPreviewOpen &&
-      (intent.kind === "address" ||
-        intent.kind === "locality" ||
-        intent.kind === "poi" ||
-        intent.kind === "place" ||
-        intent.kind === "category");
+      intent.kind === "address" ||
+      intent.kind === "locality" ||
+      intent.kind === "poi" ||
+      intent.kind === "place" ||
+      intent.kind === "category";
     if (!networkIntent || intent.query.length < 2) {
       runner.cancel("intent-changed");
       setSearching(false);
@@ -300,13 +236,23 @@ export function CommandSearch({
                 )
               };
             }
-            const response = await fetch(
-              `${API_BASE}/geocode?q=${encodeURIComponent(intent.query)}&provider=auto`,
-              { signal }
-            );
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = (await response.json()) as { results?: GeoHit[] };
-            return { hits: (data.results ?? []).filter(validGeoHit), tagHits: [] };
+            try {
+              const response = await fetch(
+                `${API_BASE}/geocode?q=${encodeURIComponent(intent.query)}&provider=auto&autocomplete=true`,
+                { signal }
+              );
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              const data = (await response.json()) as { results?: GeoHit[] };
+              const found = (data.results ?? []).filter(validGeoHit);
+              if (found.length) return { hits: found, tagHits: [] };
+            } catch (error) {
+              signal.throwIfAborted();
+              if (!store.capabilities?.maptilerGeocoding) throw error;
+            }
+            return {
+              hits: await maptilerGeocode(intent.query, true, store.capabilities, signal),
+              tagHits: []
+            };
           },
           ({ hits: nextHits, tagHits: nextTagHits }) => {
             setHits(nextHits);
@@ -327,18 +273,18 @@ export function CommandSearch({
           }
         });
     }, delay);
+    searchDebounce.current = timer;
     return () => {
       mounted = false;
       window.clearTimeout(timer);
       runner.cancel("query-changed");
     };
-  }, [intent, retrySearch, aiPreviewOpen]);
+  }, [intent, retrySearch, store.capabilities]);
 
   const clearResults = () => {
     setQuery("");
     setHits([]);
     setTagHits([]);
-    setAiPreviewOpen(false);
     setSearchSettled(false);
   };
 
@@ -388,9 +334,7 @@ export function CommandSearch({
   };
 
   const executeIntent = () => {
-    if (aiPreviewOpen && query.trim()) {
-      void requestAiSearch(query.trim());
-    } else if (intent.kind === "coordinates") {
+    if (intent.kind === "coordinates") {
       flyTo(intent.coordinates, intent.coordinates.normalized, intent);
     } else if (intent.kind === "map-share") {
       flyTo(intent.location, `Sdílené místo (${intent.location.provider})`, intent);
@@ -398,130 +342,70 @@ export function CommandSearch({
       pickTag(intent.tag);
     } else if (intent.kind === "ai" && aiEnabled) {
       confirmAiSearch();
-    } else if (hits[0]) {
+    } else if (
+      hits[0] &&
+      (!aiEnabled ||
+        normalizeCatalogText(hits[0].display_name.split(",")[0] ?? "") ===
+          normalizeCatalogText(query))
+    ) {
       pickHit(hits[0]);
+    } else if (query.trim() && aiEnabled) {
+      void requestAiSearch(query.trim());
+    } else if (query.trim()) {
+      window.clearTimeout(searchDebounce.current);
+      const submitted = query.trim();
+      setSearching(true);
+      void requestRunner.current
+        .run(
+          async (signal) => {
+            if (store.capabilities?.maptilerGeocoding) {
+              try {
+                const response = await fetch(
+                  `${API_BASE}/geocode?q=${encodeURIComponent(submitted)}&provider=auto&autocomplete=true`,
+                  { signal }
+                );
+                if (response.ok) {
+                  const data = (await response.json()) as { results?: GeoHit[] };
+                  const found = (data.results ?? []).filter(validGeoHit);
+                  if (found.length) return { hits: found, tagHits: [] };
+                }
+                const found = await maptilerGeocode(submitted, false, store.capabilities, signal);
+                if (found.length) return { hits: found, tagHits: [] };
+              } catch {
+                signal.throwIfAborted();
+              }
+            }
+            const response = await fetch(
+              `${API_BASE}/geocode?q=${encodeURIComponent(submitted)}&provider=auto`,
+              { signal }
+            );
+            if (!response.ok) throw new Error("Hledání se nepodařilo dokončit.");
+            const data = (await response.json()) as { results?: GeoHit[] };
+            return { hits: (data.results ?? []).filter(validGeoHit), tagHits: [] };
+          },
+          ({ hits: results }) => {
+            setHits(results);
+            setSearchSettled(true);
+            setSearching(false);
+            if (results[0]) pickHit(results[0]);
+          }
+        )
+        .catch(() => {
+          setSearchError("Hledání se nepodařilo dokončit. Zkuste ho zopakovat.");
+          setSearching(false);
+        });
     }
   };
 
   const requestAiSearch = async (prompt: string) => {
     if (aiBusy || !aiEnabled) return;
-    setAiPreviewOpen(true);
-    setAiSelection(null);
-    setAiPlanPreviewed(false);
-    await runChatTurn(prompt);
+    setFocused(false);
+    setQuery("");
+    shell.openAiContext(prompt);
   };
   const confirmAiSearch = () => {
     const prompt = intent.kind === "ai" ? intent.query : query.trim();
     if (prompt) void requestAiSearch(prompt);
-  };
-
-  const openAiCandidate = (result: AiSearchResult) => {
-    shell.startMapPicker(
-      {
-        caller: {
-          id: `command-search-ai-${result.id}`,
-          label: "Potvrď AI návrh místa",
-          context: result.title
-        },
-        cancelPolicy: "restore-original-view",
-        originalView: { center: { lng: view.lng, lat: view.lat }, zoom: view.zoom },
-        candidate: { lng: result.longitude, lat: result.latitude, label: result.title }
-      },
-      (pickerResult) => {
-        if (pickerResult.status !== "confirmed") return;
-        setAiSelection(result);
-        store.showToast(`„${result.title}“ bylo vráceno do AI konverzace`);
-      }
-    );
-    emit("fly-to", {
-      lng: result.longitude,
-      lat: result.latitude,
-      zoom: Math.max(view.zoom, 14)
-    });
-  };
-
-  const previewAiPlan = () => {
-    const results = aiAnswer?.answer.results ?? [];
-    if (!results.length) return;
-    store.setRoutePreview(
-      {
-        coordinates: [],
-        distanceM: 0,
-        durationS: 0,
-        profile: "foot",
-        stops: results.map((result, index) => ({
-          coordinates: [result.longitude, result.latitude],
-          order: index + 1,
-          name: result.title
-        }))
-      },
-      false
-    );
-    setAiPlanPreviewed(true);
-    store.showToast("Návrhy jsou jako pracovní body nad současnou mapou");
-  };
-
-  const createPlanFromAi = () => {
-    const response = aiAnswer;
-    const results = response?.answer.results ?? [];
-    if (!response || !results.length) return;
-    const base = createBlankPlanDocument(view.lng, view.lat);
-    const routePolicy = {
-      ...base.routePolicy,
-      profile: "foot" as const,
-      preference: "fast" as const
-    };
-    const stops = [
-      {
-        ...base.stops[0]!,
-        name: "Začátek podle středu mapy",
-        location: { type: "Point" as const, coordinates: [view.lng, view.lat] as [number, number] },
-        status: "accepted" as const
-      },
-      ...results.map((result, index) => ({
-        id: `ai-stop-${index + 1}-${result.id.slice(-32)}`,
-        order: index + 1,
-        name: result.title,
-        location: {
-          type: "Point" as const,
-          coordinates: [result.longitude, result.latitude] as [number, number]
-        },
-        sourceFeatureId: result.id,
-        dwellMinutes: 0,
-        notes: `${formatDistance(result.distanceMeters, units)} · ${result.source.label}`,
-        conversationId: chatSession.state.conversationId ?? undefined,
-        status: "suggested" as const
-      }))
-    ];
-    const plan = {
-      ...base,
-      revision: base.revision + 1,
-      name: `AI návrh: ${(intent.kind === "ai" ? intent.query : query).trim().slice(0, 80)}`,
-      routePolicy,
-      stops,
-      segments: createAdjacentPlanSegments(stops, planRoutePolicyHash(routePolicy, base.vehicle)),
-      conversationIds: chatSession.state.conversationId ? [chatSession.state.conversationId] : [],
-      activatedLayerIds: ["osm-poi"],
-      metadata: { ...base.metadata, "dev.mapos.aiSuggested": true }
-    };
-    store.setActivePlanDocument(plan);
-    store.setRoutePreview(
-      {
-        coordinates: [],
-        distanceM: 0,
-        durationS: 0,
-        profile: "foot",
-        stops: stops.map((stop) => ({
-          coordinates: [...stop.location.coordinates] as [number, number],
-          order: stop.order + 1,
-          name: stop.name
-        }))
-      },
-      false
-    );
-    shell.setMode("planning");
-    setFocused(false);
-    store.showToast("AI návrhy byly převedeny do editovatelného plánu k potvrzení");
   };
 
   const flyToMe = async () => {
@@ -596,8 +480,7 @@ export function CommandSearch({
       : permission === "denied"
         ? "denied"
         : "idle";
-  const showMenu =
-    aiPreviewOpen || (focused && (intent.kind === "empty" || label !== null || searching));
+  const showMenu = focused && (intent.kind === "empty" || label !== null || searching);
   useLayoutEffect(() => {
     const menu = menuRef.current;
     const anchor = menu?.parentElement;
@@ -622,6 +505,27 @@ export function CommandSearch({
       window.visualViewport?.removeEventListener("resize", place);
     };
   }, [showMenu]);
+
+  // The menu closes on Escape wherever focus is, and on any press outside the search: clicking
+  // the map canvas does not move focus, so relying on blur alone left the menu stuck open.
+  useEffect(() => {
+    if (!focused) return;
+    const outside = (event: PointerEvent) => {
+      if (searchRootRef.current?.contains(event.target as Node)) return;
+      setFocused(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      setFocused(false);
+    };
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [focused]);
+
   const networkIntent =
     intent.kind === "address" ||
     intent.kind === "locality" ||
@@ -631,8 +535,9 @@ export function CommandSearch({
 
   return (
     <div
+      ref={searchRootRef}
       className="topbar-search"
-      data-focused={focused || aiPreviewOpen || undefined}
+      data-focused={focused || undefined}
       onFocus={() => setFocused(true)}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
@@ -649,10 +554,10 @@ export function CommandSearch({
           aria-autocomplete="list"
           aria-expanded={showMenu}
           aria-controls="command-search-suggestions"
+          onFocus={() => setFocused(true)}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
-              setAiPreviewOpen(false);
               setFocused(false);
               return;
             }
@@ -701,7 +606,54 @@ export function CommandSearch({
           role="dialog"
           aria-label="Návrhy hledání"
         >
-          {intent.kind === "empty" && !aiPreviewOpen ? (
+          {aiEnabled && !query.trim() && (
+            <section className="command-search-section" aria-label="AI / konverzace">
+              <button
+                type="button"
+                className="search-hit"
+                onClick={() => {
+                  setFocused(false);
+                  if (!chatSession.state.conversationId && aiSessions[0])
+                    void chatSession.openConversation(aiSessions[0].id);
+                  shell.openAiContext();
+                }}
+              >
+                Pokračovat v konverzaci / historie
+              </button>
+              <button
+                type="button"
+                className="search-hit"
+                onClick={() => {
+                  chatSession.clear();
+                  setFocused(false);
+                  shell.openAiContext();
+                }}
+              >
+                Nová konverzace
+              </button>
+              {aiSessions
+                .filter((session) =>
+                  normalizeCatalogText(session.title).includes(normalizeCatalogText(query))
+                )
+                .slice(0, 5)
+                .map((session) => (
+                  <button
+                    type="button"
+                    className="search-hit"
+                    key={session.id}
+                    onClick={() => {
+                      setFocused(false);
+                      void chatSession.openConversation(session.id);
+                      shell.openAiContext();
+                    }}
+                  >
+                    {session.title}
+                  </button>
+                ))}
+            </section>
+          )}
+          <SearchLayers query={query} />
+          {intent.kind === "empty" ? (
             emptySections.map((section) => (
               <section className="command-search-section" key={section.id}>
                 <div className="command-search-section-title">
@@ -734,12 +686,7 @@ export function CommandSearch({
             ))
           ) : (
             <>
-              {!aiPreviewOpen && networkIntent && (
-                <p className="command-search-section-title">
-                  Hledání názvu nebo adresy · výsledky nejsou omezené na výřez mapy
-                </p>
-              )}
-              {!aiPreviewOpen && label && (
+              {label && !networkIntent && (
                 <button
                   type="button"
                   className="search-hit command-search-intent"
@@ -759,7 +706,7 @@ export function CommandSearch({
                   )}
                 </button>
               )}
-              {!aiPreviewOpen && networkIntent && intent.kind !== "category" && aiEnabled && (
+              {networkIntent && intent.kind !== "category" && aiEnabled && (
                 <button
                   type="button"
                   className="search-hit command-search-ai-offer"
@@ -769,178 +716,6 @@ export function CommandSearch({
                 >
                   <strong>{aiBusy ? "AI hledá…" : `Zeptat se AI: „${query.trim()}“`}</strong>
                 </button>
-              )}
-              {aiPreviewOpen && aiEnabled && (
-                <div className="command-search-ai-preview" role="status">
-                  <div className="command-search-ai-actions">
-                    <strong>Konverzace nad mapou</strong>
-                    {aiBusy && (
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() => chatSession.stop()}
-                      >
-                        Zastavit
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => {
-                        chatSession.clear();
-                        setQuery("");
-                      }}
-                    >
-                      Nové vlákno
-                    </button>
-                    <button
-                      type="button"
-                      className="btn small"
-                      aria-label="Zavřít AI náhled"
-                      onClick={() => {
-                        setAiPreviewOpen(false);
-                        setFocused(false);
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                  {aiTurns.slice(0, -1).map((turn) => (
-                    <details key={turn.id} className="command-search-section">
-                      <summary>{turn.question}</summary>
-                      <p>{turn.text}</p>
-                    </details>
-                  ))}
-                  {aiTurn && <strong>{aiTurn.question}</strong>}
-                  {aiBusy && <span role="status">{aiTurn?.step ?? "Doplňuji odpověď…"}</span>}
-                  {aiError && <span className="command-search-ai-error">{aiError}</span>}
-                  {aiAnswer && (
-                    <div className="command-search-ai-answer" data-testid="search-ai-results">
-                      <strong>AI odpověď</strong>
-                      <span>{aiAnswer.answer.text}</span>
-                      {aiTurn?.cards.map((card, index) =>
-                        card.type === "statistic" ? (
-                          <button
-                            key={index}
-                            type="button"
-                            className="btn small"
-                            onClick={() => showStatisticAnswer(card)}
-                          >
-                            {card.available ? "Zobrazit statistiku" : "Přiblížit zemi"} ·{" "}
-                            {card.period}
-                          </button>
-                        ) : card.type === "facts" ? (
-                          <details key={index} open>
-                            <summary>{card.title}</summary>
-                            <dl>
-                              {card.items.map((item) => (
-                                <div key={item.label}>
-                                  <dt>{item.label}</dt>
-                                  <dd>
-                                    {item.value} <small>{item.note}</small>
-                                  </dd>
-                                </div>
-                              ))}
-                            </dl>
-                          </details>
-                        ) : null
-                      )}
-                      {aiTurn?.sources.map((source) =>
-                        source.url ? (
-                          <a
-                            key={source.sourceId}
-                            href={source.url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {source.label}
-                          </a>
-                        ) : (
-                          <small key={source.sourceId}>{source.label}</small>
-                        )
-                      )}
-                      <div className="command-search-ai-actions">
-                        {aiTurn?.followUps.map((question) => (
-                          <button
-                            type="button"
-                            className="btn small"
-                            disabled={aiBusy}
-                            key={question}
-                            onClick={() => {
-                              setQuery(question);
-                              void requestAiSearch(question);
-                            }}
-                          >
-                            {question}
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          className="btn small"
-                          data-testid="search-ai-open-panel"
-                          onClick={() => {
-                            setAiPreviewOpen(false);
-                            setFocused(false);
-                            shell.openAiContext();
-                          }}
-                        >
-                          Otevřít celou konverzaci
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-accent small"
-                          disabled={aiBusy || !query.trim()}
-                          onClick={confirmAiSearch}
-                        >
-                          Odeslat otázku
-                        </button>
-                      </div>
-                      {aiAnswer.answer.results.map((result) => (
-                        <button
-                          type="button"
-                          className="command-search-ai-result"
-                          key={result.id}
-                          onClick={() => openAiCandidate(result)}
-                        >
-                          <strong>{result.title}</strong>
-                          <span>
-                            {formatDistance(result.distanceMeters, units)} · {result.source.label}
-                          </span>
-                        </button>
-                      ))}
-                      {!!aiAnswer.answer.results.length && (
-                        <div className="command-search-ai-actions">
-                          <button
-                            type="button"
-                            className="btn small"
-                            data-testid="search-ai-preview-plan"
-                            onClick={previewAiPlan}
-                          >
-                            {aiPlanPreviewed
-                              ? "Pracovní body jsou v mapě"
-                              : "Ukázat všechny body v mapě"}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-accent small"
-                            data-testid="search-ai-create-plan"
-                            onClick={createPlanFromAi}
-                          >
-                            Vytvořit editovatelný plán
-                          </button>
-                        </div>
-                      )}
-                      {aiSelection && (
-                        <span
-                          className="command-search-ai-selection"
-                          data-testid="search-ai-selection"
-                        >
-                          Vybráno pro tuto konverzaci: <strong>{aiSelection.title}</strong>
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
               )}
               {tagHits.map((item) => (
                 <button
@@ -999,7 +774,7 @@ export function CommandSearch({
                 !hits.length &&
                 !tagHits.length && (
                   <div className="command-search-empty" role="status">
-                    Nic jsme nenašli. Zkus přesnější název nebo vyber bod na mapě.
+                    {aiEnabled ? "Enter odešle dotaz AI." : "Žádná místa. Zkus přesnější název."}
                   </div>
                 )}
             </>

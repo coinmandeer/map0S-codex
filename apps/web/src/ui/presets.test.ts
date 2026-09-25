@@ -58,7 +58,11 @@ describe("canonical map presets", () => {
     for (const category of ["camp_site", "fuel", "parking", "toilets", "shower"]) {
       assert.ok(byId.travel!.categories!.includes(category as never), `Cestování: ${category}`);
     }
-    assert.ok(byId.travel!.layers.includes("vanlife"));
+    // Camping comes from the POI categories; the retired duplicate layer is not switched on.
+    assert.ok(!byId.travel!.layers.includes("vanlife"));
+    for (const category of ["caravan_site", "dump_station", "drinking_water"]) {
+      assert.ok(byId.travel!.categories!.includes(category as never), `Cestování: ${category}`);
+    }
     for (const category of ["via_ferrata", "skatepark", "climbing", "swimming", "fitness_centre"]) {
       assert.ok(byId.sport!.categories!.includes(category as never), `Sport: ${category}`);
     }

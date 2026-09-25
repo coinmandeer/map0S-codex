@@ -17,7 +17,10 @@ export const AI_PLACE_FIELDS = [
 /** Explicit source bindings: a layer id is not permission to resolve an arbitrary foreign id. */
 export function sourceIdForTarget(layerId: string, featureId: string): string | null {
   if (
-    (layerId === "osm-poi" || layerId === "vanlife" || layerId.startsWith("osm-")) &&
+    (layerId === "osm-poi" ||
+      layerId === "vanlife" ||
+      layerId === "weed" ||
+      layerId.startsWith("osm-")) &&
     /^(?:osm:(?:node|way|relation):\d+|osm-\d+)$/.test(featureId)
   )
     return featureId;

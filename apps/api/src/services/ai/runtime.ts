@@ -13,6 +13,9 @@ const unavailableOnNearestPoiPath: MapAiToolHandler = async () => {
 };
 
 const nearestPoiPathHandlers: MapAiToolHandlers = {
+  derive_radius_area: unavailableOnNearestPoiPath,
+  get_night_sky: unavailableOnNearestPoiPath,
+  resolve_location: unavailableOnNearestPoiPath,
   get_current_map_context: unavailableOnNearestPoiPath,
   list_available_layers: unavailableOnNearestPoiPath,
   query_layer: unavailableOnNearestPoiPath,

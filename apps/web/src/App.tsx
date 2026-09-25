@@ -1,4 +1,3 @@
-import { AreaControls } from "./discover/AreaControls";
 import { MapPlaceContext } from "./ui/MapPlaceContext";
 import { ClusterChoices } from "./ui/ClusterChoices";
 import { WorldUiBoundary } from "./world/WorldUiBoundary";
@@ -110,7 +109,6 @@ export function App() {
         <MapCore />
         <MapPlaceContext />
         <ClusterChoices />
-        <AreaControls />
       </ModuleErrorBoundary>
       {/* Keyed on the locale: the chrome remounts when the language changes, which is what
           makes a plain `t()` lookup enough. The map is outside this boundary, so switching

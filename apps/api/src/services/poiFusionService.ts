@@ -58,6 +58,8 @@ export interface PlaceSourceAdapter {
   id: PlaceSourceId;
   /** How much this source's claim is trusted when two sources disagree on a field. */
   confidence: number;
+  /** Exact category IDs emitted by sources without category-aware upstream queries. */
+  categories?: readonly string[];
   /** Why this source can't run here (missing key, needs a local import), or null when it can.
    *  A skipped source is reported to the client rather than silently missing. */
   unavailableReason?(): string | null;
@@ -338,6 +340,7 @@ async function fetchWikidata(bbox: Bbox): Promise<Place[]> {
 export const PLACE_SOURCE_ADAPTERS: PlaceSourceAdapter[] = [
   {
     id: "user",
+    categories: ["user-pin"],
     confidence: 0.95,
     fetch: ({ bbox, area }) => fetchUser(bbox, area)
   },
@@ -354,11 +357,14 @@ export const PLACE_SOURCE_ADAPTERS: PlaceSourceAdapter[] = [
   },
   {
     id: "wikidata",
+    categories: ["landmark"],
     confidence: 0.7,
     fetch: ({ bbox }) => fetchWikidata(bbox)
   },
   {
     id: "park4night",
+    // Provider types are not mapped to OSM categories; use its dedicated layer.
+    categories: [],
     confidence: 0.6,
     unavailableReason: () =>
       config.park4nightEnabled ? null : "vypnuto operátorem (PARK4NIGHT_ENABLED=1 jej zapne)",
@@ -380,6 +386,7 @@ export const PLACE_SOURCE_ADAPTERS: PlaceSourceAdapter[] = [
   },
   {
     id: "wikipedia",
+    categories: ["wikipedia"],
     confidence: 0.4,
     fetch: ({ bbox }) => fetchWikipedia(bbox)
   }
@@ -405,6 +412,19 @@ export function createPlacesFusion(
 
     for (const adapter of adapters) {
       if (!wanted.has(adapter.id)) continue;
+      if (
+        query.categories.length &&
+        adapter.categories &&
+        !query.categories.some((category) => adapter.categories!.includes(category))
+      ) {
+        metas.push({
+          source: adapter.id,
+          state: "skipped",
+          count: 0,
+          message: "Zdroj neobsahuje vybrané kategorie."
+        });
+        continue;
+      }
       const reason = adapter.unavailableReason?.();
       if (reason) {
         metas.push({ source: adapter.id, state: "skipped", count: 0, message: reason });
@@ -413,7 +433,19 @@ export function createPlacesFusion(
       jobs.push({
         source: adapter.id,
         local: adapter.id === "osm" || adapter.id === "user",
-        run: () => timed(adapter.id, () => adapter.fetch(query))
+        run: () =>
+          timed(adapter.id, async () => {
+            const result = await adapter.fetch(query);
+            const places = Array.isArray(result) ? result : result.places;
+            // Filter before deduplication: a high-confidence unrelated pin must not
+            // replace a requested category or leak from a broad upstream response.
+            const filtered = query.categories.length
+              ? places.filter((place) =>
+                  query.categories.some((category) => category === place.category)
+                )
+              : places;
+            return Array.isArray(result) ? filtered : { ...result, places: filtered };
+          })
       });
     }
 

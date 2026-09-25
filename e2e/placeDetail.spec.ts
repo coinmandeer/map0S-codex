@@ -100,7 +100,7 @@ test.describe("place detail", () => {
     });
     return asked;
   }
-  test("ordinary detail shows facts and follows automatic overview enrichment", async ({
+  test("ordinary detail keeps overview collapsed after useful data until requested", async ({
     page
   }) => {
     const asked = await stubOverview(page);
@@ -112,6 +112,9 @@ test.describe("place detail", () => {
     const actions = page.getByRole("group", { name: "Place actions" });
     for (const name of ["Route", "Add to plan", "Save", "Share"])
       await expect(actions.getByRole("button", { name })).toBeVisible();
+    await expect(page.getByTestId("place-overview-open")).toHaveAttribute("aria-expanded", "false");
+    expect(asked).toHaveLength(0);
+    await page.getByTestId("place-overview-open").click();
     await expect.poll(() => asked.length).toBe(1);
     await expect(page.getByTestId("overview-facts")).toContainText("Zřícenina nad soutokem");
     await expect(page.getByTestId("place-brief")).toContainText("OpenStreetMap");
@@ -119,6 +122,7 @@ test.describe("place detail", () => {
   test("switching overview source mode does not start research", async ({ page }) => {
     const asked = await stubOverview(page);
     await openDetail(page);
+    await page.getByTestId("place-overview-open").click();
     await expect(page.getByTestId("overview-facts")).toBeVisible();
     await expect.poll(() => asked.length).toBe(1);
     await page.getByRole("combobox", { name: "Overview sources" }).selectOption("local");
@@ -132,6 +136,7 @@ test.describe("place detail", () => {
   }) => {
     const asked = await stubOverview(page);
     await openDetail(page);
+    await page.getByTestId("place-overview-open").click();
     await expect(page.getByTestId("overview-facts")).toBeVisible();
     expect(asked[0]?.target).toMatchObject({
       type: "poi",

@@ -181,8 +181,6 @@ async function openPanel(page: Page) {
 
   await page.getByTestId("place-search").fill(QUESTION);
   await page.getByTestId("search-offer-ai").click();
-  await expect(page.getByTestId("search-ai-results")).toBeVisible({ timeout: 20_000 });
-  await page.getByTestId("search-ai-open-panel").click();
   await expect(page.getByTestId("ai-panel")).toBeVisible({ timeout: 20_000 });
   // The panel asks the carried-over question as it opens. Waiting for that answer keeps a
   // caller's later `state.stream` from being served to this first turn as well, which showed
@@ -206,8 +204,17 @@ test.describe("AI panel", () => {
     // Places are cards with a distance and their source, not names buried in the paragraph.
     await expect(thread).toContainText("OpenStreetMap");
     await expect(thread.getByRole("button", { name: /Kemp U Řeky/ })).toBeVisible();
-    // A card is a proposal: the map only moves when its own action is taken.
-    await expect(page.getByTestId("ai-card-places-show")).toBeVisible();
+    // Results are applied immediately; no second confirmation is necessary.
+    await expect(page.getByTestId("ai-card-places-show")).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Object.keys(window.__maposMap!.getStyle().sources).some((id) =>
+            id.startsWith("source-ai-answer-")
+          )
+        )
+      )
+      .toBeTruthy();
   });
 
   test("says once what leaves the browser, and the context chip lists it in full", async ({
@@ -261,6 +268,7 @@ test.describe("AI panel", () => {
       timeout: 20_000
     });
 
+    await page.locator(".ai-session-menu > summary").click();
     await page.getByTestId("ai-panel-clear").click();
     await expect(page.getByTestId("ai-panel-empty")).toBeVisible();
 
@@ -272,7 +280,9 @@ test.describe("AI panel", () => {
     });
   });
 
-  test("a drafted layer reaches the map only when its own action is taken", async ({ page }) => {
+  test("a drafted layer automatically reaches the map and stays out of the refresh URL", async ({
+    page
+  }) => {
     const state = await openPanel(page);
     state.stream = cardStream("Vrstvu se dvěma kempy jsem připravil.", LAYER_DRAFT_CARD);
     await askInPanel(page, "vytvoř z toho vrstvu");
@@ -280,12 +290,9 @@ test.describe("AI panel", () => {
     const card = page.getByTestId("ai-card-layer-draft");
     await expect(card).toBeVisible({ timeout: 20_000 });
     await expect(card).toContainText("2 míst");
-    // Until the button is pressed the drafted layer is a proposal, not a layer on the map.
-    await expect(page.getByTestId("toast")).toHaveCount(0);
-
-    await page.getByTestId("ai-card-layer-draft-show").click();
+    // The map is the output of the conversation; saving remains an explicit action.
     await expect(page.getByTestId("ai-results-hide")).toBeVisible();
-    await expect(page).toHaveURL(/layers=.*ai-answer-/);
+    await expect(page).not.toHaveURL(/layers=.*ai-answer-/);
     await page.getByTestId("ai-results-hide").click();
     await expect(page).not.toHaveURL(/ai-answer-/);
   });
@@ -404,8 +411,8 @@ test("exact answer results replace one temporary layer without moving the camera
       const m = window.__maposMap!;
       return { center: m.getCenter().toArray(), zoom: m.getZoom() };
     });
+  await expect.poll(() => page.evaluate(() => window.__maposMap!.isMoving())).toBe(false);
   const before = await view();
-  await card.getByRole("button", { name: "Zobrazit v mapě", exact: true }).click();
   const sourceId = () =>
     page.evaluate(() =>
       Object.keys(window.__maposMap!.getStyle().sources).filter(
@@ -425,7 +432,9 @@ test("exact answer results replace one temporary layer without moving the camera
     )
     .toBe(3);
   expect(await view()).toEqual(before);
-  expect(new URL(page.url()).searchParams.get("layers")?.split(",")).not.toContain("wikidata");
+  expect(new URL(page.url()).searchParams.get("layers")?.split(",") ?? []).not.toContain(
+    "wikidata"
+  );
   await card.getByRole("button", { name: "Otevřít detail místa Kemp U Řeky" }).hover();
   await expect
     .poll(() =>
@@ -435,12 +444,12 @@ test("exact answer results replace one temporary layer without moving the camera
       )
     )
     .toBe(true);
-  for (let i = 0; i < 3; i++) {
-    await card.getByRole("button", { name: "Zobrazit v mapě", exact: true }).click();
-    await expect.poll(sourceId).toHaveLength(1);
-  }
+  await page.evaluate(() => window.__maposMap!.jumpTo({ center: [-4.4, 36.7], zoom: 8 }));
+  const manuallyMoved = await view();
   await card.getByRole("button", { name: "Přiblížit výsledky", exact: true }).click();
-  await expect.poll(async () => JSON.stringify(await view())).not.toBe(JSON.stringify(before));
+  await expect
+    .poll(async () => JSON.stringify(await view()))
+    .not.toBe(JSON.stringify(manuallyMoved));
   expect(extraQueries).toBe(0);
   await page.screenshot({ path: "output/playwright/ai-exact-results-20260908.png" });
   await page.getByTestId("ai-results-hide").click();
@@ -463,6 +472,7 @@ test("AI V2 preserves streamed text on EOF and clears pending work on new thread
   );
   await expect(page.getByTestId("ai-panel-error")).toContainText("Přenos se přerušil");
   await expect(page.getByTestId("ai-panel-stop")).toHaveCount(0);
+  await page.locator(".ai-session-menu > summary").click();
   await page.getByTestId("ai-panel-clear").click();
   await expect(page.getByTestId("ai-panel-empty")).toBeVisible();
 });
@@ -484,7 +494,7 @@ test("AI V2 place excursion preserves the thread without another chat call", asy
   expect(calls).toBe(before);
 });
 
-test("AI Overview follows automatic enrichment, retains cited facts on interruption and makes geometry available", async ({
+test("AI Overview expands on demand, retains cited facts on interruption and makes geometry available", async ({
   page
 }) => {
   let requests = 0;
@@ -553,6 +563,9 @@ test("AI Overview follows automatic enrichment, retains cited facts on interrupt
     .getByRole("button", { name: /Kemp U Řeky/ })
     .click();
   await expect(page.getByTestId("pin-detail")).toBeVisible();
+  await expect(page.getByTestId("place-overview-open")).toHaveAttribute("aria-expanded", "false");
+  expect(requests).toBe(0);
+  await page.getByTestId("place-overview-open").click();
   const overview = page.getByTestId("ai-overview");
   await expect(overview).toBeVisible();
   await expect.poll(() => requests).toBe(1);

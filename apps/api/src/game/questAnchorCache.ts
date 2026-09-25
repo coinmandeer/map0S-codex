@@ -10,7 +10,7 @@
  * an empty area would look identical to an un-fetched one and be re-asked about forever.
  */
 
-import { and, eq, inArray, sql as dsql } from "drizzle-orm";
+import { and, eq, inArray, lt, sql as dsql } from "drizzle-orm";
 import type { Bbox, FeatureCollection } from "@mapos/layer-sdk";
 import { db } from "../db/index.js";
 import { questAnchorSweeps, questAnchors } from "../db/schema.js";
@@ -154,7 +154,7 @@ async function storeSweep(
         and(
           eq(questAnchors.sourceId, adapter.id),
           dsql`${questAnchors.geog} && ST_MakeEnvelope(${west}, ${south}, ${east}, ${north}, 4326)::geography`,
-          dsql`${questAnchors.refreshedAt} < ${now}`
+          lt(questAnchors.refreshedAt, now)
         )
       );
     const gone = stale.map((row) => row.ref).filter((ref) => !anchors.some((a) => a.ref === ref));
@@ -179,11 +179,17 @@ async function storeSweep(
 
 /** Fetches whatever this viewport still needs. Returns the number of sweeps performed, which is
  *  what the tests assert on: the point of the cache is that this reaches zero. */
-export async function refreshAnchorsForBbox(bbox: Bbox, now = new Date()): Promise<number> {
+export async function refreshAnchorsForBbox(
+  bbox: Bbox,
+  now = new Date(),
+  sources?: ReadonlySet<string>
+): Promise<number> {
   const cells = cellsFor(bbox);
   if (cells.length > MAX_CELLS_PER_SWEEP) return 0;
 
-  const available = questSources().filter((adapter) => !adapter.unavailableReason?.());
+  const available = questSources().filter(
+    (adapter) => !adapter.unavailableReason?.() && (!sources?.size || sources.has(adapter.id))
+  );
   if (!available.length) return 0;
 
   const swept = await db
@@ -237,10 +243,13 @@ export async function refreshAnchorsForBbox(bbox: Bbox, now = new Date()): Promi
 /** Reads cached anchors overlapping the viewport, best first. */
 export async function cachedAnchorsForBbox(
   bbox: Bbox,
-  limit: number
+  limit: number,
+  sources?: ReadonlySet<string>
 ): Promise<Array<{ adapter: QuestSourceAdapter; anchor: QuestAnchor }>> {
   const [west, south, east, north] = bbox;
-  const available = questSources().filter((adapter) => !adapter.unavailableReason?.());
+  const available = questSources().filter(
+    (adapter) => !adapter.unavailableReason?.() && (!sources?.size || sources.has(adapter.id))
+  );
   if (!available.length) return [];
   const byId = new Map(available.map((adapter) => [adapter.id, adapter]));
 
@@ -344,16 +353,15 @@ export async function questAnchorFeatures(
   bbox: Bbox,
   sources?: string
 ): Promise<FeatureCollection> {
-  await refreshAnchorsForBbox(bbox);
   const wanted = new Set(
     (sources ?? "")
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean)
   );
-  const cached = await cachedAnchorsForBbox(bbox, 200);
-  const selected = wanted.size ? cached.filter(({ adapter }) => wanted.has(adapter.id)) : cached;
-  const features = selected.map(({ adapter, anchor }) => anchoredQuestFeature(adapter, anchor));
+  await refreshAnchorsForBbox(bbox, new Date(), wanted);
+  const cached = await cachedAnchorsForBbox(bbox, 200, wanted);
+  const features = cached.map(({ adapter, anchor }) => anchoredQuestFeature(adapter, anchor));
   const notice = features.length ? undefined : unavailableSourcesNotice();
   return { type: "FeatureCollection", features, ...(notice ? { notice } : {}) };
 }

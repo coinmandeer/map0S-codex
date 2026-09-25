@@ -84,3 +84,66 @@ test("merging fills gaps without overwriting a more confident claim", () => {
   assert.equal(merged[0]!.website, "https://okor.cz");
   assert.deepEqual(merged[0]!.tags, ["hrad"]);
 });
+
+test("every requested category excludes unrelated source records before deduplication", async () => {
+  const { createPlacesFusion } = await import("./poiFusionService.js");
+  const { OSM_POI_CATEGORIES } = await import("@mapos/layer-sdk");
+  for (const category of Object.keys(OSM_POI_CATEGORIES)) {
+    const unrelated = category === "camp_site" ? "bar" : "camp_site";
+    const fuse = createPlacesFusion([
+      {
+        id: "osm",
+        confidence: 0.75,
+        fetch: async () => [place("osm", "Same place", 14, 50, { category })]
+      },
+      {
+        id: "user",
+        confidence: 0.95,
+        fetch: async () => [place("user", "Same place", 14, 50, { category: unrelated })]
+      }
+    ]);
+    const result = await fuse({
+      bbox: [13, 49, 15, 51],
+      categories: [category as keyof typeof OSM_POI_CATEGORIES],
+      sources: ["osm", "user"]
+    });
+    assert.deepEqual(
+      result.places.map((p) => p.category),
+      [category],
+      category
+    );
+    assert.deepEqual(
+      result.places[0]!.sources.map((s) => s.source),
+      ["osm"],
+      category
+    );
+    assert.equal(result.meta.sources.find((s) => s.source === "user")?.count, 0);
+  }
+});
+
+test("bars cafes restaurants and parking never fetch unrelated camping or personal sources", async () => {
+  const { createPlacesFusion, PLACE_SOURCE_ADAPTERS } = await import("./poiFusionService.js");
+  for (const category of ["bar", "cafe", "restaurant", "parking"] as const) {
+    let calls = 0;
+    const fuse = createPlacesFusion(
+      PLACE_SOURCE_ADAPTERS.filter((a) =>
+        ["user", "park4night", "wikidata", "wikipedia"].includes(a.id)
+      ).map((a) => ({
+        ...a,
+        unavailableReason: undefined,
+        fetch: async () => {
+          calls++;
+          return [];
+        }
+      }))
+    );
+    const result = await fuse({
+      bbox: [13, 49, 15, 51],
+      categories: [category],
+      sources: ["user", "park4night", "wikidata", "wikipedia"]
+    });
+    assert.equal(calls, 0, category);
+    assert.equal(result.places.length, 0);
+    assert.ok(result.meta.sources.every((s) => s.state === "skipped"));
+  }
+});

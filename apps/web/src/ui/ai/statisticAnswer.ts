@@ -27,15 +27,22 @@ export function validStatisticCard(card: AiStatisticCard): boolean {
   );
 }
 /** A server-grounded statistical question requests this map view; rendering text never calls it. */
-export function showStatisticAnswer(card: AiStatisticCard) {
+export function showStatisticAnswer(
+  card: AiStatisticCard,
+  fitCamera = true,
+  signal?: AbortSignal,
+  onApplied?: () => void
+) {
   if (!validStatisticCard(card)) return;
   // An old municipality filter must not silently clip a question about a different country.
   getMapStore().setAreaSelection(null);
-  emit("fit-bounds", { bbox: card.bbox });
+  if (fitCamera) emit("fit-bounds", { bbox: card.bbox });
   if (!card.available) deactivateStatistic();
   if (card.available)
-    void activateStatistic(card.themeId, card.period, card.excludedDatasetIds, {
+    return activateStatistic(card.themeId, card.period, card.excludedDatasetIds, {
+      signal,
       reveal: false,
-      fitCoverage: false
+      fitCoverage: false,
+      onApplied
     });
 }

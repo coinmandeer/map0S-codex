@@ -15,7 +15,13 @@ import {
   resetLayerRegistry
 } from "../layers/registry";
 import { TaskRegistry } from "../tasks/TaskRegistry";
-import { fetchLayerFeatures, LayerEngine, runBounded } from "./LayerEngine";
+import {
+  fetchLayerFeatures,
+  LayerEngine,
+  progressiveRetryDelay,
+  runBounded,
+  snapBboxToTileGrid
+} from "./LayerEngine";
 import { createDataLayer } from "../layers/dataLayer";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -856,4 +862,88 @@ test("server-model raster follows viewport and reports samples rather than empty
   assert.equal(layerActivity.get("model-test")?.count, 12);
   assert.equal(layerActivity.get("model-test")?.unit, "samples");
   engine.destroy();
+});
+
+test("viewport bboxes snap outward to whole tiles so small pans share one request", () => {
+  const view: Bbox = [14.412176931154988, 50.08324952961726, 14.429343068850045, 50.09151011444678];
+  const snapped = snapBboxToTileGrid(view, 14.2);
+  assert.ok(snapped[0] <= view[0] && snapped[1] <= view[1]);
+  assert.ok(snapped[2] >= view[2] && snapped[3] >= view[3]);
+  // A pan of a few pixels inside the same tiles produces the identical request.
+  const nudged: Bbox = [view[0] + 0.0004, view[1] + 0.0002, view[2] + 0.0004, view[3] + 0.0002];
+  assert.deepEqual(snapBboxToTileGrid(nudged, 14.2), snapped);
+  // At most one tile of margin per side: z14 tiles are ~0.022° wide.
+  assert.ok(snapped[2] - snapped[0] < view[2] - view[0] + 2 * 0.022 + 1e-9);
+  // Degenerate and out-of-range input never produces an invalid box.
+  const world = snapBboxToTileGrid([-200, -95, 200, 95], 0);
+  assert.deepEqual(
+    world.map((v) => Math.round(v)),
+    [-180, -85, 180, 85]
+  );
+});
+
+test("pin layers request the tile-snapped bbox and reuse it after a short pan", async (t) => {
+  resetLayerRegistry();
+  const events = new EventTarget();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events)
+    }
+  });
+  const requested: Bbox[] = [];
+  registerLayer({
+    kind: "pins",
+    viewportCost: "cheap",
+    manifest: {
+      id: "snapped",
+      name: "Snapped",
+      icon: "x",
+      color: "#000000",
+      description: "Snapped",
+      category: "user"
+    },
+    create: () => ({
+      async update(bbox) {
+        requested.push(bbox);
+        return collection("a");
+      },
+      setData() {},
+      setVisible() {},
+      setOpacity() {},
+      detach() {}
+    })
+  });
+  const store = {
+    view: { zoom: 14 },
+    activeLayers: { snapped: { visible: true, opacity: 1, filters: {} } },
+    session: null,
+    activeTag: null,
+    countryCode: null,
+    enabledPoiSources: [],
+    setVisibleFeatures() {},
+    setLayerLoading() {},
+    setLayerNotice() {},
+    setSearchHerePending() {},
+    markSourcesLoading() {},
+    applySourceMeta() {}
+  } as unknown as MapStore;
+  const engine = new LayerEngine({} as never, "/api", store, new TaskRegistry());
+  t.after(() => engine.destroy());
+  const view: Bbox = [14.4122, 50.0833, 14.4293, 50.0915];
+  engine.refresh(view, true);
+  await waitFor(() => requested.length === 1);
+  assert.deepEqual(requested[0], snapBboxToTileGrid(view, 14));
+  engine.refresh([14.4125, 50.0834, 14.4296, 50.0916]);
+  await wait(400);
+  assert.equal(requested.length, 1, "a pan inside the fetched tiles costs no request");
+});
+
+test("progressive retries back off from the server hint and stay bounded", () => {
+  assert.equal(progressiveRetryDelay(2000, 1), 2000);
+  assert.equal(progressiveRetryDelay(2000, 2), 3000);
+  assert.ok(progressiveRetryDelay(2000, 3) > progressiveRetryDelay(2000, 2));
+  assert.equal(progressiveRetryDelay(2000, 20), 15000);
+  assert.equal(progressiveRetryDelay(10, 1), 1000);
 });

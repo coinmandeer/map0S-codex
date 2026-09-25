@@ -529,6 +529,7 @@ export const OSM_POI_CATEGORIES = {
   cafe: { label: "Kavárny", group: "food", overpass: 'node["amenity"="cafe"]' },
   restaurant: { label: "Restaurace", group: "food", overpass: 'node["amenity"="restaurant"]' },
   brewery: { label: "Pivovary", group: "food", overpass: 'node["craft"="brewery"]' },
+  cannabis: { label: "Cannabis prodejny", group: "services", overpass: 'node["shop"="cannabis"]' },
   shop: { label: "Obchody", group: "services", overpass: 'node["shop"]' },
   parking: { label: "Parkoviště", group: "services", overpass: 'node["amenity"="parking"]' },
   fuel: { label: "Palivo", group: "services", overpass: 'node["amenity"="fuel"]' },

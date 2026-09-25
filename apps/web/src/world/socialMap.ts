@@ -9,7 +9,6 @@ import { worldCall, worldRuntime } from "./runtime";
 
 /** The social overlay shares the real map and works without the game renderer. */
 export function attachSocialMap(map: maplibregl.Map) {
-  const markers = new Map<string, maplibregl.Marker>();
   let timer: ReturnType<typeof setTimeout> | undefined,
     disposed = false,
     generation = 0,
@@ -25,34 +24,20 @@ export function attachSocialMap(map: maplibregl.Map) {
     worldRuntime.patch({ bbox: box });
     return box;
   };
+  let socialWasOpen = false;
   const render = () => {
     if (!map.isStyleLoaded()) return;
     const state = worldRuntime.get(),
-      game = getMapStore().mode === "game";
-    const visible = state.socialOpen || game || state.visible;
-    const notes = visible ? state.notes : [];
-    for (const [id, marker] of markers)
-      if (game || !notes.some((t) => t.id === id)) {
-        marker.remove();
-        markers.delete(id);
-      }
-    if (!game)
-      for (const thread of notes) {
-        if (markers.has(thread.id)) continue;
-        const button = document.createElement("button");
-        button.className = "world-map-beacon";
-        button.textContent = `▤ ${thread.replies}`;
-        button.title = thread.title;
-        button.setAttribute("aria-label", `Otevřít zprávu: ${thread.title}`);
-        button.onclick = (e) => {
-          e.stopPropagation();
-          worldRuntime.openThread(thread.id);
-        };
-        markers.set(
-          thread.id,
-          new maplibregl.Marker({ element: button }).setLngLat([thread.lng, thread.lat]).addTo(map)
-        );
-      }
+      store = getMapStore();
+    // Messages on the plain map are drawn by the "temporary-messages" layer (symbol pins, one
+    // poll). This overlay used to add its own DOM markers for the same threads on top of it,
+    // so every message showed twice and was fetched twice. Opening the social panel now simply
+    // makes sure that layer is on; the game draws its own 3D beacons from `state.notes`.
+    // Only on opening: a reader who then switches the layer off keeps it off.
+    const socialOpen = (state.socialOpen || state.visible) && store.mode !== "game";
+    if (socialOpen && !socialWasOpen && !store.activeLayers["temporary-messages"]?.visible)
+      store.activateLayer("temporary-messages");
+    socialWasOpen = socialOpen;
     const filter = state.socialOpen ? state.geoFilter : null;
     const key = JSON.stringify(filter);
     if (key === filterKey && map.getSource("world-social-radius")) return;
@@ -103,10 +88,9 @@ export function attachSocialMap(map: maplibregl.Map) {
     }
   };
   const refresh = async () => {
-    const state = worldRuntime.get(),
-      store = getMapStore();
-    if (disposed || !store.session || !(state.socialOpen || store.mode === "game" || state.visible))
-      return;
+    const store = getMapStore();
+    // Only the 3D game reads `state.notes`; outside it the map layer owns the fetching.
+    if (disposed || !store.session || store.mode !== "game") return;
     const gen = ++generation;
     try {
       const page = await worldCall<WorldPage<GeoThread>>("/threads/search", { bbox: bounds() });
@@ -161,6 +145,5 @@ export function attachSocialMap(map: maplibregl.Map) {
     map.off("style.load", render);
     pointMarker?.remove();
     map.off("movestart", gesture.cancel);
-    for (const m of markers.values()) m.remove();
   };
 }

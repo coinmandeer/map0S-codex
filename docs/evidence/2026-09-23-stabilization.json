@@ -1,6 +1,6 @@
 {
   "candidate": "20260923-stabilization-candidate",
-  "status": "local candidate; not deployed",
+  "status": "deployed and publicly verified",
   "browser": {
     "scenarios": 121,
     "verification": "Combined current stabilization runs and targeted reruns after fixes; not a claim of one uninterrupted full runner pass.",
@@ -834,5 +834,38 @@
     "apps/web/src/ui/PlanningPanel.tsx": "437306713fbc888fd23e338bf58b63179305d829db72d92a293057948a66e6b2",
     "apps/web/src/map/MapCore.tsx": "28199eab38803421ee1bc6148a2e88fd5bbe8d285755067b4c0096aa21a1b53b",
     "apps/web/src/layers/weather/adaptiveOverlay.ts": "bf0f969b0e59155afd4f5fa67271295eb31cc77d2d1d40e144d0e46bf9499b4f"
+  },
+  "deployment": {
+    "release": "20260923-stabilization-candidate",
+    "source_commit": "52ceaf5e1bdfa73ad8e10d39fd2eb90a107ba526",
+    "target": "/opt/ps3000/apps/mapos2",
+    "active_release": "/opt/ps3000/apps/mapos2/releases/20260923-stabilization-candidate",
+    "services": {
+      "web": "healthy",
+      "api": "healthy",
+      "postgres": "healthy"
+    },
+    "backup": {
+      "path": "/opt/ps3000/apps/mapos2/backups/20260923-stabilization-candidate/mapos.dump",
+      "bytes": 223159537,
+      "sha256": "96f28069c23a3f1c0c17b75e2da904f986b967741e09173cb1cb93541ca41b2f",
+      "restore_drill": "pass",
+      "migration_idempotence": "pass",
+      "previous_api_read_write_compatibility": "pass"
+    },
+    "public_smoke": {
+      "release_identity": "pass",
+      "web_health": "pass",
+      "api_health": "pass",
+      "security_headers": "pass",
+      "csp_reporting": "pass",
+      "hostile_cors": "blocked",
+      "unauthenticated_account_delete": "blocked",
+      "operations_endpoint": "protected"
+    },
+    "limitations": [
+      "VPS disk was approximately 98% utilized after deployment; restore free-space margin before the next release.",
+      "Production web build warns about JavaScript chunks over 500 kB."
+    ]
   }
 }

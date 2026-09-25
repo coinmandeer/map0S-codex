@@ -1,3 +1,4 @@
+import { aiChatHistoryMigration } from "./migrations/0026AiChatHistory.js";
 import { geoCorrespondenceMigration } from "./migrations/0025GeoCorrespondence.js";
 import { aiOverviewMigration } from "./migrations/0024AiOverview.js";
 import { providerBudgetsMigration } from "./migrations/0023ProviderBudgets.js";
@@ -367,7 +368,8 @@ const VERSIONED_MIGRATIONS = [
   worldLookupIndexesMigration,
   providerBudgetsMigration,
   aiOverviewMigration,
-  geoCorrespondenceMigration
+  geoCorrespondenceMigration,
+  aiChatHistoryMigration
 ] as const;
 
 function migrationMetadata(env: Readonly<Record<string, string | undefined>> = process.env) {

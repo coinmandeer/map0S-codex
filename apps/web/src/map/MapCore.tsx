@@ -1,3 +1,5 @@
+import { attachArtifactOverlay } from "./artifactOverlay";
+import { GoogleAttributionControl } from "./googleAttribution";
 import { getLayerManifestV2 } from "../layers/registry";
 import { createPinSpread, type SpreadPin } from "./pinSpread";
 import { createPinPreview } from "./pinPreview";
@@ -5,6 +7,7 @@ import { interactivePinLayers, interactivePinOwner } from "./interactivePins";
 import { fitArea } from "./fitArea";
 import { contextClickSuppressed } from "./contextGesture";
 import { attachSocialMap } from "../world/socialMap";
+import { worldRuntime } from "../world/runtime";
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import { MapLibreDataLayerLifecycle } from "@mapos/map-runtime";
@@ -13,7 +16,9 @@ import { usesMapyTiles } from "@mapos/layer-sdk";
 import { MapyLogoControl } from "./styleManager";
 import { overlayForBasemap, resolveBasemap, styleForBasemap } from "./basemapStyle";
 import { apply3dBuildings } from "./buildings3d";
-import { applyTerrain3d } from "./terrain3d";
+import { applySky, applyTerrain3d } from "./terrain3d";
+import { Toggle3dControl } from "./toggle3dControl";
+import { BUILDINGS_MIN_VIEW_ZOOM, is3dActive, set3dInteraction, target3dPitch } from "./camera3d";
 import { chromeMapPadding, readChromeInsets } from "./chromePadding";
 import { getMapStore, getMapBbox, type LayerMode } from "../store/mapStore";
 import { getShellStore } from "../store/shellStore";
@@ -124,7 +129,76 @@ export function MapCore() {
       emit("map-bearing", { bearing: map.getBearing() });
     };
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    // The control is rebuilt when 3D switches: its compass and pitch indicator only make sense
+    // once the camera can actually rotate and tilt.
+    let navigation: maplibregl.NavigationControl | null = null;
+    let navigation3d: boolean | null = null;
+    const syncNavigation = (threeD: boolean) => {
+      if (navigation && navigation3d === threeD) return;
+      if (navigation) map.removeControl(navigation);
+      navigation = new maplibregl.NavigationControl({
+        showCompass: threeD,
+        visualizePitch: threeD
+      });
+      navigation3d = threeD;
+      map.addControl(navigation, "bottom-right");
+    };
+    syncNavigation(false);
+    const toggle3d = new Toggle3dControl((next) => {
+      const canExtrude = Boolean(resolveBasemap(store.basemapId, store.theme).buildingSourceLayer);
+      store.setTerrain3d(next);
+      store.setBuildings3d(next && canExtrude);
+    });
+    map.addControl(toggle3d, "bottom-right");
+
+    /** Settles the ordinary map camera on whatever the 3D settings ask for. The game runs its own
+     *  camera, so it is left alone there. */
+    const camera3dState = () => ({
+      buildings3d: store.buildings3d,
+      terrain3d: store.terrain3d,
+      canExtrude: Boolean(resolveBasemap(store.basemapId, store.theme).buildingSourceLayer)
+    });
+    /** Sky is part of the style: it is set again after every style load, and whenever the camera
+     *  can show the horizon (3D here, or the tilted game camera). */
+    const syncSky = () => {
+      if (!map.isStyleLoaded()) return;
+      try {
+        applySky(map, store.mode === "game" || is3dActive(camera3dState()), store.theme);
+      } catch {
+        /* Older styles without sky support simply keep their background. */
+      }
+    };
+    const sync3dCamera = (options: { animate: boolean; zoomToBuildings?: boolean }) => {
+      syncSky();
+      if (store.mode === "game") {
+        toggle3d.setState(false, true);
+        set3dInteraction(map, false);
+        syncNavigation(false);
+        return;
+      }
+      const state = camera3dState();
+      const active = is3dActive(state);
+      toggle3d.setState(active);
+      set3dInteraction(map, active);
+      syncNavigation(active);
+      const pitch = target3dPitch(state);
+      const camera: maplibregl.CameraOptions = active
+        ? {
+            pitch,
+            ...(options.zoomToBuildings && state.buildings3d && state.canExtrude
+              ? { zoom: Math.max(map.getZoom(), BUILDINGS_MIN_VIEW_ZOOM) }
+              : {})
+          }
+        : { pitch: 0, bearing: 0 };
+      if (
+        Math.abs(map.getPitch() - (camera.pitch ?? 0)) < 0.5 &&
+        camera.zoom === undefined &&
+        (active || Math.abs(map.getBearing()) < 0.5)
+      )
+        return;
+      if (options.animate) map.easeTo({ ...camera, duration: 700 });
+      else map.jumpTo(camera);
+    };
 
     map.on("error", (event) => {
       console.warn("MapLibre error", safeBrowserErrorFields(event.error ?? event));
@@ -158,6 +232,12 @@ export function MapCore() {
         { durationMs: 8000 }
       );
       map.setStyle(fallbackStyle);
+    });
+
+    // A resized window (or a drawer opening) shows map that was never asked for. The engine
+    // debounces and only fetches what the snapped tiles do not already cover.
+    map.on("resize", () => {
+      if (map.isStyleLoaded()) engineRef.current?.refresh(getMapBbox(map));
     });
 
     map.on("idle", () => {
@@ -285,8 +365,10 @@ export function MapCore() {
           clearTimeout(gameFollowTimer);
           gameFollowTimer = null;
         }
-        map.easeTo({ pitch: 0, duration: 600 });
       }
+      // Leaving the game returns to the reader's own 3D view (or a flat map); entering it hands
+      // rotation back to the game camera.
+      sync3dCamera({ animate: true });
     };
     offs.push(on("mode-changed", onModeChanged));
 
@@ -318,6 +400,19 @@ export function MapCore() {
 
     // The Mapy logo control is a licence condition, so its lifetime is bound to the tiles that
     // are actually drawn — including the case where only the label overlay is theirs.
+    const googleAttribution = new GoogleAttributionControl(() => {
+      if (store.basemapId.startsWith("google-")) {
+        store.setBasemap("carto-voyager");
+        store.showToast("Podklad Google nyní není dostupný. Zobrazuji náhradní mapu.");
+      }
+    });
+    const syncGoogleChrome = (id: string) => {
+      if (id.startsWith("google-")) {
+        googleAttribution.setMapset(id.slice(7));
+        if (!map.hasControl(googleAttribution)) map.addControl(googleAttribution, "bottom-right");
+      } else if (map.hasControl(googleAttribution)) map.removeControl(googleAttribution);
+    };
+    syncGoogleChrome(initialBasemap.id);
     const mapyLogo = new MapyLogoControl();
     const syncMapyChrome = (shouldShow: boolean) => {
       if (shouldShow && !map.hasControl(mapyLogo)) map.addControl(mapyLogo, "bottom-left");
@@ -366,10 +461,12 @@ export function MapCore() {
     };
     syncAttribution();
     offs.push(store.subscribe(syncAttribution));
+    offs.push(attachArtifactOverlay(map));
 
     const applyBasemap = () => {
       const basemap = resolveBasemap(store.basemapId, store.theme);
       beginBasemapHealth(basemap.id);
+      syncGoogleChrome(basemap.id);
       syncMapyChrome(
         usesMapyTiles(
           basemap.id,
@@ -388,39 +485,29 @@ export function MapCore() {
         })
       );
       // A background with no building outlines leaves nothing standing up, and a tilted camera over
-      // a flat photo just distorts it. The setting itself is kept, so going back to a vector
-      // background restores the view the user chose.
-      if (!basemap.buildingSourceLayer && map.getPitch() > 0 && store.mode !== "game") {
-        map.easeTo({ pitch: 0, duration: 500 });
-      }
+      // a flat photo just distorts it — unless terrain is on, which works over any background.
+      // The settings themselves are kept, so going back to a vector background restores the view.
+      sync3dCamera({ animate: true });
     };
 
     offs.push(on("theme-changed", applyBasemap));
     offs.push(on("basemap-changed", applyBasemap));
     offs.push(
       on("buildings-3d-changed", (detail) => {
-        apply3dBuildings(map, detail.enabled);
-        // Extrusions are invisible from straight above, and the user cannot tilt by hand (drag
-        // rotation is off, so the map stays predictable). Switching them on therefore has to
-        // provide the viewpoint that makes them mean anything — and close enough to see it,
-        // since the layer only draws from z14. The game mode runs its own camera.
-        if (store.mode === "game") return;
-        map.easeTo({
-          pitch: detail.enabled ? 55 : 0,
-          zoom: detail.enabled ? Math.max(map.getZoom(), 15.5) : map.getZoom(),
-          duration: 700
-        });
+        apply3dBuildings(map, detail.enabled, store.theme);
+        // Extrusions are invisible from straight above, so switching them on provides the
+        // viewpoint that makes them mean anything — and close enough to see it, since the layer
+        // only draws from z14. Switching them off keeps terrain's tilt if terrain is still on.
+        sync3dCamera({ animate: true, zoomToBuildings: detail.enabled });
       })
     );
 
     offs.push(
       on("terrain-3d-changed", (detail) => {
         applyTerrain3d(map, detail.enabled);
-        // Relief needs a viewing angle to read as relief, but a gentler one than buildings want:
-        // the subject is a range of hills, not a street. Hillshade carries it from overhead, so
-        // this is a nudge rather than the full tilt. The game mode runs its own camera.
-        if (store.mode === "game") return;
-        map.easeTo({ pitch: detail.enabled ? 45 : 0, duration: 700 });
+        // Relief needs a viewing angle to read as relief, but a gentler one than buildings want;
+        // the combined target keeps the steeper of the two while both are on.
+        sync3dCamera({ animate: true });
       })
     );
 
@@ -450,6 +537,17 @@ export function MapCore() {
     map.on("dragstart", () => {
       dragged = true;
     });
+
+    /** A message left on the map is a conversation, not a place: its pin opens the thread in the
+     *  social panel (where it can be read and answered) instead of an empty place sheet. */
+    const openPin = (layerId: string, feature: import("@mapos/layer-sdk").GeoFeature) => {
+      const threadId = (feature.properties as Record<string, unknown>)?.threadId;
+      if (layerId === "temporary-messages" && typeof threadId === "string" && threadId) {
+        worldRuntime.openThread(threadId);
+        return;
+      }
+      engineRef.current?.handlePinClick(layerId, feature);
+    };
 
     map.on("click", (e) => {
       if (contextClickSuppressed(map)) return;
@@ -636,7 +734,7 @@ export function MapCore() {
           return;
         }
         pinPreview.hide();
-        engineRef.current?.handlePinClick(layerId, {
+        openPin(layerId, {
           type: "Feature",
           geometry: {
             type: "Point",
@@ -720,12 +818,8 @@ export function MapCore() {
 
     // One throttled canvas listener provides hover feedback for every pin source.  Feature-state
     // keeps the effect in MapLibre's renderer; there is no React update and no DOM node per POI.
-    const pinPreview = createPinPreview(map, (layer, feature) =>
-      engineRef.current?.handlePinClick(layer, feature)
-    );
-    const pinSpread = createPinSpread(map, ({ layer, feature }) =>
-      engineRef.current?.handlePinClick(layer, feature)
-    );
+    const pinPreview = createPinPreview(map, (layer, feature) => openPin(layer, feature));
+    const pinSpread = createPinSpread(map, ({ layer, feature }) => openPin(layer, feature));
     let previewLayers = store.activeLayers;
     let previewArea = store.areaSelection;
     let previewMode = store.mode;
@@ -860,6 +954,15 @@ export function MapCore() {
     });
 
     const initOverlays = () => {
+      // Suppress baked vector POI labels, while keeping roads and settlement names.
+      for (const layer of map.getStyle().layers) {
+        if (
+          layer.type === "symbol" &&
+          "source-layer" in layer &&
+          /^(poi|poi_label|poi_labels)$/i.test(layer["source-layer"] ?? "")
+        )
+          map.setLayoutProperty(layer.id, "visibility", "none");
+      }
       resize();
       if (!engineRef.current) {
         engineRef.current = new LayerEngine(map, API_BASE, store, undefined, dataLayerLifecycle);
@@ -867,8 +970,9 @@ export function MapCore() {
       engineRef.current.restoreStyle(getMapBbox(map));
       // Extrusions and the terrain mesh live in the style, so they are gone after every
       // background switch and have to be re-added here rather than only when a toggle is flipped.
-      apply3dBuildings(map, store.buildings3d);
+      apply3dBuildings(map, store.buildings3d, store.theme);
       applyTerrain3d(map, store.terrain3d);
+      syncSky();
 
       if (!map.getSource("route-preview")) {
         map.addSource("route-preview", {
@@ -1071,6 +1175,8 @@ export function MapCore() {
 
     map.on("load", () => {
       emitDiscoverViewport();
+      // A saved 3D view comes back tilted after a reload, not flat until a toggle is flipped.
+      sync3dCamera({ animate: false });
       if (store.mode === "game") {
         map.easeTo({
           pitch: store.gameCameraMode === "follow" ? GAME_FOLLOW_PITCH : 0,

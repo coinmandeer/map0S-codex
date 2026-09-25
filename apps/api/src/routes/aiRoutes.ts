@@ -1,3 +1,11 @@
+import { answerScenePatch } from "../services/ai/scenePatch.js";
+import { isMapContextSnapshot, type MapContextSnapshot } from "@mapos/layer-sdk";
+import { isPlanDocumentV2 } from "@mapos/layer-sdk";
+import { answerArtifacts, type MapArtifactRepository } from "../services/ai/mapArtifacts.js";
+import type { ChatRequestRepository, ChatRequestClaim } from "../services/ai/chatRequests.js";
+import { createHash, randomUUID } from "node:crypto";
+import { registerChatHistoryRoutes } from "./chatHistoryRoutes.js";
+import type { ChatHistoryRepository, HistoryTurn } from "../services/ai/chatHistory.js";
 import { registerAiOverviewRoutes } from "./aiOverviewRoutes.js";
 import { AI_PLACE_FIELDS } from "../services/ai/sourceDetail.js";
 import type { AreaSelection } from "@mapos/layer-sdk";
@@ -20,7 +28,7 @@ import type {
 import type { PlanDocumentRepository } from "../services/planDocumentRepository.js";
 import type { PlanDiscussionRepository } from "../services/planDiscussionRepository.js";
 import type { AiChatTurnFactory } from "../services/ai/chatComposition.js";
-import type { AiChatEvent } from "../services/ai/chatService.js";
+import { explicitTripDestination, type AiChatEvent } from "../services/ai/chatService.js";
 import {
   AiPlanProposalNotFoundError,
   AiPlanProposalPlanMissingError,
@@ -134,6 +142,7 @@ export const AI_CHAT_ROUTE_SCHEMA = {
     required: ["message", "context", "consent"],
     properties: {
       message: { type: "string", minLength: 1, maxLength: 2_000, pattern: "\\S" },
+      clientRequestId: { type: "string", format: "uuid" },
       conversationId: identifierSchema,
       baseRevision: { type: "integer", minimum: 0, maximum: 1_000_000 },
       scope: {
@@ -180,6 +189,9 @@ export const AI_CHAT_ROUTE_SCHEMA = {
           },
           mode: { type: "string", minLength: 1, maxLength: 32 },
           planId: identifierSchema,
+          tripDraft: { type: "object", maxProperties: 32 },
+          mapSnapshot: { type: "object", maxProperties: 16 },
+          selectedTime: { type: "string", format: "date-time" },
           featureRef: {
             type: "object",
             additionalProperties: REJECT_UNKNOWN_PROPERTY,
@@ -207,11 +219,14 @@ export const AI_CHAT_ROUTE_SCHEMA = {
 } as const;
 
 export interface AiChatRouteBody {
+  clientRequestId?: string;
   message: string;
   conversationId?: string;
   baseRevision?: number;
   scope?: { type: "global" };
   context: {
+    mapSnapshot?: MapContextSnapshot;
+    selectedTime?: string;
     mapCenter: { longitude: number; latitude: number };
     bbox?: [number, number, number, number];
     zoom: number;
@@ -219,6 +234,7 @@ export interface AiChatRouteBody {
     activeFilters?: { openNow?: boolean; minRating?: number; tags?: string[] };
     mode?: string;
     planId?: string;
+    tripDraft?: PlanDocumentV2;
     featureRef?: { layerId: string; featureId: string };
     regionRef?: string;
     areaId?: string;
@@ -240,6 +256,9 @@ export interface AiRouteDependencies {
   rateLimitWindowMs?: number;
   /** One chat service per turn; absent means the deployment exposes no assistant. */
   chatTurn?: AiChatTurnFactory;
+  chatHistory?: ChatHistoryRepository;
+  chatRequests?: ChatRequestRepository;
+  mapArtifacts?: MapArtifactRepository;
   discussPlan?: (request: PlanDiscussionRequest) => Promise<PlanDiscussionAnswer | null>;
   planRepository?: PlanDocumentRepository;
   planDiscussionRepository?: PlanDiscussionRepository;
@@ -254,6 +273,13 @@ function privateResponse(reply: FastifyReply) {
 /** Authenticated HTTP boundary shared by the production and deterministic memory compositions. */
 export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDependencies) {
   registerAiOverviewRoutes(app, dependencies);
+  if (dependencies.chatHistory)
+    registerChatHistoryRoutes(
+      app,
+      dependencies.chatHistory,
+      dependencies.resolveUserId,
+      dependencies.mapArtifacts
+    );
   const limiter = dependencies.rateLimiter ?? new FixedWindowRateLimiter();
   app.post<{ Body: AiOrchestrationRouteBody }>(
     "/v2/ai/orchestrate",
@@ -272,9 +298,6 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
         return privateResponse(reply).code(401).send({ message: "Přihlášení je vyžadováno" });
       }
 
-      const allowedLayerIds = request.body.activeLayerIds.filter(
-        (id) => dependencies.allowedLayerIds.has(id) && !id.startsWith("ai-answer-")
-      );
       const outcome = await dependencies.orchestrator.run({
         ownerUserId: userId,
         conversation: request.body.conversation,
@@ -287,10 +310,10 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
           entitlementIds: new Set()
         },
         projection: {
-          allowedLayerIds: new Set(allowedLayerIds),
+          allowedLayerIds: new Set(dependencies.allowedLayerIds),
           allowedPlanIds: new Set(),
           allowedFeatureFieldsByLayer: new Map(
-            allowedLayerIds.map((id) => [id, new Set(AI_PLACE_FIELDS)])
+            [...dependencies.allowedLayerIds].map((id) => [id, new Set(AI_PLACE_FIELDS)])
           ),
           allowedDataClasses: new Set(["public"]),
           allowPreciseLocation: request.body.preciseLocationConsent === true
@@ -378,6 +401,13 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
       }
 
       const { context, consent } = request.body;
+      if (context.mapSnapshot && !isMapContextSnapshot(context.mapSnapshot))
+        return privateResponse(reply).code(400).send({ message: "Neplatný stav mapy" });
+      if (
+        context.tripDraft &&
+        (!isPlanDocumentV2(context.tripDraft) || context.tripDraft.stops.length > 40)
+      )
+        return privateResponse(reply).code(400).send({ message: "Neplatná pracovní verze plánu" });
       if (
         context.bbox &&
         (context.bbox[0] >= context.bbox[2] ||
@@ -388,7 +418,10 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
         return privateResponse(reply).code(400).send({ message: "Neplatný výřez mapy" });
       }
       let selectedArea: AreaSelection | null = null;
-      if (context.areaId || context.boundaryRevision) {
+      if (
+        !explicitTripDestination(request.body.message) &&
+        (context.areaId || context.boundaryRevision)
+      ) {
         if (!context.areaId || !context.boundaryRevision || !dependencies.resolveArea)
           return privateResponse(reply)
             .code(409)
@@ -418,6 +451,46 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
       );
       if (context.featureRef && !allowedLayerIds.includes(context.featureRef.layerId))
         return privateResponse(reply).code(403).send({ message: "Vrstva cíle není dostupná." });
+      if (
+        request.body.conversationId &&
+        (await dependencies.chatHistory?.unavailable(userId, request.body.conversationId))
+      )
+        return privateResponse(reply).code(404).send({ message: "Konverzace není dostupná" });
+      const clientRequestId = request.body.clientRequestId;
+      let claim: ChatRequestClaim | null = null;
+      if (clientRequestId) {
+        if (!dependencies.chatRequests)
+          return privateResponse(reply)
+            .code(503)
+            .send({ message: "Evidence požadavků není dostupná" });
+        try {
+          claim = await dependencies.chatRequests.claim(
+            userId,
+            clientRequestId,
+            createHash("sha256").update(JSON.stringify(request.body)).digest("hex")
+          );
+        } catch {
+          return privateResponse(reply)
+            .code(503)
+            .send({ message: "Požadavek nelze bezpečně spustit. Zkuste to později." });
+        }
+        if (claim.status !== "new" && claim.status !== "replay")
+          return privateResponse(reply)
+            .code(409)
+            .send({
+              message:
+                claim.status === "busy"
+                  ? "Tento požadavek již běží nebo byl přerušen. Otevřete jeho historii."
+                  : "Tento identifikátor požadavku již nelze použít."
+            });
+        if (
+          claim.status === "replay" &&
+          claim.event.type === "done" &&
+          (!(await dependencies.chatHistory?.get(userId, claim.event.conversation.id)) ||
+            (await dependencies.chatHistory?.unavailable(userId, claim.event.conversation.id)))
+        )
+          return privateResponse(reply).code(404).send({ message: "Konverzace není dostupná" });
+      }
       const service = dependencies.chatTurn({
         area: selectedArea,
         center: context.mapCenter,
@@ -436,9 +509,141 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
         connection: "keep-alive",
         "x-accel-buffering": "no"
       });
-      const write = (event: AiChatEvent) => {
+      let historyId: string | null = null;
+      let historyRevision = 0;
+      const historyTurn: HistoryTurn = {
+        id: clientRequestId ?? randomUUID(),
+        question: request.body.message,
+        requestedAt: new Date().toISOString(),
+        text: "",
+        cards: [],
+        sources: [],
+        followUps: [],
+        done: false,
+        error: null,
+        step: null,
+        scopeKey: "",
+        scopeLabel: "Konverzace nad mapou"
+      };
+      let historyWritable = true;
+      let streamSequence = 0;
+      const streamEvent = (event: Record<string, unknown>) => {
         if (reply.raw.writableEnded) return;
-        reply.raw.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+        const payload = {
+          ...event,
+          runId: historyTurn.id,
+          sequence: ++streamSequence,
+          revision: historyRevision,
+          ...(historyId ? { conversationId: historyId } : {})
+        };
+        reply.raw.write(`event: ${event.type}\ndata: ${JSON.stringify(payload)}\n\n`);
+      };
+      if (claim?.status === "replay") {
+        if (claim.event.type === "done") {
+          historyId = claim.event.conversation.id;
+          historyRevision = claim.event.conversation.revision;
+          for (const artifact of answerArtifacts(
+            claim.event.answer,
+            historyId,
+            historyRevision,
+            historyTurn.id
+          )) {
+            try {
+              if (await dependencies.mapArtifacts?.get(userId, artifact.id))
+                streamEvent({ type: "map_artifact", artifactId: artifact.id, phase: "final" });
+            } catch {
+              app.log.warn("AI artifact replay unavailable");
+            }
+          }
+        }
+        if (claim.event.type === "done") {
+          const scene = answerScenePatch(
+            claim.event.answer,
+            context.mapSnapshot,
+            historyId!,
+            historyTurn.id,
+            historyRevision,
+            request.body.message
+          );
+          if (scene) streamEvent({ type: "scene_patch", patch: scene });
+        }
+        streamEvent(claim.event);
+        reply.raw.end();
+        return;
+      }
+      const write = async (event: AiChatEvent) => {
+        if (event.type === "conversation" || event.type === "done") {
+          historyId = event.conversation.id;
+          historyRevision = event.conversation.revision;
+        }
+        if (event.type === "token") historyTurn.text += event.text;
+        if (event.type === "card") historyTurn.cards.push(event.card);
+        if (event.type === "sources") historyTurn.sources = event.sources;
+        if (event.type === "tool_start") historyTurn.step = event.title;
+        if (event.type === "done")
+          Object.assign(historyTurn, event.answer, { done: true, step: null });
+        if (event.type === "error")
+          Object.assign(historyTurn, { error: event.message, done: true });
+        if (
+          historyId &&
+          historyWritable &&
+          dependencies.chatHistory &&
+          ["conversation", "done", "error"].includes(event.type)
+        ) {
+          try {
+            await dependencies.chatHistory.turn(userId, historyId, historyRevision, historyTurn);
+            if (clientRequestId)
+              await dependencies.chatRequests?.attach(userId, clientRequestId, historyId);
+          } catch {
+            historyWritable = false;
+            app.log.warn("AI history persistence unavailable");
+          }
+        }
+
+        if (
+          (event.type === "done" || event.type === "map_preview") &&
+          historyWritable &&
+          dependencies.mapArtifacts &&
+          historyId
+        ) {
+          for (const artifact of answerArtifacts(
+            event.answer,
+            historyId,
+            historyRevision,
+            historyTurn.id
+          )) {
+            try {
+              await dependencies.mapArtifacts.put(userId, artifact);
+            } catch {
+              app.log.warn("AI artifact persistence unavailable");
+              continue;
+            }
+            streamEvent({
+              type: "map_artifact",
+              artifactId: artifact.id,
+              phase: event.type === "map_preview" ? "preview" : "final"
+            });
+          }
+        }
+        if (clientRequestId && (event.type === "done" || event.type === "error")) {
+          try {
+            await dependencies.chatRequests?.finish(userId, clientRequestId, event);
+          } catch {
+            app.log.warn("AI request completion persistence unavailable");
+          }
+        }
+        if (event.type === "done" && historyId) {
+          const scene = answerScenePatch(
+            event.answer,
+            context.mapSnapshot,
+            historyId,
+            historyTurn.id,
+            historyRevision,
+            request.body.message
+          );
+          if (scene) streamEvent({ type: "scene_patch", patch: scene });
+        }
+        if (event.type !== "map_preview") streamEvent(event);
       };
       const abort = new AbortController();
       const disconnect = () => abort.abort();
@@ -452,12 +657,15 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
             messageDataClass: "account-private",
             context: {
               mapCenter: context.mapCenter,
+              ...(context.selectedTime ? { selectedTime: context.selectedTime } : {}),
+              ...(context.mapSnapshot ? { mapSnapshot: context.mapSnapshot } : {}),
               ...(context.bbox ? { bbox: context.bbox } : {}),
               zoom: context.zoom,
               activeLayerIds: allowedLayerIds,
               ...(context.activeFilters ? { activeFilters: context.activeFilters } : {}),
               ...(context.mode ? { mode: context.mode } : {}),
               ...(context.planId ? { planId: context.planId } : {}),
+              ...(context.tripDraft ? { tripDraft: context.tripDraft } : {}),
               ...(context.featureRef ? { featureRef: context.featureRef } : {}),
               ...(selectedArea
                 ? {
@@ -498,10 +706,10 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
               entitlementIds: new Set()
             },
             projection: {
-              allowedLayerIds: new Set(allowedLayerIds),
+              allowedLayerIds: new Set(dependencies.allowedLayerIds),
               allowedPlanIds: new Set(context.planId ? [context.planId] : []),
               allowedFeatureFieldsByLayer: new Map(
-                allowedLayerIds.map((id) => [id, new Set(AI_PLACE_FIELDS)])
+                [...dependencies.allowedLayerIds].map((id) => [id, new Set(AI_PLACE_FIELDS)])
               ),
               allowedDataClasses: new Set(
                 consent.savedPlaces ? ["public", "account-private"] : ["public"]
@@ -513,12 +721,20 @@ export function registerAiRoutes(app: FastifyInstance, dependencies: AiRouteDepe
           write
         );
       } catch {
-        write({
+        await write({
           type: "error",
           code: "answer-unavailable",
           message: "Odpověď se teď nepodařilo připravit"
         });
       } finally {
+        if (historyId && dependencies.chatHistory && !historyTurn.done) {
+          historyTurn.done = true;
+          historyTurn.step = null;
+          historyTurn.error = "Přerušená odpověď";
+          await dependencies.chatHistory
+            .turn(userId, historyId, historyRevision, historyTurn)
+            .catch(() => {});
+        }
         reply.raw.off("close", disconnect);
         if (!reply.raw.writableEnded) reply.raw.end();
       }

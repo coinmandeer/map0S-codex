@@ -42,6 +42,42 @@ describe("bbox helpers", () => {
 describe("GBFS feed handling", () => {
   const { parseCsvLine, findFeedUrl } = mobilityTesting;
 
+  it("keeps zero availability and closure flags but never presents stale counts as live", () => {
+    const now = Date.parse("2026-09-24T12:00:00Z");
+    const fresh = mobilityTesting.stationAvailability(
+      {
+        last_reported: now / 1000,
+        num_bikes_available: 0,
+        num_docks_available: 4,
+        is_renting: 0,
+        is_returning: 1
+      },
+      now
+    );
+    assert.equal(fresh.vehiclesAvailable, 0);
+    assert.equal(fresh.renting, false);
+    assert.equal(fresh.returning, true);
+    assert.equal(
+      mobilityTesting.stationAvailability(
+        { last_reported: "2026-09-24T11:00:00Z", num_vehicles_available: 10 },
+        now
+      ).availabilityStatus,
+      "unknown"
+    );
+    assert.equal(
+      mobilityTesting.stationAvailability({ last_reported: now / 1000 + 120 }, now)
+        .availabilityStatus,
+      "unknown"
+    );
+    assert.equal(
+      mobilityTesting.stationAvailability(
+        { last_reported: new Date(now).toISOString(), num_vehicles_available: -1 },
+        now
+      ).vehiclesAvailable,
+      null
+    );
+  });
+
   it("parses quoted CSV fields containing commas", () => {
     // System names in systems.csv routinely contain commas — a naive split shifts every
     // column after them, which would silently mis-assign countries and feed URLs.
@@ -70,4 +106,57 @@ describe("GBFS feed handling", () => {
     assert.equal(findFeedUrl(v3, "station_information"), "https://v3/stations");
     assert.equal(findFeedUrl(v3, "not_a_feed"), undefined);
   });
+});
+
+it("GBFS dockless vehicles support v2/v3 and reject stale, reserved, disabled or docked entries", () => {
+  const system = {
+    countryCode: "CZ",
+    name: "Operator",
+    systemId: "test",
+    discoveryUrl: "https://example.org/gbfs.json"
+  };
+  const now = Date.parse("2026-09-24T12:00:00Z");
+  const vehicle = {
+    vehicle_id: "rotating-id",
+    lat: 50,
+    lon: 14,
+    is_reserved: false,
+    is_disabled: false
+  };
+  const feed = {
+    last_updated: new Date(now).toISOString(),
+    data: {
+      vehicles: [
+        vehicle,
+        { ...vehicle, vehicle_id: "reserved", is_reserved: true },
+        { ...vehicle, vehicle_id: "disabled", is_disabled: true },
+        { ...vehicle, vehicle_id: "docked", station_id: "s" },
+        { ...vehicle, vehicle_id: "stale", last_reported: (now - 600000) / 1000 }
+      ]
+    }
+  };
+  const points = mobilityTesting.freeVehicleFeatures(system, feed, now);
+  assert.equal(points.length, 1);
+  assert.equal(points[0]!.properties.category, "shared-vehicle");
+  assert.equal(
+    mobilityTesting.freeVehicleFeatures(
+      system,
+      { ...feed, last_updated: (now - 600000) / 1000 },
+      now
+    ).length,
+    0
+  );
+  assert.equal(
+    mobilityTesting.freeVehicleFeatures(
+      system,
+      {
+        last_updated: now / 1000,
+        data: {
+          bikes: [{ bike_id: "old-format", lat: 50, lon: 14, is_reserved: 0, is_disabled: 0 }]
+        }
+      },
+      now
+    ).length,
+    1
+  );
 });

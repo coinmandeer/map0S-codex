@@ -76,3 +76,34 @@ test("atlas categories have stable order, unique IDs and preserve source-specifi
     true
   );
 });
+
+test("every built-in layer has a catalogue row of its own (none hidden as a sub-setting)", async () => {
+  const { allLayerPlugins } = await import("../../layers");
+  const { NOT_CATALOGUED } = await import("./catalogModel");
+  const rows = new Set(CATALOG_GROUPS.flatMap((group) => group.items.map((item) => item.layer)));
+  const missing = allLayerPlugins()
+    .map((plugin) => plugin.manifest.id)
+    .filter(
+      (id) =>
+        !rows.has(id) &&
+        !NOT_CATALOGUED.has(id) &&
+        !id.startsWith("theme-") &&
+        !id.startsWith("weather") // weather quantities are rows by id below
+    );
+  assert.deepEqual(missing, []);
+  // Former "related" sub-switches are first-class rows now.
+  for (const id of [
+    "gbif",
+    "gbif-density",
+    "ebird",
+    "air-quality",
+    "openaq",
+    "charging-stations",
+    "refuge-restrooms"
+  ])
+    assert.ok(rows.has(id), id);
+  const related = CATALOG_GROUPS.flatMap((group) =>
+    group.items.flatMap((item) => (item.related ?? []).filter((ref) => typeof ref === "string"))
+  );
+  assert.deepEqual(related, [], "whole-layer related refs duplicate a row's control");
+});

@@ -1,7 +1,11 @@
+import { resolveChatLocation } from "./locationResolver.js";
+import { searchMapyPlaces } from "./mapyPlaceSearch.js";
+import { layerMapResult } from "./layerMapResult.js";
+import { nightSkyConditions } from "../nightSkyService.js";
+import { CATALOG_GROUPS, BASEMAPS, LAYER_ALIASES, CATALOG_DATA } from "@mapos/layer-sdk";
+import { routeChatPlan, routeOverview } from "./tripRoute.js";
+import { mapyRouteMatrix } from "../mapyService.js";
 import { answerStatisticalQuestion } from "./statisticalQuestion.js";
-import { projectAiLayerCatalog } from "./layerCatalog.js";
-import { AI_PLACE_FIELDS } from "./sourceDetail.js";
-import type { LayerManifestV2 } from "@mapos/layer-sdk";
 import { sourcePlaceDetail } from "./sourceDetail.js";
 /**
  * What the assistant is allowed to reach, in production and offline.
@@ -13,6 +17,9 @@ import { sourcePlaceDetail } from "./sourceDetail.js";
  */
 
 import { OSM_POI_CATEGORIES, type OsmPoiCategoryId } from "@mapos/layer-sdk";
+import { capabilities } from "../../config.js";
+import { providerCircuitBreaker } from "../../utils/upstream.js";
+import { providerBudgets } from "../providerBudget/repository.js";
 import { FEATURE_PROVIDERS } from "../featureProviders.js";
 import type { AiConversationStore } from "./conversation.js";
 import { AiChatService, type AiChatPlanEditor } from "./chatService.js";
@@ -53,55 +60,111 @@ function weatherSummary(code: number | null): string {
 
 /** Layers as metadata, from the same registry that serves their features. POI layers advertise
  *  the categories they can be filtered by, which is how a model knows `nature.camp_site` exists. */
-function layerCatalog(): readonly AiChatLayerDescriptor[] {
-  const poiCategories = Object.entries(OSM_POI_CATEGORIES).map(
-    ([id, definition]) => `${definition.group}.${id as OsmPoiCategoryId}`
-  );
-  // Derived from the existing provider registry; no parallel list of data sources.
-  const manifests: LayerManifestV2[] = FEATURE_PROVIDERS.map((provider) => ({
-    schema: "mapos.layer-manifest",
-    schemaVersion: "2.0.0",
-    sdkRange: "^2.0.0",
-    id: provider.id,
-    name: provider.name,
-    description: provider.name,
-    category: "travel",
-    geometryKinds: ["Point"],
-    renderer: { type: "symbols" },
-    source: { type: "server-adapter", adapterId: provider.id },
-    queryPolicy: { strategy: "viewport" },
-    attribution: [],
-    capabilities: ["query"],
-    permissions: { defaultVisibility: provider.id === "user-layers" ? "private" : "public" },
-    ai: {
-      discoverable: true,
-      permissionProjection: provider.id === "user-layers" ? "disabled" : "public-features",
-      tools: ["query_layer", "get_feature_detail"],
-      searchableFields: ["name", "category"],
-      semanticProfile: {
-        version: "1",
-        fields: (["osm-poi", "vanlife", "park4night"].includes(provider.id)
-          ? AI_PLACE_FIELDS
-          : ["name", "category"]
-        ).map((field) => ({
-          field,
-          meaning: field === "name" ? "identity" : field === "category" ? "category" : "description"
-        })),
-        spatial: ["point", "bbox"]
-      }
-    }
-  }));
-  return projectAiLayerCatalog(manifests, {
-    authenticated: false,
-    ownedLayerIds: new Set(),
-    entitlementIds: new Set()
-  }).map((entry) => ({
-    layerId: entry.layerId,
-    name: entry.name,
-    categories:
-      entry.layerId === "osm-poi" || entry.layerId === "vanlife" ? poiCategories.slice(0, 20) : [],
-    access: "public"
-  }));
+export function layerCatalog(): readonly AiChatLayerDescriptor[] {
+  const privateIds = new Set(["user-layers", "my-saved-places"]);
+  const entries: AiChatLayerDescriptor[] = CATALOG_GROUPS.flatMap((group) => group.items)
+    .filter((item) => !privateIds.has(item.layer))
+    .map((item) => ({
+      layerId: item.id,
+      name: `${item.cs} / ${item.en}`,
+      categories: item.values ?? [],
+      access: "public",
+      sourceLayerId: item.layer,
+      kind: "overlay",
+      ...(CATALOG_DATA[item.layer]
+        ? { description: CATALOG_DATA[item.layer]!.description, data: CATALOG_DATA[item.layer] }
+        : {}),
+      aliases: [...(LAYER_ALIASES[item.id] ?? LAYER_ALIASES[item.layer] ?? [])],
+      ...(item.facet ? { facet: item.facet } : {})
+    }));
+  const known = new Set(entries.map((e) => e.layerId));
+  for (const provider of FEATURE_PROVIDERS)
+    if (!privateIds.has(provider.id) && !known.has(provider.id))
+      entries.push({
+        layerId: provider.id,
+        name: provider.name,
+        categories: provider.id === "osm-poi" ? Object.keys(OSM_POI_CATEGORIES) : [],
+        access: "public",
+        kind: "overlay"
+      });
+  for (const basemap of BASEMAPS)
+    entries.push({
+      layerId: basemap.id,
+      name: basemap.label,
+      categories: [],
+      access: "public",
+      kind: "basemap",
+      description: basemap.hint,
+      ...(basemap.requiresCapability ? { requiresCapability: basemap.requiresCapability } : {})
+    });
+  return entries;
+}
+export const PUBLIC_AI_CATALOG_IDS = new Set(layerCatalog().map((entry) => entry.layerId));
+
+/** Configuration is only an eligibility check; a source without a successful request is unchecked. */
+async function availableLayerCatalog(): Promise<readonly AiChatLayerDescriptor[]> {
+  const caps = capabilities();
+  const health = new Map(providerCircuitBreaker.snapshots().map((s) => [s.provider, s]));
+  const keyed: Record<string, [string, string]> = {
+    "charging-stations": ["ocm", "openchargemap"],
+    "active-fires": ["firms", "nasa-firms"],
+    openaq: ["openaq", "openaq"],
+    ebird: ["ebird", "ebird"],
+    ticketmaster: ["ticketmaster", "ticketmaster"],
+    europeana: ["europeana", "europeana"],
+    ...Object.fromEntries(
+      Object.keys(CATALOG_DATA)
+        .filter((id) => id.startsWith("golemio-"))
+        .map((id) => [id, ["golemio", "golemio"] as [string, string]])
+    ),
+    "sky-brightness": ["skyAtlas", "sky-atlas"]
+  };
+  const [googleBudget, mapyBudget] = await Promise.all([
+    caps.googleTiles
+      ? providerBudgets.available({
+          product: "google-tiles",
+          account: process.env.GOOGLE_BUDGET_ACCOUNT ?? "",
+          operation: "tile"
+        })
+      : false,
+    caps.mapy
+      ? providerBudgets.available({
+          product: "mapy-credits",
+          account: process.env.MAPY_BUDGET_ACCOUNT ?? "",
+          operation: "tile"
+        })
+      : false
+  ]);
+  return layerCatalog().map((entry) => {
+    const [cap, provider] = keyed[entry.sourceLayerId ?? entry.layerId] ?? [
+      entry.requiresCapability,
+      undefined
+    ];
+    const source =
+      provider ??
+      CATALOG_DATA[entry.sourceLayerId ?? entry.layerId]?.providerId ??
+      (cap?.startsWith("google") ? "google" : cap === "mapy" ? "mapy" : undefined);
+    const status = source ? health.get(source === "google" ? "basemap-google" : source) : undefined;
+    const reason =
+      cap && !caps[cap]
+        ? "Zdroj není nakonfigurován nebo povolen."
+        : (source === "google" && !googleBudget) || (source === "mapy" && !mapyBudget)
+          ? "Chybí volný ověřený rozpočet poskytovatele."
+          : status?.state === "open"
+            ? "Poskytovatel po opakovaných chybách dočasně neodpovídá."
+            : undefined;
+    return {
+      ...entry,
+      ...(cap ? { requiresCapability: cap } : {}),
+      availability: reason
+        ? "unavailable"
+        : status?.lastSuccessAt && !status.consecutiveFailures
+          ? "ready"
+          : "unchecked",
+      ...(reason ? { unavailableReason: reason } : {}),
+      ...(status?.lastSuccessAt ? { checkedAt: status.lastSuccessAt } : {})
+    };
+  });
 }
 
 function resolveCategoryIds(raw: readonly string[]): OsmPoiCategoryId[] {
@@ -129,9 +192,18 @@ export function createProductionChatToolProviders(
   const eventLayerId = options.eventLayerId ?? "events";
 
   const providers: AiChatToolProviders = {
+    routePlan: routeChatPlan,
+    nightSky: nightSkyConditions,
+    routeMatrix: (stops, profile, signal) =>
+      mapyRouteMatrix(
+        stops.map((p) => [p.longitude, p.latitude]),
+        profile === "foot" ? "foot_hiking" : profile === "bike" ? "bike_mountain" : "car_fast",
+        signal
+      ),
+    resolveLocation: resolveChatLocation,
     statisticalAnswer: answerStatisticalQuestion,
-    placeSearch: createFusedPlaceSearchSource((query) => getFusedPlaces(query)),
-    layers: layerCatalog,
+    placeSearch: createFusedPlaceSearchSource((query) => getFusedPlaces(query), searchMapyPlaces),
+    layers: availableLayerCatalog,
     async featureDetail(input, context) {
       const detail = await sourcePlaceDetail(input, context.signal);
       return {
@@ -163,7 +235,9 @@ export function createProductionChatToolProviders(
           ...(input.filters?.minRating !== undefined
             ? { minRating: String(input.filters.minRating) }
             : {}),
-          ...(input.filters?.tags ? { tags: input.filters.tags.join(",") } : {})
+          ...(input.filters?.tags ? { tags: input.filters.tags.join(",") } : {}),
+          ...(input.filters?.categories ? { categories: input.filters.categories.join(",") } : {}),
+          ...(input.filters?.sources ? { sources: input.filters.sources.join(",") } : {})
         }
       });
       const features = collection.features
@@ -187,17 +261,20 @@ export function createProductionChatToolProviders(
             sourceId: `layer:${input.layerId}`
           };
         });
+      const mapResult = layerMapResult(input.layerId, collection.features, input.limit);
       return {
         features,
-        sources: features.length
-          ? [
-              {
-                sourceId: `layer:${input.layerId}`,
-                label: `Vrstva ${provider.name}`,
-                providerId: input.layerId
-              }
-            ]
-          : []
+        ...(mapResult ? { mapResult } : {}),
+        sources:
+          features.length || mapResult
+            ? [
+                {
+                  sourceId: `layer:${input.layerId}`,
+                  label: `Vrstva ${provider.name}`,
+                  providerId: input.layerId
+                }
+              ]
+            : []
       };
     },
 
@@ -233,16 +310,18 @@ export function createProductionChatToolProviders(
       const route = await fetchRoute(
         `${input.from.longitude},${input.from.latitude}`,
         `${input.to.longitude},${input.to.latitude}`,
-        input.profile
+        input.profile,
+        { signal: context.signal }
       );
       return {
         distanceMeters: Math.round(route.distanceM),
         durationSeconds: Math.round(route.durationS),
         // The schema allows 10 000 points; a plan-sized overview never needs more, and a model
         // reading 10 000 coordinates is paying for a shape it cannot see.
-        geometry: route.coordinates
-          .slice(0, 500)
-          .map(([longitude, latitude]) => ({ longitude, latitude })),
+        geometry: routeOverview(route.coordinates).map(([longitude, latitude]) => ({
+          longitude,
+          latitude
+        })),
         source: {
           sourceId: `routing:${route.provider}`,
           label: route.provider === "mapy" ? "Mapy.com routing" : "OSRM (OpenStreetMap)",
@@ -467,6 +546,13 @@ export function createAiChatTurnFactory(options: {
     });
     return new AiChatService({
       registry,
+      onLocationResolved: (center, bbox) => {
+        mapContext.center = center;
+        mapContext.bbox = bbox;
+        mapContext.area = null;
+      },
+      routePlan: options.providers.routePlan,
+      routeMatrix: options.providers.routeMatrix,
       statistics: options.providers.statisticalAnswer,
       conversations: options.conversations,
       persistence: options.persistence,

@@ -19,15 +19,13 @@ test.describe("activity indicator", () => {
     const requestGate = new Promise<void>((resolve) => {
       releaseRequests = resolve;
     });
-    await page.route(/\/api\/layers\/(?:osm-poi|vanlife|inaturalist)\/features/u, async (route) => {
+    await page.route(/\/api\/layers\/(?:osm-poi|gbif|inaturalist)\/features/u, async (route) => {
       await requestGate;
       await route.fulfill({ json: EMPTY_FEATURES });
     });
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(
-      "/?mode=planning&layers=osm-poi,vanlife,inaturalist&lng=13.3775&lat=49.7475&z=14"
-    );
+    await page.goto("/?mode=planning&layers=osm-poi,gbif,inaturalist&lng=13.3775&lat=49.7475&z=14");
 
     const indicator = page.getByTestId("activity-indicator");
     await expect(indicator).toBeVisible();

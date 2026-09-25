@@ -251,8 +251,7 @@ export interface PointForecast {
   climate: ClimateNormals;
 }
 
-/** Open-Meteo needs no key and allows commercial use below 10k calls a day, which is why the
- *  weather panel works out of the box while the tile overlays need OpenWeatherMap. */
+/** Open-Meteo hosted free access is for noncommercial use; mapOS uses it within the configured free limits. */
 export async function getPointForecast(lng: number, lat: number): Promise<PointForecast> {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}` +

@@ -12,12 +12,15 @@ export interface BudgetRequest {
 /** Single row lock serializes all reservations for one account/SKU, including daily counters. */
 export function createProviderBudgetRepository(
   database: postgres.Sql,
-  providerManaged = () => process.env.MAPOS_AI_BUDGET_MODE === "provider"
+  providerManaged = () => process.env.MAPOS_AI_BUDGET_MODE === "provider",
+  externalProviderManaged = () => process.env.MAPOS_PROVIDER_BUDGET_MODE === "provider"
 ) {
   return {
     /** Read-only hint for honest UI phases. Dispatch still requires an atomic reservation. */
     async available(input: BudgetRequest): Promise<boolean> {
       const policy = budgetPolicy(input.product, input.operation, input.units ?? 1);
+      if (policy.provider !== "ollama" && policy.provider !== "google" && externalProviderManaged())
+        return true;
       if (!/^[a-zA-Z0-9._:-]{1,120}$/.test(input.account)) return false;
       if (policy.provider === "ollama" && providerManaged()) return true;
       try {
@@ -37,6 +40,8 @@ export function createProviderBudgetRepository(
       signal?.throwIfAborted();
       const units = input.units ?? 1;
       const policy = budgetPolicy(input.product, input.operation, units);
+      if (policy.provider !== "ollama" && policy.provider !== "google" && externalProviderManaged())
+        return `provider-managed:${randomUUID()}`;
       if (!/^[a-zA-Z0-9._:-]{1,120}$/.test(input.account))
         throw new ProviderBudgetError("budget-disabled");
       // Explicit deployment-owner choice: the cloud account enforces billing limits.

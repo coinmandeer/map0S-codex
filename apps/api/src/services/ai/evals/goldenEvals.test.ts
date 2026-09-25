@@ -220,7 +220,7 @@ for (const evalCase of CASES) {
     // The prompt that reached the provider is the versioned file, not a copy in the service. The
     // gateway appends its own injection rule for the source blocks, so this is a prefix check.
     assert.ok(
-      requests[0]?.system.startsWith(aiPrompt("ai-chat-turn.v1", { submitTool: "submit_answer" })),
+      requests[0]?.system.startsWith(aiPrompt("ai-chat-turn.v2", { submitTool: "submit_answer" })),
       "the versioned prompt is not what reached the provider"
     );
 

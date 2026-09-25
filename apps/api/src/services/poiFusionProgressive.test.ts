@@ -115,3 +115,34 @@ test("progressive fusion isolates selected area identity and boundary revision",
   assert.equal(seen.length, 3);
   assert.equal(new Set(seen).size, 3);
 });
+
+test("late broad source responses cannot leak another category into a progressive result", async () => {
+  let release!: (places: Place[]) => void;
+  const delayed = new Promise<Place[]>((resolve) => {
+    release = resolve;
+  });
+  const fuse = createPlacesFusion(
+    [
+      { id: "osm", confidence: 0.8, fetch: async () => [{ ...point, category: "cafe" }] },
+      { id: "mapy", confidence: 0.8, fetch: () => delayed }
+    ],
+    createProgressivePlaces({ waitMs: 1 })
+  );
+  const request = {
+    ...query,
+    categories: ["cafe" as const],
+    sources: ["osm" as const, "mapy" as const]
+  };
+  const first = await fuse(request, { progressive: true });
+  assert.deepEqual(
+    first.places.map((p) => p.category),
+    ["cafe"]
+  );
+  release([{ ...point, id: "camp", category: "camp_site" }]);
+  const final = await fuse(request, { progressive: true });
+  assert.deepEqual(
+    final.places.map((p) => p.category),
+    ["cafe"]
+  );
+  assert.equal(final.meta.sources.find((s) => s.source === "mapy")?.count, 0);
+});

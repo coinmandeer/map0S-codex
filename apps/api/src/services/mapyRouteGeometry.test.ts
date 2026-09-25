@@ -50,3 +50,23 @@ test("fallback transport graphs differ, not just URL profile names", () => {
   assert.notEqual(osrmBase("foot"), osrmBase("car"));
   assert.notEqual(osrmBase("bike"), osrmBase("car"));
 });
+
+test("routing cannot hide a reported closure behind another provider", async () => {
+  const { assertRouteAccess, RouteAccessError } = await import("./mapyService.js");
+  assert.throws(
+    () => assertRouteAccess([{ restricted: true, restrictionType: "CLOSURE" }], "foot_hiking"),
+    RouteAccessError
+  );
+  assert.throws(
+    () =>
+      assertRouteAccess([{ restricted: true, restrictionType: "RESTRICTED_ENTRY" }], "foot_hiking"),
+    RouteAccessError
+  );
+  assert.doesNotThrow(() =>
+    assertRouteAccess([{ restricted: true, restrictionType: "PEDESTRIAN_ZONE" }], "foot_hiking")
+  );
+  assert.throws(
+    () => assertRouteAccess([{ restricted: true, restrictionType: "PEDESTRIAN_ZONE" }], "car_fast"),
+    RouteAccessError
+  );
+});
