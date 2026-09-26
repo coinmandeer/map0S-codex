@@ -598,16 +598,6 @@
     opacity: 0.9;
   }
 
-  .basemap-preview-road.road-primary {
-    inset: 42% 0 auto 0;
-    height: 5px;
-  }
-
-  .basemap-preview-road.road-secondary {
-    inset: 0 auto 0 28%;
-    width: 4px;
-  }
-
   .basemap-preview[data-preview-kind="satellite"] {
     background: linear-gradient(150deg, #24402a, #4a5d33 55%, #6a6a41);
   }

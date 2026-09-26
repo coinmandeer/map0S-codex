@@ -89,24 +89,4 @@
       transform: scale(1.8);
     }
   }
-
-  /* ---- Utilities ------------------------------------------------------- */
-  .motion-enter {
-    animation: mapos-slide-up var(--dur-enter) var(--ease-emph-decel) both;
-  }
-
-  .motion-fade {
-    animation: mapos-fade-in var(--dur) var(--ease-standard) both;
-  }
-
-  .motion-pop {
-    animation: mapos-scale-in var(--dur) var(--ease-emph-decel) both;
-  }
-
-  /* Staggers a list so it reads as one movement instead of ten. Cap the delay: past ~6 items
-     the tail arrives late enough to feel like lag. */
-  .motion-stagger > * {
-    animation: mapos-slide-up var(--dur-slow) var(--ease-emph-decel) both;
-    animation-delay: calc(min(var(--motion-index, 0), 6) * 24ms);
-  }
 }
