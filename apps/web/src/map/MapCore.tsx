@@ -108,7 +108,10 @@ export function MapCore() {
       dragRotate: false,
       pitchWithRotate: false,
       touchPitch: false,
-      fadeDuration: 0
+      fadeDuration: 0,
+      // A 3× phone screen renders 2.25× the pixels of 2× for a difference nobody sees on a map
+      // in motion; the cap keeps panning smooth and the GPU cool.
+      pixelRatio: Math.min(window.devicePixelRatio || 1, 2)
     });
     const stopSocialMap = attachSocialMap(map);
     const dataLayerLifecycle = MAP_RUNTIME_V2_ENABLED ? new MapLibreDataLayerLifecycle(map) : null;
@@ -279,6 +282,9 @@ export function MapCore() {
     });
 
     const resize = () => {
+      // Follows a window moved to a screen with another density, within the same cap.
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      if (map.getPixelRatio() !== pixelRatio) map.setPixelRatio(pixelRatio);
       map.resize();
     };
     resize();
@@ -635,11 +641,12 @@ export function MapCore() {
       }
 
       const pinLayers = interactivePinLayers(map);
-      const clusterLayers =
-        map
-          .getStyle()
-          .layers?.filter((l) => l.id.startsWith("pins-") && l.id.endsWith("-cluster"))
-          .map((l) => l.id) ?? [];
+      // One read of the layer ids for the whole click; `getStyle()` serialised the entire style
+      // (every basemap layer with its paint and filters) three times per tap.
+      const layerIds = map.getLayersOrder();
+      const clusterLayers = layerIds.filter(
+        (id) => id.startsWith("pins-") && id.endsWith("-cluster")
+      );
 
       // Clusters are first-class map targets.  Previously they were excluded from hit testing,
       // so a tap on a large count bubble fell through to the basemap and users had no way to
@@ -693,10 +700,9 @@ export function MapCore() {
       const pinHits = pinLayers.length
         ? map.queryRenderedFeatures(e.point, { layers: pinLayers })
         : [];
-      const weatherLayerIds = map
-        .getStyle()
-        .layers.map((layer) => layer.id)
-        .filter((id) => /^fill-weather(?:-[a-z-]+)?-sectors$/.test(id));
+      const weatherLayerIds = layerIds.filter((id) =>
+        /^fill-weather(?:-[a-z-]+)?-sectors$/.test(id)
+      );
       const weatherHit = weatherLayerIds.length
         ? map.queryRenderedFeatures(e.point, { layers: weatherLayerIds })[0]
         : undefined;
@@ -709,11 +715,7 @@ export function MapCore() {
           : [];
       // Thematic fills sit under everything else, so they are only consulted once nothing
       // clickable was hit above them: a pin standing on a coloured region belongs to the pin.
-      const themeLayers =
-        map
-          .getStyle()
-          .layers?.map((layer) => layer.id)
-          .filter((id) => /^vt-theme-.+-(fill|nodata)$/.test(id)) ?? [];
+      const themeLayers = layerIds.filter((id) => /^vt-theme-.+-(fill|nodata)$/.test(id));
       const themeHit =
         !pinHits.length && themeLayers.length
           ? map.queryRenderedFeatures(e.point, { layers: themeLayers })[0]

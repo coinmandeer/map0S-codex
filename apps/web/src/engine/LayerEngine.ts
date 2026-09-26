@@ -510,6 +510,10 @@ export class LayerEngine {
       const query = this.query(id, managed, bbox);
       const state = this.states.get(id);
       if (this.controllers.has(id) && state?.key === query.key) continue;
+      // A partial answer for this very request already has its retry scheduled; asking again now
+      // would only duplicate the server's work.
+      if (!force && state?.status === "partial" && state.key === query.key && this.retries.has(id))
+        continue;
       const sameFilters = state?.filterKey === query.filterKey;
       const fresh =
         state?.acceptedAt != null && Date.now() - state.acceptedAt < (state.ttl ?? query.ttl);

@@ -9,19 +9,35 @@ export function watchLayerTiles(
 ) {
   if (typeof map.getStyle !== "function" || typeof map.isSourceLoaded !== "function")
     return () => {};
-  const sources = () =>
-    Object.entries(map.getStyle()?.sources ?? {})
-      .filter(
-        ([key, source]) =>
-          (key === `source-tile-${id}` ||
-            key.startsWith(`source-tile-${id}-`) ||
-            key === id ||
-            key === `source-${id}` ||
-            key.startsWith(`source-${id}-`) ||
-            key.startsWith(`${id}-`)) &&
-          (source.type === "raster" || source.type === "vector")
-      )
-      .map(([key]) => key);
+  const owns = (key: string) =>
+    key === `source-tile-${id}` ||
+    key.startsWith(`source-tile-${id}-`) ||
+    key === id ||
+    key === `source-${id}` ||
+    key.startsWith(`source-${id}-`) ||
+    key.startsWith(`${id}-`);
+  // `getStyle()` serialises the whole style, and tile events arrive by the hundred during a pan
+  // (most of them for the basemap). The list of this layer's sources is read once and again
+  // only when the style changes or one of its sources appears or disappears.
+  let cached: string[] | null = null;
+  const sources = () => {
+    if (!cached || cached.some((key) => !map.getSource(key)))
+      cached = Object.entries(map.getStyle()?.sources ?? {})
+        .filter(
+          ([key, source]) => owns(key) && (source.type === "raster" || source.type === "vector")
+        )
+        .map(([key]) => key);
+    return cached;
+  };
+  const tracks = (sourceId: string | undefined) => {
+    if (!sourceId || !owns(sourceId)) return false;
+    if (sources().includes(sourceId)) return true;
+    cached = null;
+    return sources().includes(sourceId);
+  };
+  const styleChanged = () => {
+    cached = null;
+  };
   let disposed = false;
   let timedOut = false;
   let previousFailure = false;
@@ -69,7 +85,7 @@ export function watchLayerTiles(
   const tileKey = (e: { sourceId?: string; coord?: unknown }) =>
     `${e.sourceId}:${JSON.stringify(e.coord ?? "source")}`;
   const data = (e: maplibregl.MapSourceDataEvent) => {
-    if (!sources().includes(e.sourceId)) return;
+    if (!tracks(e.sourceId)) return;
     const detail = e as maplibregl.MapSourceDataEvent & { coord?: unknown };
     if (e.sourceDataType === "content" && detail.coord) {
       received.add(tileKey(detail));
@@ -79,7 +95,7 @@ export function watchLayerTiles(
   };
   const error = (e: maplibregl.ErrorEvent) => {
     const event = e as maplibregl.ErrorEvent & { sourceId?: string; coord?: unknown };
-    if (!event.sourceId || !sources().includes(event.sourceId)) return;
+    if (!tracks(event.sourceId)) return;
     failed.add(tileKey(event));
     previousFailure = true;
     check();
@@ -92,6 +108,7 @@ export function watchLayerTiles(
     failed.clear();
     received.clear();
   };
+  map.on("styledata", styleChanged);
   map.on("sourcedata", data);
   map.on("sourcedataloading", data);
   map.on("error", error);
@@ -101,6 +118,7 @@ export function watchLayerTiles(
   return () => {
     disposed = true;
     clearTimeout(deadline);
+    map.off("styledata", styleChanged);
     map.off("sourcedata", data);
     map.off("sourcedataloading", data);
     map.off("error", error);

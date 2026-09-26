@@ -857,6 +857,19 @@ export class MapStore {
         message: meta.message
       };
     }
+    // Every page of every POI answer reports its sources; most reports repeat the last one.
+    const current = this.state.sourceStatus;
+    const same =
+      Object.keys(next).length === Object.keys(current).length &&
+      Object.entries(next).every(([source, status]) => {
+        const previous = current[source];
+        return (
+          previous?.state === status?.state &&
+          previous?.count === status?.count &&
+          previous?.message === status?.message
+        );
+      });
+    if (same) return;
     this.patch({ sourceStatus: next });
   }
 
@@ -1336,6 +1349,7 @@ export class MapStore {
   }
 
   setLayerLoading(layerId: string, loading: boolean) {
+    if (Boolean(this.state.loadingLayers[layerId]) === loading) return;
     const next = { ...this.state.loadingLayers };
     if (loading) next[layerId] = true;
     else delete next[layerId];
@@ -1353,6 +1367,9 @@ export class MapStore {
   }
 
   setVisibleFeatures(layerId: string, features: GeoFeature[]) {
+    const previous = this.state.visibleFeatures[layerId];
+    // An empty layer staying empty (every invalidation clears it) wakes nobody.
+    if (previous === features || (previous && !previous.length && !features.length)) return;
     this.patch({ visibleFeatures: { ...this.state.visibleFeatures, [layerId]: features } });
   }
 
