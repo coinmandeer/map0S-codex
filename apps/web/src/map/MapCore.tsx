@@ -23,6 +23,7 @@ import { chromeMapPadding, readChromeInsets } from "./chromePadding";
 import { getMapStore, getMapBbox, type LayerMode } from "../store/mapStore";
 import { getShellStore } from "../store/shellStore";
 import { LayerEngine } from "../engine/LayerEngine";
+import { areaQuery } from "../search/areaQuery";
 import { attachBoundaryOverlay } from "../discover/boundaryOverlay";
 import { activeAttribution } from "../layers/attribution";
 import { API_BASE } from "../lib/api";
@@ -107,7 +108,10 @@ export function MapCore() {
       dragRotate: false,
       pitchWithRotate: false,
       touchPitch: false,
-      fadeDuration: 0
+      fadeDuration: 0,
+      // A 3× phone screen renders 2.25× the pixels of 2× for a difference nobody sees on a map
+      // in motion; the cap keeps panning smooth and the GPU cool.
+      pixelRatio: Math.min(window.devicePixelRatio || 1, 2)
     });
     const stopSocialMap = attachSocialMap(map);
     const dataLayerLifecycle = MAP_RUNTIME_V2_ENABLED ? new MapLibreDataLayerLifecycle(map) : null;
@@ -116,6 +120,8 @@ export function MapCore() {
     let lastGameFollowAt = 0;
     let pendingViewportRefresh = false;
     let pendingWorldRefresh = false;
+    /** Whether the refresh waiting for `idle` answers a move the reader made. */
+    let pendingUserMove = false;
 
     const applyGameFollow = () => {
       gameFollowTimer = null;
@@ -268,11 +274,17 @@ export function MapCore() {
       recordPendingBasemap("success");
       if (!pendingViewportRefresh) return;
       pendingViewportRefresh = false;
-      engineRef.current?.refresh(getMapBbox(map), pendingWorldRefresh);
+      engineRef.current?.refresh(getMapBbox(map), pendingWorldRefresh, {
+        userMoved: pendingUserMove
+      });
       pendingWorldRefresh = false;
+      pendingUserMove = false;
     });
 
     const resize = () => {
+      // Follows a window moved to a screen with another density, within the same cap.
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      if (map.getPixelRatio() !== pixelRatio) map.setPixelRatio(pixelRatio);
       map.resize();
     };
     resize();
@@ -288,10 +300,14 @@ export function MapCore() {
       emit("discover-viewport", { lng: center.lng, lat: center.lat, zoom, bbox: getMapBbox(map) });
     };
 
-    map.on("moveend", () => {
+    map.on("moveend", (event: { originalEvent?: Event }) => {
       const center = map.getCenter();
       const zoom = map.getZoom();
       if (!Number.isFinite(center.lng) || !Number.isFinite(center.lat) || zoom < 1) return;
+      // MapLibre passes the DOM event through for moves the reader made (drag, wheel, keys,
+      // inertia); programmatic camera moves have none.
+      const userMoved = Boolean(event.originalEvent);
+      if (userMoved) areaQuery.markMoved();
       // Camera state belongs to the shell, not to the basemap lifecycle. On a slow connection the
       // style may still be loading when a user pans under the fixed map-picker pin; dropping that
       // move strands the picker on stale coordinates. Only data refresh needs a ready style.
@@ -299,10 +315,14 @@ export function MapCore() {
       emit("map-view-changed", { lng: center.lng, lat: center.lat, zoom });
       if (map.isStyleLoaded()) {
         pendingViewportRefresh = false;
-        engineRef.current?.refresh(getMapBbox(map), pendingWorldRefresh);
+        pendingUserMove = false;
+        engineRef.current?.refresh(getMapBbox(map), pendingWorldRefresh, { userMoved });
         pendingWorldRefresh = false;
       } else {
+        // Tiles still loading after the move: the refresh runs on the next idle, and it is
+        // still the reader's move if the last one was.
         pendingViewportRefresh = true;
+        pendingUserMove = userMoved;
       }
       emitDiscoverViewport();
     });
@@ -359,15 +379,21 @@ export function MapCore() {
       })
     );
 
-    // Search here is a request, not a hint: pressing it while the style is still settling after a
-    // long jump used to clear the button and fetch nothing, so the ask is deferred to the next
-    // idle instead of dropped.
+    // Search here is a request, not a hint. Callers that jump somewhere (a search result, "my
+    // location", a country) ask right after starting the flight; answering at once loaded the
+    // view being left and the destination then waited for the button, so the ask waits for the
+    // camera to land. Pressing it while the style is still settling after a long jump used to
+    // clear the button and fetch nothing, so that ask is deferred to the next idle.
     const onSearchHere = () => {
-      if (map.isStyleLoaded()) {
-        engineRef.current?.refresh(getMapBbox(map), true);
+      if (map.isMoving()) {
+        map.once("moveend", onSearchHere);
         return;
       }
-      map.once("idle", () => engineRef.current?.refresh(getMapBbox(map), true));
+      if (map.isStyleLoaded()) {
+        engineRef.current?.searchHere(getMapBbox(map));
+        return;
+      }
+      map.once("idle", () => engineRef.current?.searchHere(getMapBbox(map)));
     };
     offs.push(on("search-here", onSearchHere));
     offs.push(on("layer-style-changed", () => engineRef.current?.syncLayers(store.activeLayers)));
@@ -615,11 +641,12 @@ export function MapCore() {
       }
 
       const pinLayers = interactivePinLayers(map);
-      const clusterLayers =
-        map
-          .getStyle()
-          .layers?.filter((l) => l.id.startsWith("pins-") && l.id.endsWith("-cluster"))
-          .map((l) => l.id) ?? [];
+      // One read of the layer ids for the whole click; `getStyle()` serialised the entire style
+      // (every basemap layer with its paint and filters) three times per tap.
+      const layerIds = map.getLayersOrder();
+      const clusterLayers = layerIds.filter(
+        (id) => id.startsWith("pins-") && id.endsWith("-cluster")
+      );
 
       // Clusters are first-class map targets.  Previously they were excluded from hit testing,
       // so a tap on a large count bubble fell through to the basemap and users had no way to
@@ -673,10 +700,9 @@ export function MapCore() {
       const pinHits = pinLayers.length
         ? map.queryRenderedFeatures(e.point, { layers: pinLayers })
         : [];
-      const weatherLayerIds = map
-        .getStyle()
-        .layers.map((layer) => layer.id)
-        .filter((id) => /^fill-weather(?:-[a-z-]+)?-sectors$/.test(id));
+      const weatherLayerIds = layerIds.filter((id) =>
+        /^fill-weather(?:-[a-z-]+)?-sectors$/.test(id)
+      );
       const weatherHit = weatherLayerIds.length
         ? map.queryRenderedFeatures(e.point, { layers: weatherLayerIds })[0]
         : undefined;
@@ -689,11 +715,7 @@ export function MapCore() {
           : [];
       // Thematic fills sit under everything else, so they are only consulted once nothing
       // clickable was hit above them: a pin standing on a coloured region belongs to the pin.
-      const themeLayers =
-        map
-          .getStyle()
-          .layers?.map((layer) => layer.id)
-          .filter((id) => /^vt-theme-.+-(fill|nodata)$/.test(id)) ?? [];
+      const themeLayers = layerIds.filter((id) => /^vt-theme-.+-(fill|nodata)$/.test(id));
       const themeHit =
         !pinHits.length && themeLayers.length
           ? map.queryRenderedFeatures(e.point, { layers: themeLayers })[0]

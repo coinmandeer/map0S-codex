@@ -3,6 +3,7 @@ import { apiGet } from "../lib/api";
 import { emit, on } from "../lib/events";
 import { getMapStore } from "../store/mapStore";
 import { fetchThemeDetail, fetchThemeSummaries } from "../layers/themes/themeCatalog";
+import { statCoverageRequest } from "@mapos/adapter-sdk";
 import {
   syncThemeLayers,
   themeLayerId,
@@ -270,6 +271,7 @@ export function attachStatisticsRuntime() {
   let coverageController: AbortController | null = null;
   let coverageTimer: ReturnType<typeof setTimeout> | undefined;
   let coverageGeneration = 0;
+  let coverageKey = "";
   const offView = on("discover-viewport", (event) => {
     viewport = event.bbox;
     update({ viewportKey: event.bbox.map((v) => v.toFixed(4)).join(",") });
@@ -282,14 +284,21 @@ export function attachStatisticsRuntime() {
           fitCoverage: false
         });
     }
+    // Coverage is asked per zoom band and grid-snapped view (the key the server caches by), so
+    // an ordinary pan asks nothing and a pan back is answered by the browser cache.
+    const coverage = statCoverageRequest(event.bbox, event.zoom);
+    const key = JSON.stringify(coverage);
+    if (key === coverageKey) return;
     clearTimeout(coverageTimer);
     coverageController?.abort();
     const generation = ++coverageGeneration;
     coverageTimer = setTimeout(() => {
       coverageController = new AbortController();
-      void fetchThemeSummaries(coverageController.signal, event.bbox, event.zoom)
+      void fetchThemeSummaries(coverageController.signal, coverage.bbox ?? undefined, coverage.zoom)
         .then((catalog) => {
-          if (!disposed && generation === coverageGeneration) update({ catalog });
+          if (disposed || generation !== coverageGeneration) return;
+          coverageKey = key;
+          update({ catalog });
         })
         .catch(() => {});
     }, 350);

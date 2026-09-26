@@ -6,6 +6,20 @@ services:
       POSTGRES_DB: mapos
       POSTGRES_USER: mapos
       POSTGRES_PASSWORD: mapos
+    # Same planner settings as production, so a slow query shows up here first.
+    command:
+      [
+        "postgres",
+        "-c",
+        "jit=off",
+        "-c",
+        "work_mem=32MB",
+        "-c",
+        "maintenance_work_mem=256MB",
+        "-c",
+        "random_page_cost=1.1"
+      ]
+    shm_size: 256mb
     ports:
       - "5434:5432"
     volumes:

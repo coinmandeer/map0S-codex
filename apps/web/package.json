@@ -20,7 +20,6 @@
     "@mapos/adapter-sdk": "*",
     "@mapos/layer-sdk": "*",
     "@mapos/map-runtime": "*",
-    "@tanstack/react-query": "^5.80.7",
     "maplibre-gl": "^5.6.0",
     "pmtiles": "^4.5.0",
     "react": "^19.1.0",

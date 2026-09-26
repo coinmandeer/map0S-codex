@@ -238,11 +238,6 @@
     font: var(--type-label-sm);
   }
 
-  .planner-stop-chip {
-    margin-inline-start: auto;
-    color: var(--text-muted);
-  }
-
   .planner-stop-manual {
     display: flex;
     flex-direction: column;

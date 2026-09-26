@@ -16,6 +16,19 @@ Copy `.env.example` → `.env` for local dev, or `infra/.env.production.example`
 | `OVERPASS_URLS` | no                        | three public mirrors | OSM POI fetching                                    |
 | `MAPOS_CONTACT` | recommended               | —                    | `User-Agent` sent to Nominatim, Overpass, Wikimedia |
 
+### PostgreSQL sizing (production compose)
+
+`infra/compose.production.yml` starts PostgreSQL with JIT off and sizes for a small shared VPS.
+Raise them per host in `infra/.env.production`; a change restarts the database once.
+
+| Variable                        | Default | Setting                                          |
+| ------------------------------- | ------- | ------------------------------------------------ |
+| `POSTGRES_SHARED_BUFFERS`       | `512MB` | `shared_buffers` (about a quarter of free RAM)   |
+| `POSTGRES_EFFECTIVE_CACHE_SIZE` | `2GB`   | `effective_cache_size` (planner hint, no memory) |
+| `POSTGRES_WORK_MEM`             | `32MB`  | `work_mem` per sort/hash                         |
+| `POSTGRES_MAINTENANCE_WORK_MEM` | `256MB` | `maintenance_work_mem` (index builds, ANALYZE)   |
+| `MAPOS_PG_WORK_MEM` (API)       | `32MB`  | `work_mem` the API sets on its own connections   |
+
 `MAPOS_CONTACT` is worth setting on anything beyond a laptop. Nominatim and the Overpass mirrors
 require a `User-Agent` that identifies the deployment and offers a way to make contact; without
 one your traffic is indistinguishable from every other MapOS clone and gets rate-limited as a

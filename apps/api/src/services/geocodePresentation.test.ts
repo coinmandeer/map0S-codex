@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   geocodeConfidence,
+  nearViewbox,
+  parseNearPoint,
   presentMapyGeocodeResult,
   presentNominatimGeocodeResult
 } from "./geocodePresentation.js";
@@ -51,4 +53,13 @@ test("confidence is explicitly ordinal instead of pretending to be a provider pr
   assert.equal(geocodeConfidence(0).basis, "provider-order");
   assert.equal(geocodeConfidence(2).level, "medium");
   assert.equal(geocodeConfidence(20).level, "low");
+});
+
+test("the near-point search bias is coarse and ignores malformed input", () => {
+  assert.deepEqual(parseNearPoint("14.42076,50.08804"), [14.42, 50.09]);
+  assert.deepEqual(parseNearPoint(" -0.1276 , 51.5072 "), [-0.13, 51.51]);
+  for (const value of [undefined, "", "14.4", "a,b", "14,50,1", "200,50", "14,95", "1".repeat(80)])
+    assert.equal(parseNearPoint(value), null, String(value));
+  assert.equal(nearViewbox([14.42, 50.09]), "14.12,50.39,14.72,49.79");
+  assert.equal(nearViewbox([179.9, 89.9]), "179.6,90,180,89.6");
 });

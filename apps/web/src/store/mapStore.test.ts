@@ -211,6 +211,37 @@ test("unchanged camera events preserve the snapshot and avoid notifications", ()
   }
 });
 
+test("repeated loading flags, empty layers and source reports wake nobody", () => {
+  let calls = 0;
+  const unsubscribe = store.subscribe(() => {
+    calls++;
+  });
+  try {
+    store.setLayerLoading("osm-poi", true);
+    store.setLayerLoading("osm-poi", true);
+    store.setLayerLoading("osm-poi", false);
+    store.setLayerLoading("osm-poi", false);
+    assert.equal(calls, 2, "only real loading transitions notify");
+
+    calls = 0;
+    store.setVisibleFeatures("osm-poi", []);
+    store.setVisibleFeatures("osm-poi", []);
+    assert.equal(calls, 1, "an empty layer staying empty is not a change");
+
+    calls = 0;
+    const report = [{ source: "osm", state: "ready", count: 3 }] as Parameters<
+      typeof store.applySourceMeta
+    >[0];
+    store.applySourceMeta(report);
+    store.applySourceMeta(structuredClone(report));
+    assert.equal(calls, 1, "a repeated source report is not a change");
+    store.applySourceMeta([{ ...report[0]!, count: 4 }]);
+    assert.equal(calls, 2);
+  } finally {
+    unsubscribe();
+  }
+});
+
 test("subscribers are notified on every layer change", () => {
   let calls = 0;
   const unsubscribe = store.subscribe(() => {

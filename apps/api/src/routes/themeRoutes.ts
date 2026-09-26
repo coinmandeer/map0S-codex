@@ -113,6 +113,8 @@ export function registerThemeRoutes(
         ? {}
         : await catalogCoverage(bbox, (request.query as { zoom?: number }).zoom);
       const locale = localeFrom(request.query);
+      // The same for every reader; the client snaps its bbox, so a pan back hits the browser.
+      reply.header("Cache-Control", "public, max-age=300");
       return {
         themes: listThemes().map((entry) => {
           const text = themeText(entry, locale);

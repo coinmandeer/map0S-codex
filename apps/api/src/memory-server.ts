@@ -114,6 +114,7 @@ import { memoryPlanShareRepository } from "./services/planShareMemoryRepository.
 import { memoryPlanDiscussionRepository } from "./services/planDiscussionMemoryRepository.js";
 import { createMemoryAdjacentRouteProvider } from "./services/adjacentRouteProvider.js";
 import { searchOfflineGazetteer } from "./data/offlineGazetteer.js";
+import { parseNearPoint } from "./services/geocodePresentation.js";
 import { dataSourceProviders } from "./services/dataSources/index.js";
 import { withOfflinePlaces } from "./services/ai/offlinePlaces.js";
 import { EventService } from "./services/events/eventService.js";
@@ -1628,8 +1629,12 @@ export async function buildMemoryApp(options: MemoryAppOptions = {}) {
 
   app.get("/photos/resolve", async () => ({ url: null }));
 
-  app.get<{ Querystring: { q?: string } }>("/geocode", async (request) => ({
-    results: searchOfflineGazetteer(request.query.q ?? "").map((entry) => ({
+  app.get<{ Querystring: { q?: string; near?: string } }>("/geocode", async (request) => ({
+    results: searchOfflineGazetteer(
+      request.query.q ?? "",
+      5,
+      parseNearPoint(request.query.near)
+    ).map((entry) => ({
       display_name: `${entry.name}, Česko`,
       lat: String(entry.latitude),
       lon: String(entry.longitude),

@@ -397,6 +397,8 @@ export const en: Record<MessageKey, string> = {
   "search.kind.peak": "Peak",
   "search.kind.place": "Place",
   "search.searchHere": "Search this area",
+  "search.searchingHere": "Searching this area…",
+  "search.searchHere.again": "Search this area: ask “{query}” again for this view",
 
   // ---- Panel chrome ----------------------------------------------------
   "panel.close": "Close",
@@ -569,8 +571,9 @@ export const en: Record<MessageKey, string> = {
   "settings.lowData.info": "Load place photos on request; limit the tile cache to 16 MiB.",
   "settings.loadMedia": "Load photos and media",
   "settings.flyAnimations": "Fly-to animations",
+  "settings.manualRefresh": "Load only on “Search this area”",
   "settings.searchHere.info":
-    "After you move the map, data is refreshed on request, so dragging sends no queries.",
+    "Moving the map loads nothing; press Search this area to refresh the view. Saves data and battery.",
   "settings.account.guestInfo":
     "An anonymous profile lives in this browser. Save an account to take it elsewhere.",
   "settings.account.localInfo": "Progress is stored locally. Sign in to carry it between devices.",

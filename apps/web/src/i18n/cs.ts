@@ -399,7 +399,9 @@ export const cs = {
   "search.kind.poi": "Místo / POI",
   "search.kind.peak": "Vrchol",
   "search.kind.place": "Místo",
-  "search.searchHere": "Hledat v této oblasti",
+  "search.searchHere": "Hledat tady",
+  "search.searchingHere": "Hledám tady…",
+  "search.searchHere.again": "Hledat tady: znovu „{query}“ pro tento výřez",
 
   // ---- Panel chrome ----------------------------------------------------
   "panel.close": "Zavřít",
@@ -574,8 +576,9 @@ export const cs = {
     "Fotografie míst načítat až na vyžádání; paměť dlaždic omezit na 16 MiB.",
   "settings.loadMedia": "Načíst fotografie a média",
   "settings.flyAnimations": "Animace přeletů",
+  "settings.manualRefresh": "Načítat až po „Hledat tady“",
   "settings.searchHere.info":
-    "Po posunu mapy nabídne ruční obnovení dat, aby se během tažení neposílaly dotazy.",
+    "Posun mapy nic nenačítá; data pro nový výřez obnovíš tlačítkem Hledat tady. Šetří data i baterii.",
   "settings.account.guestInfo":
     "Anonymní profil je uložený v tomto prohlížeči. Uložením účtu ho přeneseš i jinam.",
   "settings.account.localInfo":

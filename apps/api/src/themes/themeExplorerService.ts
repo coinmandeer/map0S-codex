@@ -1,22 +1,37 @@
 import { selectDataset } from "./selectDataset.js";
 import { sql } from "../db/index.js";
 import { theme, THEMES } from "./themeRegistry.js";
-import { statDataset } from "@mapos/adapter-sdk";
+import { statCoverageRequest, statDataset } from "@mapos/adapter-sdk";
 import { databaseQueries } from "./themeService.js";
 import { createHash } from "node:crypto";
+import { TtlCache } from "../utils/ttlCache.js";
 
 type Coverage = {
   available: boolean;
   coverageStatus: "none" | "partial" | "full" | "unknown";
   geoLevels: string[];
 };
-const catalogueCache = new Map<string, { until: number; value: Record<string, Coverage> }>();
+type Bbox = [number, number, number, number];
+
+const THEME_DATASET_IDS = [...new Set(THEMES.flatMap((t) => t.sources.map((s) => s.datasetId)))];
+const catalogueCache = new TtlCache<Record<string, Coverage>>({
+  ttlMs: 15 * 60_000,
+  maxEntries: 256
+});
+
 /** One compact request for the drawer. No geometry or individual observations reach the client.
  * Coverage counts matching land territories, so coastlines don't turn complete data yellow. */
-export async function catalogCoverage(bbox: [number, number, number, number] | null, zoom = 0) {
-  const key = JSON.stringify([bbox, Math.floor(zoom), process.env.MAPOS_ALLOW_NONCOMMERCIAL_DATA]);
-  const cached = catalogueCache.get(key);
-  if (cached && cached.until > Date.now()) return cached.value;
+export function catalogCoverage(bbox: Bbox | null, zoom = 0) {
+  const request = statCoverageRequest(bbox, zoom);
+  const key = JSON.stringify([
+    request.bbox,
+    request.zoom,
+    process.env.MAPOS_ALLOW_NONCOMMERCIAL_DATA
+  ]);
+  return catalogueCache.getOrLoad(key, () => computeCoverage(request.bbox, request.zoom));
+}
+
+async function computeCoverage(bbox: Bbox | null, zoom: number) {
   const [w, s, e, n] = bbox ?? [-180, -85, 180, 85];
   const rows = await sql`WITH geography AS MATERIALIZED (
     SELECT level,code,edition FROM geo_units g
@@ -28,11 +43,10 @@ export async function catalogCoverage(bbox: [number, number, number, number] | n
   SELECT ss.dataset_id,ss.geo_level,COUNT(DISTINCT ss.geo_code)::integer AS matched,MAX(t.total)::integer AS total
   FROM stat_series ss JOIN geography g ON g.level=ss.geo_level AND g.code=ss.geo_code
     AND (ss.boundary_edition IS NULL OR ss.boundary_edition=g.edition)
-  JOIN totals t ON t.level=ss.geo_level WHERE ss.value IS NOT NULL
+  JOIN totals t ON t.level=ss.geo_level
+  WHERE ss.value IS NOT NULL AND ss.dataset_id=ANY(${THEME_DATASET_IDS})
   GROUP BY ss.dataset_id,ss.geo_level`;
-  const available = await databaseQueries.available!([
-    ...new Set(THEMES.flatMap((t) => t.sources.map((s) => s.datasetId)))
-  ]);
+  const available = await databaseQueries.available!(THEME_DATASET_IDS);
   const result: Record<string, Coverage> = {};
   for (const entry of THEMES) {
     const sources = entry.sources.filter((s) => available.includes(s.datasetId));
@@ -57,12 +71,27 @@ export async function catalogCoverage(bbox: [number, number, number, number] | n
       ]
     };
   }
-  if (catalogueCache.size >= 64) catalogueCache.delete(catalogueCache.keys().next().value!);
-  catalogueCache.set(key, { until: Date.now() + 60000, value: result });
   return result;
 }
 
-export async function explorerInventory(id: string, excluded: string[] = [], period = "latest") {
+/** Import runs change a few times a day; two minutes keeps a published import visible soon
+ *  while a burst of detail requests for one theme runs its two queries once. */
+const inventoryCache = new TtlCache<Awaited<ReturnType<typeof loadExplorerInventory>>>({
+  ttlMs: 2 * 60_000,
+  maxEntries: 128
+});
+
+export function explorerInventory(id: string, excluded: string[] = [], period = "latest") {
+  const key = JSON.stringify([
+    id,
+    [...excluded].sort(),
+    period,
+    process.env.MAPOS_ALLOW_NONCOMMERCIAL_DATA
+  ]);
+  return inventoryCache.getOrLoad(key, () => loadExplorerInventory(id, excluded, period));
+}
+
+async function loadExplorerInventory(id: string, excluded: string[], period: string) {
   const ids =
     theme(id)
       ?.sources.map((s) => s.datasetId)

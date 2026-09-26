@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { json2satrec, type SatRec } from "satellite.js";
-import { groundTracks } from "./satelliteLayer.js";
+import { groundTracks, loadSatelliteMath } from "./satelliteLayer.js";
+
+await loadSatelliteMath();
 
 /**
  * The ground track is the "reflexе" the reader sees: the path a satellite is about to fly. It is

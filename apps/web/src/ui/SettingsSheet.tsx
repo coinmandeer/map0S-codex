@@ -252,14 +252,14 @@ const registry = new SettingsUiRegistry<SettingsContext, ReactNode>()
     order: 30,
     render: ({ store, preferences }) => (
       <Row
-        label={t("search.searchHere")}
+        label={t("settings.manualRefresh")}
         info={t("settings.searchHere.info")}
         testId="settings-search-here"
         control={
           <Switch
-            checked={preferences.showSearchHere}
-            label={t("search.searchHere")}
-            onChange={(next) => store.setPreference("showSearchHere", next)}
+            checked={preferences.manualRefresh}
+            label={t("settings.manualRefresh")}
+            onChange={(next) => store.setPreference("manualRefresh", next)}
             testId="search-here-toggle"
           />
         }

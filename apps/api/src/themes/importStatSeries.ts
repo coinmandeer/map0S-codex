@@ -8,6 +8,7 @@
 import { STAT_DATASETS } from "@mapos/adapter-sdk";
 import { importAllStatDatasets } from "./statSeriesImport.js";
 import { safeErrorLogFields } from "../utils/clientError.js";
+import { analyzeTables } from "../db/analyze.js";
 
 const requested = process.argv.slice(2).filter((argument) => !argument.startsWith("-"));
 const unknown = requested.filter((id) => !STAT_DATASETS.some((dataset) => dataset.id === id));
@@ -36,6 +37,7 @@ try {
       : "bez období";
     console.log(`${result.datasetId}: ${result.written} hodnot, ${range}`);
   }
+  await analyzeTables(["stat_series", "stat_datasets", "stat_import_runs", "theme_coverage"]);
   process.exit(process.exitCode ?? 0);
 } catch (error) {
   console.error("Import statistik se nepodařil", safeErrorLogFields(error));

@@ -947,3 +947,113 @@ test("progressive retries back off from the server hint and stay bounded", () =>
   assert.equal(progressiveRetryDelay(2000, 20), 15000);
   assert.equal(progressiveRetryDelay(10, 1), 1000);
 });
+
+function searchHereHarness(
+  t: { after(fn: () => void): void },
+  viewportCost: "cheap" | "expensive",
+  preferences: { manualRefresh: boolean } = { manualRefresh: false }
+) {
+  resetLayerRegistry();
+  const events = new EventTarget();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events)
+    }
+  });
+  const requested: Bbox[] = [];
+  const pending: boolean[] = [];
+  registerLayer({
+    kind: "pins",
+    viewportCost,
+    manifest: {
+      id: "area",
+      name: "Area",
+      icon: "x",
+      color: "#000000",
+      description: "Area",
+      category: "user"
+    },
+    create: () => ({
+      async update(bbox) {
+        requested.push(bbox);
+        return collection("a");
+      },
+      setData() {},
+      setVisible() {},
+      setOpacity() {},
+      detach() {}
+    })
+  });
+  const store = {
+    view: { zoom: 14 },
+    preferences,
+    activeLayers: { area: { visible: true, opacity: 1, filters: {} } },
+    session: null,
+    activeTag: null,
+    countryCode: null,
+    enabledPoiSources: [],
+    setVisibleFeatures() {},
+    setLayerLoading() {},
+    setLayerNotice() {},
+    setSearchHerePending(value: boolean) {
+      pending.push(value);
+    },
+    markSourcesLoading() {},
+    applySourceMeta() {}
+  } as unknown as MapStore;
+  const engine = new LayerEngine({} as never, "/api", store, new TaskRegistry());
+  t.after(() => engine.destroy());
+  return { engine, requested, pending: () => pending.at(-1) ?? false };
+}
+
+const PLZEN: Bbox = [13.36, 49.74, 13.39, 49.755];
+const PRAHA: Bbox = [14.41, 50.08, 14.44, 50.095];
+
+test("a long move leaves an expensive layer waiting, and Search this area loads only it", async (t) => {
+  const { engine, requested, pending } = searchHereHarness(t, "expensive");
+  engine.refresh(PLZEN, true);
+  await waitFor(() => requested.length === 1);
+  assert.equal(pending(), false);
+
+  engine.refresh(PRAHA);
+  await wait(400);
+  assert.equal(requested.length, 1, "a jump across the country waits to be asked");
+  assert.equal(pending(), true, "and says so");
+
+  engine.searchHere(PRAHA);
+  await waitFor(() => requested.length === 2);
+  assert.deepEqual(requested[1], snapBboxToTileGrid(PRAHA, 14));
+  await waitFor(() => pending() === false);
+
+  engine.searchHere(PRAHA);
+  await wait(50);
+  assert.equal(requested.length, 2, "pressing it again for a loaded view costs nothing");
+});
+
+test("while an expensive layer loads after a short pan it is not reported as waiting", async (t) => {
+  const { engine, requested, pending } = searchHereHarness(t, "expensive");
+  engine.refresh(PLZEN, true);
+  await waitFor(() => requested.length === 1);
+  // Half a screen east: past the fetched tiles, well within the automatic refresh distance.
+  engine.refresh([13.375, 49.74, 13.405, 49.755]);
+  assert.equal(pending(), false, "the debounce before an automatic load is not a question");
+  await waitFor(() => requested.length === 2);
+  assert.equal(pending(), false);
+});
+
+test("with manual refresh the reader's own move waits, a programmatic one still loads", async (t) => {
+  const { engine, requested, pending } = searchHereHarness(t, "cheap", { manualRefresh: true });
+  engine.refresh(PLZEN, true);
+  await waitFor(() => requested.length === 1);
+
+  engine.refresh([13.4, 49.74, 13.43, 49.755], false, { userMoved: true });
+  await wait(400);
+  assert.equal(requested.length, 1, "a drag loads nothing");
+  assert.equal(pending(), true);
+
+  engine.refresh(PRAHA);
+  await waitFor(() => requested.length === 2);
+  await waitFor(() => pending() === false);
+});

@@ -64,11 +64,6 @@
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   background: var(--accent-soft);
 }
-.map-status-popover .search-here-btn {
-  position: static;
-  transform: none;
-  margin-top: 10px;
-}
 @keyframes mapos-loading {
   50% {
     transform: translateY(-2px) rotate(-8deg);

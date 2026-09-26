@@ -477,6 +477,38 @@ test("AI V2 preserves streamed text on EOF and clears pending work on new thread
   await expect(page.getByTestId("ai-panel-empty")).toBeVisible();
 });
 
+test("after the reader moves the map, Search this area asks the last place search there", async ({
+  page
+}) => {
+  const bodies: Array<{ message?: string; context?: { bbox?: number[] } }> = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/v2/ai/chat")) bodies.push(request.postDataJSON());
+  });
+  await openPanel(page);
+  const asked = bodies.length;
+  // The answer's own camera fit is not a move of the reader's: nothing is offered yet.
+  await expect(page.getByTestId("search-here")).toHaveCount(0);
+
+  const box = (await page.locator(".maplibregl-canvas").boundingBox())!;
+  const [x, y] = [box.x + box.width - 60, box.y + box.height / 2];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 300, y + 40, { steps: 8 });
+  await page.mouse.up();
+  await page.mouse.move(x - 298, y + 42);
+
+  const button = page.getByTestId("search-here");
+  await expect(button).toBeVisible({ timeout: 20_000 });
+  await expect(button).toHaveAttribute("title", new RegExp(QUESTION.replace("?", "\\?")));
+  await button.click();
+  await expect.poll(() => bodies.length, { timeout: 20_000 }).toBeGreaterThan(asked);
+  const [first, again] = [bodies[asked - 1]!, bodies.at(-1)!];
+  expect(again.message).toBe(QUESTION);
+  expect(again.context?.bbox).toBeTruthy();
+  expect(again.context?.bbox).not.toEqual(first.context?.bbox);
+  await expect(page.getByTestId("ai-panel-thread").locator(".ai-turn")).toHaveCount(2);
+});
+
 test("AI V2 place excursion preserves the thread without another chat call", async ({ page }) => {
   let calls = 0;
   page.on("request", (request) => {

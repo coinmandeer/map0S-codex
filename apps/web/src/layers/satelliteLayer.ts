@@ -7,7 +7,7 @@ import type {
   GeoFeature,
   LayerHandle
 } from "@mapos/layer-sdk";
-import { eciToGeodetic, gstime, json2satrec, propagate, type SatRec } from "satellite.js";
+import type { SatRec } from "satellite.js";
 import { emit } from "../lib/events";
 import { registerInteractivePins, unregisterInteractivePins } from "../map/interactivePins";
 
@@ -96,11 +96,28 @@ function colorFor(category: string): string {
   return SATELLITE_CATEGORY_COLORS[category] ?? "#38bdf8";
 }
 
+/** SGP4 is about 100 kB of the app and only this layer needs it, so it arrives with the layer's
+ *  first update instead of with the map. */
+let sgp4: typeof import("satellite.js") | null = null;
+let sgp4Loading: Promise<typeof import("satellite.js")> | null = null;
+export function loadSatelliteMath(): Promise<typeof import("satellite.js")> {
+  sgp4Loading ??= import("satellite.js").then(
+    (module) => (sgp4 = module),
+    (error) => {
+      sgp4Loading = null;
+      throw error;
+    }
+  );
+  return sgp4Loading;
+}
+
 /** A satellite's position at an instant, or null when SGP4 cannot produce a sane one. */
 function positionAt(
   satrec: SatRec,
   at: Date
 ): { lng: number; lat: number; altitudeKm: number } | null {
+  if (!sgp4) return null;
+  const { eciToGeodetic, gstime, propagate } = sgp4;
   const pv = propagate(satrec, at);
   const position = pv?.position;
   if (
@@ -207,7 +224,9 @@ export function createSatelliteLayer(
   }
 
   function buildSatrecs() {
+    const json2satrec = sgp4?.json2satrec;
     satrecs = elements.map((element) => {
+      if (!json2satrec) return { element, satrec: null };
       try {
         const satrec = json2satrec({
           OBJECT_NAME: element.name,
@@ -404,6 +423,8 @@ export function createSatelliteLayer(
     ): Promise<FeatureCollection | null> {
       ensureLayers();
       const keyBefore = currentFilterKey;
+      await loadSatelliteMath();
+      if (signal?.aborted || disposed) return null;
       await loadCatalog(filters, signal);
       if (signal?.aborted) return null;
       // The elements and the drawn tracks do not depend on the viewport, so a pan must not

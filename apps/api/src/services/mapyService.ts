@@ -119,13 +119,25 @@ function normalizeItems(data: MapyItemsResponse): MapyGeocodeItem[] {
     }));
 }
 
+/** `preferNear` ranks matches close to a point higher without excluding the rest — the same
+ *  "Náměstí Míru" in the city on screen before the one across the country. */
 export async function mapyGeocode(
   query: string,
   lang = "cs",
   limit = 8,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  preferNear?: [number, number]
 ): Promise<MapyGeocodeItem[]> {
-  const data = await mapyJson<MapyItemsResponse>("/v1/geocode", { query, lang, limit }, signal);
+  const data = await mapyJson<MapyItemsResponse>(
+    "/v1/geocode",
+    {
+      query,
+      lang,
+      limit,
+      preferNear: preferNear ? `${preferNear[0]},${preferNear[1]}` : undefined
+    },
+    signal
+  );
   return normalizeItems(data);
 }
 

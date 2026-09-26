@@ -209,6 +209,8 @@ mapos_rollback() {
   set +e
   mapos_release_compose logs --since "${MAPOS_VERIFY_SINCE:-5m}" --tail 120 --no-color api web >&2
   mapos_atomic_current "${MAPOS_PREVIOUS_TARGET}" || MAPOS_ROLLBACK_STATUS=1
+  # A no-op unless this release changed the database settings; then the previous ones return.
+  mapos_current_compose up -d --no-build --wait --wait-timeout 180 postgres || MAPOS_ROLLBACK_STATUS=1
   docker image tag "${MAPOS_OLD_API_IMAGE}" "${MAPOS_API_IMAGE}" || MAPOS_ROLLBACK_STATUS=1
   docker image tag "${MAPOS_OLD_WEB_IMAGE}" "${MAPOS_WEB_IMAGE}" || MAPOS_ROLLBACK_STATUS=1
   mapos_current_compose up -d --no-build --force-recreate --wait --wait-timeout 180 api web ||
@@ -497,6 +499,10 @@ MAPOS_VERIFY_SINCE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 set +e
 (
   set -Eeuo pipefail
+  # PostgreSQL is recreated only when this release changes its settings (command, shared
+  # memory); otherwise Compose leaves the running container alone. Inside the rollback boundary,
+  # so a database that does not come back healthy restores the previous release.
+  mapos_release_compose up -d --no-build --wait --wait-timeout 180 postgres
   mapos_release_compose up -d --no-build --force-recreate --wait --wait-timeout 180 api web
 
   MAPOS_API_HEALTH="$(curl -fsS --max-time 10 "http://127.0.0.1:${MAPOS_API_PORT}/health")"
@@ -559,6 +565,49 @@ if [[ "${MAPOS_ROLLOUT_STATUS}" -ne 0 ]]; then
   mapos_rollback
   exit "${MAPOS_ROLLOUT_STATUS}"
 fi
+
+# Housekeeping after a healthy rollout; none of it can fail the deploy.
+set +e
+# Bulk imports and restores leave tables without planner statistics (pg_restore carries none),
+# and the planner then guessed 139 rows for a 242 000-row join. Analyse only tables that were
+# never analysed or changed by more than a tenth since.
+mapos_release_compose exec -T postgres psql -U mapos -d mapos -v ON_ERROR_STOP=1 -qc \
+  "DO \$\$ DECLARE t record; BEGIN
+     FOR t IN SELECT schemaname, relname FROM pg_stat_user_tables
+       WHERE COALESCE(last_analyze, last_autoanalyze) IS NULL
+          OR n_mod_since_analyze > 0.1 * GREATEST(n_live_tup, 1000)
+     LOOP EXECUTE format('ANALYZE %I.%I', t.schemaname, t.relname); END LOOP;
+   END \$\$" </dev/null ||
+  echo "deploy: ANALYZE did not complete (non-fatal)" >&2
+
+# A full disk broke releases on this shared host before. Keep the three newest releases and
+# backups (never the live or the previous release), six rollback image tags per service, and
+# drop dangling images and week-old build cache.
+mapos_prune_dir() {
+  local MAPOS_PRUNE_ROOT="$1" MAPOS_PRUNE_ENTRY MAPOS_PRUNE_INDEX=0
+  while IFS= read -r MAPOS_PRUNE_ENTRY; do
+    MAPOS_PRUNE_INDEX=$((MAPOS_PRUNE_INDEX + 1))
+    [[ "${MAPOS_PRUNE_INDEX}" -le 3 ]] && continue
+    [[ "${MAPOS_PRUNE_ENTRY}" == "${MAPOS_TAG}" ]] && continue
+    [[ "releases/${MAPOS_PRUNE_ENTRY}" == "${MAPOS_PREVIOUS_TARGET}" ]] && continue
+    [[ "${MAPOS_REMOTE_DIR}/releases/${MAPOS_PRUNE_ENTRY}" == "${MAPOS_PREVIOUS_TARGET}" ]] && continue
+    [[ "${MAPOS_PRUNE_ENTRY}" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+    rm -rf -- "${MAPOS_PRUNE_ROOT:?}/${MAPOS_PRUNE_ENTRY}"
+  done < <(ls -1t "${MAPOS_PRUNE_ROOT}")
+}
+mapos_prune_dir "${MAPOS_REMOTE_DIR}/releases"
+mapos_prune_dir "${MAPOS_REMOTE_DIR}/backups"
+for MAPOS_PRUNE_SERVICE in api web; do
+  docker image ls --format '{{.Tag}}' "${MAPOS_COMPOSE_PROJECT}-${MAPOS_PRUNE_SERVICE}" |
+    grep '^rollback-' | sort -r | tail -n +7 |
+    while IFS= read -r MAPOS_PRUNE_TAG; do
+      docker image rm "${MAPOS_COMPOSE_PROJECT}-${MAPOS_PRUNE_SERVICE}:${MAPOS_PRUNE_TAG}" >/dev/null
+    done
+done
+docker image prune -f >/dev/null
+docker builder prune -f --filter until=168h >/dev/null
+df -h "${MAPOS_REMOTE_DIR}" | tail -n 1
+set -e
 
 mapos_release_compose ps
 echo "deploy: release ${MAPOS_TAG} is healthy; backup ${MAPOS_BACKUP_DIR} verified"

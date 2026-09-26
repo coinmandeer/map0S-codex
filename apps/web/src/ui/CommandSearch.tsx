@@ -1,4 +1,5 @@
 import { maptilerGeocode } from "../search/maptilerGeocoding";
+import { geocodeNearParam } from "../search/nearBias";
 import { normalizeCatalogText } from "@mapos/layer-sdk";
 import { SearchLayers } from "./layers/SearchLayers";
 import { chatSession, useChatField } from "./ai/chatSession";
@@ -261,7 +262,7 @@ export function CommandSearch({
             }
             try {
               const response = await fetch(
-                `${API_BASE}/geocode?q=${encodeURIComponent(intent.query)}&provider=auto&autocomplete=true`,
+                `${API_BASE}/geocode?q=${encodeURIComponent(intent.query)}&provider=auto&autocomplete=true${geocodeNearParam(getMapStore().view)}`,
                 { signal }
               );
               if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -385,7 +386,7 @@ export function CommandSearch({
             if (store.capabilities?.maptilerGeocoding) {
               try {
                 const response = await fetch(
-                  `${API_BASE}/geocode?q=${encodeURIComponent(submitted)}&provider=auto&autocomplete=true`,
+                  `${API_BASE}/geocode?q=${encodeURIComponent(submitted)}&provider=auto&autocomplete=true${geocodeNearParam(getMapStore().view)}`,
                   { signal }
                 );
                 if (response.ok) {
@@ -400,7 +401,7 @@ export function CommandSearch({
               }
             }
             const response = await fetch(
-              `${API_BASE}/geocode?q=${encodeURIComponent(submitted)}&provider=auto`,
+              `${API_BASE}/geocode?q=${encodeURIComponent(submitted)}&provider=auto${geocodeNearParam(getMapStore().view)}`,
               { signal }
             );
             if (!response.ok) throw new Error("Hledání se nepodařilo dokončit.");
