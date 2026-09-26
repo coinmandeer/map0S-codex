@@ -14,6 +14,7 @@ export * from "./builtins.js";
 export * from "./pmtiles/pmtilesAdapter.js";
 export * from "./stat/statSeries.js";
 export * from "./stat/statDatasets.js";
+export * from "./stat/statCoverage.js";
 export * from "./wms/capabilities.js";
 export * from "./wms/wmsAdapter.js";
 

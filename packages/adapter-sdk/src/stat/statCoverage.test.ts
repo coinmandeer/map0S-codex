@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { coverageRequest } from "./themeExplorerService.js";
+import { statCoverageRequest as coverageRequest } from "./statCoverage.js";
 
 test("catalogue coverage is shared by neighbouring views in one zoom band", () => {
   const prague = coverageRequest([14.31, 50.02, 14.55, 50.13], 11.4);

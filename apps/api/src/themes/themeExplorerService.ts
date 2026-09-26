@@ -1,7 +1,7 @@
 import { selectDataset } from "./selectDataset.js";
 import { sql } from "../db/index.js";
 import { theme, THEMES } from "./themeRegistry.js";
-import { statDataset } from "@mapos/adapter-sdk";
+import { statCoverageRequest, statDataset } from "@mapos/adapter-sdk";
 import { databaseQueries } from "./themeService.js";
 import { createHash } from "node:crypto";
 import { TtlCache } from "../utils/ttlCache.js";
@@ -13,38 +13,6 @@ type Coverage = {
 };
 type Bbox = [number, number, number, number];
 
-/** The dataset choice changes only at these zooms (see `selectDataset`), and each band snaps the
- *  view to a grid about a sixth of a typical screen at that zoom. */
-const ZOOM_BANDS = [
-  { min: 8, grid: 0.25 },
-  { min: 6, grid: 1 },
-  { min: 4, grid: 2.5 },
-  { min: 0, grid: 10 }
-] as const;
-
-/**
- * Coverage is a property of the imports, not of each pan: requests are grouped by the zoom band
- * the dataset choice follows and by the view snapped outward to that band's grid, so the next
- * few pans reuse one computation instead of each costing a PostGIS join over every territory.
- * The snapped area can be slightly larger than the view, which only makes the dot conservative.
- */
-export function coverageRequest(bbox: Bbox | null, zoom = 0): { bbox: Bbox | null; zoom: number } {
-  const band = ZOOM_BANDS.find((entry) => zoom >= entry.min) ?? ZOOM_BANDS[ZOOM_BANDS.length - 1];
-  if (!bbox) return { bbox: null, zoom: band.min };
-  const snap = (value: number, round: (value: number) => number) =>
-    Number((round(value / band.grid) * band.grid).toFixed(6));
-  const [w, s, e, n] = bbox;
-  return {
-    bbox: [
-      Math.max(-180, snap(w, Math.floor)),
-      Math.max(-90, snap(s, Math.floor)),
-      Math.min(180, snap(e, Math.ceil)),
-      Math.min(90, snap(n, Math.ceil))
-    ],
-    zoom: band.min
-  };
-}
-
 const THEME_DATASET_IDS = [...new Set(THEMES.flatMap((t) => t.sources.map((s) => s.datasetId)))];
 const catalogueCache = new TtlCache<Record<string, Coverage>>({
   ttlMs: 15 * 60_000,
@@ -54,7 +22,7 @@ const catalogueCache = new TtlCache<Record<string, Coverage>>({
 /** One compact request for the drawer. No geometry or individual observations reach the client.
  * Coverage counts matching land territories, so coastlines don't turn complete data yellow. */
 export function catalogCoverage(bbox: Bbox | null, zoom = 0) {
-  const request = coverageRequest(bbox, zoom);
+  const request = statCoverageRequest(bbox, zoom);
   const key = JSON.stringify([
     request.bbox,
     request.zoom,
